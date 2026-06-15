@@ -46,6 +46,7 @@ import type {
   MailQuickFilter,
   MailActionResult,
   MailComposePreviewDto,
+  MailComposeSeedDto,
   MailComposeSeedAttachmentDto,
   MailComposeSeedMode,
   MailDraftAttachmentDto,
@@ -1149,15 +1150,6 @@ function MailWorkspace(props: {
   onTrackFollowUp: () => void;
   onConfirmHermesFollowUp: () => void;
 }) {
-  const [replyText, setReplyText] = useState("");
-  const [replyDraftNotice, setReplyDraftNotice] = useState("");
-  const [replyDraftBusy, setReplyDraftBusy] = useState(false);
-  const [replyHermesSkillRunId, setReplyHermesSkillRunId] = useState<
-    string | undefined
-  >();
-  const [replyHermesDraftText, setReplyHermesDraftText] = useState<
-    string | undefined
-  >();
   const [composeFrom, setComposeFrom] = useState("");
   const [sendIdentities, setSendIdentities] = useState<MailSendIdentityDto[]>([]);
   const [composeTo, setComposeTo] = useState("");
@@ -1173,6 +1165,12 @@ function MailWorkspace(props: {
     string | undefined
   >();
   const [composeSourceMessageId, setComposeSourceMessageId] = useState<
+    string | undefined
+  >();
+  const [composeHermesSkillRunId, setComposeHermesSkillRunId] = useState<
+    string | undefined
+  >();
+  const [composeHermesDraftText, setComposeHermesDraftText] = useState<
     string | undefined
   >();
   const [composePreview, setComposePreview] =
@@ -1194,10 +1192,6 @@ function MailWorkspace(props: {
   );
 
   useEffect(() => {
-    setReplyText("");
-    setReplyDraftNotice("");
-    setReplyHermesSkillRunId(undefined);
-    setReplyHermesDraftText(undefined);
     setAttachmentDownloadBusyId(undefined);
     setAttachmentDownloadNotice("");
   }, [props.selectedMail.id]);
@@ -1272,6 +1266,38 @@ function MailWorkspace(props: {
     setRescheduleTimes((current) => seedRescheduleTimes(current, page.items));
   }
 
+  function applySeedToCompose(
+    seed: MailComposeSeedDto,
+    options: {
+      bodyText?: string;
+      source?: MailDraftSource;
+      hermesSkillRunId?: string;
+      hermesDraftText?: string;
+      notice?: string;
+    } = {},
+  ) {
+    setComposeTo(formatComposeAddressList(seed.to));
+    setComposeCc(formatComposeAddressList(seed.cc));
+    setComposeBcc(formatComposeAddressList(seed.bcc));
+    setComposeSubject(seed.subject);
+    setComposeBody(options.bodyText ?? seed.bodyText);
+    setComposeSource(options.source ?? seed.source);
+    setComposeAttachments(
+      seed.mode === "forward" ? seed.attachments.map(composeAttachmentFromSeed) : [],
+    );
+    setComposeReplyToMessageId(seed.replyToMessageId);
+    setComposeSourceMessageId(seed.sourceMessageId);
+    setComposeHermesSkillRunId(options.hermesSkillRunId);
+    setComposeHermesDraftText(options.hermesDraftText);
+    setComposePreview(undefined);
+    setComposeNotice(
+      options.notice ??
+        (seed.warnings.includes("missing_recipient")
+          ? "转发草稿已准备，请补充收件人。"
+          : "回复草稿已准备，可以继续编辑。"),
+    );
+  }
+
   async function applyComposeSeed(mode: MailComposeSeedMode) {
     if (!props.api) {
       setComposeNotice("邮件服务暂时不可用。");
@@ -1286,24 +1312,8 @@ function MailWorkspace(props: {
         mode,
         ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
       });
-      setComposeTo(formatComposeAddressList(seed.to));
-      setComposeCc(formatComposeAddressList(seed.cc));
-      setComposeBcc(formatComposeAddressList(seed.bcc));
-      setComposeSubject(seed.subject);
-      setComposeBody(seed.bodyText);
-      setComposeSource(seed.source);
-      setComposeAttachments(
-        seed.mode === "forward" ? seed.attachments.map(composeAttachmentFromSeed) : [],
-      );
-      setComposeReplyToMessageId(seed.replyToMessageId);
-      setComposeSourceMessageId(seed.sourceMessageId);
-      setComposePreview(undefined);
-      setComposeNotice(
-        seed.warnings.includes("missing_recipient")
-          ? "转发草稿已准备，请补充收件人。"
-          : "回复草稿已准备，可以继续编辑。",
-      );
-      document.getElementById("compose-recipients")?.focus();
+      applySeedToCompose(seed);
+      focusComposeTarget(seed.warnings.includes("missing_recipient") ? "to" : "body");
     } catch {
       setComposeNotice("无法从当前邮件生成草稿。");
     } finally {
@@ -1351,150 +1361,91 @@ function MailWorkspace(props: {
     }
   }
 
-  function replyBodyOrNotice(): string | undefined {
-    const bodyText = replyText.trim();
-    if (!bodyText) {
-      setReplyDraftNotice("请输入回复内容后再保存草稿。");
-      return undefined;
-    }
-
-    return bodyText;
-  }
-
-  function createReplyDraft(bodyText: string) {
-    return props.api!.createMailDraft({
-      accountId: props.accountId,
-      to: [
-        {
-          address: props.selectedMail.email,
-          name: props.selectedMail.sender,
-        },
-      ],
-      subject: replySubject(props.selectedMail.subject),
-      bodyText,
-      source: replyHermesSkillRunId ? "hermes_reply" : "manual",
-      replyToMessageId: props.selectedMail.id,
-      ...(replyHermesSkillRunId
-        ? { hermesSkillRunId: replyHermesSkillRunId }
-        : {}),
-      ...(replyHermesSkillRunId && replyHermesDraftText
-        ? { hermesDraftText: replyHermesDraftText }
-        : {}),
-    });
-  }
-
   async function askHermesForReplyDraft() {
     if (!props.api) {
-      setReplyDraftNotice("Hermes 暂时不可用。");
+      setComposeNotice("Hermes 暂时不可用。");
       return;
     }
 
     const threadText = (props.selectedDetail?.bodyText ?? props.selectedMail.preview).trim();
     if (!threadText) {
-      setReplyDraftNotice("这封邮件还没有可用于生成回复的正文。");
+      setComposeNotice("这封邮件还没有可用于生成回复的正文。");
       return;
     }
 
-    setReplyDraftBusy(true);
+    setComposeBusy(true);
     try {
-      const result = await props.api.draftReply({
-        subject: props.selectedMail.subject,
-        threadText,
-        instruction: "Draft a concise reply in my normal style.",
-        readMessageIds: [props.selectedMail.id],
+      const [seed, result] = await Promise.all([
+        props.api.createComposeSeed({
+          accountId: props.accountId,
+          messageId: props.selectedMail.id,
+          mode: "reply",
+          ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+        }),
+        props.api.draftReply({
+          subject: props.selectedMail.subject,
+          threadText,
+          instruction: "Draft a concise reply in my normal style.",
+          readMessageIds: [props.selectedMail.id],
+        }),
+      ]);
+      applySeedToCompose(seed, {
+        bodyText: result.draftText,
+        source: "hermes_reply",
+        hermesSkillRunId: result.skillRunId,
+        hermesDraftText: result.draftText,
+        notice: `Hermes 已生成回复草稿：${result.skillRunId}`,
       });
-      setReplyText(result.draftText);
-      setReplyHermesSkillRunId(result.skillRunId);
-      setReplyHermesDraftText(result.draftText);
-      setReplyDraftNotice(`Hermes 已生成回复草稿：${result.skillRunId}`);
+      focusComposeTarget("body");
     } catch {
-      setReplyDraftNotice("Hermes 写回复暂时不可用。");
+      setComposeNotice("Hermes 写回复暂时不可用。");
     } finally {
-      setReplyDraftBusy(false);
+      setComposeBusy(false);
     }
   }
 
   async function askHermesForQuickReply(action: QuickReplyAction) {
     if (!props.api) {
-      setReplyDraftNotice("Hermes 暂时不可用。");
+      setComposeNotice("Hermes 暂时不可用。");
       return;
     }
 
     const threadText = (props.selectedDetail?.bodyText ?? props.selectedMail.preview).trim();
     if (!threadText) {
-      setReplyDraftNotice("这封邮件还没有可用于快速回复的正文。");
+      setComposeNotice("这封邮件还没有可用于快速回复的正文。");
       return;
     }
 
-    setReplyDraftBusy(true);
+    setComposeBusy(true);
     try {
-      const result = await props.api.quickReply({
-        subject: props.selectedMail.subject,
-        threadText,
-        scenario: action.scenario,
-        instruction: action.instruction,
-        tone: "warm professional",
-        readMessageIds: [props.selectedMail.id],
+      const [seed, result] = await Promise.all([
+        props.api.createComposeSeed({
+          accountId: props.accountId,
+          messageId: props.selectedMail.id,
+          mode: "reply",
+          ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+        }),
+        props.api.quickReply({
+          subject: props.selectedMail.subject,
+          threadText,
+          scenario: action.scenario,
+          instruction: action.instruction,
+          tone: "warm professional",
+          readMessageIds: [props.selectedMail.id],
+        }),
+      ]);
+      applySeedToCompose(seed, {
+        bodyText: result.draftText,
+        source: "hermes_reply",
+        hermesSkillRunId: result.skillRunId,
+        hermesDraftText: result.draftText,
+        notice: `Hermes 已生成快速回复：${result.skillRunId}`,
       });
-      setReplyText(result.draftText);
-      setReplyHermesSkillRunId(result.skillRunId);
-      setReplyHermesDraftText(result.draftText);
-      setReplyDraftNotice(`Hermes 已生成快速回复：${result.skillRunId}`);
+      focusComposeTarget("body");
     } catch {
-      setReplyDraftNotice("Hermes 快速回复暂时不可用。");
+      setComposeNotice("Hermes 快速回复暂时不可用。");
     } finally {
-      setReplyDraftBusy(false);
-    }
-  }
-
-  async function saveReplyDraft() {
-    if (!props.api) {
-      setReplyDraftNotice("草稿服务暂时不可用。");
-      return;
-    }
-
-    const bodyText = replyBodyOrNotice();
-    if (!bodyText) {
-      return;
-    }
-
-    setReplyDraftBusy(true);
-    try {
-      const draft = await createReplyDraft(bodyText);
-      setReplyDraftNotice(`草稿已保存：${draft.id}`);
-    } catch {
-      setReplyDraftNotice("草稿保存失败，请稍后再试。");
-    } finally {
-      setReplyDraftBusy(false);
-    }
-  }
-
-  async function sendReplyDraft() {
-    if (!props.api) {
-      setReplyDraftNotice("发送服务暂时不可用。");
-      return;
-    }
-
-    const bodyText = replyBodyOrNotice();
-    if (!bodyText) {
-      return;
-    }
-
-    setReplyDraftBusy(true);
-    try {
-      const draft = await createReplyDraft(bodyText);
-      const result = await props.api.sendMailDraft({
-        accountId: props.accountId,
-        draftId: draft.id,
-      });
-      setReplyDraftNotice(`回复已发送：${result.draft.id}`);
-      setReplyText("");
-      setReplyHermesSkillRunId(undefined);
-      setReplyHermesDraftText(undefined);
-    } catch {
-      setReplyDraftNotice("发送失败，请稍后再试。");
-    } finally {
-      setReplyDraftBusy(false);
+      setComposeBusy(false);
     }
   }
 
@@ -1539,6 +1490,12 @@ function MailWorkspace(props: {
           : {}),
         ...(composeSourceMessageId
           ? { sourceMessageId: composeSourceMessageId }
+          : {}),
+        ...(composeHermesSkillRunId
+          ? { hermesSkillRunId: composeHermesSkillRunId }
+          : {}),
+        ...(composeHermesSkillRunId && composeHermesDraftText
+          ? { hermesDraftText: composeHermesDraftText }
           : {}),
       });
 
@@ -1618,6 +1575,8 @@ function MailWorkspace(props: {
     setComposeAttachments([]);
     setComposeReplyToMessageId(undefined);
     setComposeSourceMessageId(undefined);
+    setComposeHermesSkillRunId(undefined);
+    setComposeHermesDraftText(undefined);
     setComposePreview(undefined);
     setComposeScheduledAt(defaultScheduleDateTimeLocal());
   }
@@ -1871,6 +1830,7 @@ function MailWorkspace(props: {
             />
           </label>
           <textarea
+            id="compose-body"
             aria-label="Compose body"
             value={composeBody}
             onChange={(event) => {
@@ -2360,13 +2320,18 @@ function MailWorkspace(props: {
                   ))}
             </div>
 
-            <div className="reply-composer">
+            <div className="reply-toolbox">
               <div className="composer-top">
-                <span>From: work@demo.site</span>
+                <span>
+                  From:{" "}
+                  {selectedComposeIdentity
+                    ? formatSendIdentity(selectedComposeIdentity)
+                    : "当前账号"}
+                </span>
                 <button
                   type="button"
                   aria-label="Ask Hermes to draft reply"
-                  disabled={replyDraftBusy}
+                  disabled={composeBusy}
                   onClick={() => void askHermesForReplyDraft()}
                 >
                   Hermes 写回复
@@ -2378,43 +2343,12 @@ function MailWorkspace(props: {
                     key={action.scenario}
                     type="button"
                     aria-label={`Ask Hermes quick reply ${action.scenario}`}
-                    disabled={replyDraftBusy}
+                    disabled={composeBusy}
                     onClick={() => void askHermesForQuickReply(action)}
                   >
                     {action.label}
                   </button>
                 ))}
-              </div>
-              {replyDraftNotice ? (
-                <div className="backend-notice" role="status">
-                  {replyDraftNotice}
-                </div>
-              ) : null}
-              <textarea
-                aria-label="Reply body"
-                value={replyText}
-                onChange={(event) => setReplyText(event.target.value)}
-                placeholder="输入回复，或让 Hermes 根据上下文生成草稿"
-              />
-              <div className="composer-actions">
-                <button
-                  className="ghost-button"
-                  type="button"
-                  aria-label="Save reply draft"
-                  disabled={replyDraftBusy}
-                  onClick={() => void saveReplyDraft()}
-                >
-                  保存草稿
-                </button>
-                <button
-                  className="primary-button"
-                  type="button"
-                  aria-label="Send reply draft"
-                  disabled={replyDraftBusy}
-                  onClick={() => void sendReplyDraft()}
-                >
-                  预览后发送
-                </button>
               </div>
             </div>
           </div>
@@ -2424,9 +2358,9 @@ function MailWorkspace(props: {
   );
 }
 
-function replySubject(subject: string): string {
-  const trimmed = subject.trim();
-  return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
+function focusComposeTarget(target: "to" | "body"): void {
+  const elementId = target === "to" ? "compose-recipients" : "compose-body";
+  document.getElementById(elementId)?.focus();
 }
 
 function previewSendIdentities(accountId: string): MailSendIdentityDto[] {

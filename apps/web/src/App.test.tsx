@@ -819,19 +819,30 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("saves a reply draft through the backend compose route", async () => {
+  it("saves a reply draft from a backend seed through the compose panel", async () => {
     const api = createApiFixture();
 
-    const { container } = render(<App api={api} defaultAccountId="account_1" />);
+    render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
-    const replyTextarea = container.querySelector(".reply-composer textarea");
-    expect(replyTextarea).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "回复" }));
 
-    fireEvent.change(replyTextarea as HTMLTextAreaElement, {
+    await waitFor(() => {
+      expect(api.createComposeSeed).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        mode: "reply",
+      });
+    });
+    expect(screen.queryByLabelText("Reply body")).toBeNull();
+    expect((screen.getByLabelText("Compose recipients") as HTMLInputElement).value).toBe(
+      "Live Client <client@example.com>",
+    );
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Thanks, I will check this today." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save reply draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
 
     await waitFor(() => {
       expect(api.createMailDraft).toHaveBeenCalledWith({
@@ -839,26 +850,27 @@ describe("Email Hub first UI baseline", () => {
         to: [{ address: "client@example.com", name: "Live Client" }],
         subject: "Re: Live subject",
         bodyText: "Thanks, I will check this today.",
-        source: "manual",
+        source: "reply",
         replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
       });
     });
     expect(await screen.findByText(/草稿已保存：draft_1/)).toBeTruthy();
   });
 
-  it("creates then sends a reply draft through the backend compose route", async () => {
+  it("creates then sends a reply draft through the unified compose panel", async () => {
     const api = createApiFixture();
 
-    const { container } = render(<App api={api} defaultAccountId="account_1" />);
+    render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
-    const replyTextarea = container.querySelector(".reply-composer textarea");
-    expect(replyTextarea).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "回复" }));
+    await screen.findByText(/回复草稿已准备/);
 
-    fireEvent.change(replyTextarea as HTMLTextAreaElement, {
+    fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Send this after preview." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send reply draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
 
     await waitFor(() => {
       expect(api.createMailDraft).toHaveBeenCalledWith({
@@ -866,8 +878,9 @@ describe("Email Hub first UI baseline", () => {
         to: [{ address: "client@example.com", name: "Live Client" }],
         subject: "Re: Live subject",
         bodyText: "Send this after preview.",
-        source: "manual",
+        source: "reply",
         replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
       });
     });
     await waitFor(() => {
@@ -879,7 +892,7 @@ describe("Email Hub first UI baseline", () => {
     expect(vi.mocked(api.createMailDraft).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(api.sendMailDraft).mock.invocationCallOrder[0],
     );
-    expect(await screen.findByText(/回复已发送：draft_1/)).toBeTruthy();
+    expect(await screen.findByText(/邮件已进入发送队列：draft_1/)).toBeTruthy();
   });
 
   it("downloads message attachments through the backend blob route", async () => {
@@ -956,15 +969,22 @@ describe("Email Hub first UI baseline", () => {
     }
   });
 
-  it("uses Hermes to draft a reply into the composer", async () => {
+  it("uses Hermes to draft a reply into the unified compose panel", async () => {
     const api = createApiFixture();
 
-    const { container } = render(<App api={api} defaultAccountId="account_1" />);
+    render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
     await screen.findByText("Live body from backend");
 
     fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
 
+    await waitFor(() => {
+      expect(api.createComposeSeed).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        mode: "reply",
+      });
+    });
     await waitFor(() => {
       expect(api.draftReply).toHaveBeenCalledWith({
         subject: "Live subject",
@@ -974,10 +994,16 @@ describe("Email Hub first UI baseline", () => {
       });
     });
 
-    const replyTextarea = container.querySelector(".reply-composer textarea");
-    expect((replyTextarea as HTMLTextAreaElement).value).toBe(
+    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
       "Hi,\n\nI can confirm this plan.",
     );
+    expect((screen.getByLabelText("Compose recipients") as HTMLInputElement).value).toBe(
+      "Live Client <client@example.com>",
+    );
+    expect((screen.getByLabelText("Compose subject") as HTMLInputElement).value).toBe(
+      "Re: Live subject",
+    );
+    expect(screen.queryByLabelText("Reply body")).toBeNull();
     expect(await screen.findByText(/Hermes 已生成回复草稿/)).toBeTruthy();
   });
 
@@ -993,6 +1019,13 @@ describe("Email Hub first UI baseline", () => {
     );
 
     await waitFor(() => {
+      expect(api.createComposeSeed).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        mode: "reply",
+      });
+    });
+    await waitFor(() => {
       expect(api.quickReply).toHaveBeenCalledWith({
         subject: "Live subject",
         threadText: "Live body from backend",
@@ -1002,12 +1035,12 @@ describe("Email Hub first UI baseline", () => {
         readMessageIds: ["message_1"],
       });
     });
-    expect((screen.getByLabelText("Reply body") as HTMLTextAreaElement).value).toBe(
+    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
       "Thanks, I will take a look.",
     );
     expect(await screen.findByText(/Hermes 已生成快速回复/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save reply draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
 
     await waitFor(() => {
       expect(api.createMailDraft).toHaveBeenCalledWith({
@@ -1017,6 +1050,7 @@ describe("Email Hub first UI baseline", () => {
         bodyText: "Thanks, I will take a look.",
         source: "hermes_reply",
         replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
         hermesSkillRunId: "run_quick_1",
         hermesDraftText: "Thanks, I will take a look.",
       });
@@ -1032,7 +1066,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
     await screen.findByText(/Hermes 已生成回复草稿/);
-    fireEvent.click(screen.getByRole("button", { name: "Save reply draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
 
     await waitFor(() => {
       expect(api.createMailDraft).toHaveBeenCalledWith({
@@ -1042,6 +1076,36 @@ describe("Email Hub first UI baseline", () => {
         bodyText: "Hi,\n\nI can confirm this plan.",
         source: "hermes_reply",
         replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
+        hermesSkillRunId: "run_reply_1",
+        hermesDraftText: "Hi,\n\nI can confirm this plan.",
+      });
+    });
+  });
+
+  it("keeps the original Hermes draft text when the composed reply is edited", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
+
+    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    await screen.findByText(/Hermes 已生成回复草稿/);
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Hi,\n\nI edited this before sending." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "client@example.com", name: "Live Client" }],
+        subject: "Re: Live subject",
+        bodyText: "Hi,\n\nI edited this before sending.",
+        source: "hermes_reply",
+        replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
         hermesSkillRunId: "run_reply_1",
         hermesDraftText: "Hi,\n\nI can confirm this plan.",
       });
@@ -1057,7 +1121,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
     await screen.findByText(/Hermes 已生成回复草稿/);
-    fireEvent.click(screen.getByRole("button", { name: "Send reply draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
 
     await waitFor(() => {
       expect(api.createMailDraft).toHaveBeenCalledWith({
@@ -1067,6 +1131,7 @@ describe("Email Hub first UI baseline", () => {
         bodyText: "Hi,\n\nI can confirm this plan.",
         source: "hermes_reply",
         replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
         hermesSkillRunId: "run_reply_1",
         hermesDraftText: "Hi,\n\nI can confirm this plan.",
       });
@@ -1075,6 +1140,71 @@ describe("Email Hub first UI baseline", () => {
       expect(api.sendMailDraft).toHaveBeenCalledWith({
         accountId: "account_1",
         draftId: "draft_1",
+      });
+    });
+  });
+
+  it("keeps selected send-as identity when Hermes drafts a reply", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText(/support@demo\.site/);
+
+    fireEvent.change(screen.getByLabelText("Compose from identity"), {
+      target: { value: "alias:alias_1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+
+    await waitFor(() => {
+      expect(api.createComposeSeed).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        mode: "reply",
+        from: { address: "support@demo.site", name: "Support" },
+      });
+    });
+    await screen.findByText(/Hermes 已生成回复草稿/);
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        from: { address: "support@demo.site", name: "Support" },
+        to: [{ address: "client@example.com", name: "Live Client" }],
+        subject: "Re: Live subject",
+        bodyText: "Hi,\n\nI can confirm this plan.",
+        source: "hermes_reply",
+        replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
+        hermesSkillRunId: "run_reply_1",
+        hermesDraftText: "Hi,\n\nI can confirm this plan.",
+      });
+    });
+  });
+
+  it("previews Hermes replies through compose preview without learning fields", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
+
+    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    await screen.findByText(/Hermes 已生成回复草稿/);
+    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+
+    await waitFor(() => {
+      expect(api.previewMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "client@example.com", name: "Live Client" }],
+        cc: [],
+        bcc: [],
+        subject: "Re: Live subject",
+        bodyText: "Hi,\n\nI can confirm this plan.",
+        source: "hermes_reply",
+        replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
       });
     });
   });

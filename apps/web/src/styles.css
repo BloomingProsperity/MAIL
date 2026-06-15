@@ -1105,7 +1105,7 @@ h2 {
 
 .reason-box,
 .attachment-box,
-.reply-composer,
+.reply-toolbox,
 .page-panel,
 .settings-module,
 .skill-card {
@@ -1171,7 +1171,7 @@ h2 {
   margin-left: auto;
 }
 
-.reply-composer {
+.reply-toolbox {
   display: grid;
   gap: 7px;
   padding: 9px;
@@ -1216,15 +1216,6 @@ h2 {
 .quick-reply-row button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.reply-composer textarea {
-  min-height: 64px;
-  resize: vertical;
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 8px;
-  outline: 0;
 }
 
 .skill-grid {
