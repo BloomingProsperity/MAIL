@@ -674,7 +674,12 @@ export interface FollowUpDto {
   cancelledAt?: string;
 }
 
-export type MailDraftSource = "manual" | "hermes_reply";
+export type MailDraftSource =
+  | "manual"
+  | "hermes_reply"
+  | "reply"
+  | "reply_all"
+  | "forward";
 export type MailDraftStatus =
   | "draft"
   | "scheduled"
@@ -708,6 +713,7 @@ export interface MailDraftDto {
   status: MailDraftStatus;
   source: MailDraftSource;
   replyToMessageId?: string;
+  sourceMessageId?: string;
   hermesSkillRunId?: string;
   hermesDraftText?: string;
   providerQueueId?: string;
@@ -732,6 +738,58 @@ export interface MailSendIdentityDto {
 export interface MailSendIdentityPage {
   accountId: string;
   items: MailSendIdentityDto[];
+}
+
+export type MailComposeSeedMode = "reply" | "reply_all" | "forward";
+export type MailComposePreviewWarning =
+  | "missing_recipient"
+  | "missing_body"
+  | "missing_subject"
+  | "large_body";
+
+export interface MailComposeSeedAttachmentDto {
+  id: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  inline: boolean;
+}
+
+export interface MailComposeSeedDto {
+  accountId: string;
+  messageId: string;
+  mode: MailComposeSeedMode;
+  from?: MailAddressDto;
+  to: MailAddressDto[];
+  cc: MailAddressDto[];
+  bcc: MailAddressDto[];
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string;
+  source: MailDraftSource;
+  replyToMessageId?: string;
+  sourceMessageId: string;
+  attachments: MailComposeSeedAttachmentDto[];
+  warnings: MailComposePreviewWarning[];
+  generatedAt: string;
+}
+
+export interface MailComposePreviewDto {
+  accountId: string;
+  from?: MailAddressDto;
+  to: MailAddressDto[];
+  cc: MailAddressDto[];
+  bcc: MailAddressDto[];
+  subject: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  source: MailDraftSource;
+  replyToMessageId?: string;
+  sourceMessageId?: string;
+  warnings: MailComposePreviewWarning[];
+  estimatedSizeBytes: number;
+  readyToSend: boolean;
+  generatedAt: string;
 }
 
 export interface SendMailDraftResult {
@@ -1068,9 +1126,29 @@ export interface EmailHubApi {
     bodyHtml?: string;
     source?: MailDraftSource;
     replyToMessageId?: string;
+    sourceMessageId?: string;
     hermesSkillRunId?: string;
     hermesDraftText?: string;
   }): Promise<MailDraftDto>;
+  createComposeSeed(input: {
+    accountId: string;
+    messageId: string;
+    mode: MailComposeSeedMode;
+    from?: MailAddressDto;
+  }): Promise<MailComposeSeedDto>;
+  previewMailDraft(input: {
+    accountId: string;
+    from?: MailAddressDto;
+    to?: MailAddressDto[];
+    cc?: MailAddressDto[];
+    bcc?: MailAddressDto[];
+    subject?: string;
+    bodyText?: string;
+    bodyHtml?: string;
+    source?: MailDraftSource;
+    replyToMessageId?: string;
+    sourceMessageId?: string;
+  }): Promise<MailComposePreviewDto>;
   listSendIdentities(input: { accountId: string }): Promise<MailSendIdentityPage>;
   sendMailDraft(input: {
     accountId: string;
@@ -1599,6 +1677,33 @@ export function createEmailHubApi(
         fetchImpl,
         baseUrl,
         `/api/accounts/${encodePath(accountId)}/compose/drafts`,
+        {
+          method: "POST",
+          body: JSON.stringify(cleanObject(body)),
+        },
+      );
+    },
+
+    createComposeSeed(input) {
+      const { accountId, messageId, mode, ...body } = input;
+      const pathMode = mode === "reply_all" ? "reply-all" : mode;
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(accountId)}/messages/${encodePath(messageId)}/compose/${pathMode}`,
+        {
+          method: "POST",
+          body: JSON.stringify(cleanObject(body)),
+        },
+      );
+    },
+
+    previewMailDraft(input) {
+      const { accountId, ...body } = input;
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(accountId)}/compose/preview`,
         {
           method: "POST",
           body: JSON.stringify(cleanObject(body)),

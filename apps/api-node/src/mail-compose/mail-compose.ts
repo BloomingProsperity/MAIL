@@ -1,3 +1,9 @@
+import type {
+  AttachmentDto,
+  MailReadStore,
+  MessageDetailDto,
+} from "../mail-read/mail-read-store.js";
+
 export class InvalidMailComposeRequestError extends Error {
   readonly code = "invalid_mail_compose_request";
 
@@ -38,7 +44,13 @@ export type MailDraftStatus =
   | "sending"
   | "sent"
   | "failed";
-export type MailDraftSource = "manual" | "hermes_reply";
+export type MailDraftSource =
+  | "manual"
+  | "hermes_reply"
+  | "reply"
+  | "reply_all"
+  | "forward";
+export type MailComposeSeedMode = "reply" | "reply_all" | "forward";
 export type MailEngineProvider = "emailengine" | "native";
 export type MailAccountSyncState = "syncing" | "reauth_required" | "paused";
 export type ScheduledSendStatus =
@@ -63,6 +75,7 @@ export interface MailDraft {
   status: MailDraftStatus;
   source: MailDraftSource;
   replyToMessageId?: string;
+  sourceMessageId?: string;
   hermesSkillRunId?: string;
   hermesDraftText?: string;
   providerQueueId?: string;
@@ -124,8 +137,81 @@ export interface CreateMailDraftInput {
   bodyHtml?: string;
   source?: MailDraftSource;
   replyToMessageId?: string;
+  sourceMessageId?: string;
   hermesSkillRunId?: string;
   hermesDraftText?: string;
+}
+
+export interface MailComposeSeedAttachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  inline: boolean;
+}
+
+export type MailComposePreviewWarning =
+  | "missing_recipient"
+  | "missing_body"
+  | "missing_subject"
+  | "large_body";
+
+export interface MailComposeSeed {
+  accountId: string;
+  messageId: string;
+  mode: MailComposeSeedMode;
+  from?: MailAddress;
+  to: MailAddress[];
+  cc: MailAddress[];
+  bcc: MailAddress[];
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string;
+  source: MailDraftSource;
+  replyToMessageId?: string;
+  sourceMessageId: string;
+  attachments: MailComposeSeedAttachment[];
+  warnings: MailComposePreviewWarning[];
+  generatedAt: string;
+}
+
+export interface MailComposePreview {
+  accountId: string;
+  from?: MailAddress;
+  to: MailAddress[];
+  cc: MailAddress[];
+  bcc: MailAddress[];
+  subject: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  source: MailDraftSource;
+  replyToMessageId?: string;
+  sourceMessageId?: string;
+  warnings: MailComposePreviewWarning[];
+  estimatedSizeBytes: number;
+  readyToSend: boolean;
+  generatedAt: string;
+}
+
+export interface MailComposeSeedInput {
+  accountId: string;
+  messageId: string;
+  mode: MailComposeSeedMode;
+  from?: MailAddress;
+}
+
+export interface MailComposePreviewInput {
+  accountId: string;
+  from?: MailAddress;
+  to?: MailAddress[];
+  cc?: MailAddress[];
+  bcc?: MailAddress[];
+  subject?: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  source?: MailDraftSource;
+  replyToMessageId?: string;
+  sourceMessageId?: string;
 }
 
 export interface MailComposeStore {
@@ -140,6 +226,7 @@ export interface MailComposeStore {
       bodyHtml?: string;
       source: MailDraftSource;
       replyToMessageId?: string;
+      sourceMessageId?: string;
       hermesSkillRunId?: string;
       hermesDraftText?: string;
       now: string;
@@ -244,6 +331,8 @@ export interface MailComposeService {
   listSendIdentities(input: {
     accountId: string;
   }): Promise<{ accountId: string; items: MailSendIdentity[] }>;
+  createComposeSeed(input: MailComposeSeedInput): Promise<MailComposeSeed>;
+  previewDraft(input: MailComposePreviewInput): Promise<MailComposePreview>;
   createDraft(input: CreateMailDraftInput): Promise<MailDraft>;
   sendDraft(input: { accountId: string; draftId: string }): Promise<{
     accountId: string;
@@ -280,6 +369,7 @@ export function createMailComposeService(options: {
   transports: Partial<Record<MailEngineProvider, MailSendTransport>>;
   createId: () => string;
   sendIdentityStore?: MailSendIdentityStore;
+  mailReadStore?: Pick<MailReadStore, "getMessage">;
   hermesDraftFeedbackStore?: HermesDraftFeedbackStore;
   now?: () => Date;
 }): MailComposeService {
@@ -290,6 +380,48 @@ export function createMailComposeService(options: {
         accountId: input.accountId,
         items: await listSendIdentities(options.sendIdentityStore, input.accountId),
       };
+    },
+
+    async createComposeSeed(input) {
+      assertNonEmpty(input.accountId);
+      assertNonEmpty(input.messageId);
+      const mode = normalizeComposeSeedMode(input.mode);
+      const from = normalizeOptionalSender(input.from);
+      await ensureAllowedSender(
+        options.sendIdentityStore,
+        input.accountId,
+        from,
+      );
+      const message = await loadComposeSeedMessage(
+        options.mailReadStore,
+        input.accountId,
+        input.messageId,
+      );
+      const selfAddresses = await listSelfAddresses(
+        options.sendIdentityStore,
+        input.accountId,
+        from,
+      );
+
+      return buildComposeSeed({
+        accountId: input.accountId.trim(),
+        message,
+        mode,
+        from,
+        selfAddresses,
+        generatedAt: currentIso(options.now),
+      });
+    },
+
+    async previewDraft(input) {
+      const normalized = normalizePreviewInput(input);
+      await ensureAllowedSender(
+        options.sendIdentityStore,
+        normalized.accountId,
+        normalized.from,
+      );
+
+      return buildPreview(normalized, currentIso(options.now));
     },
 
     async createDraft(input) {
@@ -533,6 +665,7 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
   bodyHtml?: string;
   source: MailDraftSource;
   replyToMessageId?: string;
+  sourceMessageId?: string;
   hermesSkillRunId?: string;
   hermesDraftText?: string;
 } {
@@ -543,6 +676,9 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
   const bcc = normalizeAddresses(input.bcc ?? []);
   const bodyText = optionalTrimmed(input.bodyText);
   const bodyHtml = optionalTrimmed(input.bodyHtml);
+  const replyToMessageId = optionalTrimmed(input.replyToMessageId);
+  const sourceMessageId =
+    optionalTrimmed(input.sourceMessageId) ?? replyToMessageId;
 
   if (to.length === 0) {
     throw new InvalidMailComposeRequestError("recipient is required");
@@ -560,10 +696,9 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
     subject: input.subject?.trim() ?? "",
     ...(bodyText ? { bodyText } : {}),
     ...(bodyHtml ? { bodyHtml } : {}),
-    source: input.source === "hermes_reply" ? "hermes_reply" : "manual",
-    ...(optionalTrimmed(input.replyToMessageId)
-      ? { replyToMessageId: optionalTrimmed(input.replyToMessageId) }
-      : {}),
+    source: normalizeDraftSource(input.source),
+    ...(replyToMessageId ? { replyToMessageId } : {}),
+    ...(sourceMessageId ? { sourceMessageId } : {}),
     ...(optionalTrimmed(input.hermesSkillRunId)
       ? { hermesSkillRunId: optionalTrimmed(input.hermesSkillRunId) }
       : {}),
@@ -571,6 +706,403 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
       ? { hermesDraftText: optionalTrimmed(input.hermesDraftText) }
       : {}),
   };
+}
+
+function normalizePreviewInput(input: MailComposePreviewInput): {
+  accountId: string;
+  from?: MailAddress;
+  to: MailAddress[];
+  cc: MailAddress[];
+  bcc: MailAddress[];
+  subject: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  source: MailDraftSource;
+  replyToMessageId?: string;
+  sourceMessageId?: string;
+} {
+  assertNonEmpty(input.accountId);
+  const from = normalizeOptionalSender(input.from);
+  const to = normalizeAddresses(input.to ?? []);
+  const cc = normalizeAddresses(input.cc ?? []);
+  const bcc = normalizeAddresses(input.bcc ?? []);
+  const bodyText = optionalTrimmed(input.bodyText);
+  const bodyHtml = optionalTrimmed(input.bodyHtml);
+  const replyToMessageId = optionalTrimmed(input.replyToMessageId);
+  const sourceMessageId =
+    optionalTrimmed(input.sourceMessageId) ?? replyToMessageId;
+
+  return {
+    accountId: input.accountId.trim(),
+    ...(from ? { from } : {}),
+    to,
+    cc,
+    bcc,
+    subject: input.subject?.trim() ?? "",
+    ...(bodyText ? { bodyText } : {}),
+    ...(bodyHtml ? { bodyHtml } : {}),
+    source: normalizeDraftSource(input.source),
+    ...(replyToMessageId ? { replyToMessageId } : {}),
+    ...(sourceMessageId ? { sourceMessageId } : {}),
+  };
+}
+
+function buildPreview(
+  input: ReturnType<typeof normalizePreviewInput>,
+  generatedAt: string,
+): MailComposePreview {
+  const warnings = previewWarnings(input);
+  return {
+    accountId: input.accountId,
+    ...(input.from ? { from: input.from } : {}),
+    to: input.to,
+    cc: input.cc,
+    bcc: input.bcc,
+    subject: input.subject,
+    ...(input.bodyText ? { bodyText: input.bodyText } : {}),
+    ...(input.bodyHtml ? { bodyHtml: input.bodyHtml } : {}),
+    source: input.source,
+    ...(input.replyToMessageId
+      ? { replyToMessageId: input.replyToMessageId }
+      : {}),
+    ...(input.sourceMessageId
+      ? { sourceMessageId: input.sourceMessageId }
+      : {}),
+    warnings,
+    estimatedSizeBytes: estimateDraftSize(input),
+    readyToSend: warnings.length === 0,
+    generatedAt,
+  };
+}
+
+async function loadComposeSeedMessage(
+  store: Pick<MailReadStore, "getMessage"> | undefined,
+  accountId: string,
+  messageId: string,
+): Promise<MessageDetailDto> {
+  if (!store) {
+    throw new InvalidMailComposeRequestError("mail read store is unavailable");
+  }
+
+  const message = await store.getMessage({ accountId, messageId });
+  if (!message) {
+    throw new InvalidMailComposeRequestError("source message was not found");
+  }
+
+  return message;
+}
+
+function buildComposeSeed(input: {
+  accountId: string;
+  message: MessageDetailDto;
+  mode: MailComposeSeedMode;
+  from?: MailAddress;
+  selfAddresses: Set<string>;
+  generatedAt: string;
+}): MailComposeSeed {
+  const source = input.mode;
+  const recipients =
+    input.mode === "forward"
+      ? { to: [], cc: [] }
+      : replyRecipients(input.message, input.mode, input.selfAddresses);
+  const bodyText =
+    input.mode === "forward"
+      ? forwardBodyText(input.message)
+      : replyBodyText(input.message);
+  const normalized = {
+    accountId: input.accountId,
+    ...(input.from ? { from: input.from } : {}),
+    to: recipients.to,
+    cc: recipients.cc,
+    bcc: [],
+    subject:
+      input.mode === "forward"
+        ? forwardSubject(input.message.subject)
+        : replySubject(input.message.subject),
+    bodyText,
+    source,
+    ...(input.mode === "forward"
+      ? {}
+      : { replyToMessageId: input.message.id }),
+    sourceMessageId: input.message.id,
+  };
+
+  return {
+    ...normalized,
+    messageId: input.message.id,
+    mode: input.mode,
+    attachments:
+      input.mode === "forward"
+        ? input.message.attachments.map(seedAttachment)
+        : [],
+    warnings: previewWarnings(normalized),
+    generatedAt: input.generatedAt,
+  };
+}
+
+function replyRecipients(
+  message: MessageDetailDto,
+  mode: Exclude<MailComposeSeedMode, "forward">,
+  selfAddresses: Set<string>,
+): { to: MailAddress[]; cc: MailAddress[] } {
+  const originalFrom = normalizeMessageAddress({
+    address: message.from.email,
+    name: message.from.name,
+  });
+  const originalTo = parseMessageAddressList(message.to);
+  const originalCc = parseMessageAddressList(message.cc);
+  const to = uniqueAddresses(
+    originalFrom && !selfAddresses.has(originalFrom.address)
+      ? [originalFrom]
+      : originalTo,
+    selfAddresses,
+  );
+  const cc =
+    mode === "reply_all"
+      ? uniqueAddresses([...originalTo, ...originalCc], addressSet([...to], selfAddresses))
+      : [];
+
+  return { to, cc };
+}
+
+function replyBodyText(message: MessageDetailDto): string {
+  return [
+    "",
+    "",
+    `On ${formatMessageDate(message.receivedAt)}, ${formatMessageSender(message)} wrote:`,
+    quoteOriginalText(originalMessageText(message)),
+  ].join("\n");
+}
+
+function forwardBodyText(message: MessageDetailDto): string {
+  const header = [
+    "",
+    "",
+    "---------- Forwarded message ---------",
+    `From: ${formatMessageSender(message)}`,
+    `Date: ${formatMessageDate(message.receivedAt)}`,
+    `Subject: ${message.subject}`,
+    ...(message.to.length > 0 ? [`To: ${message.to.join(", ")}`] : []),
+    ...(message.cc.length > 0 ? [`Cc: ${message.cc.join(", ")}`] : []),
+    "",
+  ];
+  return [...header, originalMessageText(message)].join("\n");
+}
+
+function replySubject(subject: string): string {
+  const trimmed = subject.trim();
+  return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
+}
+
+function forwardSubject(subject: string): string {
+  const trimmed = subject.trim();
+  return /^fwd:/i.test(trimmed) || /^fw:/i.test(trimmed)
+    ? trimmed
+    : `Fwd: ${trimmed}`;
+}
+
+async function listSelfAddresses(
+  store: MailSendIdentityStore | undefined,
+  accountId: string,
+  from: MailAddress | undefined,
+): Promise<Set<string>> {
+  const addresses = new Set<string>();
+  if (from) {
+    addresses.add(from.address);
+  }
+  if (!store) {
+    return addresses;
+  }
+
+  for (const identity of await store.listSendIdentities({ accountId })) {
+    if (identity.verified) {
+      addresses.add(identity.from.address.toLowerCase());
+    }
+  }
+
+  return addresses;
+}
+
+function previewWarnings(input: {
+  to: MailAddress[];
+  subject: string;
+  bodyText?: string;
+  bodyHtml?: string;
+}): MailComposePreviewWarning[] {
+  const warnings: MailComposePreviewWarning[] = [];
+  if (input.to.length === 0) {
+    warnings.push("missing_recipient");
+  }
+  if (!input.subject.trim()) {
+    warnings.push("missing_subject");
+  }
+  if (!input.bodyText?.trim() && !input.bodyHtml?.trim()) {
+    warnings.push("missing_body");
+  }
+  if (estimateDraftSize(input) > 512_000) {
+    warnings.push("large_body");
+  }
+  return warnings;
+}
+
+function estimateDraftSize(input: {
+  to?: MailAddress[];
+  cc?: MailAddress[];
+  bcc?: MailAddress[];
+  subject: string;
+  bodyText?: string;
+  bodyHtml?: string;
+}): number {
+  return [
+    input.subject,
+    input.bodyText ?? "",
+    input.bodyHtml ?? "",
+    ...(input.to ?? []).map(formatAddress),
+    ...(input.cc ?? []).map(formatAddress),
+    ...(input.bcc ?? []).map(formatAddress),
+  ].join("\n").length;
+}
+
+function originalMessageText(message: MessageDetailDto): string {
+  const raw =
+    optionalTrimmed(message.bodyText) ??
+    (message.bodyHtml ? stripHtml(message.bodyHtml) : undefined) ??
+    optionalTrimmed(message.snippet) ??
+    "";
+  const maxChars = 32_000;
+  if (raw.length <= maxChars) {
+    return raw;
+  }
+  return `${raw.slice(0, maxChars)}\n[Original message truncated for compose preview]`;
+}
+
+function quoteOriginalText(value: string): string {
+  return value
+    .split(/\r?\n/)
+    .map((line) => `> ${line}`)
+    .join("\n");
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+function seedAttachment(attachment: AttachmentDto): MailComposeSeedAttachment {
+  return {
+    id: attachment.id,
+    filename: attachment.filename,
+    contentType: attachment.contentType,
+    byteSize: attachment.byteSize,
+    inline: attachment.inline,
+  };
+}
+
+function parseMessageAddressList(values: string[]): MailAddress[] {
+  return values
+    .map(parseMessageAddress)
+    .filter((address): address is MailAddress => Boolean(address));
+}
+
+function parseMessageAddress(value: string): MailAddress | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const angleMatch = /^(.*?)<([^<>\s]+@[^<>\s]+\.[^<>\s]+)>$/.exec(trimmed);
+  if (angleMatch) {
+    return normalizeMessageAddress({
+      address: angleMatch[2],
+      name: angleMatch[1].replace(/^"|"$/g, "").trim(),
+    });
+  }
+
+  const emailMatch = /([^@\s<>,]+@[^@\s<>,]+\.[^@\s<>,]+)/.exec(trimmed);
+  if (!emailMatch) {
+    return undefined;
+  }
+
+  return normalizeMessageAddress({ address: emailMatch[1] });
+}
+
+function normalizeMessageAddress(input: MailAddress): MailAddress | undefined {
+  try {
+    return normalizeAddress(input);
+  } catch {
+    return undefined;
+  }
+}
+
+function uniqueAddresses(
+  values: MailAddress[],
+  exclude = new Set<string>(),
+): MailAddress[] {
+  const seen = new Set(exclude);
+  const result: MailAddress[] = [];
+  for (const value of values) {
+    const key = value.address.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+function addressSet(
+  values: MailAddress[],
+  seed = new Set<string>(),
+): Set<string> {
+  const result = new Set(seed);
+  for (const value of values) {
+    result.add(value.address.toLowerCase());
+  }
+  return result;
+}
+
+function formatMessageDate(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toUTCString();
+}
+
+function formatMessageSender(message: MessageDetailDto): string {
+  return formatAddress({
+    address: message.from.email,
+    ...(message.from.name ? { name: message.from.name } : {}),
+  });
+}
+
+function formatAddress(address: MailAddress): string {
+  return address.name ? `${address.name} <${address.address}>` : address.address;
+}
+
+function normalizeComposeSeedMode(value: MailComposeSeedMode): MailComposeSeedMode {
+  if (value === "reply" || value === "reply_all" || value === "forward") {
+    return value;
+  }
+  throw new InvalidMailComposeRequestError();
+}
+
+function normalizeDraftSource(value: MailDraftSource | undefined): MailDraftSource {
+  if (
+    value === "manual" ||
+    value === "hermes_reply" ||
+    value === "reply" ||
+    value === "reply_all" ||
+    value === "forward"
+  ) {
+    return value;
+  }
+  return "manual";
 }
 
 async function listSendIdentities(

@@ -1762,6 +1762,83 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("fills the compose panel from a backend reply-all seed", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "回复全部" }));
+
+    await waitFor(() => {
+      expect(api.createComposeSeed).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        mode: "reply_all",
+      });
+    });
+    expect((screen.getByLabelText("Compose recipients") as HTMLInputElement).value).toBe(
+      "Live Client <client@example.com>",
+    );
+    expect((screen.getByLabelText("Compose cc") as HTMLInputElement).value).toBe(
+      "Ops <ops@example.com>",
+    );
+    expect((screen.getByLabelText("Compose subject") as HTMLInputElement).value).toBe(
+      "Re: Live subject",
+    );
+    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toContain(
+      "> Live body from backend",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "client@example.com", name: "Live Client" }],
+        cc: [{ address: "ops@example.com", name: "Ops" }],
+        subject: "Re: Live subject",
+        bodyText:
+          "On Sat, Live Client <client@example.com> wrote:\n> Live body from backend",
+        source: "reply_all",
+        replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
+      });
+    });
+  });
+
+  it("previews composed mail without sending it", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Please review the launch plan." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+
+    await waitFor(() => {
+      expect(api.previewMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Launch plan",
+        bodyText: "Please review the launch plan.",
+        source: "manual",
+      });
+    });
+    expect(api.sendMailDraft).not.toHaveBeenCalled();
+    expect(await screen.findByText("可发送预览")).toBeTruthy();
+  });
+
   it("polishes a composed draft through Hermes before saving it", async () => {
     const api = createApiFixture();
 
@@ -2519,6 +2596,50 @@ function createApiFixture(): EmailHubApi {
           verified: true,
         },
       ],
+    })),
+    createComposeSeed: vi.fn(async (input) => ({
+      accountId: input.accountId,
+      messageId: input.messageId,
+      mode: input.mode,
+      to:
+        input.mode === "forward"
+          ? []
+          : [{ address: "client@example.com", name: "Live Client" }],
+      cc:
+        input.mode === "reply_all"
+          ? [{ address: "ops@example.com", name: "Ops" }]
+          : [],
+      bcc: [],
+      subject: input.mode === "forward" ? "Fwd: Live subject" : "Re: Live subject",
+      bodyText:
+        input.mode === "forward"
+          ? "\n\n---------- Forwarded message ---------\nFrom: Live Client <client@example.com>\nSubject: Live subject\n\nLive body from backend"
+          : "\n\nOn Sat, Live Client <client@example.com> wrote:\n> Live body from backend",
+      source: input.mode === "reply_all" ? "reply_all" : input.mode,
+      ...(input.mode === "forward" ? {} : { replyToMessageId: input.messageId }),
+      sourceMessageId: input.messageId,
+      attachments: [],
+      warnings: input.mode === "forward" ? ["missing_recipient" as const] : [],
+      generatedAt: "2026-06-13T10:00:00.000Z",
+    })),
+    previewMailDraft: vi.fn(async (input) => ({
+      accountId: input.accountId,
+      ...(input.from ? { from: input.from } : {}),
+      to: input.to ?? [],
+      cc: input.cc ?? [],
+      bcc: input.bcc ?? [],
+      subject: input.subject ?? "",
+      ...(input.bodyText ? { bodyText: input.bodyText } : {}),
+      ...(input.bodyHtml ? { bodyHtml: input.bodyHtml } : {}),
+      source: input.source ?? "manual",
+      ...(input.replyToMessageId ? { replyToMessageId: input.replyToMessageId } : {}),
+      ...(input.sourceMessageId ?? input.replyToMessageId
+        ? { sourceMessageId: input.sourceMessageId ?? input.replyToMessageId }
+        : {}),
+      warnings: [],
+      estimatedSizeBytes: 120,
+      readyToSend: true,
+      generatedAt: "2026-06-13T10:01:00.000Z",
     })),
     createMailDraft: vi.fn(async () => mailDraftFixture()),
     sendMailDraft: vi.fn(async () => ({

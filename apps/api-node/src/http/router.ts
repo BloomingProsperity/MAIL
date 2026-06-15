@@ -106,6 +106,8 @@ import {
   InvalidMailComposeRequestError,
   type CreateMailDraftInput,
   type MailAddress,
+  type MailComposePreviewInput,
+  type MailComposeSeedMode,
   type MailComposeService,
   type MailDraftSource,
 } from "../mail-compose/mail-compose.js";
@@ -776,6 +778,36 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
             ),
           );
           writeJson(response, 201, result);
+          return;
+        }
+
+        if (
+          mailComposeRoute.action === "preview_draft" &&
+          request.method === "POST"
+        ) {
+          const result = await config.mailComposeService.previewDraft(
+            parseMailComposePreviewInput(
+              mailComposeRoute.accountId,
+              await readRequestBody(),
+            ),
+          );
+          writeJson(response, 200, result);
+          return;
+        }
+
+        if (
+          mailComposeRoute.action === "create_seed" &&
+          request.method === "POST"
+        ) {
+          const result = await config.mailComposeService.createComposeSeed(
+            parseMailComposeSeedInput(
+              mailComposeRoute.accountId,
+              mailComposeRoute.messageId,
+              mailComposeRoute.mode,
+              await readRequestBody(),
+            ),
+          );
+          writeJson(response, 200, result);
           return;
         }
 
@@ -3107,6 +3139,13 @@ function parseMailComposeRoute(
 ):
   | { action: "list_send_identities"; accountId: string }
   | { action: "create_draft"; accountId: string }
+  | { action: "preview_draft"; accountId: string }
+  | {
+      action: "create_seed";
+      accountId: string;
+      messageId: string;
+      mode: MailComposeSeedMode;
+    }
   | { action: "send_draft"; accountId: string; draftId: string }
   | { action: "schedule_draft"; accountId: string; draftId: string }
   | { action: "list_outbox"; accountId: string; limit?: number }
@@ -3159,6 +3198,32 @@ function parseMailComposeRoute(
     return {
       action: "create_draft",
       accountId: decodeURIComponent(createMatch[1]),
+    };
+  }
+
+  const previewMatch = /^\/api\/accounts\/([^/]+)\/compose\/preview$/.exec(
+    url.pathname,
+  );
+  if (previewMatch) {
+    return {
+      action: "preview_draft",
+      accountId: decodeURIComponent(previewMatch[1]),
+    };
+  }
+
+  const seedMatch =
+    /^\/api\/accounts\/([^/]+)\/messages\/([^/]+)\/compose\/(reply|reply-all|forward)$/.exec(
+      url.pathname,
+    );
+  if (seedMatch) {
+    return {
+      action: "create_seed",
+      accountId: decodeURIComponent(seedMatch[1]),
+      messageId: decodeURIComponent(seedMatch[2]),
+      mode:
+        seedMatch[3] === "reply-all"
+          ? "reply_all"
+          : (seedMatch[3] as "reply" | "forward"),
     };
   }
 
@@ -5079,6 +5144,7 @@ function parseMailComposeDraftInput(
     bodyHtml?: unknown;
     source?: unknown;
     replyToMessageId?: unknown;
+    sourceMessageId?: unknown;
     hermesSkillRunId?: unknown;
     hermesDraftText?: unknown;
   };
@@ -5100,12 +5166,83 @@ function parseMailComposeDraftInput(
     ...(isNonEmptyString(payload.replyToMessageId)
       ? { replyToMessageId: payload.replyToMessageId }
       : {}),
+    ...(isNonEmptyString(payload.sourceMessageId)
+      ? { sourceMessageId: payload.sourceMessageId }
+      : {}),
     ...(isNonEmptyString(payload.hermesSkillRunId)
       ? { hermesSkillRunId: payload.hermesSkillRunId }
       : {}),
     ...(isNonEmptyString(payload.hermesDraftText)
       ? { hermesDraftText: payload.hermesDraftText }
       : {}),
+  };
+}
+
+function parseMailComposePreviewInput(
+  accountId: string,
+  body: string,
+): MailComposePreviewInput {
+  const payload = JSON.parse(body) as {
+    from?: unknown;
+    fromAddress?: unknown;
+    fromName?: unknown;
+    to?: unknown;
+    cc?: unknown;
+    bcc?: unknown;
+    subject?: unknown;
+    bodyText?: unknown;
+    bodyHtml?: unknown;
+    source?: unknown;
+    replyToMessageId?: unknown;
+    sourceMessageId?: unknown;
+  };
+
+  const from = parseMailComposeFrom(payload);
+  return {
+    accountId,
+    ...(from ? { from } : {}),
+    to: parseMailComposeAddresses(payload.to, false),
+    cc: parseMailComposeAddresses(payload.cc, false),
+    bcc: parseMailComposeAddresses(payload.bcc, false),
+    subject: isNonEmptyString(payload.subject) ? payload.subject : "",
+    ...(isNonEmptyString(payload.bodyText) ? { bodyText: payload.bodyText } : {}),
+    ...(isNonEmptyString(payload.bodyHtml) ? { bodyHtml: payload.bodyHtml } : {}),
+    ...(parseMailComposeSource(payload.source)
+      ? { source: parseMailComposeSource(payload.source) }
+      : {}),
+    ...(isNonEmptyString(payload.replyToMessageId)
+      ? { replyToMessageId: payload.replyToMessageId }
+      : {}),
+    ...(isNonEmptyString(payload.sourceMessageId)
+      ? { sourceMessageId: payload.sourceMessageId }
+      : {}),
+  };
+}
+
+function parseMailComposeSeedInput(
+  accountId: string,
+  messageId: string,
+  mode: MailComposeSeedMode,
+  body: string,
+): {
+  accountId: string;
+  messageId: string;
+  mode: MailComposeSeedMode;
+  from?: MailAddress;
+} {
+  const payload = body.trim()
+    ? (JSON.parse(body) as {
+        from?: unknown;
+        fromAddress?: unknown;
+        fromName?: unknown;
+      })
+    : {};
+  const from = parseMailComposeFrom(payload);
+  return {
+    accountId,
+    messageId,
+    mode,
+    ...(from ? { from } : {}),
   };
 }
 
@@ -5362,7 +5499,13 @@ function parseMailComposeSource(value: unknown): MailDraftSource | undefined {
   if (value === undefined) {
     return undefined;
   }
-  if (value === "manual" || value === "hermes_reply") {
+  if (
+    value === "manual" ||
+    value === "hermes_reply" ||
+    value === "reply" ||
+    value === "reply_all" ||
+    value === "forward"
+  ) {
     return value;
   }
   throw new InvalidMailComposeRequestError();

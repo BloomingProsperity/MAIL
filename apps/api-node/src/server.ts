@@ -181,6 +181,7 @@ if (pool) {
   config.mailComposeService = createMailComposeService({
     store: createPostgresMailComposeStore(pool),
     sendIdentityStore: createPostgresSendIdentityStore(pool),
+    mailReadStore: config.mailReadStore,
     transports: {
       ...(config.emailEngineAccessTokenConfigured
         ? {

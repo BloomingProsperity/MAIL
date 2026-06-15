@@ -241,6 +241,135 @@ describe("mail compose routes", () => {
     );
   });
 
+  it("previews a draft through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async previewDraft(input: unknown) {
+        calls.push(input);
+        return {
+          accountId: "acc_1",
+          to: [{ address: "lina@example.com", name: "Lina" }],
+          cc: [],
+          bcc: [],
+          subject: "Launch confirmation",
+          bodyText: "Looks good.",
+          source: "reply",
+          replyToMessageId: "message_1",
+          sourceMessageId: "message_1",
+          warnings: [],
+          estimatedSizeBytes: 42,
+          readyToSend: true,
+          generatedAt: "2026-06-13T08:00:00.000Z",
+        };
+      },
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/compose/preview`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              to: [{ address: "lina@example.com", name: "Lina" }],
+              subject: "Launch confirmation",
+              bodyText: "Looks good.",
+              source: "reply",
+              replyToMessageId: "message_1",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          readyToSend: true,
+          sourceMessageId: "message_1",
+        });
+        expect(calls).toEqual([
+          {
+            accountId: "acc_1",
+            to: [{ address: "lina@example.com", name: "Lina" }],
+            cc: [],
+            bcc: [],
+            subject: "Launch confirmation",
+            bodyText: "Looks good.",
+            source: "reply",
+            replyToMessageId: "message_1",
+          },
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
+  it("creates a reply-all compose seed through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async createComposeSeed(input: unknown) {
+        calls.push(input);
+        return {
+          accountId: "acc_1",
+          messageId: "message_1",
+          mode: "reply_all",
+          to: [{ address: "lina@example.com" }],
+          cc: [{ address: "ops@example.com" }],
+          bcc: [],
+          subject: "Re: Launch confirmation",
+          bodyText: "\n\nOn Sat, Lina wrote:\n> Looks good.",
+          source: "reply_all",
+          replyToMessageId: "message_1",
+          sourceMessageId: "message_1",
+          attachments: [],
+          warnings: [],
+          generatedAt: "2026-06-13T08:00:00.000Z",
+        };
+      },
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/messages/message_1/compose/reply-all`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              from: { address: "support@demo.site", name: "Support" },
+            }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          mode: "reply_all",
+          sourceMessageId: "message_1",
+        });
+        expect(calls).toEqual([
+          {
+            accountId: "acc_1",
+            messageId: "message_1",
+            mode: "reply_all",
+            from: { address: "support@demo.site", name: "Support" },
+          },
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
   it("sends an existing draft through the compose service", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {

@@ -235,6 +235,163 @@ describe("mail compose service", () => {
     expect(storeCalls).toEqual([]);
   });
 
+  it("creates a reply-all compose seed that excludes verified self identities", async () => {
+    const service = createMailComposeService({
+      store: createStore({}),
+      createId: () => "unused",
+      transports: {},
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [
+            {
+              id: "account_1",
+              accountId: "acc_1",
+              from: { address: "me@example.com", name: "Me" },
+              source: "account",
+              isDefault: true,
+              verified: true,
+            },
+            {
+              id: "alias_1",
+              accountId: "acc_1",
+              from: { address: "support@demo.site" },
+              source: "domain_alias",
+              isDefault: false,
+              verified: true,
+            },
+          ];
+        },
+      },
+      mailReadStore: {
+        async getMessage(input) {
+          expect(input).toEqual({ accountId: "acc_1", messageId: "message_1" });
+          return messageDetail({
+            to: ["Me <me@example.com>", "Team <team@example.com>"],
+            cc: ["Support <support@demo.site>", "ops@example.com"],
+          });
+        },
+      },
+    });
+
+    const seed = await service.createComposeSeed({
+      accountId: "acc_1",
+      messageId: "message_1",
+      mode: "reply_all",
+    });
+
+    expect(seed).toMatchObject({
+      accountId: "acc_1",
+      messageId: "message_1",
+      mode: "reply_all",
+      source: "reply_all",
+      replyToMessageId: "message_1",
+      sourceMessageId: "message_1",
+      to: [{ address: "lina@example.com", name: "Lina" }],
+      cc: [
+        { address: "team@example.com", name: "Team" },
+        { address: "ops@example.com" },
+      ],
+      subject: "Re: Launch confirmation",
+      warnings: [],
+      generatedAt: "2026-06-13T08:00:00.000Z",
+    });
+    expect(seed.bodyText).toContain("Lina <lina@example.com> wrote:");
+    expect(seed.bodyText).toContain("> Looks good.");
+  });
+
+  it("creates a forward compose seed with attachment summaries and no recipient", async () => {
+    const service = createMailComposeService({
+      store: createStore({}),
+      createId: () => "unused",
+      transports: {},
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      mailReadStore: {
+        async getMessage() {
+          return messageDetail({
+            attachments: [
+              {
+                id: "att_1",
+                filename: "proposal.pdf",
+                contentType: "application/pdf",
+                byteSize: 2048,
+                embedded: false,
+                inline: false,
+              },
+            ],
+          });
+        },
+      },
+    });
+
+    const seed = await service.createComposeSeed({
+      accountId: "acc_1",
+      messageId: "message_1",
+      mode: "forward",
+    });
+
+    expect(seed).toMatchObject({
+      mode: "forward",
+      source: "forward",
+      sourceMessageId: "message_1",
+      to: [],
+      cc: [],
+      subject: "Fwd: Launch confirmation",
+      warnings: ["missing_recipient"],
+      attachments: [
+        {
+          id: "att_1",
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 2048,
+          inline: false,
+        },
+      ],
+    });
+    expect(seed.replyToMessageId).toBeUndefined();
+    expect(seed.bodyText).toContain("---------- Forwarded message ---------");
+    expect(seed.bodyText).toContain("Subject: Launch confirmation");
+  });
+
+  it("previews a normalized compose draft without persisting it", async () => {
+    const storeCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async createDraft(input) {
+          storeCalls.push(input);
+          throw new Error("not expected");
+        },
+      }),
+      createId: () => "unused",
+      transports: {},
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+    });
+
+    const preview = await service.previewDraft({
+      accountId: "acc_1",
+      to: [{ address: "Lina@Example.com", name: "Lina" }],
+      subject: " Launch confirmation ",
+      bodyText: " Looks good. ",
+      source: "reply",
+      replyToMessageId: "message_1",
+    });
+
+    expect(preview).toMatchObject({
+      accountId: "acc_1",
+      to: [{ address: "lina@example.com", name: "Lina" }],
+      subject: "Launch confirmation",
+      bodyText: "Looks good.",
+      source: "reply",
+      replyToMessageId: "message_1",
+      sourceMessageId: "message_1",
+      warnings: [],
+      readyToSend: true,
+      generatedAt: "2026-06-13T08:00:00.000Z",
+    });
+    expect(preview.estimatedSizeBytes).toBeGreaterThan(0);
+    expect(storeCalls).toEqual([]);
+  });
+
   it("claims a draft, submits it through the account engine, and marks it sent", async () => {
     const calls: unknown[] = [];
     const store = createStore({
@@ -626,6 +783,34 @@ function scheduledSend(overrides = {}) {
     canDelete: true,
     createdAt: "2026-06-13T08:00:00.000Z",
     updatedAt: "2026-06-13T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function messageDetail(overrides = {}) {
+  return {
+    id: "message_1",
+    accountId: "acc_1",
+    subject: "Launch confirmation",
+    from: {
+      email: "lina@example.com",
+      name: "Lina",
+    },
+    receivedAt: "2026-06-13T07:30:00.000Z",
+    snippet: "Looks good.",
+    unread: true,
+    starred: false,
+    mailboxIds: ["inbox"],
+    attachmentCount: 0,
+    classification: {
+      bucket: "P3 Needs Action",
+      priorityScore: 80,
+      reasons: ["direct"],
+    },
+    to: ["me@example.com"],
+    cc: [],
+    bodyText: "Looks good.",
+    attachments: [],
     ...overrides,
   };
 }

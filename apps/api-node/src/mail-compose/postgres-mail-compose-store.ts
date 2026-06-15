@@ -35,6 +35,7 @@ interface DraftRow extends Record<string, unknown> {
   status: string;
   source: string;
   reply_to_message_id: string | null;
+  source_message_id: string | null;
   hermes_skill_run_id: string | null;
   hermes_draft_text: string | null;
   provider_queue_id: string | null;
@@ -108,12 +109,13 @@ export function createPostgresMailComposeStore(
             body_html,
             source,
             reply_to_message_id,
+            source_message_id,
             hermes_skill_run_id,
             hermes_draft_text,
             created_at,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::timestamptz, $15::timestamptz)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::timestamptz, $16::timestamptz)
           RETURNING ${draftColumns()}
         `,
         [
@@ -129,6 +131,7 @@ export function createPostgresMailComposeStore(
           input.bodyHtml ?? null,
           input.source,
           input.replyToMessageId ?? null,
+          input.sourceMessageId ?? null,
           input.hermesSkillRunId ?? null,
           input.hermesDraftText ?? null,
           input.now,
@@ -555,6 +558,7 @@ function draftColumns(prefix?: string): string {
     "status",
     "source",
     "reply_to_message_id",
+    "source_message_id",
     "hermes_skill_run_id",
     "hermes_draft_text",
     "provider_queue_id",
@@ -682,10 +686,11 @@ function rowToDraft(row: DraftRow): MailDraft {
     ...(row.body_text ? { bodyText: row.body_text } : {}),
     ...(row.body_html ? { bodyHtml: row.body_html } : {}),
     status: draftStatus(row.status),
-    source: row.source === "hermes_reply" ? "hermes_reply" : "manual",
+    source: draftSource(row.source),
     ...(row.reply_to_message_id
       ? { replyToMessageId: row.reply_to_message_id }
       : {}),
+    ...(row.source_message_id ? { sourceMessageId: row.source_message_id } : {}),
     ...(row.hermes_skill_run_id
       ? { hermesSkillRunId: row.hermes_skill_run_id }
       : {}),
@@ -747,6 +752,18 @@ function draftStatus(value: string): MailDraftStatus {
     return value;
   }
   return "draft";
+}
+
+function draftSource(value: string): MailDraft["source"] {
+  if (
+    value === "hermes_reply" ||
+    value === "reply" ||
+    value === "reply_all" ||
+    value === "forward"
+  ) {
+    return value;
+  }
+  return "manual";
 }
 
 function scheduledStatus(value: string): ScheduledSendStatus {

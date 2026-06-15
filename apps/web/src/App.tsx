@@ -42,6 +42,9 @@ import type {
   AccountTransferPackage,
   MailQuickFilter,
   MailActionResult,
+  MailComposePreviewDto,
+  MailComposeSeedMode,
+  MailDraftSource,
   MailProviderCapabilityDto,
   MailSearchScope,
   MailSendIdentityDto,
@@ -1149,6 +1152,15 @@ function MailWorkspace(props: {
   const [composeBcc, setComposeBcc] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
+  const [composeSource, setComposeSource] = useState<MailDraftSource>("manual");
+  const [composeReplyToMessageId, setComposeReplyToMessageId] = useState<
+    string | undefined
+  >();
+  const [composeSourceMessageId, setComposeSourceMessageId] = useState<
+    string | undefined
+  >();
+  const [composePreview, setComposePreview] =
+    useState<MailComposePreviewDto | undefined>();
   const [composeScheduledAt, setComposeScheduledAt] = useState(
     defaultScheduleDateTimeLocal(),
   );
@@ -1222,6 +1234,10 @@ function MailWorkspace(props: {
   const selectedComposeIdentity = sendIdentities.find(
     (identity) => identity.id === composeFrom,
   );
+  const selectedComposeFrom =
+    selectedComposeIdentity && !selectedComposeIdentity.isDefault
+      ? selectedComposeIdentity.from
+      : undefined;
 
   async function refreshOutbox() {
     if (!props.api) {
@@ -1231,6 +1247,79 @@ function MailWorkspace(props: {
     const page = await props.api.listOutbox({ accountId: props.accountId, limit: 20 });
     setOutboxItems(page.items);
     setRescheduleTimes((current) => seedRescheduleTimes(current, page.items));
+  }
+
+  async function applyComposeSeed(mode: MailComposeSeedMode) {
+    if (!props.api) {
+      setComposeNotice("邮件服务暂时不可用。");
+      return;
+    }
+
+    setComposeBusy(true);
+    try {
+      const seed = await props.api.createComposeSeed({
+        accountId: props.accountId,
+        messageId: props.selectedMail.id,
+        mode,
+        ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+      });
+      setComposeTo(formatComposeAddressList(seed.to));
+      setComposeCc(formatComposeAddressList(seed.cc));
+      setComposeBcc(formatComposeAddressList(seed.bcc));
+      setComposeSubject(seed.subject);
+      setComposeBody(seed.bodyText);
+      setComposeSource(seed.source);
+      setComposeReplyToMessageId(seed.replyToMessageId);
+      setComposeSourceMessageId(seed.sourceMessageId);
+      setComposePreview(undefined);
+      setComposeNotice(
+        seed.warnings.includes("missing_recipient")
+          ? "转发草稿已准备，请补充收件人。"
+          : "回复草稿已准备，可以继续编辑。",
+      );
+      document.getElementById("compose-recipients")?.focus();
+    } catch {
+      setComposeNotice("无法从当前邮件生成草稿。");
+    } finally {
+      setComposeBusy(false);
+    }
+  }
+
+  async function previewComposedMail() {
+    if (!props.api) {
+      setComposeNotice("预览服务暂时不可用。");
+      return;
+    }
+
+    setComposeBusy(true);
+    try {
+      const preview = await props.api.previewMailDraft({
+        accountId: props.accountId,
+        ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+        to: parseComposeRecipients(composeTo),
+        cc: parseComposeRecipients(composeCc),
+        bcc: parseComposeRecipients(composeBcc),
+        subject: composeSubject,
+        bodyText: composeBody,
+        source: composeSource,
+        ...(composeReplyToMessageId
+          ? { replyToMessageId: composeReplyToMessageId }
+          : {}),
+        ...(composeSourceMessageId
+          ? { sourceMessageId: composeSourceMessageId }
+          : {}),
+      });
+      setComposePreview(preview);
+      setComposeNotice(
+        preview.readyToSend
+          ? "预览已生成，可以保存、定时或发送。"
+          : "预览已生成，请处理提示项后再发送。",
+      );
+    } catch {
+      setComposeNotice("预览生成失败，请检查收件人和发件身份。");
+    } finally {
+      setComposeBusy(false);
+    }
   }
 
   function replyBodyOrNotice(): string | undefined {
@@ -1406,15 +1495,19 @@ function MailWorkspace(props: {
     try {
       const draft = await props.api.createMailDraft({
         accountId: props.accountId,
-        ...(selectedComposeIdentity && !selectedComposeIdentity.isDefault
-          ? { from: selectedComposeIdentity.from }
-          : {}),
+        ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
         to,
         ...(cc.length > 0 ? { cc } : {}),
         ...(bcc.length > 0 ? { bcc } : {}),
         subject: composeSubject.trim(),
         bodyText,
-        source: "manual",
+        source: composeSource,
+        ...(composeReplyToMessageId
+          ? { replyToMessageId: composeReplyToMessageId }
+          : {}),
+        ...(composeSourceMessageId
+          ? { sourceMessageId: composeSourceMessageId }
+          : {}),
       });
 
       if (action === "send") {
@@ -1453,6 +1546,10 @@ function MailWorkspace(props: {
     setComposeBcc("");
     setComposeSubject("");
     setComposeBody("");
+    setComposeSource("manual");
+    setComposeReplyToMessageId(undefined);
+    setComposeSourceMessageId(undefined);
+    setComposePreview(undefined);
     setComposeScheduledAt(defaultScheduleDateTimeLocal());
   }
 
@@ -1615,7 +1712,10 @@ function MailWorkspace(props: {
               aria-label="Compose from identity"
               value={composeFrom}
               disabled={sendIdentities.length === 0}
-              onChange={(event) => setComposeFrom(event.target.value)}
+              onChange={(event) => {
+                setComposeFrom(event.target.value);
+                setComposePreview(undefined);
+              }}
             >
               {sendIdentities.length === 0 ? (
                 <option value="">当前账号</option>
@@ -1635,7 +1735,10 @@ function MailWorkspace(props: {
                 id="compose-recipients"
                 aria-label="Compose recipients"
                 value={composeTo}
-                onChange={(event) => setComposeTo(event.target.value)}
+                onChange={(event) => {
+                  setComposeTo(event.target.value);
+                  setComposePreview(undefined);
+                }}
                 placeholder="client@example.com, team@example.com"
               />
             </label>
@@ -1644,7 +1747,10 @@ function MailWorkspace(props: {
               <input
                 aria-label="Compose cc"
                 value={composeCc}
-                onChange={(event) => setComposeCc(event.target.value)}
+                onChange={(event) => {
+                  setComposeCc(event.target.value);
+                  setComposePreview(undefined);
+                }}
                 placeholder="copy@example.com"
               />
             </label>
@@ -1653,7 +1759,10 @@ function MailWorkspace(props: {
               <input
                 aria-label="Compose bcc"
                 value={composeBcc}
-                onChange={(event) => setComposeBcc(event.target.value)}
+                onChange={(event) => {
+                  setComposeBcc(event.target.value);
+                  setComposePreview(undefined);
+                }}
                 placeholder="audit@example.com"
               />
             </label>
@@ -1663,14 +1772,20 @@ function MailWorkspace(props: {
             <input
               aria-label="Compose subject"
               value={composeSubject}
-              onChange={(event) => setComposeSubject(event.target.value)}
+              onChange={(event) => {
+                setComposeSubject(event.target.value);
+                setComposePreview(undefined);
+              }}
               placeholder="输入邮件主题"
             />
           </label>
           <textarea
             aria-label="Compose body"
             value={composeBody}
-            onChange={(event) => setComposeBody(event.target.value)}
+            onChange={(event) => {
+              setComposeBody(event.target.value);
+              setComposePreview(undefined);
+            }}
             placeholder="写邮件正文，或先在右侧用 Hermes 生成回复草稿"
           />
           <div className="composer-tool-row">
@@ -1684,7 +1799,32 @@ function MailWorkspace(props: {
               <Sparkles size={14} />
               润色
             </button>
+            <button
+              className="tiny-button"
+              type="button"
+              aria-label="Preview composed draft"
+              disabled={composeBusy}
+              onClick={() => void previewComposedMail()}
+            >
+              <FileText size={14} />
+              预览
+            </button>
           </div>
+          {composePreview ? (
+            <div className="compose-preview-box" role="status">
+              <strong>
+                {composePreview.readyToSend ? "可发送预览" : "预览待处理"}
+              </strong>
+              <span>
+                {composePreview.to.length} 收件人 · {composePreview.estimatedSizeBytes} 字节
+              </span>
+              {composePreview.warnings.length > 0 ? (
+                <em>{formatComposeWarnings(composePreview.warnings)}</em>
+              ) : (
+                <em>{composePreview.subject || "无主题"}</em>
+              )}
+            </div>
+          ) : null}
           <div className="compose-schedule-row">
             <label>
               <span>发送时间</span>
@@ -1935,9 +2075,30 @@ function MailWorkspace(props: {
 
         <article className="reader-panel">
           <div className="reader-toolbar">
-            <button className="toolbar-button" type="button">回复</button>
-            <button className="toolbar-button" type="button">回复全部</button>
-            <button className="toolbar-button" type="button">转发</button>
+            <button
+              className="toolbar-button"
+              type="button"
+              disabled={composeBusy}
+              onClick={() => void applyComposeSeed("reply")}
+            >
+              回复
+            </button>
+            <button
+              className="toolbar-button"
+              type="button"
+              disabled={composeBusy}
+              onClick={() => void applyComposeSeed("reply_all")}
+            >
+              回复全部
+            </button>
+            <button
+              className="toolbar-button"
+              type="button"
+              disabled={composeBusy}
+              onClick={() => void applyComposeSeed("forward")}
+            >
+              转发
+            </button>
             <button
               className="toolbar-button"
               type="button"
@@ -2133,6 +2294,26 @@ function formatSendIdentity(identity: MailSendIdentityDto): string {
     ? `${identity.from.name} <${identity.from.address}>`
     : identity.from.address;
   return identity.isDefault ? `${label} · 默认` : label;
+}
+
+function formatComposeAddressList(addresses: Array<{ address: string; name?: string }>): string {
+  return addresses
+    .map((address) =>
+      address.name ? `${address.name} <${address.address}>` : address.address,
+    )
+    .join(", ");
+}
+
+function formatComposeWarnings(
+  warnings: MailComposePreviewDto["warnings"],
+): string {
+  const labels: Record<MailComposePreviewDto["warnings"][number], string> = {
+    missing_recipient: "缺少收件人",
+    missing_body: "缺少正文",
+    missing_subject: "缺少主题",
+    large_body: "正文过大",
+  };
+  return warnings.map((warning) => labels[warning]).join("，");
 }
 
 function providerCapabilityToOption(

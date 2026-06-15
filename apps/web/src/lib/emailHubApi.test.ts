@@ -1442,8 +1442,9 @@ describe("emailHubApi", () => {
             subject: "Re: Live subject",
             bodyText: "Thanks, I will check this today.",
             status: "draft",
-            source: "manual",
+            source: "reply",
             replyToMessageId: "message_1",
+            sourceMessageId: "message_1",
             createdAt: "2026-06-13T10:00:00.000Z",
             updatedAt: "2026-06-13T10:00:00.000Z",
           },
@@ -1474,8 +1475,9 @@ describe("emailHubApi", () => {
       to: [{ address: "client@example.com", name: "Client" }],
       subject: "Re: Live subject",
       bodyText: "Thanks, I will check this today.",
-      source: "manual",
+      source: "reply",
       replyToMessageId: "message_1",
+      sourceMessageId: "message_1",
     });
     await api.sendMailDraft({ accountId: "account_1", draftId: "draft_1" });
 
@@ -1489,8 +1491,9 @@ describe("emailHubApi", () => {
           to: [{ address: "client@example.com", name: "Client" }],
           subject: "Re: Live subject",
           bodyText: "Thanks, I will check this today.",
-          source: "manual",
+          source: "reply",
           replyToMessageId: "message_1",
+          sourceMessageId: "message_1",
         }),
       }),
     );
@@ -1533,6 +1536,91 @@ describe("emailHubApi", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/accounts/account_1/send-identities",
       expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("creates compose seeds and previews drafts through compose routes", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/accounts/account_1/messages/message_1/compose/reply-all") {
+        expect(init?.method).toBe("POST");
+        return jsonResponse({
+          accountId: "account_1",
+          messageId: "message_1",
+          mode: "reply_all",
+          to: [{ address: "client@example.com" }],
+          cc: [{ address: "ops@example.com" }],
+          bcc: [],
+          subject: "Re: Live subject",
+          bodyText: "\n\nOn Sat, client@example.com wrote:\n> Thanks",
+          source: "reply_all",
+          replyToMessageId: "message_1",
+          sourceMessageId: "message_1",
+          attachments: [],
+          warnings: [],
+          generatedAt: "2026-06-13T10:00:00.000Z",
+        });
+      }
+
+      expect(url).toBe("/api/accounts/account_1/compose/preview");
+      expect(init?.method).toBe("POST");
+      return jsonResponse({
+        accountId: "account_1",
+        to: [{ address: "client@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Re: Live subject",
+        bodyText: "Thanks",
+        source: "reply_all",
+        replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
+        warnings: [],
+        estimatedSizeBytes: 32,
+        readyToSend: true,
+        generatedAt: "2026-06-13T10:01:00.000Z",
+      });
+    });
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const seed = await api.createComposeSeed({
+      accountId: "account_1",
+      messageId: "message_1",
+      mode: "reply_all",
+      from: { address: "support@demo.site" },
+    });
+    const preview = await api.previewMailDraft({
+      accountId: "account_1",
+      to: seed.to,
+      subject: seed.subject,
+      bodyText: "Thanks",
+      source: seed.source,
+      replyToMessageId: seed.replyToMessageId,
+      sourceMessageId: seed.sourceMessageId,
+    });
+
+    expect(seed.source).toBe("reply_all");
+    expect(preview.readyToSend).toBe(true);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/accounts/account_1/messages/message_1/compose/reply-all",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ from: { address: "support@demo.site" } }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/accounts/account_1/compose/preview",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          to: [{ address: "client@example.com" }],
+          subject: "Re: Live subject",
+          bodyText: "Thanks",
+          source: "reply_all",
+          replyToMessageId: "message_1",
+          sourceMessageId: "message_1",
+        }),
+      }),
     );
   });
 

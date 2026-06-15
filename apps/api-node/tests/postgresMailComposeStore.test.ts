@@ -24,6 +24,7 @@ describe("Postgres mail compose store", () => {
               status: "draft",
               source: "manual",
               reply_to_message_id: null,
+              source_message_id: null,
               hermes_skill_run_id: null,
               provider_queue_id: null,
               provider_message_id: null,
@@ -66,6 +67,7 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       null,
+      null,
       "2026-06-13T08:00:00.000Z",
     ]);
     expect(draft).toMatchObject({
@@ -96,6 +98,7 @@ describe("Postgres mail compose store", () => {
               status: "draft",
               source: "hermes_reply",
               reply_to_message_id: "message_1",
+              source_message_id: "message_1",
               hermes_skill_run_id: "run_reply_1",
               hermes_draft_text:
                 "Hi Lina,\n\nThanks for the update. I can confirm Thursday works well for us.\n\nBest,\nHua",
@@ -122,6 +125,7 @@ describe("Postgres mail compose store", () => {
       bodyText: "Hi Lina,\n\nConfirmed for Thursday.",
       source: "hermes_reply",
       replyToMessageId: "message_1",
+      sourceMessageId: "message_1",
       hermesSkillRunId: "run_reply_1",
       hermesDraftText:
         "Hi Lina,\n\nThanks for the update. I can confirm Thursday works well for us.\n\nBest,\nHua",
@@ -138,6 +142,7 @@ describe("Postgres mail compose store", () => {
       id: "draft_1",
       source: "hermes_reply",
       from: { address: "support@demo.site", name: "Support" },
+      sourceMessageId: "message_1",
       hermesSkillRunId: "run_reply_1",
       hermesDraftText:
         "Hi Lina,\n\nThanks for the update. I can confirm Thursday works well for us.\n\nBest,\nHua",

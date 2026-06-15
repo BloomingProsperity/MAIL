@@ -160,14 +160,21 @@ with more than smoke-level tests.
   and cancel to the matching backend contract. API client route tests and App
   behavior tests cover the full create/send/schedule/list/reschedule/send-now/
   cancel flow plus send-as, Cc/Bcc draft payloads, editable Hermes quick
-  replies, and editable Hermes polishing.
+  replies, editable Hermes polishing, backend-generated reply/reply-all/forward
+  seeds, and backend compose preview.
 - Current backend status: outbox listing now returns active queue items only
   (`scheduled`, `queued`, `sending`, `failed`) instead of mixing terminal sent,
-  cancelled, or dead-lettered rows into the user-facing queue.
+  cancelled, or dead-lettered rows into the user-facing queue. Compose now has
+  pure seed/preview endpoints: `/api/accounts/:accountId/messages/:messageId/compose/reply`,
+  `/reply-all`, `/forward`, and `/api/accounts/:accountId/compose/preview`.
+  Seeds are generated from the app-owned mail read model, exclude verified
+  self identities on reply-all, preserve `source_message_id`, and do not call
+  provider transports or persist drafts until the user explicitly saves/sends.
 - Remaining gap: the current compose panel is intentionally compact; rich
-  editor, attachments, reply-all/forward modes, preview, provider-native
-  permission discovery for shared mailbox send-as, and Sent-folder provider
-  parity are still separate slices.
+  editor, attachment upload/forward reattachment, provider-threaded reply
+  headers (`In-Reply-To` / `References`), provider-native permission discovery
+  for shared mailbox send-as, and Sent-folder provider parity are still
+  separate slices.
 
 ## Product References
 
@@ -181,9 +188,10 @@ with more than smoke-level tests.
 
 ## Immediate Delivery Order
 
-1. Expand Compose into a full production editor: rich editor, attachments,
-   reply-all, forward, preview, provider-native send-as permission discovery,
-   and writing-style feedback for rewrite/polish through the single AI entry.
+1. Expand Compose into a full production editor: rich editor, attachment
+   upload/reattachment, provider-threaded reply headers, provider-native
+   send-as permission discovery, and writing-style feedback for rewrite/polish
+   through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
    GreenMail/high-volume SMTP smoke, Sent-folder append, and tests around
    QQ/163/custom-domain recovery behavior.
