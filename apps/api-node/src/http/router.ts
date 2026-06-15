@@ -865,7 +865,19 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (
-          mailComposeRoute.action === "create_draft" &&
+          mailComposeRoute.action === "draft_collection" &&
+          request.method === "GET"
+        ) {
+          const result = await config.mailComposeService.listDrafts({
+            accountId: mailComposeRoute.accountId,
+            limit: mailComposeRoute.limit,
+          });
+          writeJson(response, 200, result);
+          return;
+        }
+
+        if (
+          mailComposeRoute.action === "draft_collection" &&
           request.method === "POST"
         ) {
           const result = await config.mailComposeService.createDraft(
@@ -3289,7 +3301,7 @@ function parseMailComposeRoute(
       candidateId: string;
     }
   | { action: "upload_attachment"; accountId: string }
-  | { action: "create_draft"; accountId: string }
+  | { action: "draft_collection"; accountId: string; limit?: number }
   | { action: "update_draft"; accountId: string; draftId: string }
   | { action: "preview_draft"; accountId: string }
   | {
@@ -3402,8 +3414,9 @@ function parseMailComposeRoute(
   );
   if (createMatch) {
     return {
-      action: "create_draft",
+      action: "draft_collection",
       accountId: decodeURIComponent(createMatch[1]),
+      ...parseOptionalMailComposeLimit(url.searchParams.get("limit")),
     };
   }
 
@@ -3479,7 +3492,7 @@ function parseOptionalMailComposeLimit(
 
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
-    throw new InvalidMailComposeRequestError("outbox limit is invalid");
+    throw new InvalidMailComposeRequestError("mail compose limit is invalid");
   }
 
   return { limit: parsed };

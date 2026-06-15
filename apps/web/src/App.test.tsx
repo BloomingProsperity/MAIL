@@ -2688,6 +2688,101 @@ describe("Email Hub first UI baseline", () => {
     ).toBeLessThan(vi.mocked(api.scheduleMailDraft).mock.invocationCallOrder[0]);
   });
 
+  it("loads saved compose drafts into the compose panel for editing", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMailDrafts).mockResolvedValue({
+      accountId: "account_1",
+      items: [
+        mailDraftFixture({
+          id: "draft_saved",
+          subject: "Saved subject",
+          bodyText: "Saved body.",
+          updatedAt: "2026-06-13T11:00:00.000Z",
+        }),
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("Saved subject");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit saved draft draft_saved" }),
+    );
+
+    expect((screen.getByLabelText("Compose subject") as HTMLInputElement).value).toBe(
+      "Saved subject",
+    );
+    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
+      "Saved body.",
+    );
+    expect(screen.getAllByText(/草稿：draft_saved/).length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Edited saved body." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.updateMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_saved",
+        to: [{ address: "client@example.com", name: "Client" }],
+        subject: "Saved subject",
+        bodyText: "Edited saved body.",
+        source: "manual",
+        replyToMessageId: "message_1",
+      });
+    });
+    expect(api.createMailDraft).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(api.listMailDrafts).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("sends a loaded saved draft after updating the same draft id", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMailDrafts).mockResolvedValue({
+      accountId: "account_1",
+      items: [
+        mailDraftFixture({
+          id: "draft_saved",
+          subject: "Saved subject",
+          bodyText: "Saved body.",
+        }),
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("Saved subject");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit saved draft draft_saved" }),
+    );
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Send edited saved body." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await waitFor(() => {
+      expect(api.updateMailDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "account_1",
+          draftId: "draft_saved",
+          bodyText: "Send edited saved body.",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(api.sendMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_saved",
+      });
+    });
+    expect(api.createMailDraft).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(api.updateMailDraft).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(api.sendMailDraft).mock.invocationCallOrder[0]);
+  });
+
   it("manages scheduled outbox items through backend routes", async () => {
     const api = createApiFixture();
 
@@ -3656,6 +3751,10 @@ function createApiFixture(): EmailHubApi {
       generatedAt: "2026-06-13T10:01:00.000Z",
     })),
     createMailDraft: vi.fn(async () => mailDraftFixture()),
+    listMailDrafts: vi.fn(async () => ({
+      accountId: "account_1",
+      items: [],
+    })),
     updateMailDraft: vi.fn(async (input) =>
       mailDraftFixture({
         id: input.draftId,

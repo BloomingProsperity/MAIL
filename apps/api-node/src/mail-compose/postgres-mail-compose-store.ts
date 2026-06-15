@@ -191,6 +191,22 @@ export function createPostgresMailComposeStore(
       return rowToDraft(result.rows[0]);
     },
 
+    async listDrafts(input) {
+      const result = await client.query<DraftRow>(
+        `
+          SELECT ${draftColumns()}
+          FROM email_drafts
+          WHERE account_id = $1
+            AND status = 'draft'
+          ORDER BY updated_at DESC, created_at DESC, id DESC
+          LIMIT $2
+        `,
+        [input.accountId, input.limit],
+      );
+
+      return result.rows.map((row) => rowToDraft(row));
+    },
+
     async updateDraft(input) {
       const result = await client.query<DraftRow>(
         `

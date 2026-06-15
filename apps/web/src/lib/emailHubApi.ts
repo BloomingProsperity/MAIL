@@ -885,6 +885,11 @@ export interface OutboxPageDto {
   items: ScheduledSendDto[];
 }
 
+export interface DraftPageDto {
+  accountId: string;
+  items: MailDraftDto[];
+}
+
 export interface ScheduledDraftDetailDto {
   scheduledSend: ScheduledSendDto;
   draft: MailDraftDto;
@@ -1199,6 +1204,10 @@ export interface EmailHubApi {
     hermesSkillRunId?: string;
     hermesDraftText?: string;
   }): Promise<MailDraftDto>;
+  listMailDrafts(input: {
+    accountId: string;
+    limit?: number;
+  }): Promise<DraftPageDto>;
   updateMailDraft(input: {
     accountId: string;
     draftId: string;
@@ -1827,6 +1836,20 @@ export function createEmailHubApi(
           method: "POST",
           body: JSON.stringify(cleanObject(body)),
         },
+      );
+    },
+
+    listMailDrafts(input) {
+      const query = new URLSearchParams();
+      if (typeof input.limit === "number") {
+        query.set("limit", String(input.limit));
+      }
+      const queryString = query.toString();
+      const suffix = queryString ? `?${queryString}` : "";
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/compose/drafts${suffix}`,
       );
     },
 

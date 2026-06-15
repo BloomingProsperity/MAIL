@@ -471,7 +471,10 @@ h2 {
 
 .compose-outbox-band {
   display: grid;
-  grid-template-columns: minmax(320px, 0.95fr) minmax(320px, 1.05fr);
+  grid-template-columns:
+    minmax(320px, 1fr)
+    minmax(260px, 0.8fr)
+    minmax(320px, 1fr);
   gap: 8px;
   margin-bottom: 8px;
   min-height: 0;
@@ -479,6 +482,7 @@ h2 {
 }
 
 .compose-panel,
+.drafts-panel,
 .outbox-panel {
   display: grid;
   gap: 8px;
@@ -507,7 +511,9 @@ h2 {
 
 .compose-panel-head span,
 .compose-panel label span,
+.draft-row span,
 .outbox-row span,
+.empty-drafts,
 .empty-outbox {
   color: var(--text-secondary);
   font-size: 12px;
@@ -740,14 +746,15 @@ h2 {
   grid-column: 1 / -1;
 }
 
+.draft-list,
 .outbox-list {
   display: grid;
   gap: 6px;
 }
 
+.draft-row,
 .outbox-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(170px, 190px) auto;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -757,12 +764,24 @@ h2 {
   background: var(--bg-soft);
 }
 
+.draft-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.outbox-row {
+  grid-template-columns: minmax(120px, 1fr) minmax(170px, 190px) auto;
+}
+
+.draft-row > div:first-child,
 .outbox-row > div:first-child {
   display: grid;
   min-width: 0;
   gap: 2px;
 }
 
+.draft-row strong,
+.draft-row span,
+.draft-row em,
 .outbox-row strong,
 .outbox-row span,
 .outbox-row em {
@@ -771,6 +790,7 @@ h2 {
   white-space: nowrap;
 }
 
+.draft-row em,
 .outbox-row em {
   color: var(--primary-hover);
   font-size: 12px;
@@ -2071,6 +2091,7 @@ h2 {
   .compose-recipient-grid,
   .provider-candidate-entry,
   .compose-schedule-row,
+  .draft-row,
   .outbox-row {
     grid-template-columns: minmax(0, 1fr);
   }

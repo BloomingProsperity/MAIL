@@ -141,6 +141,7 @@ Hermes rule learning is review-first. `POST /api/hermes/rules/suggest` scans rep
 Mail compose APIs are preview-first:
 
 ```text
+GET  /api/accounts/:accountId/compose/drafts
 POST /api/accounts/:accountId/compose/drafts
 POST /api/accounts/:accountId/compose/drafts/:draftId/send
 POST /api/accounts/:accountId/compose/drafts/:draftId/schedule
@@ -150,15 +151,15 @@ PATCH /api/accounts/:accountId/outbox/:scheduledId
 DELETE /api/accounts/:accountId/outbox/:scheduledId
 ```
 
-The draft route stores an app-owned draft with local recipients, subject, body,
-source, optional reply target, and optional Hermes skill run id. It does not
-call a provider. The send route claims an existing draft, submits it through
-the account engine, and records provider queue/message ids only after
-submission. The schedule route moves a valid draft into a durable
-`scheduled_sends` outbox row. The worker claims due scheduled sends with a
-lease, submits through the same account transport, and marks the row sent,
-failed, or dead-lettered. The web app must never call EmailEngine submit
-directly.
+The draft list route returns app-owned ordinary drafts only. The draft create
+route stores local recipients, subject, body, source, optional reply target, and
+optional Hermes skill run id. It does not call a provider. The send route claims
+an existing draft, submits it through the account engine, and records provider
+queue/message ids only after submission. The schedule route moves a valid draft
+into a durable `scheduled_sends` outbox row. The worker claims due scheduled
+sends with a lease, submits through the same account transport, and marks the
+row sent, failed, or dead-lettered. The web app must never call EmailEngine
+submit directly.
 
 CSV account import is available at:
 

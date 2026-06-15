@@ -1008,6 +1008,153 @@ describe("mail compose routes", () => {
     );
   });
 
+  it("lists saved compose drafts through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+      async listDrafts(input: unknown) {
+        calls.push(input);
+        return {
+          accountId: "acc_1",
+          items: [
+            {
+              id: "draft_1",
+              accountId: "acc_1",
+              to: [{ address: "client@example.com" }],
+              cc: [],
+              bcc: [],
+              subject: "Saved draft",
+              bodyText: "Draft body",
+              status: "draft",
+              source: "manual",
+              updatedAt: "2026-06-13T10:05:00.000Z",
+              createdAt: "2026-06-13T10:00:00.000Z",
+            },
+          ],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/compose/drafts?limit=20`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+          accountId: "acc_1",
+          items: [
+            {
+              id: "draft_1",
+              accountId: "acc_1",
+              to: [{ address: "client@example.com" }],
+              cc: [],
+              bcc: [],
+              subject: "Saved draft",
+              bodyText: "Draft body",
+              status: "draft",
+              source: "manual",
+              updatedAt: "2026-06-13T10:05:00.000Z",
+              createdAt: "2026-06-13T10:00:00.000Z",
+            },
+          ],
+        });
+        expect(calls).toEqual([{ accountId: "acc_1", limit: 20 }]);
+      },
+      { mailComposeService },
+    );
+  });
+
+  it("rejects invalid saved draft list limits before service calls", async () => {
+    let called = false;
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+      async listDrafts() {
+        called = true;
+        return { accountId: "acc_1", items: [] };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/compose/drafts?limit=0`,
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_mail_compose_request",
+        });
+        expect(called).toBe(false);
+      },
+      { mailComposeService },
+    );
+  });
+
+  it("handles burst saved draft list reads without request body coupling", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+      async listDrafts(input: unknown) {
+        calls.push(input);
+        return {
+          accountId: "acc_1",
+          items: [],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const responses = await Promise.all(
+          Array.from({ length: 64 }, (_, index) =>
+            fetch(
+              `${baseUrl}/api/accounts/acc_1/compose/drafts?limit=${
+                (index % 5) + 1
+              }`,
+            ),
+          ),
+        );
+        const bodies = await Promise.all(
+          responses.map(async (response) => response.json()),
+        );
+
+        expect(responses.every((response) => response.status === 200)).toBe(true);
+        expect(bodies).toEqual(
+          Array.from({ length: 64 }, () => ({
+            accountId: "acc_1",
+            items: [],
+          })),
+        );
+        expect(calls).toHaveLength(64);
+        expect(calls.slice(0, 5)).toEqual([
+          { accountId: "acc_1", limit: 1 },
+          { accountId: "acc_1", limit: 2 },
+          { accountId: "acc_1", limit: 3 },
+          { accountId: "acc_1", limit: 4 },
+          { accountId: "acc_1", limit: 5 },
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
   it("loads an outbox draft through the compose service", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {

@@ -197,8 +197,8 @@ with more than smoke-level tests.
   outbox item, or sends a scheduled item immediately.
 - State: `email_drafts`, `scheduled_sends`, account engine provider settings,
   OAuth refresh credentials, provider submit result ids.
-- API: compose drafts, send draft, schedule draft, list outbox, reschedule,
-  cancel, send scheduled now.
+- API: compose drafts, list saved drafts, send draft, schedule draft, list
+  outbox, reschedule, cancel, send scheduled now.
 - Worker: scheduled send runner, EmailEngine submit transport, native Gmail,
   Graph, and SMTP send transports.
 - Failure: account paused, reauthorization required, missing native provider,
@@ -216,14 +216,20 @@ with more than smoke-level tests.
   cancel, and edit-draft to the matching backend contract. Scheduled outbox
   edits load the app-owned draft detail, preserve the existing `draftId` and
   `scheduledId`, and update the same outbox row before save, send-now, or
-  reschedule. API client route tests and App behavior tests cover the full
-  create/send/schedule/list/edit/reschedule/send-now/cancel flow plus send-as,
-  Cc/Bcc draft payloads, editable Hermes quick
-  replies, provider-native send-as identities, editable Hermes polishing with
-  writing-style feedback,
-  backend-generated reply/reply-all/forward
-  seeds, and backend compose preview.
-- Current backend status: outbox listing now returns active queue items only
+  reschedule. A saved-drafts panel loads
+  `/api/accounts/:accountId/compose/drafts`, lists ordinary `status=draft`
+  rows outside the scheduled outbox, and loads a selected draft into the same
+  compose editor so save/send/schedule continue updating the existing
+  `draftId`. API client route tests and App behavior tests cover the full
+  create/list/update/send/schedule/list-outbox/edit/reschedule/send-now/cancel
+  flow plus send-as, Cc/Bcc draft payloads, editable Hermes quick replies,
+  provider-native send-as identities, editable Hermes polishing with
+  writing-style feedback, backend-generated reply/reply-all/forward seeds, and
+  backend compose preview.
+- Current backend status: `GET /api/accounts/:accountId/compose/drafts`
+  returns only ordinary editable draft rows for the account, ordered by newest
+  update, with the same public draft DTO used by save/update/send paths. Outbox
+  listing now returns active queue items only
   (`scheduled`, `queued`, `sending`, `failed`) instead of mixing terminal sent,
   cancelled, or dead-lettered rows into the user-facing queue. Compose now has
   pure seed/preview endpoints: `/api/accounts/:accountId/messages/:messageId/compose/reply`,
@@ -266,9 +272,8 @@ with more than smoke-level tests.
 - Remaining gap: the current compose panel is intentionally compact; rich
   editor, chunked/streaming uploads, provider-native large attachment sessions,
   admin-visible attachment cleanup diagnostics/manual purge controls, admin
-  diagnostics for provider-native shared mailbox permissions, draft-list editing
-  outside the outbox, and deeper Sent-folder parity checks are still separate
-  slices.
+  diagnostics for provider-native shared mailbox permissions, and deeper
+  Sent-folder parity checks are still separate slices.
 
 ## Product References
 

@@ -173,6 +173,11 @@ export interface MailDraft {
   sentAt?: string;
 }
 
+export interface MailDraftPage {
+  accountId: string;
+  items: MailDraft[];
+}
+
 export interface MailComposeAccount {
   accountId: string;
   email: string;
@@ -348,6 +353,10 @@ export interface MailComposeStore {
       now: string;
     },
   ): Promise<MailDraft>;
+  listDrafts(input: {
+    accountId: string;
+    limit: number;
+  }): Promise<MailDraft[]>;
   updateDraft(
     input: Required<Pick<UpdateMailDraftInput, "accountId" | "draftId" | "to">> & {
       from?: MailAddress;
@@ -607,6 +616,10 @@ export interface MailComposeService {
   createComposeSeed(input: MailComposeSeedInput): Promise<MailComposeSeed>;
   previewDraft(input: MailComposePreviewInput): Promise<MailComposePreview>;
   createDraft(input: CreateMailDraftInput): Promise<MailDraft>;
+  listDrafts(input: {
+    accountId: string;
+    limit?: number;
+  }): Promise<MailDraftPage>;
   updateDraft(input: UpdateMailDraftInput): Promise<MailDraft>;
   sendDraft(input: { accountId: string; draftId: string }): Promise<{
     accountId: string;
@@ -960,6 +973,17 @@ export function createMailComposeService(options: {
       await recordHermesDraftFeedback(options.hermesDraftFeedbackStore, draft);
 
       return draft;
+    },
+
+    async listDrafts(input) {
+      assertNonEmpty(input.accountId);
+      return {
+        accountId: input.accountId,
+        items: await options.store.listDrafts({
+          accountId: input.accountId,
+          limit: normalizeDraftListLimit(input.limit),
+        }),
+      };
     },
 
     async updateDraft(input) {
@@ -2520,6 +2544,18 @@ function normalizeOutboxLimit(limit: number | undefined): number {
 
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new InvalidMailComposeRequestError("outbox limit is invalid");
+  }
+
+  return limit;
+}
+
+function normalizeDraftListLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return 50;
+  }
+
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new InvalidMailComposeRequestError("draft list limit is invalid");
   }
 
   return limit;

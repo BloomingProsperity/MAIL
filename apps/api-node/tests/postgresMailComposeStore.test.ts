@@ -84,6 +84,73 @@ describe("Postgres mail compose store", () => {
     });
   });
 
+  it("lists only editable draft rows by most recent update", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresMailComposeStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            draftRow({
+              id: "draft_2",
+              from_address: "support@example.com",
+              from_name: "Support",
+              subject: "Recent draft",
+              attachment_manifest: [
+                {
+                  id: "upload_1",
+                  source: "uploaded_file",
+                  attachmentId: "upload_1",
+                  storageKey: "11111111-1111-4111-8111-111111111111",
+                  filename: "plan.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 4,
+                  inline: false,
+                  contentBase64: "cGxhbg==",
+                },
+              ],
+              hermes_skill_run_id: "run_1",
+              hermes_draft_text: "Original Hermes body",
+              updated_at: "2026-06-13T09:00:00.000Z",
+            }),
+          ],
+        };
+      },
+    });
+
+    const result = await store.listDrafts({ accountId: "acc_1", limit: 20 });
+
+    expect(queries[0].text).toMatch(/FROM email_drafts/i);
+    expect(queries[0].text).toMatch(/status = 'draft'/i);
+    expect(queries[0].text).toMatch(
+      /ORDER BY updated_at DESC, created_at DESC, id DESC/i,
+    );
+    expect(queries[0].values).toEqual(["acc_1", 20]);
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: "draft_2",
+        status: "draft",
+        from: { address: "support@example.com", name: "Support" },
+        subject: "Recent draft",
+        hermesSkillRunId: "run_1",
+        hermesDraftText: "Original Hermes body",
+        attachments: [
+          {
+            id: "upload_1",
+            source: "uploaded_file",
+            attachmentId: "upload_1",
+            storageKey: "11111111-1111-4111-8111-111111111111",
+            filename: "plan.pdf",
+            contentType: "application/pdf",
+            byteSize: 4,
+            inline: false,
+          },
+        ],
+      }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain("cGxhbg==");
+  });
+
   it("persists the original Hermes reply text for later draft feedback", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const store = createPostgresMailComposeStore({

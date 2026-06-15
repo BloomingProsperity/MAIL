@@ -1197,6 +1197,9 @@ function MailWorkspace(props: {
   );
   const [composeNotice, setComposeNotice] = useState("");
   const [composeBusy, setComposeBusy] = useState(false);
+  const [mailDrafts, setMailDrafts] = useState<MailDraftDto[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsNotice, setDraftsNotice] = useState("");
   const [outboxItems, setOutboxItems] = useState<ScheduledSendDto[]>([]);
   const [outboxBusyId, setOutboxBusyId] = useState<string | undefined>();
   const [outboxNotice, setOutboxNotice] = useState("");
@@ -1217,6 +1220,8 @@ function MailWorkspace(props: {
     setComposeDraftId(undefined);
     setComposeScheduledId(undefined);
     setGraphTargetMailboxes({});
+    setDraftsNotice("");
+    setOutboxNotice("");
   }, [props.accountId]);
 
   useEffect(() => {
@@ -1226,6 +1231,7 @@ function MailWorkspace(props: {
       setSendIdentityCandidates([]);
       setGraphTargetMailboxes({});
       setComposeFrom(identities[0]?.id ?? "");
+      setMailDrafts([]);
       return;
     }
 
@@ -1255,6 +1261,28 @@ function MailWorkspace(props: {
           setSendIdentityCandidates([]);
           setGraphTargetMailboxes({});
           setComposeFrom("");
+        }
+      });
+
+    setDraftsLoading(true);
+    void props.api
+      .listMailDrafts({ accountId: props.accountId, limit: 20 })
+      .then((page) => {
+        if (!alive) {
+          return;
+        }
+        setMailDrafts(page.items);
+        setDraftsNotice("");
+      })
+      .catch(() => {
+        if (alive) {
+          setMailDrafts([]);
+          setDraftsNotice("草稿列表暂时不可用。");
+        }
+      })
+      .finally(() => {
+        if (alive) {
+          setDraftsLoading(false);
         }
       });
 
@@ -1317,6 +1345,19 @@ function MailWorkspace(props: {
     const page = await props.api.listOutbox({ accountId: props.accountId, limit: 20 });
     setOutboxItems(page.items);
     setRescheduleTimes((current) => seedRescheduleTimes(current, page.items));
+  }
+
+  async function refreshMailDrafts() {
+    if (!props.api) {
+      return;
+    }
+
+    const page = await props.api.listMailDrafts({
+      accountId: props.accountId,
+      limit: 20,
+    });
+    setMailDrafts(page.items);
+    setDraftsNotice("");
   }
 
   async function addGraphSendIdentityCandidate() {
@@ -1718,6 +1759,7 @@ function MailWorkspace(props: {
         });
         setComposeNotice(`邮件已进入发送队列：${result.draft.id}`);
         clearComposeForm();
+        await refreshMailDrafts();
         return;
       }
 
@@ -1741,6 +1783,7 @@ function MailWorkspace(props: {
         });
         setComposeNotice(`邮件已定时：${formatMailDate(scheduled.scheduledAt)}`);
         clearComposeForm();
+        await refreshMailDrafts();
         await refreshOutbox();
         return;
       }
@@ -1755,6 +1798,8 @@ function MailWorkspace(props: {
       );
       if (composeScheduledId) {
         await refreshOutbox();
+      } else {
+        await refreshMailDrafts();
       }
     } catch {
       setComposeNotice("写信操作失败，请稍后再试。");
@@ -1912,6 +1957,12 @@ function MailWorkspace(props: {
     } finally {
       setComposeBusy(false);
     }
+  }
+
+  function editMailDraft(draft: MailDraftDto) {
+    applyDraftToCompose(draft);
+    setDraftsNotice(`已载入草稿：${draft.id}`);
+    focusComposeTarget("body");
   }
 
   async function editOutboxItem(item: ScheduledSendDto) {
@@ -2408,6 +2459,62 @@ function MailWorkspace(props: {
               立即发送
             </button>
           </div>
+        </div>
+
+        <div className="drafts-panel" aria-label="草稿列表">
+          <div className="compose-panel-head">
+            <div>
+              <strong>草稿</strong>
+              <span>
+                {draftsLoading ? "加载中" : `${mailDrafts.length} 封可编辑`}
+              </span>
+            </div>
+            <FileText size={18} />
+          </div>
+          {draftsNotice ? (
+            <div className="backend-notice compact" role="status">
+              {draftsNotice}
+            </div>
+          ) : null}
+          {mailDrafts.length === 0 ? (
+            <div className="empty-drafts">
+              {draftsLoading
+                ? "正在加载草稿..."
+                : draftsNotice
+                  ? "无法读取保存草稿。"
+                  : "当前没有保存草稿。"}
+            </div>
+          ) : (
+            <div className="draft-list">
+              {mailDrafts.map((draft) => {
+                const recipients = formatComposeAddressList(draft.to);
+                const attachmentCount = draft.attachments?.length ?? 0;
+                return (
+                  <div className="draft-row" key={draft.id}>
+                    <div>
+                      <strong>{draft.subject || "无主题草稿"}</strong>
+                      <span>
+                        {recipients || "未填写收件人"} · {formatMailDate(draft.updatedAt)}
+                      </span>
+                      <em>
+                        {draft.id}
+                        {attachmentCount > 0 ? ` · ${attachmentCount} 个附件` : ""}
+                      </em>
+                    </div>
+                    <button
+                      className="tiny-button"
+                      type="button"
+                      aria-label={`Edit saved draft ${draft.id}`}
+                      disabled={composeBusy}
+                      onClick={() => editMailDraft(draft)}
+                    >
+                      编辑
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="outbox-panel" aria-label="待发队列">

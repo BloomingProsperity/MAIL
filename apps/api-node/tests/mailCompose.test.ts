@@ -79,6 +79,75 @@ describe("mail compose service", () => {
     });
   });
 
+  it("lists editable drafts with bounded default and explicit limits", async () => {
+    const calls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async listDrafts(input) {
+          calls.push(input);
+          return [
+            {
+              id: "draft_1",
+              accountId: input.accountId,
+              to: [{ address: "lina@example.com" }],
+              cc: [],
+              bcc: [],
+              subject: "Draft subject",
+              bodyText: "Draft body.",
+              status: "draft",
+              source: "manual",
+              createdAt: "2026-06-13T08:00:00.000Z",
+              updatedAt: "2026-06-13T09:00:00.000Z",
+            },
+          ];
+        },
+      }),
+      createId: () => "draft_2",
+      transports: {},
+    });
+
+    const defaultPage = await service.listDrafts({ accountId: "acc_1" });
+    const limitedPage = await service.listDrafts({
+      accountId: "acc_1",
+      limit: 20,
+    });
+
+    expect(calls).toEqual([
+      { accountId: "acc_1", limit: 50 },
+      { accountId: "acc_1", limit: 20 },
+    ]);
+    expect(defaultPage).toEqual({
+      accountId: "acc_1",
+      items: [
+        expect.objectContaining({
+          id: "draft_1",
+          status: "draft",
+          subject: "Draft subject",
+        }),
+      ],
+    });
+    expect(limitedPage.accountId).toBe("acc_1");
+  });
+
+  it("rejects invalid draft list limits before store access", async () => {
+    let called = false;
+    const service = createMailComposeService({
+      store: createStore({
+        async listDrafts() {
+          called = true;
+          return [];
+        },
+      }),
+      createId: () => "draft_1",
+      transports: {},
+    });
+
+    await expect(
+      service.listDrafts({ accountId: "acc_1", limit: 101 }),
+    ).rejects.toThrow("draft list limit is invalid");
+    expect(called).toBe(false);
+  });
+
   it("records Hermes reply draft edits when saving the composed draft", async () => {
     const feedbackCalls: unknown[] = [];
     const store = createStore({
@@ -2718,6 +2787,9 @@ describe("mail compose service", () => {
 function createStore(overrides: Partial<MailComposeStore>): MailComposeStore {
   return {
     async createDraft() {
+      throw new Error("not used");
+    },
+    async listDrafts() {
       throw new Error("not used");
     },
     async updateDraft() {

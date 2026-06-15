@@ -1532,6 +1532,45 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("lists saved compose drafts through the compose route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        accountId: "account 1",
+        items: [
+          {
+            id: "draft_1",
+            accountId: "account 1",
+            to: [{ address: "client@example.com" }],
+            cc: [],
+            bcc: [],
+            subject: "Saved draft",
+            bodyText: "Draft body",
+            status: "draft",
+            source: "manual",
+            createdAt: "2026-06-13T10:00:00.000Z",
+            updatedAt: "2026-06-13T10:05:00.000Z",
+          },
+        ],
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const page = await api.listMailDrafts({
+      accountId: "account 1",
+      limit: 20,
+    });
+
+    expect(page.items[0]).toMatchObject({
+      id: "draft_1",
+      subject: "Saved draft",
+      status: "draft",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account%201/compose/drafts?limit=20",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("uploads compose attachments as raw file bodies", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
