@@ -50,11 +50,16 @@ with more than smoke-level tests.
   native send uses RFC 2822 MIME encoded for `messages.send`; Graph native send
   uses `/me/sendMail`; IMAP native accounts submit through SMTP with
   `smtp_password` preferred over `imap_password`, deterministic Message-ID, Bcc
-  kept in the SMTP envelope, and sanitized provider errors. OAuth authorization
-  and Microsoft refresh scopes include the send scopes needed by these
-  transports. API immediate sends and worker scheduled native sends now detect
-  Gmail/Graph auth, permission, missing refresh credential, rejected OAuth
-  refresh failures, and SMTP password/auth failures, mark the account
+  kept in the SMTP envelope, and sanitized provider errors. After successful
+  SMTP delivery, both API immediate sends and worker scheduled sends now make a
+  best-effort IMAP append into the Sent mailbox using a separate
+  `imap_password` when present, preserving the same Message-ID, Bcc, reply
+  headers, bodies, and attachments in the RFC 822 copy. Sent append failures do
+  not fail the already accepted SMTP send, preventing duplicate retries. OAuth
+  authorization and Microsoft refresh scopes include the send scopes needed by
+  these transports. API immediate sends and worker scheduled native sends now
+  detect Gmail/Graph auth, permission, missing refresh credential, rejected
+  OAuth refresh failures, and SMTP password/auth failures, mark the account
   `reauth_required`, and create or reuse Sync Center reauthorization tasks.
 - Current API send status: API-process immediate sends now have a native
   transport dispatcher. It reads `account_provider_settings.native_provider`,
@@ -84,12 +89,12 @@ with more than smoke-level tests.
   and IMAP envelope/header data. The same metadata is hydrated by worker
   scheduled-send claims, so delayed replies keep threading after retries or
   process restarts.
-- Remaining gap: chunked/object-storage uploads for larger attachments, IMAP
-  Sent folder append, provider-native send-as permission discovery, and deeper
-  command semantics still need focused backend slices and tests before Native
-  Engine can be promoted from parallel track to default path. Native provider
-  APIs do not provide the same idempotency guarantee as EmailEngine's submit
-  endpoint yet.
+- Remaining gap: chunked/object-storage uploads for larger attachments,
+  provider-native send-as permission discovery, deeper command semantics, and
+  live high-volume IMAP/SMTP provider smoke tests still need focused backend
+  slices before Native Engine can be promoted from parallel track to default
+  path. Native provider APIs do not provide the same idempotency guarantee as
+  EmailEngine's submit endpoint yet.
 
 ### 3. Hermes Single AI Entry
 
@@ -226,8 +231,8 @@ with more than smoke-level tests.
    storage uploads, provider-native send-as permission discovery, and
    writing-style feedback for rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
-   GreenMail/high-volume SMTP smoke, Sent-folder append, and tests around
-   QQ/163/custom-domain recovery behavior.
+   GreenMail/high-volume SMTP smoke, and tests around QQ/163/custom-domain
+   recovery behavior.
 3. Keep EmailEngine onboarding and sync center as the primary user path while
    Native Engine continues behind adapter boundaries.
 4. Continue running frontend tests/build, backend tests/build, Docker compose

@@ -37,6 +37,7 @@ import {
   type SmtpSendMail,
   type SmtpSendReauthorizationMarker,
 } from "./smtp-send-transport.js";
+import type { SmtpSentAppender } from "./imap-sent-appender.js";
 import { createGmailReadOnlyAdapter } from "./gmail-readonly-adapter.js";
 import { createGraphReadOnlyAdapter } from "./graph-readonly-adapter.js";
 import {
@@ -67,6 +68,7 @@ export interface ConfiguredNativeSendTransportsOptions
   reauthorizationMarker?: NativeSendReauthorizationMarker;
   smtpReauthorizationMarker?: SmtpSendReauthorizationMarker;
   smtpSendMail?: SmtpSendMail;
+  smtpSentAppender?: SmtpSentAppender;
 }
 
 export function createConfiguredNativeAdapters(
@@ -209,6 +211,9 @@ export function createConfiguredNativeSendTransports(
       secretStore,
       reauthorizationMarker: smtpMarker,
       ...(options.smtpSendMail ? { sendMail: options.smtpSendMail } : {}),
+      ...(options.smtpSentAppender
+        ? { sentAppender: options.smtpSentAppender }
+        : {}),
     }),
   };
 }

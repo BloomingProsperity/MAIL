@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -469,6 +471,7 @@ describe("configured native adapters", () => {
   it("wires IMAP native scheduled sends through SMTP settings and secret refs", async () => {
     const calls: Array<{ query?: string; values?: unknown[] }> = [];
     const sent: unknown[] = [];
+    const appended: unknown[] = [];
     const client = {
       async query(text: string, values?: unknown[]) {
         calls.push({ query: text, values });
@@ -481,6 +484,12 @@ describe("configured native adapters", () => {
                 display_name: "Support",
                 provider: "qq",
                 settings: {
+                  imap: {
+                    host: "imap.qq.com",
+                    port: 993,
+                    secure: true,
+                    username: "support@qq.com",
+                  },
                   smtp: {
                     host: "smtp.qq.com",
                     port: 465,
@@ -489,13 +498,24 @@ describe("configured native adapters", () => {
                   },
                 },
                 secret_ref: "db:smtp_secret",
+                smtp_secret_ref: "db:smtp_secret",
+                imap_secret_ref: "db:imap_secret",
+                sent_mailbox_path: "Sent",
               },
             ],
           };
         }
         if (text.includes("stored_secrets")) {
-          expect(values).toEqual(["db:smtp_secret"]);
-          return { rows: [{ secret_value: "smtp-auth-code" }] };
+          return {
+            rows: [
+              {
+                secret_value:
+                  values?.[0] === "db:imap_secret"
+                    ? "imap-auth-code"
+                    : "smtp-auth-code",
+              },
+            ],
+          };
         }
 
         throw new Error(`unexpected query: ${text}`);
@@ -507,6 +527,11 @@ describe("configured native adapters", () => {
       async smtpSendMail(input) {
         sent.push(input);
         return { messageId: "smtp_msg_1" };
+      },
+      smtpSentAppender: {
+        async appendSentMessage(input) {
+          appended.push(input);
+        },
       },
     });
 
@@ -536,5 +561,18 @@ describe("configured native adapters", () => {
         }),
       }),
     ]);
+    expect(appended).toEqual([
+      expect.objectContaining({
+        secret: "imap-auth-code",
+        raw: expect.any(Buffer),
+        settings: expect.objectContaining({
+          sentMailboxPath: "Sent",
+        }),
+      }),
+    ]);
+    const settingsQuery = calls.find((call) =>
+      call.query?.includes("connected_accounts.email"),
+    );
+    expect(settingsQuery?.query).not.toMatch(/secret_value/i);
   });
 });

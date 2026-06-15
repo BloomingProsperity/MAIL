@@ -38,6 +38,7 @@ import {
   createSmtpNativeSendTransport,
   type SmtpSendMail,
 } from "./smtp-send-transport.js";
+import type { SmtpSentAppender } from "./imap-sent-appender.js";
 
 export type NativeSendProvider = "gmail" | "graph" | "imap";
 
@@ -169,6 +170,7 @@ export function createConfiguredNativeSendTransport(input: {
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
   smtpSendMail?: SmtpSendMail;
+  smtpSentAppender?: SmtpSentAppender;
 }): MailSendTransport {
   const env = input.env ?? process.env;
   const fetchImpl = input.fetchImpl ?? fetch;
@@ -226,6 +228,7 @@ export function createConfiguredNativeSendTransport(input: {
         createId: input.createId,
       }),
       ...(input.smtpSendMail ? { sendMail: input.smtpSendMail } : {}),
+      ...(input.smtpSentAppender ? { sentAppender: input.smtpSentAppender } : {}),
     }),
   });
 }

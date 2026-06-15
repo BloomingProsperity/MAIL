@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
 import nodemailer, { type SendMailOptions } from "nodemailer";
+import type StreamTransport from "nodemailer/lib/stream-transport/index.js";
 
 import type {
   MailAddress,
@@ -9,6 +10,10 @@ import type {
   MailThreading,
 } from "../mail-compose/mail-compose.js";
 import type { Queryable } from "./oauth-access-token.js";
+import {
+  createImapSentAppender,
+  type SmtpSentAppender,
+} from "./imap-sent-appender.js";
 
 export const SMTP_PASSWORD_CREDENTIAL_KIND = "smtp_password";
 export const IMAP_PASSWORD_CREDENTIAL_KIND = "imap_password";
@@ -23,6 +28,9 @@ export interface SmtpAccountSendSettings {
   secure: boolean;
   username: string;
   secretRef?: string;
+  smtpSecretRef?: string;
+  imapSecretRef?: string;
+  sentMailboxPath?: string;
   imap?: SmtpEndpointPublicSettings;
   smtp: SmtpEndpointPublicSettings;
 }
@@ -62,6 +70,9 @@ interface SmtpAccountSettingsRow extends Record<string, unknown> {
   provider: string;
   settings?: unknown;
   secret_ref?: string | null;
+  smtp_secret_ref?: string | null;
+  imap_secret_ref?: string | null;
+  sent_mailbox_path?: string | null;
 }
 
 export function createPostgresSmtpAccountSendSettingsStore(
@@ -77,7 +88,17 @@ export function createPostgresSmtpAccountSendSettingsStore(
             connected_accounts.display_name,
             connected_accounts.provider,
             account_provider_settings.settings,
-            COALESCE(smtp_credential.secret_ref, imap_credential.secret_ref) AS secret_ref
+            COALESCE(smtp_credential.secret_ref, imap_credential.secret_ref) AS secret_ref,
+            smtp_credential.secret_ref AS smtp_secret_ref,
+            imap_credential.secret_ref AS imap_secret_ref,
+            (
+              SELECT mailboxes.provider_mailbox_id
+              FROM mailboxes
+              WHERE mailboxes.account_id = connected_accounts.id
+                AND mailboxes.role = 'sent'
+              ORDER BY mailboxes.name ASC, mailboxes.provider_mailbox_id ASC
+              LIMIT 1
+            ) AS sent_mailbox_path
           FROM connected_accounts
           JOIN account_provider_settings
             ON account_provider_settings.account_id = connected_accounts.id
@@ -211,8 +232,11 @@ export function createSmtpNativeSendTransport(input: {
   secretStore: SecretStore;
   sendMail?: SmtpSendMail;
   reauthorizationMarker?: SmtpSendReauthorizationMarker;
+  sentAppender?: SmtpSentAppender;
+  now?: () => Date;
 }): MailSendTransport {
   const sendMail = input.sendMail ?? sendWithNodemailer;
+  const sentAppender = input.sentAppender ?? createImapSentAppender();
   return {
     async submitMessage(message) {
       const settings = await input.settingsStore.getSettings(message.accountId);
@@ -221,7 +245,8 @@ export function createSmtpNativeSendTransport(input: {
           `native SMTP settings not found for account ${message.accountId}`,
         );
       }
-      if (!settings.secretRef) {
+      const sendSecretRef = smtpSendSecretRef(settings);
+      if (!sendSecretRef) {
         const error = new Error(
           `missing smtp_password or imap_password credential for account ${message.accountId}`,
         );
@@ -232,7 +257,7 @@ export function createSmtpNativeSendTransport(input: {
         throw error;
       }
 
-      const secret = await input.secretStore.getSecret(settings.secretRef);
+      const secret = await input.secretStore.getSecret(sendSecretRef);
       if (secret.trim().length === 0) {
         const error = new Error(
           `empty smtp_password or imap_password secret for account ${message.accountId}`,
@@ -244,12 +269,23 @@ export function createSmtpNativeSendTransport(input: {
         throw error;
       }
 
-      const mail = mailOptions(settings, message);
+      const sentAt = input.now?.() ?? new Date();
+      const mail = mailOptions(settings, message, sentAt);
       try {
         const result = await sendMail({
           settings,
           secret,
           mail,
+        });
+
+        await appendSentAfterSmtpSuccess({
+          sentAppender,
+          secretStore: input.secretStore,
+          settings,
+          sendSecretRef,
+          sendSecret: secret,
+          mail,
+          sentAt,
         });
 
         return {
@@ -265,6 +301,42 @@ export function createSmtpNativeSendTransport(input: {
       }
     },
   };
+}
+
+async function appendSentAfterSmtpSuccess(input: {
+  sentAppender: SmtpSentAppender;
+  secretStore: SecretStore;
+  settings: SmtpAccountSendSettings;
+  sendSecretRef: string;
+  sendSecret: string;
+  mail: SendMailOptions;
+  sentAt: Date;
+}): Promise<void> {
+  if (!input.settings.imap) {
+    return;
+  }
+  const appendSecretRef = smtpSentAppendSecretRef(input.settings);
+  if (!appendSecretRef) {
+    return;
+  }
+
+  try {
+    const appendSecret =
+      appendSecretRef === input.sendSecretRef
+        ? input.sendSecret
+        : await input.secretStore.getSecret(appendSecretRef);
+    if (appendSecret.trim().length === 0) {
+      return;
+    }
+    await input.sentAppender.appendSentMessage({
+      settings: input.settings,
+      secret: appendSecret,
+      raw: await renderRawMessage(input.mail),
+      sentAt: input.sentAt,
+    });
+  } catch {
+    // SMTP already accepted the message; failing here would cause duplicate sends.
+  }
 }
 
 async function sendWithNodemailer(input: {
@@ -289,9 +361,29 @@ async function sendWithNodemailer(input: {
   };
 }
 
+async function renderRawMessage(mail: SendMailOptions): Promise<Buffer> {
+  const transport = nodemailer.createTransport({
+    streamTransport: true,
+    buffer: true,
+    newline: "windows",
+  } satisfies StreamTransport.Options);
+  const result = (await transport.sendMail(
+    mail,
+  )) as StreamTransport.SentMessageInfo;
+  const message = result.message;
+  if (Buffer.isBuffer(message)) {
+    return message;
+  }
+  if (typeof message === "string") {
+    return Buffer.from(message);
+  }
+  throw new Error("SMTP raw message rendering failed");
+}
+
 function mailOptions(
   settings: SmtpAccountSendSettings,
   message: Parameters<MailSendTransport["submitMessage"]>[0],
+  sentAt: Date,
 ): SendMailOptions {
   const headerFrom = message.from ?? {
     address: settings.fromAddress,
@@ -303,6 +395,7 @@ function mailOptions(
     ...(message.cc.length > 0 ? { cc: addressList(message.cc) } : {}),
     ...(message.bcc.length > 0 ? { bcc: addressList(message.bcc) } : {}),
     subject: message.subject,
+    date: sentAt,
     ...(message.bodyText ? { text: message.bodyText } : {}),
     ...(message.bodyHtml ? { html: message.bodyHtml } : {}),
     ...((message.attachments?.length ?? 0) > 0
@@ -355,7 +448,13 @@ function rowToSmtpSettings(
   }
   const imap = endpointSettings(settings.imap);
   const secretRef = readString(row.secret_ref);
+  const smtpSecretRef = readString(row.smtp_secret_ref);
+  const imapSecretRef = readString(row.imap_secret_ref);
   const fromName = readString(row.display_name);
+  const sentMailboxPath =
+    readString(row.sent_mailbox_path) ??
+    readString(recordValue(settings.imap).sentMailboxPath) ??
+    readString(recordValue(recordValue(settings.imap).sent).path);
 
   return {
     accountId: row.account_id,
@@ -367,9 +466,24 @@ function rowToSmtpSettings(
     secure: smtp.secure,
     username: smtp.username,
     ...(secretRef ? { secretRef } : {}),
+    ...(smtpSecretRef ? { smtpSecretRef } : {}),
+    ...(imapSecretRef ? { imapSecretRef } : {}),
+    ...(sentMailboxPath ? { sentMailboxPath } : {}),
     ...(imap ? { imap } : {}),
     smtp,
   };
+}
+
+function smtpSendSecretRef(
+  settings: SmtpAccountSendSettings,
+): string | undefined {
+  return settings.smtpSecretRef ?? settings.secretRef ?? settings.imapSecretRef;
+}
+
+function smtpSentAppendSecretRef(
+  settings: SmtpAccountSendSettings,
+): string | undefined {
+  return settings.imapSecretRef ?? settings.smtpSecretRef ?? settings.secretRef;
 }
 
 function endpointSettings(value: unknown): SmtpEndpointPublicSettings | undefined {
