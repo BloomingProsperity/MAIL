@@ -882,6 +882,80 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText(/回复已发送：draft_1/)).toBeTruthy();
   });
 
+  it("downloads message attachments through the backend blob route", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMessage).mockResolvedValueOnce({
+      id: "message_1",
+      accountId: "account_1",
+      subject: "Live subject",
+      from: { email: "client@example.com", name: "Live Client" },
+      receivedAt: "2026-06-13T10:00:00.000Z",
+      snippet: "Live snippet",
+      unread: true,
+      starred: false,
+      mailboxIds: ["mailbox_inbox"],
+      attachmentCount: 1,
+      classification: {
+        bucket: "P1 Urgent",
+        priorityScore: 96,
+        reasons: ["Direct to you"],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText: "Live body from backend",
+      attachments: [
+        {
+          id: "attachment_1",
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 2048,
+          embedded: false,
+          inline: false,
+        },
+      ],
+    });
+
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    const createObjectUrl = vi.fn(() => "blob:attachment_1");
+    const revokeObjectUrl = vi.fn();
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectUrl,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectUrl,
+    });
+
+    try {
+      render(<App api={api} defaultAccountId="account_1" />);
+      await screen.findByText("proposal.pdf");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Download attachment proposal.pdf" }),
+      );
+
+      await waitFor(() => {
+        expect(api.downloadAttachment).toHaveBeenCalledWith({
+          accountId: "account_1",
+          attachmentId: "attachment_1",
+        });
+      });
+      expect(createObjectUrl).toHaveBeenCalledWith(expect.any(Blob));
+      expect(click).toHaveBeenCalled();
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:attachment_1");
+      expect(await screen.findByText(/附件已开始下载：proposal.pdf/)).toBeTruthy();
+    } finally {
+      click.mockRestore();
+      restoreUrlDownloadMethod("createObjectURL", originalCreateObjectUrl);
+      restoreUrlDownloadMethod("revokeObjectURL", originalRevokeObjectUrl);
+    }
+  });
+
   it("uses Hermes to draft a reply into the composer", async () => {
     const api = createApiFixture();
 
@@ -2132,6 +2206,11 @@ function createApiFixture(): EmailHubApi {
       bodyText: "Live body from backend",
       attachments: [],
     })),
+    downloadAttachment: vi.fn(async () => ({
+      blob: new Blob(["proposal"], { type: "application/pdf" }),
+      filename: "proposal.pdf",
+      contentType: "application/pdf",
+    })),
     applyMailAction: vi.fn(async (input) => ({
       accountId: input.accountId,
       messageId: input.messageId,
@@ -2783,6 +2862,24 @@ function createApiFixture(): EmailHubApi {
       }),
     ),
   };
+}
+
+function restoreUrlDownloadMethod(
+  method: "createObjectURL" | "revokeObjectURL",
+  original:
+    | typeof URL.createObjectURL
+    | typeof URL.revokeObjectURL
+    | undefined,
+): void {
+  if (original) {
+    Object.defineProperty(URL, method, {
+      configurable: true,
+      value: original,
+    });
+    return;
+  }
+
+  Reflect.deleteProperty(URL, method);
 }
 
 function mailProviderCapabilityFixture(

@@ -94,6 +94,12 @@ export interface AttachmentDto {
   inline: boolean;
 }
 
+export interface AttachmentDownload {
+  blob: Blob;
+  filename: string;
+  contentType: string;
+}
+
 export interface MessageDetailDto extends MessageListItemDto {
   to: string[];
   cc: string[];
@@ -930,6 +936,10 @@ export interface EmailHubApi {
     accountId: string;
     messageId: string;
   }): Promise<MessageDetailDto>;
+  downloadAttachment(input: {
+    accountId: string;
+    attachmentId: string;
+  }): Promise<AttachmentDownload>;
   applyMailAction(input: {
     accountId: string;
     messageId: string;
@@ -1248,6 +1258,14 @@ export function createEmailHubApi(
         fetchImpl,
         baseUrl,
         `/api/accounts/${encodePath(input.accountId)}/messages/${encodePath(input.messageId)}`,
+      );
+    },
+
+    downloadAttachment(input) {
+      return downloadBlob(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/attachments/${encodePath(input.attachmentId)}/download`,
       );
     },
 
@@ -1827,6 +1845,33 @@ async function request<T>(
   return payload as T;
 }
 
+async function downloadBlob(
+  fetchImpl: typeof fetch,
+  baseUrl: string,
+  path: string,
+): Promise<AttachmentDownload> {
+  const response = await fetchImpl(`${baseUrl}${path}`, { method: "GET" });
+  if (!response.ok) {
+    const payload = await readErrorPayload(response);
+    throw new ApiRequestError(
+      response.status,
+      typeof payload?.error === "string" ? payload.error : "request_failed",
+    );
+  }
+
+  const blob = await response.blob();
+  return {
+    blob,
+    filename:
+      parseContentDispositionFilename(response.headers.get("content-disposition")) ??
+      "attachment",
+    contentType:
+      response.headers.get("content-type") ??
+      blob.type ??
+      "application/octet-stream",
+  };
+}
+
 async function readJson(response: Response): Promise<Record<string, unknown> | undefined> {
   const text = await response.text();
   if (!text) {
@@ -1834,6 +1879,52 @@ async function readJson(response: Response): Promise<Record<string, unknown> | u
   }
 
   return JSON.parse(text) as Record<string, unknown>;
+}
+
+async function readErrorPayload(
+  response: Response,
+): Promise<Record<string, unknown> | undefined> {
+  try {
+    return await readJson(response);
+  } catch {
+    return undefined;
+  }
+}
+
+function parseContentDispositionFilename(header: string | null): string | undefined {
+  if (!header) {
+    return undefined;
+  }
+
+  const parts = header.split(";").map((part) => part.trim());
+  const extended = parts.find((part) =>
+    part.toLowerCase().startsWith("filename*="),
+  );
+  if (extended) {
+    const value = unquoteHeaderValue(extended.slice(extended.indexOf("=") + 1));
+    const encoded = value.includes("''") ? value.slice(value.indexOf("''") + 2) : value;
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  }
+
+  const plain = parts.find((part) => part.toLowerCase().startsWith("filename="));
+  if (!plain) {
+    return undefined;
+  }
+
+  return unquoteHeaderValue(plain.slice(plain.indexOf("=") + 1));
+}
+
+function unquoteHeaderValue(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+    return trimmed.slice(1, -1).replace(/\\"/g, "\"");
+  }
+
+  return trimmed;
 }
 
 function actionBody(input: {

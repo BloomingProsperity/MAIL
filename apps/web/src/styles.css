@@ -1152,6 +1152,25 @@ h2 {
   border-bottom: 0;
 }
 
+.attachment-row > div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.attachment-row strong,
+.attachment-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-download-button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 .reply-composer {
   display: grid;
   gap: 7px;

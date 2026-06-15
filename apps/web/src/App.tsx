@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Download,
   FileText,
   Inbox,
   Mail,
@@ -21,6 +22,8 @@ import {
   Trash2
 } from "lucide-react";
 import type {
+  AttachmentDownload,
+  AttachmentDto,
   DomainAliasDto,
   DomainDeliveryLogDto,
   DomainDestinationDto,
@@ -78,6 +81,10 @@ type QuickReplyAction = {
 
 const MAX_COMPOSE_ATTACHMENTS = 20;
 const MAX_COMPOSE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const PREVIEW_ATTACHMENT_ROWS = [
+  { name: "Q2_合作方案_最终版.pdf", size: "1.2 MB" },
+  { name: "报价明细表.xlsx", size: "320 KB" },
+];
 
 type AddMailProviderGroupId =
   | "gmail"
@@ -1178,6 +1185,10 @@ function MailWorkspace(props: {
   const [outboxItems, setOutboxItems] = useState<ScheduledSendDto[]>([]);
   const [outboxBusyId, setOutboxBusyId] = useState<string | undefined>();
   const [outboxNotice, setOutboxNotice] = useState("");
+  const [attachmentDownloadBusyId, setAttachmentDownloadBusyId] = useState<
+    string | undefined
+  >();
+  const [attachmentDownloadNotice, setAttachmentDownloadNotice] = useState("");
   const [rescheduleTimes, setRescheduleTimes] = useState<Record<string, string>>(
     {},
   );
@@ -1187,6 +1198,8 @@ function MailWorkspace(props: {
     setReplyDraftNotice("");
     setReplyHermesSkillRunId(undefined);
     setReplyHermesDraftText(undefined);
+    setAttachmentDownloadBusyId(undefined);
+    setAttachmentDownloadNotice("");
   }, [props.selectedMail.id]);
 
   useEffect(() => {
@@ -1247,6 +1260,7 @@ function MailWorkspace(props: {
     selectedComposeIdentity && !selectedComposeIdentity.isDefault
       ? selectedComposeIdentity.from
       : undefined;
+  const detailAttachments = props.selectedDetail?.attachments;
 
   async function refreshOutbox() {
     if (!props.api) {
@@ -1703,6 +1717,28 @@ function MailWorkspace(props: {
       setOutboxNotice("取消定时发送失败，请稍后再试。");
     } finally {
       setOutboxBusyId(undefined);
+    }
+  }
+
+  async function downloadMessageAttachment(attachment: AttachmentDto) {
+    if (!props.api) {
+      setAttachmentDownloadNotice("附件下载服务暂时不可用。");
+      return;
+    }
+
+    setAttachmentDownloadBusyId(attachment.id);
+    setAttachmentDownloadNotice("");
+    try {
+      const download = await props.api.downloadAttachment({
+        accountId: props.accountId,
+        attachmentId: attachment.id,
+      });
+      saveAttachmentDownload(download, attachment.filename);
+      setAttachmentDownloadNotice(`附件已开始下载：${attachment.filename}`);
+    } catch {
+      setAttachmentDownloadNotice(`附件下载失败：${attachment.filename}`);
+    } finally {
+      setAttachmentDownloadBusyId(undefined);
     }
   }
 
@@ -2283,27 +2319,45 @@ function MailWorkspace(props: {
 
             <div className="attachment-box">
               <div className="attachment-head">
-                <strong>{props.selectedDetail?.attachments.length ?? 2} 个附件</strong>
+                <strong>
+                  {detailAttachments?.length ?? PREVIEW_ATTACHMENT_ROWS.length} 个附件
+                </strong>
                 <Paperclip size={17} />
               </div>
-              {(props.selectedDetail?.attachments.length
-                ? props.selectedDetail.attachments.map((attachment) => ({
-                    name: attachment.filename,
-                    size: `${Math.ceil(attachment.byteSize / 1024)} KB`
-                  }))
-                : [
-                    { name: "Q2_合作方案_最终版.pdf", size: "1.2 MB" },
-                    { name: "报价明细表.xlsx", size: "320 KB" }
-                  ]
-              ).map((attachment) => (
-                <div className="attachment-row" key={attachment.name}>
-                  <FileText size={18} />
-                  <div>
-                    <strong>{attachment.name}</strong>
-                    <span>{attachment.size}</span>
-                  </div>
+              {attachmentDownloadNotice ? (
+                <div className="backend-notice compact" role="status">
+                  {attachmentDownloadNotice}
                 </div>
-              ))}
+              ) : null}
+              {detailAttachments
+                ? detailAttachments.map((attachment) => (
+                    <div className="attachment-row" key={attachment.id}>
+                      <FileText size={18} />
+                      <div>
+                        <strong>{attachment.filename}</strong>
+                        <span>{formatAttachmentSize(attachment.byteSize)}</span>
+                      </div>
+                      <button
+                        className="icon-button attachment-download-button"
+                        type="button"
+                        aria-label={`Download attachment ${attachment.filename}`}
+                        title={`Download ${attachment.filename}`}
+                        disabled={attachmentDownloadBusyId === attachment.id}
+                        onClick={() => void downloadMessageAttachment(attachment)}
+                      >
+                        <Download size={16} />
+                      </button>
+                    </div>
+                  ))
+                : PREVIEW_ATTACHMENT_ROWS.map((attachment) => (
+                    <div className="attachment-row" key={attachment.name}>
+                      <FileText size={18} />
+                      <div>
+                        <strong>{attachment.name}</strong>
+                        <span>{attachment.size}</span>
+                      </div>
+                    </div>
+                  ))}
             </div>
 
             <div className="reply-composer">
@@ -5049,6 +5103,27 @@ function fileToBase64WithReader(file: File): Promise<string> {
     };
     reader.readAsDataURL(file);
   });
+}
+
+function saveAttachmentDownload(
+  download: AttachmentDownload,
+  fallbackFilename: string,
+): void {
+  const objectUrl = URL.createObjectURL(download.blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = sanitizeDownloadFilename(download.filename, fallbackFilename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+function sanitizeDownloadFilename(filename: string, fallbackFilename: string): string {
+  const safeName = (filename || fallbackFilename || "attachment")
+    .replace(/[\\/\0\r\n]/g, "_")
+    .trim();
+  return safeName || "attachment";
 }
 
 function formatAttachmentSize(byteSize: number): string {

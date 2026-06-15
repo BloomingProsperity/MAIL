@@ -1563,6 +1563,36 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("downloads message attachments as blobs with server filenames", async () => {
+    const attachmentBlob = new Blob(["hello attachment"], { type: "text/plain" });
+    const fetchMock = vi.fn(async () =>
+      ({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "text/plain",
+          "content-disposition":
+            "attachment; filename*=UTF-8''proposal%20final.txt",
+        }),
+        blob: vi.fn(async () => attachmentBlob),
+      }) as unknown as Response,
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const download = await api.downloadAttachment({
+      accountId: "account 1",
+      attachmentId: "attachment/1",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account%201/attachments/attachment%2F1/download",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(download.filename).toBe("proposal final.txt");
+    expect(download.contentType).toBe("text/plain");
+    expect(download.blob).toBe(attachmentBlob);
+  });
+
   it("creates compose seeds and previews drafts through compose routes", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/accounts/account_1/messages/message_1/compose/reply-all") {
