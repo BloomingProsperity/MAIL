@@ -162,6 +162,12 @@ with more than smoke-level tests.
   and `/api/hermes/skills/translate_text/run`. Both actions use the app-owned
   message body, selected message id, and global memory scope, then render
   read-only preview blocks above the original message body.
+- Current memory-management status: Settings now exposes the app-owned Hermes
+  learning records. The frontend lists records through
+  `/api/hermes/memories`, supports layer/scope/limit filtering, validates JSON
+  object content and `0..1` confidence before saving, updates records through
+  `PATCH /api/hermes/memories/:id`, and requires a second click before
+  permanent deletion through `DELETE /api/hermes/memories/:id`.
 
 ### 4. Mail Organization
 

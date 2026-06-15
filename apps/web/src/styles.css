@@ -1804,6 +1804,13 @@ h2 {
   padding: 12px;
 }
 
+.settings-subpanel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 12px;
+}
+
 .settings-panel-head {
   display: flex;
   align-items: center;
@@ -1854,6 +1861,99 @@ h2 {
 .settings-module select:focus {
   border-color: var(--primary-border);
   box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.memory-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) 96px;
+  gap: 10px;
+}
+
+.memory-filter-grid label,
+.hermes-memory-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.memory-filter-grid input,
+.hermes-memory-card input,
+.hermes-memory-card textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font: inherit;
+  outline: 0;
+}
+
+.memory-filter-grid input,
+.hermes-memory-card input {
+  height: 36px;
+  padding: 0 10px;
+}
+
+.hermes-memory-card textarea {
+  min-height: 118px;
+  resize: vertical;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.memory-filter-grid input:focus,
+.hermes-memory-card input:focus,
+.hermes-memory-card textarea:focus {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.hermes-memory-list {
+  display: grid;
+  gap: 10px;
+}
+
+.hermes-memory-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--bg-panel);
+}
+
+.hermes-memory-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hermes-memory-meta div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.hermes-memory-meta span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.ghost-button.danger {
+  border-color: var(--danger-soft);
+  color: var(--danger);
+}
+
+.ghost-button.danger:hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .domain-command {
@@ -2425,6 +2525,7 @@ h2 {
   .alias-form-grid,
   .migration-summary-grid,
   .mode-grid,
+  .memory-filter-grid,
   .reauthorization-form,
   .reauthorization-endpoints {
     grid-template-columns: 1fr;

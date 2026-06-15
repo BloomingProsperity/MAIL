@@ -537,6 +537,97 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("访问密钥已清除。")).toBeTruthy();
   });
 
+  it("lets users review, edit, and delete Hermes memories from Settings", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    expect(await screen.findByText("写作风格")).toBeTruthy();
+    expect(screen.getByDisplayValue(/Keep replies concise/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Hermes memory content memory_1"), {
+      target: {
+        value: JSON.stringify({ preference: "Use crisp executive summaries." }, null, 2),
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Hermes memory confidence memory_1"), {
+      target: { value: "0.91" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存学习记录" }));
+
+    await waitFor(() => {
+      expect(api.updateHermesMemory).toHaveBeenCalledWith({
+        id: "memory_1",
+        content: { preference: "Use crisp executive summaries." },
+        confidence: 0.91,
+      });
+    });
+    expect(await screen.findByText("Hermes 学习记录已保存。")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "准备删除" }));
+    expect(await screen.findByText("再次点击确认删除 写作风格。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(api.deleteHermesMemory).toHaveBeenCalledWith({ id: "memory_1" });
+    });
+    expect(await screen.findByText("Hermes 学习记录已删除。")).toBeTruthy();
+  });
+
+  it("filters Hermes memories without saving runtime settings", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+    expect(await screen.findByText("写作风格")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Hermes memory layer filter"), {
+      target: { value: " procedural_memory " },
+    });
+    fireEvent.change(screen.getByLabelText("Hermes memory scope filter"), {
+      target: { value: " sender:team@example.com " },
+    });
+    fireEvent.change(screen.getByLabelText("Hermes memory limit"), {
+      target: { value: "150" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "刷新学习记录" }));
+
+    await waitFor(() => {
+      expect(api.listHermesMemories).toHaveBeenLastCalledWith({
+        layer: "procedural_memory",
+        scope: "sender:team@example.com",
+        limit: 100,
+      });
+    });
+    expect(api.updateHermesRuntimeSettings).not.toHaveBeenCalled();
+  });
+
+  it("validates Hermes memory JSON before saving", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+    expect(await screen.findByText("写作风格")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Hermes memory content memory_1"), {
+      target: { value: "[]" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存学习记录" }));
+
+    expect(await screen.findByText("学习内容必须是 JSON 对象。")).toBeTruthy();
+    expect(api.updateHermesMemory).not.toHaveBeenCalled();
+  });
+
   it("loads Hermes model interfaces from the backend catalog before saving", async () => {
     const api = createApiFixture();
 
@@ -4027,6 +4118,31 @@ function createApiFixture(): EmailHubApi {
       updateChannel: "stable" as const,
       lastCheckedAt: "2026-06-14T08:05:00.000Z",
     })),
+    listHermesMemories: vi.fn(async () => ({
+      items: [
+        {
+          id: "memory_1",
+          layer: "writing_style_profile",
+          scope: "global",
+          content: {
+            preference: "Keep replies concise.",
+          },
+          confidence: 0.82,
+          createdAt: "2026-06-14T08:00:00.000Z",
+          updatedAt: "2026-06-14T09:00:00.000Z",
+        },
+      ],
+    })),
+    updateHermesMemory: vi.fn(async (input) => ({
+      id: input.id,
+      layer: "writing_style_profile",
+      scope: "global",
+      content: input.content ?? { preference: "Keep replies concise." },
+      confidence: input.confidence ?? 0.82,
+      createdAt: "2026-06-14T08:00:00.000Z",
+      updatedAt: "2026-06-14T10:00:00.000Z",
+    })),
+    deleteHermesMemory: vi.fn(async () => undefined),
     previewAccountCsv: vi.fn(async () => ({
       summary: {
         totalRows: 3,

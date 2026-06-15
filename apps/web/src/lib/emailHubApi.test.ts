@@ -595,6 +595,79 @@ describe("emailHubApi", () => {
     });
   });
 
+  it("manages Hermes memories through backend routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "memory_1",
+              layer: "writing_style_profile",
+              scope: "global",
+              content: { preference: "short replies" },
+              confidence: 0.75,
+              createdAt: "2026-06-14T08:00:00.000Z",
+              updatedAt: "2026-06-14T09:00:00.000Z",
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "memory_1",
+          layer: "writing_style_profile",
+          scope: "global",
+          content: { preference: "crisp replies" },
+          confidence: 0.9,
+          createdAt: "2026-06-14T08:00:00.000Z",
+          updatedAt: "2026-06-14T10:00:00.000Z",
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const page = await api.listHermesMemories({
+      layer: " writing_style_profile ",
+      scope: " global ",
+      limit: 25,
+    });
+    const updated = await api.updateHermesMemory({
+      id: "memory_1",
+      content: { preference: "crisp replies" },
+      confidence: 0.9,
+    });
+    await api.deleteHermesMemory({ id: "memory_1" });
+
+    expect(page.items[0]).toMatchObject({
+      id: "memory_1",
+      layer: "writing_style_profile",
+      confidence: 0.75,
+    });
+    expect(updated.content).toEqual({ preference: "crisp replies" });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/hermes/memories?layer=writing_style_profile&scope=global&limit=25",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/hermes/memories/memory_1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          content: { preference: "crisp replies" },
+          confidence: 0.9,
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/hermes/memories/memory_1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
   it("posts Spark done and undo actions through the backend action route", async () => {
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>
       jsonResponse({

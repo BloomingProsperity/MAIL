@@ -40,6 +40,7 @@ import type {
   GatekeeperSenderDto,
   HermesEmailSearchQaResult,
   HermesFollowupTrackerResult,
+  HermesMemoryDto,
   HermesQuickReplyScenario,
   HermesProviderCatalogItem,
   HermesProviderProbeMissing,
@@ -4666,6 +4667,36 @@ function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string
   return fields.map((field) => labels[field]).join("、");
 }
 
+function formatHermesMemoryLayer(layer: string) {
+  const labels: Record<string, string> = {
+    writing_style_profile: "写作风格",
+    contact_memory: "联系人偏好",
+    procedural_memory: "处理规则",
+    semantic_profile: "语义偏好",
+  };
+  return labels[layer] ?? layer;
+}
+
+function formatHermesMemoryContent(content: Record<string, unknown>) {
+  return JSON.stringify(content, null, 2);
+}
+
+function parseHermesMemoryContent(value: string): Record<string, unknown> {
+  const parsed = JSON.parse(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Hermes memory content must be an object.");
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
+function parseHermesMemoryConfidence(value: string): number | undefined {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1
+    ? parsed
+    : undefined;
+}
+
 function formatSyncStateLabel(state: string) {
   if (state === "paused") {
     return "已暂停";
@@ -6038,6 +6069,301 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi }) {
             </div>
           </article>
         ))}
+      </div>
+
+      <HermesMemoryManagerPanel api={props.api} />
+    </section>
+  );
+}
+
+function HermesMemoryManagerPanel(props: { api?: EmailHubApi }) {
+  const previewMemories: HermesMemoryDto[] = [
+    {
+      id: "preview-writing-style",
+      layer: "writing_style_profile",
+      scope: "global",
+      content: {
+        preference: "Keep replies concise, warm, and action-oriented.",
+      },
+      confidence: 0.82,
+      createdAt: "2026-06-15T08:00:00.000Z",
+      updatedAt: "2026-06-15T09:00:00.000Z",
+    },
+  ];
+  const [memories, setMemories] = useState<HermesMemoryDto[]>([]);
+  const [memoryEdits, setMemoryEdits] = useState<
+    Record<string, { contentText: string; confidenceText: string }>
+  >({});
+  const [memoryLayerFilter, setMemoryLayerFilter] = useState("");
+  const [memoryScopeFilter, setMemoryScopeFilter] = useState("");
+  const [memoryLimit, setMemoryLimit] = useState("50");
+  const [memoryNotice, setMemoryNotice] = useState("正在读取 Hermes 学习记录...");
+  const [busyMemoryId, setBusyMemoryId] = useState("");
+  const [pendingDeleteMemoryId, setPendingDeleteMemoryId] = useState("");
+
+  function syncMemoryEdits(nextMemories: HermesMemoryDto[]) {
+    setMemoryEdits(
+      Object.fromEntries(
+        nextMemories.map((memory) => [
+          memory.id,
+          {
+            contentText: formatHermesMemoryContent(memory.content),
+            confidenceText: String(memory.confidence),
+          },
+        ]),
+      ),
+    );
+  }
+
+  async function loadMemories() {
+    const limit = Number.parseInt(memoryLimit, 10);
+    const safeLimit = Number.isInteger(limit) && limit >= 1 ? Math.min(limit, 100) : 50;
+
+    if (!props.api) {
+      setMemories(previewMemories);
+      syncMemoryEdits(previewMemories);
+      setMemoryNotice("本地预览学习记录，连接后会读取真实 Hermes 学习记录。");
+      return;
+    }
+
+    setMemoryNotice("正在读取 Hermes 学习记录...");
+    try {
+      const page = await props.api.listHermesMemories({
+        ...(memoryLayerFilter.trim() ? { layer: memoryLayerFilter.trim() } : {}),
+        ...(memoryScopeFilter.trim() ? { scope: memoryScopeFilter.trim() } : {}),
+        limit: safeLimit,
+      });
+      setMemories(page.items);
+      syncMemoryEdits(page.items);
+      setPendingDeleteMemoryId("");
+      setMemoryNotice(
+        page.items.length === 0
+          ? "没有匹配的 Hermes 学习记录。"
+          : `已读取 ${page.items.length} 条 Hermes 学习记录。`,
+      );
+    } catch {
+      setMemoryNotice("Hermes 学习记录暂时不可用。");
+    }
+  }
+
+  useEffect(() => {
+    void loadMemories();
+    // Filters are applied by the explicit refresh button to avoid reloading while typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.api]);
+
+  function updateMemoryEdit(
+    memory: HermesMemoryDto,
+    patch: Partial<{ contentText: string; confidenceText: string }>,
+  ) {
+    setMemoryEdits((current) => ({
+      ...current,
+      [memory.id]: {
+        contentText:
+          current[memory.id]?.contentText ??
+          formatHermesMemoryContent(memory.content),
+        confidenceText:
+          current[memory.id]?.confidenceText ?? String(memory.confidence),
+        ...patch,
+      },
+    }));
+  }
+
+  async function saveMemory(memory: HermesMemoryDto) {
+    const edit = memoryEdits[memory.id] ?? {
+      contentText: formatHermesMemoryContent(memory.content),
+      confidenceText: String(memory.confidence),
+    };
+    let content;
+    try {
+      content = parseHermesMemoryContent(edit.contentText);
+    } catch {
+      setMemoryNotice("学习内容必须是 JSON 对象。");
+      return;
+    }
+
+    const confidence = parseHermesMemoryConfidence(edit.confidenceText);
+    if (confidence === undefined) {
+      setMemoryNotice("置信度必须在 0 到 1 之间。");
+      return;
+    }
+
+    if (!props.api) {
+      setMemories((current) =>
+        current.map((item) =>
+          item.id === memory.id
+            ? {
+                ...item,
+                content,
+                confidence,
+                updatedAt: new Date().toISOString(),
+              }
+            : item,
+        ),
+      );
+      setMemoryNotice("预览学习记录已更新。");
+      return;
+    }
+
+    setBusyMemoryId(memory.id);
+    setMemoryNotice("正在保存 Hermes 学习记录...");
+    try {
+      const saved = await props.api.updateHermesMemory({
+        id: memory.id,
+        content,
+        confidence,
+      });
+      setMemories((current) =>
+        current.map((item) => (item.id === saved.id ? saved : item)),
+      );
+      updateMemoryEdit(saved, {
+        contentText: formatHermesMemoryContent(saved.content),
+        confidenceText: String(saved.confidence),
+      });
+      setMemoryNotice("Hermes 学习记录已保存。");
+    } catch {
+      setMemoryNotice("保存 Hermes 学习记录失败。");
+    } finally {
+      setBusyMemoryId("");
+    }
+  }
+
+  async function deleteMemory(memory: HermesMemoryDto) {
+    if (pendingDeleteMemoryId !== memory.id) {
+      setPendingDeleteMemoryId(memory.id);
+      setMemoryNotice(`再次点击确认删除 ${formatHermesMemoryLayer(memory.layer)}。`);
+      return;
+    }
+
+    if (!props.api) {
+      setMemories((current) => current.filter((item) => item.id !== memory.id));
+      setPendingDeleteMemoryId("");
+      setMemoryNotice("预览学习记录已删除。");
+      return;
+    }
+
+    setBusyMemoryId(memory.id);
+    setMemoryNotice("正在删除 Hermes 学习记录...");
+    try {
+      await props.api.deleteHermesMemory({ id: memory.id });
+      setMemories((current) => current.filter((item) => item.id !== memory.id));
+      setPendingDeleteMemoryId("");
+      setMemoryNotice("Hermes 学习记录已删除。");
+    } catch {
+      setMemoryNotice("删除 Hermes 学习记录失败。");
+    } finally {
+      setBusyMemoryId("");
+    }
+  }
+
+  return (
+    <section className="settings-subpanel" aria-label="Hermes 学习记录">
+      <header className="settings-panel-head">
+        <div>
+          <h3>学习记录</h3>
+          <p>查看、修正或删除 Hermes 用来适配你写作和整理习惯的记忆。</p>
+        </div>
+        <button className="ghost-button" type="button" onClick={() => void loadMemories()}>
+          刷新学习记录
+        </button>
+      </header>
+
+      <div className="memory-filter-grid">
+        <label>
+          <span>层级</span>
+          <input
+            aria-label="Hermes memory layer filter"
+            value={memoryLayerFilter}
+            onChange={(event) => setMemoryLayerFilter(event.target.value)}
+            placeholder="writing_style_profile"
+          />
+        </label>
+        <label>
+          <span>作用域</span>
+          <input
+            aria-label="Hermes memory scope filter"
+            value={memoryScopeFilter}
+            onChange={(event) => setMemoryScopeFilter(event.target.value)}
+            placeholder="global"
+          />
+        </label>
+        <label>
+          <span>数量</span>
+          <input
+            aria-label="Hermes memory limit"
+            inputMode="numeric"
+            value={memoryLimit}
+            onChange={(event) => setMemoryLimit(event.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="backend-notice compact" role="status">
+        {memoryNotice}
+      </div>
+
+      <div className="hermes-memory-list">
+        {memories.map((memory) => {
+          const edit = memoryEdits[memory.id] ?? {
+            contentText: formatHermesMemoryContent(memory.content),
+            confidenceText: String(memory.confidence),
+          };
+          const isBusy = busyMemoryId === memory.id;
+          return (
+            <article className="hermes-memory-card" key={memory.id}>
+              <div className="hermes-memory-meta">
+                <div>
+                  <strong>{formatHermesMemoryLayer(memory.layer)}</strong>
+                  <span>作用域 {memory.scope}</span>
+                </div>
+                <span>{formatMailDate(memory.updatedAt)}</span>
+              </div>
+              <label>
+                <span>内容 JSON</span>
+                <textarea
+                  aria-label={`Hermes memory content ${memory.id}`}
+                  value={edit.contentText}
+                  onChange={(event) =>
+                    updateMemoryEdit(memory, {
+                      contentText: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label>
+                <span>置信度</span>
+                <input
+                  aria-label={`Hermes memory confidence ${memory.id}`}
+                  inputMode="decimal"
+                  value={edit.confidenceText}
+                  onChange={(event) =>
+                    updateMemoryEdit(memory, {
+                      confidenceText: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <div className="inline-actions">
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void saveMemory(memory)}
+                >
+                  保存学习记录
+                </button>
+                <button
+                  className="ghost-button danger"
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void deleteMemory(memory)}
+                >
+                  {pendingDeleteMemoryId === memory.id ? "确认删除" : "准备删除"}
+                </button>
+              </div>
+            </article>
+          );
+        })}
       </div>
     </section>
   );

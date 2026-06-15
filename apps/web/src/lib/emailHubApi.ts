@@ -321,6 +321,28 @@ export interface HermesRuntimeVersionStatus {
   lastCheckedAt?: string;
 }
 
+export interface HermesMemoryDto {
+  id: string;
+  layer: string;
+  scope: string;
+  content: Record<string, unknown>;
+  confidence: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HermesMemoryListInput {
+  layer?: string;
+  scope?: string;
+  limit?: number;
+}
+
+export interface HermesMemoryUpdateInput {
+  id: string;
+  content?: Record<string, unknown>;
+  confidence?: number;
+}
+
 export interface HermesEmailSearchQaInput {
   accountId: string;
   mailboxId?: string;
@@ -1190,6 +1212,9 @@ export interface EmailHubApi {
   testHermesRuntimeConnection(): Promise<HermesRuntimeTestResult>;
   getHermesRuntimeVersion(): Promise<HermesRuntimeVersionStatus>;
   checkHermesRuntimeUpdate(): Promise<HermesRuntimeVersionStatus>;
+  listHermesMemories(input?: HermesMemoryListInput): Promise<Page<HermesMemoryDto>>;
+  updateHermesMemory(input: HermesMemoryUpdateInput): Promise<HermesMemoryDto>;
+  deleteHermesMemory(input: { id: string }): Promise<void>;
   searchMailWithHermes(
     input: HermesEmailSearchQaInput,
   ): Promise<HermesEmailSearchQaResult>;
@@ -1739,6 +1764,47 @@ export function createEmailHubApi(
       return request(fetchImpl, baseUrl, "/api/hermes/runtime/update/check", {
         method: "POST",
       });
+    },
+
+    listHermesMemories(input = {}) {
+      const params = new URLSearchParams();
+      appendParam(params, "layer", input.layer?.trim() || undefined);
+      appendParam(params, "scope", input.scope?.trim() || undefined);
+      if (input.limit !== undefined) {
+        params.set("limit", String(input.limit));
+      }
+      const query = params.toString();
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/memories${query ? `?${query}` : ""}`,
+      );
+    },
+
+    updateHermesMemory(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/memories/${encodePath(input.id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(
+            cleanObject({
+              content: input.content,
+              confidence: input.confidence,
+            }),
+          ),
+        },
+      );
+    },
+
+    deleteHermesMemory(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/memories/${encodePath(input.id)}`,
+        { method: "DELETE" },
+      );
     },
 
     searchMailWithHermes(input) {
