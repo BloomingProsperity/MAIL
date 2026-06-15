@@ -24,6 +24,7 @@ import {
 import {
   createGmailNativeSendTransport,
   createGraphNativeSendTransport,
+  createPostgresGraphSendTargetResolver,
 } from "./native-send-transport.js";
 import {
   createPostgresNativeSendReauthorizationMarker,
@@ -215,6 +216,9 @@ export function createConfiguredNativeSendTransports(
       provider: "graph",
       marker,
       delegate: createGraphNativeSendTransport({
+        graphSendTargetResolver: createPostgresGraphSendTargetResolver(
+          options.credentialClient,
+        ),
         graph: createGraphApiClient({
           accessTokenProvider: microsoftAccessTokenProvider({
             credentialClient: options.credentialClient,

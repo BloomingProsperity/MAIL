@@ -69,4 +69,42 @@ describe("API provider submit clients", () => {
     });
     expect(calls[0].init?.body).toBe("base64-rfc822-message");
   });
+
+  it("can target a shared mailbox user endpoint for Graph JSON and MIME sends", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createGraphSubmitClient({
+      accessTokenProvider: {
+        async getAccessToken() {
+          return "access-token";
+        },
+      },
+      baseUrl: "https://graph.example/v1.0",
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return new Response(null, { status: 202 });
+      },
+    });
+
+    await client.sendMail({
+      accountId: "acc_1",
+      targetMailbox: "Shared Team@example.com",
+      message: {
+        subject: "Shared mailbox send",
+        body: { contentType: "Text", content: "Looks good." },
+        toRecipients: [{ emailAddress: { address: "lina@example.com" } }],
+      },
+    });
+    await client.sendMail({
+      accountId: "acc_1",
+      targetMailbox: "shared@example.com",
+      mime: "base64-rfc822-message",
+    });
+
+    expect(calls[0].url).toBe(
+      "https://graph.example/v1.0/users/Shared%20Team%40example.com/sendMail",
+    );
+    expect(calls[1].url).toBe(
+      "https://graph.example/v1.0/users/shared%40example.com/sendMail",
+    );
+  });
 });

@@ -35,6 +35,7 @@ export interface GraphMoveMessageInput {
 
 export interface GraphSendMailInput {
   accountId: string;
+  targetMailbox?: string;
   message?: Record<string, unknown>;
   mime?: string;
   saveToSentItems?: boolean;
@@ -195,8 +196,9 @@ export function createGraphApiClient(
     },
 
     sendMail(input) {
+      const url = graphSendMailUrl(baseUrl, input.targetMailbox);
       if (input.mime) {
-        return request<unknown>(input.accountId, `${baseUrl}/me/sendMail`, {
+        return request<unknown>(input.accountId, url, {
           method: "POST",
           rawBody: input.mime,
           contentType: "text/plain",
@@ -207,7 +209,7 @@ export function createGraphApiClient(
         throw new Error("Microsoft Graph sendMail requires a message or MIME body");
       }
 
-      return request<unknown>(input.accountId, `${baseUrl}/me/sendMail`, {
+      return request<unknown>(input.accountId, url, {
         method: "POST",
         body: {
           message: input.message,
@@ -216,6 +218,15 @@ export function createGraphApiClient(
       });
     },
   };
+}
+
+function graphSendMailUrl(baseUrl: string, targetMailbox: string | undefined): string {
+  const normalized = targetMailbox?.trim();
+  if (!normalized) {
+    return `${baseUrl}/me/sendMail`;
+  }
+
+  return `${baseUrl}/users/${encodeURIComponent(normalized)}/sendMail`;
 }
 
 function graphMailFoldersPage(value: unknown): GraphMailFoldersPage {

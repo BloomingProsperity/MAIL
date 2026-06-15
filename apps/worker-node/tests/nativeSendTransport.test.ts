@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createGmailNativeSendTransport,
   createGraphNativeSendTransport,
+  createPostgresGraphSendTargetResolver,
 } from "../src/mail-provider/native-send-transport";
 
 describe("native send transports", () => {
@@ -183,6 +184,97 @@ describe("native send transports", () => {
         saveToSentItems: true,
       },
     ]);
+  });
+
+  it("passes eligible Graph shared sender targets to scheduled sendMail", async () => {
+    const calls: unknown[] = [];
+    const transport = createGraphNativeSendTransport({
+      graphSendTargetResolver: {
+        async resolveTarget(input) {
+          expect(input).toEqual({
+            accountId: "acc_1",
+            from: { address: "shared@example.com", name: "Shared" },
+          });
+          return { targetMailbox: "shared@example.com" };
+        },
+      },
+      graph: {
+        async sendMail(input) {
+          calls.push(input);
+          return {};
+        },
+      },
+    });
+
+    await transport.submitMessage({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+      from: { address: "shared@example.com", name: "Shared" },
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Launch confirmation",
+      bodyText: "Looks good.",
+    });
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        accountId: "acc_1",
+        targetMailbox: "shared@example.com",
+      }),
+    ]);
+  });
+
+  it("resolves scheduled /users Graph targets only when capabilities are eligible", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const resolver = createPostgresGraphSendTargetResolver({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              target_mode: "users",
+              user_endpoint_eligible: "true",
+              target_mailbox: "shared-user-id",
+            },
+          ],
+        };
+      },
+    });
+
+    await expect(
+      resolver.resolveTarget({
+        accountId: "acc_1",
+        from: { address: "shared@example.com" },
+      }),
+    ).resolves.toEqual({ targetMailbox: "shared-user-id" });
+    expect(queries[0].text).toMatch(/sendMailTargetMode/);
+    expect(queries[0].text).toMatch(/userSendMailEligible/);
+    expect(queries[0].values).toEqual(["acc_1", "shared@example.com"]);
+  });
+
+  it("does not upgrade me-verified scheduled Graph senders to /users targets", async () => {
+    const resolver = createPostgresGraphSendTargetResolver({
+      async query() {
+        return {
+          rows: [
+            {
+              target_mode: "me",
+              user_endpoint_eligible: "false",
+              target_mailbox: "shared@example.com",
+            },
+          ],
+        };
+      },
+    });
+
+    await expect(
+      resolver.resolveTarget({
+        accountId: "acc_1",
+        from: { address: "shared@example.com" },
+      }),
+    ).resolves.toEqual({});
   });
 
   it("submits Graph threaded replies as base64 MIME", async () => {

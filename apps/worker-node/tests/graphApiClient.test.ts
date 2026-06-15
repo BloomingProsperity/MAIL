@@ -359,4 +359,33 @@ describe("Microsoft Graph API client", () => {
     });
     expect(calls[0].init?.body).toBe("base64-rfc822-message");
   });
+
+  it("can target a shared mailbox user endpoint for Graph sends", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createGraphApiClient({
+      accessTokenProvider: {
+        async getAccessToken() {
+          return "access-token";
+        },
+      },
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return new Response(null, { status: 202 });
+      },
+      baseUrl: "https://graph.example/v1.0",
+    });
+
+    await client.sendMail({
+      accountId: "acc_1",
+      targetMailbox: "shared@example.com",
+      message: {
+        subject: "Launch confirmation",
+        body: { contentType: "Text", content: "Looks good." },
+      },
+    });
+
+    expect(calls[0].url).toBe(
+      "https://graph.example/v1.0/users/shared%40example.com/sendMail",
+    );
+  });
 });

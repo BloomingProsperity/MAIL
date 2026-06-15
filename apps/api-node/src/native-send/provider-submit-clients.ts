@@ -11,6 +11,7 @@ export interface GmailSubmitClient {
 export interface GraphSubmitClient {
   sendMail(input: {
     accountId: string;
+    targetMailbox?: string;
     message?: Record<string, unknown>;
     mime?: string;
     saveToSentItems?: boolean;
@@ -85,8 +86,9 @@ export function createGraphSubmitClient(input: {
       const token = await input.accessTokenProvider.getAccessToken(
         message.accountId,
       );
+      const url = graphSendMailUrl(baseUrl, message.targetMailbox);
       if (message.mime) {
-        const response = await fetchImpl(`${baseUrl}/me/sendMail`, {
+        const response = await fetchImpl(url, {
           method: "POST",
           headers: {
             authorization: `Bearer ${token}`,
@@ -106,7 +108,7 @@ export function createGraphSubmitClient(input: {
         throw new Error("Microsoft Graph sendMail requires a message or MIME body");
       }
 
-      const response = await fetchImpl(`${baseUrl}/me/sendMail`, {
+      const response = await fetchImpl(url, {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
@@ -125,6 +127,15 @@ export function createGraphSubmitClient(input: {
       return body;
     },
   };
+}
+
+function graphSendMailUrl(baseUrl: string, targetMailbox: string | undefined): string {
+  const normalized = targetMailbox?.trim();
+  if (!normalized) {
+    return `${baseUrl}/me/sendMail`;
+  }
+
+  return `${baseUrl}/users/${encodeURIComponent(normalized)}/sendMail`;
 }
 
 async function readJson(response: Response): Promise<unknown> {

@@ -87,7 +87,15 @@ with more than smoke-level tests.
   From control. Candidates only become selectable From identities after the
   user runs an explicit Graph verification test send and Microsoft Graph
   accepts it; `ErrorSendAsDenied` and other Graph failures mark the candidate
-  failed/disabled. Draft creation, draft updates, scheduling, API immediate
+  failed/disabled. Graph verification records whether the identity was proven
+  through `/me/sendMail` or is explicitly eligible for
+  `/users/{id | userPrincipalName}/sendMail`; API immediate native sends and
+  worker scheduled native sends both re-resolve the current verified provider
+  identity at submit time. They only target `/users/{shared}/sendMail` when the
+  identity capabilities explicitly state `sendMailTargetMode=users`,
+  `userSendMailEligible=true`, and provide a target mailbox id or UPN. Otherwise
+  they keep the safer `/me/sendMail` plus Graph `from` behavior that was
+  actually verified. Draft creation, draft updates, scheduling, API immediate
   send, API send-now, and the worker scheduled-send path re-check the selected
   From address against the current verified identity set before provider
   submission. EmailEngine, native Gmail, native Graph, native SMTP, and
@@ -108,11 +116,12 @@ with more than smoke-level tests.
   scheduled-send claims, so delayed replies keep threading after retries or
   process restarts.
 - Remaining gap: chunked/object-storage uploads for larger attachments, Graph
-  `/users/{shared}/sendMail` Sent Items placement strategy for verified shared
-  mailboxes, deeper command semantics, and live high-volume IMAP/SMTP provider
-  smoke tests still need focused backend slices before Native Engine can be
-  promoted from parallel track to default path. Native provider APIs do not
-  provide the same idempotency guarantee as EmailEngine's submit endpoint yet.
+  `/users/{shared}/sendMail` verification UI/admin workflow for Full Access
+  Sent Items placement, deeper command semantics, and live high-volume
+  IMAP/SMTP provider smoke tests still need focused backend slices before
+  Native Engine can be promoted from parallel track to default path. Native
+  provider APIs do not provide the same idempotency guarantee as EmailEngine's
+  submit endpoint yet.
 
 ### 3. Hermes Single AI Entry
 

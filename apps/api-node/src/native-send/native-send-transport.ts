@@ -47,6 +47,13 @@ export interface NativeAccountSettingsStore {
   getNativeProvider(accountId: string): Promise<NativeSendProvider | undefined>;
 }
 
+export interface GraphSendTargetResolver {
+  resolveTarget(input: {
+    accountId: string;
+    from?: MailAddress;
+  }): Promise<{ targetMailbox?: string }>;
+}
+
 export function createPostgresNativeAccountSettingsStore(
   client: Queryable,
 ): NativeAccountSettingsStore {
@@ -67,11 +74,67 @@ export function createPostgresNativeAccountSettingsStore(
   };
 }
 
+export function createPostgresGraphSendTargetResolver(
+  client: Queryable,
+): GraphSendTargetResolver {
+  return {
+    async resolveTarget(input) {
+      if (!input.from) {
+        return {};
+      }
+
+      const result = await client.query<{
+        target_mode: string | null;
+        user_endpoint_eligible: string | null;
+        target_mailbox: string | null;
+      }>(
+        `
+          SELECT
+            provider_send_identities.capabilities->>'sendMailTargetMode'
+              AS target_mode,
+            provider_send_identities.capabilities->>'userSendMailEligible'
+              AS user_endpoint_eligible,
+            COALESCE(
+              NULLIF(
+                provider_send_identities.capabilities#>>'{targetMailbox,userId}',
+                ''
+              ),
+              NULLIF(
+                provider_send_identities.capabilities#>>'{targetMailbox,userPrincipalName}',
+                ''
+              )
+            ) AS target_mailbox
+          FROM provider_send_identities
+          WHERE provider_send_identities.account_id = $1
+            AND provider_send_identities.provider = 'graph'
+            AND provider_send_identities.enabled = TRUE
+            AND provider_send_identities.verification_state = 'verified'
+            AND lower(provider_send_identities.email) = lower($2)
+          ORDER BY provider_send_identities.updated_at DESC
+          LIMIT 1
+        `,
+        [input.accountId, input.from.address],
+      );
+      const row = result.rows[0];
+      if (
+        row?.target_mode === "users" &&
+        row.user_endpoint_eligible === "true" &&
+        row.target_mailbox
+      ) {
+        return { targetMailbox: row.target_mailbox };
+      }
+
+      return {};
+    },
+  };
+}
+
 export function createNativeSendTransport(input: {
   settingsStore: NativeAccountSettingsStore;
   gmail: GmailSubmitClient;
   graph: GraphSubmitClient;
   smtp: MailSendTransport;
+  graphSendTargetResolver?: GraphSendTargetResolver;
   reauthorizationMarker?: NativeSendReauthorizationMarker;
   createBoundary?: () => string;
 }): MailSendTransport {
@@ -106,6 +169,10 @@ export function createNativeSendTransport(input: {
       }
 
       if (provider === "graph") {
+        const graphTarget = await input.graphSendTargetResolver?.resolveTarget({
+          accountId: message.accountId,
+          ...(message.from ? { from: message.from } : {}),
+        });
         if (hasThreadingHeaders(message.threading) || (message.attachments?.length ?? 0) > 0) {
           await submitWithReauthorizationMarking(
             input.reauthorizationMarker,
@@ -113,6 +180,9 @@ export function createNativeSendTransport(input: {
             () =>
               input.graph.sendMail({
                 accountId: message.accountId,
+                ...(graphTarget?.targetMailbox
+                  ? { targetMailbox: graphTarget.targetMailbox }
+                  : {}),
                 mime: base64(
                   buildMimeMessage({
                     ...message,
@@ -132,6 +202,9 @@ export function createNativeSendTransport(input: {
           () =>
             input.graph.sendMail({
               accountId: message.accountId,
+              ...(graphTarget?.targetMailbox
+                ? { targetMailbox: graphTarget.targetMailbox }
+                : {}),
               message: {
                 subject: message.subject,
                 ...(message.from
@@ -210,6 +283,7 @@ export function createConfiguredNativeSendTransport(input: {
 
   return createNativeSendTransport({
     settingsStore: createPostgresNativeAccountSettingsStore(input.client),
+    graphSendTargetResolver: createPostgresGraphSendTargetResolver(input.client),
     reauthorizationMarker: createPostgresNativeSendReauthorizationMarker({
       client: input.client,
       createId: input.createId,

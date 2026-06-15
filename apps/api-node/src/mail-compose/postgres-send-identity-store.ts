@@ -214,7 +214,7 @@ export function createPostgresSendIdentityStore(
               FALSE,
               jsonb_build_object(
                 'explicitCandidate', TRUE,
-                'verificationMethod', 'graph_test_send',
+                'verificationMethod', 'graph_me_send_mail_from',
                 'requestedAt', $5::text
               ),
               $5::timestamptz,
@@ -323,7 +323,15 @@ export function createPostgresSendIdentityStore(
                 capabilities = CASE
                   WHEN $5::text IS NULL THEN
                     (capabilities - 'verificationError') ||
-                    jsonb_build_object('verifiedAt', $6::text)
+                    jsonb_build_object(
+                      'verifiedAt', $6::text,
+                      'verificationMethod', 'graph_me_send_mail_from',
+                      'verifiedEndpoint', 'me',
+                      'sendMailTargetMode', 'me',
+                      'userSendMailEligible', FALSE,
+                      'requiresFullAccessForUserEndpoint', TRUE,
+                      'sentItemsBehavior', 'signed_in_user'
+                    )
                   ELSE
                     capabilities ||
                     jsonb_build_object(

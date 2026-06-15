@@ -5,6 +5,7 @@ import {
   createGraphSendIdentityVerifier,
   createConfiguredNativeSendTransport,
   createNativeSendTransport,
+  createPostgresGraphSendTargetResolver,
   createPostgresNativeAccountSettingsStore,
 } from "../src/native-send/native-send-transport";
 import { createImapSentAppender } from "../src/native-send/imap-sent-appender";
@@ -270,6 +271,100 @@ describe("API native send transport", () => {
       saveToSentItems: true,
     });
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("uses /users Graph target only when a verified identity is explicitly eligible", async () => {
+    const sendMail = vi.fn(async () => ({}));
+    const transport = createNativeSendTransport({
+      settingsStore: {
+        async getNativeProvider() {
+          return "graph";
+        },
+      },
+      gmail: { sendMessage: vi.fn(async () => ({})) },
+      graph: { sendMail },
+      smtp: noopSmtpTransport(),
+      graphSendTargetResolver: {
+        async resolveTarget(input) {
+          expect(input).toEqual({
+            accountId: "acc_graph",
+            from: { address: "shared@example.com", name: "Shared" },
+          });
+          return { targetMailbox: "shared@example.com" };
+        },
+      },
+    });
+
+    await transport.submitMessage({
+      accountId: "acc_graph",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:send",
+      from: { address: "shared@example.com", name: "Shared" },
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Launch plan",
+      bodyText: "Plain body",
+    });
+
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acc_graph",
+        targetMailbox: "shared@example.com",
+      }),
+    );
+  });
+
+  it("does not upgrade me-verified Graph senders to /users targets", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const resolver = createPostgresGraphSendTargetResolver({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              target_mode: "me",
+              user_endpoint_eligible: "false",
+              target_mailbox: "shared@example.com",
+            },
+          ],
+        };
+      },
+    });
+
+    const result = await resolver.resolveTarget({
+      accountId: "acc_graph",
+      from: { address: "shared@example.com" },
+    });
+
+    expect(result).toEqual({});
+    expect(queries[0].text).toMatch(/sendMailTargetMode/);
+    expect(queries[0].text).toMatch(/userSendMailEligible/);
+    expect(queries[0].text).toMatch(/verification_state = 'verified'/);
+    expect(queries[0].values).toEqual(["acc_graph", "shared@example.com"]);
+  });
+
+  it("resolves /users Graph targets only from eligible verified identities", async () => {
+    const resolver = createPostgresGraphSendTargetResolver({
+      async query() {
+        return {
+          rows: [
+            {
+              target_mode: "users",
+              user_endpoint_eligible: "true",
+              target_mailbox: "shared-user-id",
+            },
+          ],
+        };
+      },
+    });
+
+    await expect(
+      resolver.resolveTarget({
+        accountId: "acc_graph",
+        from: { address: "shared@example.com" },
+      }),
+    ).resolves.toEqual({ targetMailbox: "shared-user-id" });
   });
 
   it("sends Graph threaded replies as base64 MIME with reply headers", async () => {
