@@ -79,8 +79,11 @@ with more than smoke-level tests.
   `In-Reply-To` / `References` headers and Gmail `threadId`, Microsoft Graph
   threaded replies use MIME `/me/sendMail` so standard Internet headers are
   preserved, and IMAP/SMTP sends include sanitized reply headers in
-  Nodemailer. The same metadata is hydrated by worker scheduled-send claims, so
-  delayed replies keep threading after retries or process restarts.
+  Nodemailer. Mirrored messages now persist `In-Reply-To` and the complete RFC
+  `References` chain from EmailEngine, Gmail metadata, Graph Internet headers,
+  and IMAP envelope/header data. The same metadata is hydrated by worker
+  scheduled-send claims, so delayed replies keep threading after retries or
+  process restarts.
 - Remaining gap: rich attachments, IMAP Sent folder append, provider-native
   send-as permission discovery, and deeper command semantics still need focused
   backend slices and tests before Native Engine can be promoted from parallel
@@ -178,16 +181,15 @@ with more than smoke-level tests.
   self identities on reply-all, preserve `source_message_id`, and do not call
   provider transports or persist drafts until the user explicitly saves/sends.
 - Current threaded reply status: saving a reply/reply-all draft resolves the
-  source message's RFC Message-ID and provider refs from the app-owned read
-  model, stores them on the draft, and sends them through EmailEngine, native
-  Gmail, native Graph, or native SMTP. Scheduled send claims hydrate the same
-  `threading` object, so send-now and worker delivery behave the same as
-  immediate API sends.
+  source message's RFC Message-ID, historical `References` chain, and provider
+  refs from the app-owned read model, stores them on the draft, and sends them
+  through EmailEngine, native Gmail, native Graph, or native SMTP. Scheduled
+  send claims hydrate the same `threading` object, so send-now and worker
+  delivery behave the same as immediate API sends.
 - Remaining gap: the current compose panel is intentionally compact; rich
-  editor, attachment upload/forward reattachment, complete historical
-  `References` chain ingestion, provider-native permission discovery for
-  shared mailbox send-as, and Sent-folder provider parity are still separate
-  slices.
+  editor, attachment upload/forward reattachment, provider-native permission
+  discovery for shared mailbox send-as, and Sent-folder provider parity are
+  still separate slices.
 
 ## Product References
 
@@ -202,9 +204,8 @@ with more than smoke-level tests.
 ## Immediate Delivery Order
 
 1. Expand Compose into a full production editor: rich editor, attachment
-   upload/reattachment, complete historical `References` chain ingestion,
-   provider-native send-as permission discovery, and writing-style feedback for
-   rewrite/polish through the single AI entry.
+   upload/reattachment, provider-native send-as permission discovery, and
+   writing-style feedback for rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
    GreenMail/high-volume SMTP smoke, Sent-folder append, and tests around
    QQ/163/custom-domain recovery behavior.

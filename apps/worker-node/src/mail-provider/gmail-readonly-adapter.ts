@@ -54,6 +54,7 @@ export interface GmailReadOnlyClient {
     accountId: string;
     messageId: string;
     format: "metadata" | "full";
+    metadataHeaders?: string[];
   }): Promise<GmailMessageStub>;
   listHistory(input: {
     accountId: string;
@@ -131,6 +132,17 @@ export function createGmailReadOnlyAdapter(
   };
 }
 
+const GMAIL_METADATA_HEADERS = [
+  "Message-ID",
+  "In-Reply-To",
+  "References",
+  "Subject",
+  "From",
+  "To",
+  "Cc",
+  "Date",
+];
+
 function gmailMailbox(
   label: GmailLabelRecord & { id: string },
 ): ProviderMailbox {
@@ -196,6 +208,7 @@ async function bootstrapRecentMessages(input: {
         accountId: input.accountId,
         messageId: message.id,
         format: "metadata",
+        metadataHeaders: GMAIL_METADATA_HEADERS,
       }),
     ),
   );
@@ -309,10 +322,16 @@ async function syncHistory(input: {
         continue;
       }
 
+      const message = await input.gmail.getMessage({
+        accountId: input.accountId,
+        messageId: added.message.id,
+        format: "metadata",
+        metadataHeaders: GMAIL_METADATA_HEADERS,
+      });
       changes.push({
         kind: "message_upserted",
-        identity: gmailIdentity(added.message),
-        raw: added.message,
+        identity: gmailIdentity(message),
+        raw: message,
       });
     }
 

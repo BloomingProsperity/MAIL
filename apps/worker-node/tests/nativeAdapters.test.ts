@@ -173,7 +173,7 @@ describe("configured native adapters", () => {
     );
     expect(calls).toContainEqual(
       expect.objectContaining({
-        url: "https://graph.example/v1.0/me/mailFolders/inbox/messages/delta?%24select=id%2CchangeKey%2CconversationId%2Csubject%2CreceivedDateTime%2Csender%2Cfrom%2CtoRecipients%2CccRecipients%2CbodyPreview%2CisRead%2ChasAttachments",
+        url: "https://graph.example/v1.0/me/mailFolders/inbox/messages/delta?%24select=id%2CchangeKey%2CconversationId%2CinternetMessageId%2CinternetMessageHeaders%2Csubject%2CreceivedDateTime%2Csender%2Cfrom%2CtoRecipients%2CccRecipients%2CbodyPreview%2CisRead%2ChasAttachments",
         init: expect.objectContaining({
           headers: expect.objectContaining({
             Authorization: "Bearer graph-access-token",

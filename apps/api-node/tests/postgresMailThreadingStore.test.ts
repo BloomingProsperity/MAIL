@@ -12,6 +12,11 @@ describe("Postgres mail threading store", () => {
           rows: [
             {
               internet_message_id: "source@example.com",
+              rfc_in_reply_to_message_id: "<parent@example.com>",
+              rfc_references_message_ids: [
+                "<root@example.com>",
+                "<parent@example.com>",
+              ],
               provider_message_id: "provider_msg_1",
               emailengine_email_id: "emailengine_msg_1",
               emailengine_message_id: "emailengine_provider_msg_1",
@@ -39,10 +44,83 @@ describe("Postgres mail threading store", () => {
     expect(threading).toEqual({
       action: "reply_all",
       inReplyTo: "<source@example.com>",
-      references: ["<source@example.com>"],
+      references: [
+        "<root@example.com>",
+        "<parent@example.com>",
+        "<source@example.com>",
+      ],
       emailEngineMessageId: "emailengine_msg_1",
       gmailThreadId: "gmail_thread_1",
       graphMessageId: "graph_msg_1",
+    });
+  });
+
+  it("falls back to In-Reply-To when References is missing", async () => {
+    const store = createPostgresMailThreadingStore({
+      async query() {
+        return {
+          rows: [
+            {
+              internet_message_id: "<source@example.com>",
+              rfc_in_reply_to_message_id: "parent@example.com",
+              rfc_references_message_ids: [],
+              provider_message_id: "provider_msg_1",
+              emailengine_email_id: null,
+              emailengine_message_id: null,
+              gmail_thread_id: null,
+              graph_message_id: null,
+            },
+          ],
+        };
+      },
+    });
+
+    await expect(
+      store.getThreadingMetadata({
+        accountId: "acc_1",
+        messageId: "message_1",
+        action: "reply",
+      }),
+    ).resolves.toMatchObject({
+      inReplyTo: "<source@example.com>",
+      references: ["<parent@example.com>", "<source@example.com>"],
+    });
+  });
+
+  it("deduplicates malformed or injected message-id references", async () => {
+    const store = createPostgresMailThreadingStore({
+      async query() {
+        return {
+          rows: [
+            {
+              internet_message_id: "source@example.com",
+              rfc_in_reply_to_message_id:
+                "<parent@example.com>\r\nBcc: leak@example.com",
+              rfc_references_message_ids: [
+                "<root@example.com>",
+                "<root@example.com>",
+                "bad value",
+                "parent@example.com",
+              ],
+              provider_message_id: "provider_msg_1",
+              emailengine_email_id: null,
+              emailengine_message_id: null,
+              gmail_thread_id: null,
+              graph_message_id: null,
+            },
+          ],
+        };
+      },
+    });
+
+    await expect(
+      store.getThreadingMetadata({
+        accountId: "acc_1",
+        messageId: "message_1",
+        action: "reply",
+      }),
+    ).resolves.toMatchObject({
+      references: ["<root@example.com>", "<parent@example.com>", "<source@example.com>"],
     });
   });
 

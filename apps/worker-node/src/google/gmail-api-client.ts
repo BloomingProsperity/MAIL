@@ -144,6 +144,9 @@ export function createGmailApiClient(
     getMessage(input) {
       const params = new URLSearchParams();
       params.set("format", input.format);
+      for (const header of input.metadataHeaders ?? []) {
+        params.append("metadataHeaders", header);
+      }
       return request<GmailMessageStub>(
         input.accountId,
         `/messages/${encodeURIComponent(input.messageId)}`,

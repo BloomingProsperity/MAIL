@@ -5,6 +5,17 @@ import {
   createGmailReadOnlyAdapter,
 } from "../src/mail-provider/gmail-readonly-adapter";
 
+const metadataHeaders = [
+  "Message-ID",
+  "In-Reply-To",
+  "References",
+  "Subject",
+  "From",
+  "To",
+  "Cc",
+  "Date",
+];
+
 describe("Gmail read-only adapter", () => {
   it("discovers Gmail labels as provider mailboxes", async () => {
     const adapter = createGmailReadOnlyAdapter({
@@ -96,11 +107,21 @@ describe("Gmail read-only adapter", () => {
       },
       {
         method: "getMessage",
-        input: { accountId: "acc_1", messageId: "msg_new", format: "metadata" },
+        input: {
+          accountId: "acc_1",
+          messageId: "msg_new",
+          format: "metadata",
+          metadataHeaders,
+        },
       },
       {
         method: "getMessage",
-        input: { accountId: "acc_1", messageId: "msg_old", format: "metadata" },
+        input: {
+          accountId: "acc_1",
+          messageId: "msg_old",
+          format: "metadata",
+          metadataHeaders,
+        },
       },
     ]);
     expect(result).toEqual({
@@ -178,6 +199,15 @@ describe("Gmail read-only adapter", () => {
         labelIds: ["CATEGORY_UPDATES"],
       },
     });
+    expect(calls[1]).toEqual({
+      method: "getMessage",
+      input: {
+        accountId: "acc_1",
+        messageId: "msg_updates",
+        format: "metadata",
+        metadataHeaders,
+      },
+    });
     expect(result).toEqual({
       changes: [
         {
@@ -251,6 +281,15 @@ describe("Gmail read-only adapter", () => {
         pageToken: "next-page",
       },
     });
+    expect(calls[1]).toEqual({
+      method: "getMessage",
+      input: {
+        accountId: "acc_1",
+        messageId: "msg_old",
+        format: "metadata",
+        metadataHeaders,
+      },
+    });
     expect(result).toEqual({
       changes: [
         {
@@ -270,15 +309,28 @@ describe("Gmail read-only adapter", () => {
   });
 
   it("maps Gmail history additions and deletions to provider changes", async () => {
+    const calls: unknown[] = [];
     const adapter = createGmailReadOnlyAdapter({
       gmail: {
         async listMessages() {
           throw new Error("listMessages should not be called with a cursor");
         },
-        async getMessage() {
-          throw new Error("getMessage should not be called for history stubs");
+        async getMessage(input) {
+          calls.push({ method: "getMessage", input });
+          return {
+            id: "msg_added",
+            threadId: "thr_added",
+            historyId: "940",
+            payload: {
+              headers: [
+                { name: "Message-ID", value: "<msg-added@example.com>" },
+                { name: "References", value: "<root@example.com>" },
+              ],
+            },
+          };
         },
         async listHistory(input) {
+          calls.push({ method: "listHistory", input });
           expect(input).toEqual({
             accountId: "acc_1",
             startHistoryId: "900",
@@ -309,6 +361,25 @@ describe("Gmail read-only adapter", () => {
       limit: 50,
     });
 
+    expect(calls).toEqual([
+      {
+        method: "listHistory",
+        input: {
+          accountId: "acc_1",
+          startHistoryId: "900",
+          maxResults: 50,
+        },
+      },
+      {
+        method: "getMessage",
+        input: {
+          accountId: "acc_1",
+          messageId: "msg_added",
+          format: "metadata",
+          metadataHeaders,
+        },
+      },
+    ]);
     expect(result).toEqual({
       changes: [
         {
@@ -319,7 +390,17 @@ describe("Gmail read-only adapter", () => {
             threadId: "thr_added",
             historyId: "940",
           },
-          raw: { id: "msg_added", threadId: "thr_added", historyId: "940" },
+          raw: {
+            id: "msg_added",
+            threadId: "thr_added",
+            historyId: "940",
+            payload: {
+              headers: [
+                { name: "Message-ID", value: "<msg-added@example.com>" },
+                { name: "References", value: "<root@example.com>" },
+              ],
+            },
+          },
         },
         {
           kind: "message_deleted",
@@ -339,15 +420,22 @@ describe("Gmail read-only adapter", () => {
   });
 
   it("continues Gmail history pages without advancing the active cursor until the final page", async () => {
+    const calls: unknown[] = [];
     const adapter = createGmailReadOnlyAdapter({
       gmail: {
         async listMessages() {
           throw new Error("listMessages should not be called for history continuation");
         },
-        async getMessage() {
-          throw new Error("getMessage should not be called for history stubs");
+        async getMessage(input) {
+          calls.push({ method: "getMessage", input });
+          return {
+            id: "msg_added",
+            threadId: "thr_added",
+            historyId: "960",
+          };
         },
         async listHistory(input) {
+          calls.push({ method: "listHistory", input });
           expect(input).toEqual({
             accountId: "acc_1",
             startHistoryId: "900",
@@ -381,6 +469,26 @@ describe("Gmail read-only adapter", () => {
       },
     });
 
+    expect(calls).toEqual([
+      {
+        method: "listHistory",
+        input: {
+          accountId: "acc_1",
+          startHistoryId: "900",
+          maxResults: 50,
+          pageToken: "page-2",
+        },
+      },
+      {
+        method: "getMessage",
+        input: {
+          accountId: "acc_1",
+          messageId: "msg_added",
+          format: "metadata",
+          metadataHeaders,
+        },
+      },
+    ]);
     expect(result).toEqual({
       changes: [
         {

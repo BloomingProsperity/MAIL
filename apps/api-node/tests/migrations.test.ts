@@ -382,4 +382,17 @@ describe("mail engine runtime migration", () => {
       /CREATE INDEX IF NOT EXISTS attachment_text_jobs_account_status_idx/i,
     );
   });
+
+  it("stores RFC reply header chains on mirrored messages", async () => {
+    const sql = await readMigrationFile("0036_message_rfc_reply_headers.sql");
+
+    expect(sql).toMatch(/ALTER TABLE messages/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS rfc_in_reply_to_message_id TEXT/i);
+    expect(sql).toMatch(
+      /ADD COLUMN IF NOT EXISTS rfc_references_message_ids TEXT\[\] NOT NULL DEFAULT '\{\}'/i,
+    );
+    expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS messages_rfc_in_reply_to_idx/i);
+    expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS messages_rfc_references_gin_idx/i);
+    expect(sql).toMatch(/USING GIN \(rfc_references_message_ids\)/i);
+  });
 });

@@ -598,6 +598,8 @@ async function insertMessage(
         account_id,
         provider_message_id,
         internet_message_id,
+        rfc_in_reply_to_message_id,
+        rfc_references_message_ids,
         subject,
         from_email,
         from_name,
@@ -608,10 +610,16 @@ async function insertMessage(
         body_text,
         body_html
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       ON CONFLICT (account_id, provider_message_id) DO UPDATE
       SET
         internet_message_id = COALESCE(EXCLUDED.internet_message_id, messages.internet_message_id),
+        rfc_in_reply_to_message_id = COALESCE(EXCLUDED.rfc_in_reply_to_message_id, messages.rfc_in_reply_to_message_id),
+        rfc_references_message_ids = CASE
+          WHEN cardinality(EXCLUDED.rfc_references_message_ids) > 0
+            THEN EXCLUDED.rfc_references_message_ids
+          ELSE messages.rfc_references_message_ids
+        END,
         subject = EXCLUDED.subject,
         from_email = EXCLUDED.from_email,
         from_name = EXCLUDED.from_name,
@@ -628,6 +636,8 @@ async function insertMessage(
       accountId,
       message.id,
       message.internetMessageId,
+      message.inReplyToMessageId,
+      message.referenceMessageIds,
       message.subject,
       message.fromEmail,
       message.fromName,
@@ -653,15 +663,20 @@ async function updateExistingMessage(
       SET
         provider_message_id = $3,
         internet_message_id = COALESCE($4, internet_message_id),
-        subject = $5,
-        from_email = $6,
-        from_name = $7,
-        to_emails = $8,
-        cc_emails = $9,
-        received_at = $10,
-        snippet = $11,
-        body_text = $12,
-        body_html = $13
+        rfc_in_reply_to_message_id = COALESCE($5, rfc_in_reply_to_message_id),
+        rfc_references_message_ids = CASE
+          WHEN cardinality($6::text[]) > 0 THEN $6::text[]
+          ELSE rfc_references_message_ids
+        END,
+        subject = $7,
+        from_email = $8,
+        from_name = $9,
+        to_emails = $10,
+        cc_emails = $11,
+        received_at = $12,
+        snippet = $13,
+        body_text = $14,
+        body_html = $15
       WHERE id = $1
         AND account_id = $2
       RETURNING id
@@ -671,6 +686,8 @@ async function updateExistingMessage(
       accountId,
       message.id,
       message.internetMessageId,
+      message.inReplyToMessageId,
+      message.referenceMessageIds,
       message.subject,
       message.fromEmail,
       message.fromName,
@@ -696,6 +713,8 @@ interface NormalizedMirrorMessage {
   mailboxPaths: string[];
   emailId?: string;
   internetMessageId?: string;
+  inReplyToMessageId?: string;
+  referenceMessageIds: string[];
   threadId?: string;
   subject: string;
   fromEmail: string;
@@ -784,6 +803,7 @@ function normalizeEmailEngineMessage(
   const raw = asRecord(message);
   const from = asRecord(raw.from);
   const text = asRecord(raw.text);
+  const headers = messageHeaders(raw.headers);
 
   const id = readString(raw.id) ?? readString(raw.messageId);
   if (!id) {
@@ -799,6 +819,16 @@ function normalizeEmailEngineMessage(
     ]),
     emailId: readString(raw.emailId),
     internetMessageId: readString(raw.messageId),
+    inReplyToMessageId: firstMessageId(
+      raw.inReplyTo,
+      raw.inReplyToMessageId,
+      headers["in-reply-to"],
+    ),
+    referenceMessageIds: messageIdsFromHeader(
+      raw.references,
+      raw.referenceMessageIds,
+      headers.references,
+    ),
     threadId: readString(raw.threadId),
     subject: readString(raw.subject) ?? "",
     fromEmail: readString(from.address) ?? readString(raw.from) ?? "",
@@ -845,6 +875,8 @@ function normalizeGmailMessage(
     ]),
     internetMessageId:
       readString(headers["message-id"]) ?? readString(raw.internetMessageId),
+    inReplyToMessageId: firstMessageId(headers["in-reply-to"]),
+    referenceMessageIds: messageIdsFromHeader(headers.references),
     threadId:
       providerIdentity?.provider === "gmail"
         ? providerIdentity.threadId
@@ -885,6 +917,7 @@ function normalizeGraphMessage(
 
   const from = graphEmailAddress(raw.from);
   const body = asRecord(raw.body);
+  const headers = messageHeaders(raw.internetMessageHeaders);
 
   return {
     id,
@@ -893,6 +926,8 @@ function normalizeGraphMessage(
       readString(raw.parentFolderId),
     ]),
     internetMessageId: readString(raw.internetMessageId),
+    inReplyToMessageId: firstMessageId(headers["in-reply-to"]),
+    referenceMessageIds: messageIdsFromHeader(headers.references),
     threadId:
       providerIdentity?.provider === "graph"
         ? providerIdentity.conversationId
@@ -929,6 +964,7 @@ function normalizeImapMessage(
 ): NormalizedMirrorMessage {
   const raw = asRecord(message);
   const envelope = asRecord(raw.envelope);
+  const headers = messageHeaders(raw.headers);
   const identity =
     providerIdentity?.provider === "imap" ? providerIdentity : undefined;
   const fallbackMailboxPath =
@@ -961,6 +997,16 @@ function normalizeImapMessage(
     ]),
     internetMessageId:
       readString(raw.messageId) ?? readString(envelope.messageId),
+    inReplyToMessageId: firstMessageId(
+      raw.inReplyTo,
+      envelope.inReplyTo,
+      headers["in-reply-to"],
+    ),
+    referenceMessageIds: messageIdsFromHeader(
+      raw.references,
+      envelope.references,
+      headers.references,
+    ),
     subject: readString(raw.subject) ?? readString(envelope.subject) ?? "",
     fromEmail: from.email,
     fromName: from.name,
@@ -1741,6 +1787,20 @@ function attachmentList(value: unknown): NormalizedMirrorAttachment[] {
 function gmailHeaders(raw: Record<string, unknown>): Record<string, string> {
   const payload = asRecord(raw.payload);
   const headers = Array.isArray(payload.headers) ? payload.headers : raw.headers;
+  return messageHeaders(headers);
+}
+
+function messageHeaders(value: unknown): Record<string, string> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => {
+        const headerValue = readString(item);
+        return headerValue ? [[key.toLowerCase(), headerValue]] : [];
+      }),
+    );
+  }
+
+  const headers = value;
   if (!Array.isArray(headers)) {
     return {};
   }
@@ -1755,6 +1815,61 @@ function gmailHeaders(raw: Record<string, unknown>): Record<string, string> {
     }
   }
   return result;
+}
+
+function firstMessageId(...values: unknown[]): string | undefined {
+  return messageIdsFromHeader(...values)[0];
+}
+
+function messageIdsFromHeader(...values: unknown[]): string[] {
+  const ids: string[] = [];
+  for (const value of values) {
+    collectMessageIds(value, ids);
+  }
+  return uniqueStrings(ids);
+}
+
+function collectMessageIds(value: unknown, ids: string[]): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectMessageIds(item, ids);
+    }
+    return;
+  }
+
+  const raw = readString(value);
+  if (!raw) {
+    return;
+  }
+
+  const flattened = raw.replace(/[\r\n]+/g, " ");
+  const bracketed = [...flattened.matchAll(/<[^<>\s]+@[^<>\s]+>/g)]
+    .map((match) => normalizeRfcMessageId(match[0]))
+    .filter((id): id is string => Boolean(id));
+  if (bracketed.length > 0) {
+    ids.push(...bracketed);
+    return;
+  }
+
+  ids.push(
+    ...flattened
+      .split(/[\s,]+/g)
+      .map(normalizeRfcMessageId)
+      .filter((id): id is string => Boolean(id)),
+  );
+}
+
+function normalizeRfcMessageId(value: string): string | undefined {
+  const stripped = value
+    .replace(/[\r\n]+/g, " ")
+    .trim()
+    .replace(/^<|>$/g, "")
+    .trim();
+  if (!stripped || !stripped.includes("@") || /[\s<>]/.test(stripped)) {
+    return undefined;
+  }
+
+  return `<${stripped}>`;
 }
 
 function graphEmailAddress(value: unknown): { email: string; name?: string } {

@@ -70,6 +70,8 @@ const GRAPH_MESSAGE_SELECT = [
   "id",
   "changeKey",
   "conversationId",
+  "internetMessageId",
+  "internetMessageHeaders",
   "subject",
   "receivedDateTime",
   "sender",

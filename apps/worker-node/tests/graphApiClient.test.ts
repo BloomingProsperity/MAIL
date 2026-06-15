@@ -30,7 +30,7 @@ describe("Microsoft Graph API client", () => {
     });
 
     expect(calls[0].url).toBe(
-      "https://graph.example/v1.0/me/mailFolders/inbox/messages/delta?%24select=id%2CchangeKey%2CconversationId%2Csubject%2CreceivedDateTime%2Csender%2Cfrom%2CtoRecipients%2CccRecipients%2CbodyPreview%2CisRead%2ChasAttachments",
+      "https://graph.example/v1.0/me/mailFolders/inbox/messages/delta?%24select=id%2CchangeKey%2CconversationId%2CinternetMessageId%2CinternetMessageHeaders%2Csubject%2CreceivedDateTime%2Csender%2Cfrom%2CtoRecipients%2CccRecipients%2CbodyPreview%2CisRead%2ChasAttachments",
     );
     expect(calls[0].init?.headers).toMatchObject({
       Authorization: "Bearer access-token",

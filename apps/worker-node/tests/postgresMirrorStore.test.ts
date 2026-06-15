@@ -78,6 +78,64 @@ describe("postgres mirror store", () => {
     expect(providerRefQuery?.values).toContain("ee_msg_1");
   });
 
+  it("persists EmailEngine RFC reply header chains on mirrored messages", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("INSERT INTO messages")) {
+          return { rows: [{ id: "message_1" }] };
+        }
+        if (text.includes("INSERT INTO provider_message_refs")) {
+          return {
+            rows: [
+              {
+                id: "ref_1",
+                provider: "emailengine",
+                provider_message_id: "ee_msg_1",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresMirrorStore(client);
+
+    await store.upsertMessage({
+      engineAccountId: "00000000-0000-0000-0000-000000000001",
+      provider: "emailengine",
+      message: {
+        id: "ee_msg_1",
+        messageId: "<source@example.com>",
+        subject: "Re: Hello",
+        date: "2026-06-12T09:00:00.000Z",
+        from: { address: "a@example.com", name: "A" },
+        to: [{ address: "b@example.com" }],
+        headers: [
+          { name: "In-Reply-To", value: "<parent@example.com>" },
+          {
+            name: "References",
+            value:
+              "<root@example.com>\r\n <parent@example.com> <parent@example.com>",
+          },
+        ],
+      },
+    });
+
+    const insertMessageQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO messages"),
+    );
+    expect(insertMessageQuery?.text).toMatch(/rfc_in_reply_to_message_id/i);
+    expect(insertMessageQuery?.text).toMatch(/rfc_references_message_ids/i);
+    expect(insertMessageQuery?.values?.[3]).toBe("<source@example.com>");
+    expect(insertMessageQuery?.values?.[4]).toBe("<parent@example.com>");
+    expect(insertMessageQuery?.values?.[5]).toEqual([
+      "<root@example.com>",
+      "<parent@example.com>",
+    ]);
+  });
+
   it("writes Smart Inbox classification after mirroring a message", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {
@@ -850,7 +908,13 @@ describe("postgres mirror store", () => {
       false,
     );
     expect(queries[1].text).toMatch(/UPDATE messages/i);
+    expect(queries[1].text).toMatch(/rfc_in_reply_to_message_id = COALESCE/i);
+    expect(queries[1].text).toMatch(/rfc_references_message_ids = CASE/i);
+    expect(queries[1].text).toMatch(/ELSE rfc_references_message_ids/i);
     expect(queries[1].values).toContain("message_existing");
+    expect(queries[1].values?.[3]).toBe("<message-1@example.com>");
+    expect(queries[1].values?.[4]).toBeUndefined();
+    expect(queries[1].values?.[5]).toEqual([]);
     expect(queries[2].text).toMatch(/INSERT INTO message_state/i);
     const providerRefQuery = queries.find((query) =>
       query.text.includes("INSERT INTO provider_message_refs"),
@@ -1045,6 +1109,11 @@ describe("postgres mirror store", () => {
         payload: {
           headers: [
             { name: "Message-ID", value: "<gm-msg-1@example.com>" },
+            { name: "In-Reply-To", value: "<gm-parent@example.com>" },
+            {
+              name: "References",
+              value: "<gm-root@example.com> <gm-parent@example.com>",
+            },
             { name: "Subject", value: "Launch brief" },
             { name: "From", value: "Alice Example <alice@example.com>" },
             { name: "To", value: "Me <me@example.com>" },
@@ -1069,6 +1138,8 @@ describe("postgres mirror store", () => {
       "00000000-0000-0000-0000-000000000001",
       "gm_msg_1",
       "<gm-msg-1@example.com>",
+      "<gm-parent@example.com>",
+      ["<gm-root@example.com>", "<gm-parent@example.com>"],
       "Launch brief",
       "alice@example.com",
       "Alice Example",
@@ -1220,6 +1291,13 @@ describe("postgres mirror store", () => {
         conversationId: "conv_1",
         parentFolderId: "folder_inbox",
         internetMessageId: "<graph-msg-1@example.com>",
+        internetMessageHeaders: [
+          { name: "In-Reply-To", value: "<graph-parent@example.com>" },
+          {
+            name: "References",
+            value: "<graph-root@example.com> <graph-parent@example.com>",
+          },
+        ],
         subject: "Graph launch update",
         from: {
           emailAddress: {
@@ -1246,6 +1324,8 @@ describe("postgres mirror store", () => {
       "00000000-0000-0000-0000-000000000001",
       "graph_msg_1",
       "<graph-msg-1@example.com>",
+      "<graph-parent@example.com>",
+      ["<graph-root@example.com>", "<graph-parent@example.com>"],
       "Graph launch update",
       "lead@example.com",
       "Project Lead",
@@ -1313,6 +1393,11 @@ describe("postgres mirror store", () => {
         uidvalidity: "777",
         modseq: "900",
         mailboxPath: "Archive",
+        messageId: "<imap-msg@example.com>",
+        envelope: {
+          inReplyTo: "<imap-parent@example.com>",
+          references: "<imap-root@example.com> <imap-parent@example.com>",
+        },
         subject: "IMAP mirror safety",
         from: "Sender <sender@example.com>",
         to: [{ address: "me@example.com" }],
@@ -1326,6 +1411,12 @@ describe("postgres mirror store", () => {
       query.text.includes("INSERT INTO messages"),
     );
     expect(insertMessageQuery?.values?.[2]).toBe("imap:Archive:777:42");
+    expect(insertMessageQuery?.values?.[3]).toBe("<imap-msg@example.com>");
+    expect(insertMessageQuery?.values?.[4]).toBe("<imap-parent@example.com>");
+    expect(insertMessageQuery?.values?.[5]).toEqual([
+      "<imap-root@example.com>",
+      "<imap-parent@example.com>",
+    ]);
 
     const providerRefQuery = queries.find((query) =>
       query.text.includes("INSERT INTO provider_message_refs"),

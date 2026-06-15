@@ -17,6 +17,8 @@ interface Queryable {
 
 interface ThreadingRow extends Record<string, unknown> {
   internet_message_id: string | null;
+  rfc_in_reply_to_message_id: string | null;
+  rfc_references_message_ids: unknown;
   provider_message_id: string | null;
   emailengine_email_id: string | null;
   emailengine_message_id: string | null;
@@ -33,6 +35,8 @@ export function createPostgresMailThreadingStore(
         `
           SELECT
             messages.internet_message_id,
+            messages.rfc_in_reply_to_message_id,
+            messages.rfc_references_message_ids,
             messages.provider_message_id,
             emailengine_ref.emailengine_email_id,
             emailengine_ref.provider_message_id AS emailengine_message_id,
@@ -95,7 +99,12 @@ function rowToThreading(
   action: MailThreadingAction,
 ): MailThreading {
   const inReplyTo = normalizeMessageId(row.internet_message_id);
-  const references = inReplyTo ? [inReplyTo] : [];
+  const parentInReplyTo = normalizeMessageId(row.rfc_in_reply_to_message_id);
+  const references = uniqueMessageIds([
+    ...messageIdArray(row.rfc_references_message_ids),
+    ...(parentInReplyTo ? [parentInReplyTo] : []),
+    ...(inReplyTo ? [inReplyTo] : []),
+  ]);
   const emailEngineMessageId =
     readString(row.emailengine_email_id) ?? readString(row.emailengine_message_id);
   const gmailThreadId = readString(row.gmail_thread_id);
@@ -120,6 +129,20 @@ function rowToThreading(
   return threading;
 }
 
+function messageIdArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(normalizeMessageId)
+    .filter((item): item is string => Boolean(item));
+}
+
+function uniqueMessageIds(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
 function normalizeMessageId(value: unknown): string | undefined {
   const raw = readString(value);
   if (!raw) {
@@ -129,9 +152,12 @@ function normalizeMessageId(value: unknown): string | undefined {
   if (!trimmed || /[\r\n]/.test(trimmed)) {
     return undefined;
   }
-  return /^<[^<>@\s]+@[^<>\s]+>$/.test(trimmed)
-    ? trimmed
-    : `<${trimmed.replace(/^<|>$/g, "")}>`;
+  const stripped = trimmed.replace(/^<|>$/g, "").trim();
+  if (!stripped.includes("@") || /[\s<>]/.test(stripped)) {
+    return undefined;
+  }
+
+  return `<${stripped}>`;
 }
 
 function readString(value: unknown): string | undefined {

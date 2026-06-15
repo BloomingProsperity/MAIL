@@ -125,10 +125,11 @@ describe("Gmail API client", () => {
       accountId: "acc_1",
       messageId: "msg_1",
       format: "metadata",
+      metadataHeaders: ["Message-ID", "In-Reply-To", "References"],
     });
 
     expect(calls[0].url).toBe(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages/msg_1?format=metadata",
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages/msg_1?format=metadata&metadataHeaders=Message-ID&metadataHeaders=In-Reply-To&metadataHeaders=References",
     );
     expect(calls[0].url).not.toContain("access-token");
     expect(result).toEqual({
