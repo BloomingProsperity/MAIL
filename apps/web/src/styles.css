@@ -553,9 +553,23 @@ h2 {
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
+.compose-recipient-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) minmax(120px, 1fr) minmax(120px, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
 .compose-schedule-row {
   display: grid;
   grid-template-columns: minmax(180px, 260px);
+}
+
+.composer-tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .outbox-list {
@@ -1853,6 +1867,7 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .compose-recipient-grid,
   .compose-schedule-row,
   .outbox-row {
     grid-template-columns: minmax(0, 1fr);

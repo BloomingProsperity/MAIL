@@ -787,6 +787,24 @@ export interface HermesReplyDraftResult {
   draftText: string;
 }
 
+export type HermesRewritePolishAction =
+  | "rewrite"
+  | "polish"
+  | "shorten"
+  | "expand"
+  | "tone"
+  | "proofread";
+
+export interface HermesRewritePolishResult {
+  skillRunId: string;
+  auditEventId?: string;
+  skillId: "rewrite_polish";
+  action: HermesRewritePolishAction;
+  rewrittenText: string;
+  editable: boolean;
+  sendsDirectly: boolean;
+}
+
 export interface EmailHubApi {
   listMailboxes(input: { accountId: string }): Promise<Page<MailboxDto>>;
   listMessages(input: {
@@ -952,6 +970,17 @@ export interface EmailHubApi {
     memoryScope?: string;
     memoryLayers?: string[];
   }): Promise<HermesReplyDraftResult>;
+  rewritePolishDraft(input: {
+    text: string;
+    action: HermesRewritePolishAction;
+    instruction?: string;
+    tone?: string;
+    language?: string;
+    readMessageIds?: string[];
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+  }): Promise<HermesRewritePolishResult>;
   confirmHermesFollowUp(input: {
     accountId: string;
     messageId: string;
@@ -1463,6 +1492,13 @@ export function createEmailHubApi(
 
     draftReply(input) {
       return request(fetchImpl, baseUrl, "/api/hermes/skills/reply_draft/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    rewritePolishDraft(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills/rewrite_polish/run", {
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });

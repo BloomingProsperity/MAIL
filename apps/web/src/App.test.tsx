@@ -7,6 +7,7 @@ import type {
   FollowUpPage,
   HermesFollowupTrackerResult,
   HermesReplyDraftResult,
+  HermesRewritePolishResult,
   MailNavigationSummaryDto,
   MailProviderCapabilityDto,
   OAuthStartResult,
@@ -1649,6 +1650,89 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText(/邮件已进入发送队列：draft_1/)).toBeTruthy();
   });
 
+  it("sends Cc and Bcc from the compose panel through the draft payload", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose cc"), {
+      target: { value: "Ops <ops@example.com>" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose bcc"), {
+      target: { value: "audit@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Please review the launch plan." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        cc: [{ address: "ops@example.com", name: "Ops" }],
+        bcc: [{ address: "audit@example.com" }],
+        subject: "Launch plan",
+        bodyText: "Please review the launch plan.",
+        source: "manual",
+      });
+    });
+  });
+
+  it("polishes a composed draft through Hermes before saving it", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "please review launch plan" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Polish composed draft with Hermes",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.rewritePolishDraft).toHaveBeenCalledWith({
+        text: "please review launch plan",
+        action: "polish",
+        instruction:
+          "Polish this email while preserving intent, recipient details, and concrete commitments.",
+        tone: "clear professional",
+      });
+    });
+    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
+      "Hi Lina,\n\nPlease review the launch plan today.",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "Hi Lina,\n\nPlease review the launch plan today.",
+        source: "manual",
+      });
+    });
+  });
+
   it("schedules composed drafts and refreshes the outbox", async () => {
     const api = createApiFixture();
 
@@ -2307,6 +2391,14 @@ function createApiFixture(): EmailHubApi {
       skillId: "reply_draft",
       draftText: "Hi,\n\nI can confirm this plan.",
     } satisfies HermesReplyDraftResult)),
+    rewritePolishDraft: vi.fn(async () => ({
+      skillRunId: "run_rewrite_1",
+      skillId: "rewrite_polish",
+      action: "polish",
+      rewrittenText: "Hi Lina,\n\nPlease review the launch plan today.",
+      editable: true,
+      sendsDirectly: false,
+    } satisfies HermesRewritePolishResult)),
     confirmHermesFollowUp: vi.fn(async () => followUpFixture()),
     createFollowUp: vi.fn(async () => followUpFixture()),
     updateFollowUp: vi.fn(async () =>

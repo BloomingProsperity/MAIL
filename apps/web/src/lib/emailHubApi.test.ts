@@ -1337,6 +1337,51 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs Hermes rewrite and polish through the backend skills route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          skillRunId: "run_rewrite_1",
+          skillId: "rewrite_polish",
+          action: "polish",
+          rewrittenText: "Hi Lina,\n\nPlease review the launch plan today.",
+          editable: true,
+          sendsDirectly: false,
+        },
+        202,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.rewritePolishDraft({
+      text: "please review launch plan",
+      action: "polish",
+      instruction: "Make it professional.",
+      tone: "clear professional",
+    });
+
+    expect(result).toEqual({
+      skillRunId: "run_rewrite_1",
+      skillId: "rewrite_polish",
+      action: "polish",
+      rewrittenText: "Hi Lina,\n\nPlease review the launch plan today.",
+      editable: true,
+      sendsDirectly: false,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/skills/rewrite_polish/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          text: "please review launch plan",
+          action: "polish",
+          instruction: "Make it professional.",
+          tone: "clear professional",
+        }),
+      }),
+    );
+  });
+
   it("creates and sends mail drafts through compose routes", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/accounts/account_1/compose/drafts") {

@@ -143,17 +143,18 @@ with more than smoke-level tests.
   provider-aware scheduled runner, scheduled-store routing, OAuth send scopes,
   frontend outbox contract tests.
 - Current frontend status: Mail now exposes a backend-wired compose panel for
-  save draft, send now, and send later. The outbox panel loads
+  To/Cc/Bcc, save draft, send now, send later, and Hermes rewrite/polish
+  through `/api/hermes/skills/rewrite_polish/run`. The outbox panel loads
   `/api/accounts/:accountId/outbox`, and each row routes reschedule, send now,
   and cancel to the matching backend contract. API client route tests and App
   behavior tests cover the full create/send/schedule/list/reschedule/send-now/
-  cancel flow.
+  cancel flow plus Cc/Bcc draft payloads and editable Hermes polishing.
 - Current backend status: outbox listing now returns active queue items only
   (`scheduled`, `queued`, `sending`, `failed`) instead of mixing terminal sent,
   cancelled, or dead-lettered rows into the user-facing queue.
-- Remaining gap: the current compose panel is intentionally compact; full
-  Cc/Bcc, rich editor, attachments, reply-all/forward modes, preview, send-as,
-  and Sent-folder provider parity are still separate slices.
+- Remaining gap: the current compose panel is intentionally compact; rich
+  editor, attachments, reply-all/forward modes, preview, send-as, and
+  Sent-folder provider parity are still separate slices.
 
 ## Product References
 
@@ -167,9 +168,9 @@ with more than smoke-level tests.
 
 ## Immediate Delivery Order
 
-1. Expand Compose into a full production editor: Cc/Bcc, attachments, reply-all,
-   forward, preview, send-as, and Hermes rewrite/polish through the single AI
-   entry.
+1. Expand Compose into a full production editor: rich editor, attachments,
+   reply-all, forward, preview, send-as, and writing-style feedback for
+   rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
    GreenMail/high-volume SMTP smoke, Sent-folder append, and tests around
    QQ/163/custom-domain recovery behavior.

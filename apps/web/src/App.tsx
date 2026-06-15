@@ -1113,6 +1113,8 @@ function MailWorkspace(props: {
     string | undefined
   >();
   const [composeTo, setComposeTo] = useState("");
+  const [composeCc, setComposeCc] = useState("");
+  const [composeBcc, setComposeBcc] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [composeScheduledAt, setComposeScheduledAt] = useState(
@@ -1284,6 +1286,8 @@ function MailWorkspace(props: {
     }
 
     const to = parseComposeRecipients(composeTo);
+    const cc = parseComposeRecipients(composeCc);
+    const bcc = parseComposeRecipients(composeBcc);
     const bodyText = composeBody.trim();
     if (to.length === 0 || !bodyText) {
       setComposeNotice("请填写收件人和正文。");
@@ -1302,6 +1306,8 @@ function MailWorkspace(props: {
       const draft = await props.api.createMailDraft({
         accountId: props.accountId,
         to,
+        ...(cc.length > 0 ? { cc } : {}),
+        ...(bcc.length > 0 ? { bcc } : {}),
         subject: composeSubject.trim(),
         bodyText,
         source: "manual",
@@ -1339,9 +1345,40 @@ function MailWorkspace(props: {
 
   function clearComposeForm() {
     setComposeTo("");
+    setComposeCc("");
+    setComposeBcc("");
     setComposeSubject("");
     setComposeBody("");
     setComposeScheduledAt(defaultScheduleDateTimeLocal());
+  }
+
+  async function polishComposedMail() {
+    if (!props.api) {
+      setComposeNotice("Hermes 暂时不可用。");
+      return;
+    }
+
+    const bodyText = composeBody.trim();
+    if (!bodyText) {
+      setComposeNotice("请先写正文，再让 Hermes 润色。");
+      return;
+    }
+
+    setComposeBusy(true);
+    try {
+      const result = await props.api.rewritePolishDraft({
+        text: bodyText,
+        action: "polish",
+        instruction: "Polish this email while preserving intent, recipient details, and concrete commitments.",
+        tone: "clear professional",
+      });
+      setComposeBody(result.rewrittenText);
+      setComposeNotice(`Hermes 已润色：${result.skillRunId}`);
+    } catch {
+      setComposeNotice("Hermes 润色暂时不可用。");
+    } finally {
+      setComposeBusy(false);
+    }
   }
 
   async function sendOutboxItemNow(item: ScheduledSendDto) {
@@ -1468,16 +1505,36 @@ function MailWorkspace(props: {
               {composeNotice}
             </div>
           ) : null}
-          <label>
-            <span>收件人</span>
-            <input
-              id="compose-recipients"
-              aria-label="Compose recipients"
-              value={composeTo}
-              onChange={(event) => setComposeTo(event.target.value)}
-              placeholder="client@example.com, team@example.com"
-            />
-          </label>
+          <div className="compose-recipient-grid">
+            <label>
+              <span>收件人</span>
+              <input
+                id="compose-recipients"
+                aria-label="Compose recipients"
+                value={composeTo}
+                onChange={(event) => setComposeTo(event.target.value)}
+                placeholder="client@example.com, team@example.com"
+              />
+            </label>
+            <label>
+              <span>Cc</span>
+              <input
+                aria-label="Compose cc"
+                value={composeCc}
+                onChange={(event) => setComposeCc(event.target.value)}
+                placeholder="copy@example.com"
+              />
+            </label>
+            <label>
+              <span>Bcc</span>
+              <input
+                aria-label="Compose bcc"
+                value={composeBcc}
+                onChange={(event) => setComposeBcc(event.target.value)}
+                placeholder="audit@example.com"
+              />
+            </label>
+          </div>
           <label>
             <span>主题</span>
             <input
@@ -1493,6 +1550,18 @@ function MailWorkspace(props: {
             onChange={(event) => setComposeBody(event.target.value)}
             placeholder="写邮件正文，或先在右侧用 Hermes 生成回复草稿"
           />
+          <div className="composer-tool-row">
+            <button
+              className="tiny-button"
+              type="button"
+              aria-label="Polish composed draft with Hermes"
+              disabled={composeBusy}
+              onClick={() => void polishComposedMail()}
+            >
+              <Sparkles size={14} />
+              润色
+            </button>
+          </div>
           <div className="compose-schedule-row">
             <label>
               <span>发送时间</span>
