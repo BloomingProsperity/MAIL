@@ -11,6 +11,10 @@ import { GmailHistoryResetError } from "./gmail-readonly-adapter.js";
 import type { MirrorStore } from "../mail-engine/mirror-store.js";
 import type { ProviderRefStore } from "../provider-ref-store.js";
 import type { SyncCursorStore } from "../sync-cursor-store.js";
+import type {
+  NativeSendIdentityDiscovery,
+  NativeSendIdentityDiscoveryResult,
+} from "./send-identity-discovery.js";
 
 export interface NativeSyncProcessorOptions {
   adapters: Partial<Record<NativeProvider, NativeMailAdapter>>;
@@ -23,6 +27,7 @@ export interface NativeSyncProcessorOptions {
     MirrorStore,
     "upsertMailboxes" | "upsertMessage" | "recordMessageDeleted"
   >;
+  sendIdentityDiscovery?: NativeSendIdentityDiscovery;
 }
 
 export interface NativeSyncAccountInput {
@@ -54,6 +59,7 @@ export interface NativeMailboxDiscoveryResult {
   accountId: string;
   mailboxCount: number;
   mailboxes: ProviderMailbox[];
+  sendIdentityDiscovery?: NativeSendIdentityDiscoveryResult;
 }
 
 export interface NativeSyncProcessor {
@@ -98,12 +104,18 @@ export function createNativeSyncProcessor(
           mailboxes: result.mailboxes,
         });
       }
+      const sendIdentityDiscovery =
+        await options.sendIdentityDiscovery?.discoverProviderSendIdentities({
+          accountId: input.accountId,
+          provider: input.provider,
+        });
 
       return {
         provider: input.provider,
         accountId: input.accountId,
         mailboxCount: result.mailboxes.length,
         mailboxes: result.mailboxes,
+        ...(sendIdentityDiscovery ? { sendIdentityDiscovery } : {}),
       };
     },
 

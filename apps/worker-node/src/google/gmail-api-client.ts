@@ -40,15 +40,32 @@ export interface GmailSendMessageResult {
   threadId?: string;
 }
 
+export interface GmailSendAsIdentity {
+  sendAsEmail?: string;
+  displayName?: string;
+  isDefault?: boolean;
+  isPrimary?: boolean;
+  verificationStatus?: string;
+}
+
+export interface GmailListSendAsResult {
+  sendAs?: GmailSendAsIdentity[];
+}
+
 export interface GmailMutationClient {
   modifyMessage(input: GmailModifyMessageInput): Promise<unknown>;
   trashMessage(input: GmailTrashMessageInput): Promise<unknown>;
   sendMessage(input: GmailSendMessageInput): Promise<GmailSendMessageResult>;
 }
 
+export interface GmailSendIdentityClient {
+  listSendAs(input: { accountId: string }): Promise<GmailListSendAsResult>;
+}
+
 export interface GmailApiClient
   extends GmailReadOnlyClient,
-    GmailMutationClient {}
+    GmailMutationClient,
+    GmailSendIdentityClient {}
 
 export class GmailApiError extends Error {
   constructor(
@@ -171,6 +188,14 @@ export function createGmailApiClient(
         input.accountId,
         "/history",
         params,
+      );
+    },
+
+    listSendAs(input) {
+      return request<GmailListSendAsResult>(
+        input.accountId,
+        "/settings/sendAs",
+        new URLSearchParams(),
       );
     },
 

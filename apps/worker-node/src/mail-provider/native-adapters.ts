@@ -40,6 +40,8 @@ import {
 import type { SmtpSentAppender } from "./imap-sent-appender.js";
 import { createGmailReadOnlyAdapter } from "./gmail-readonly-adapter.js";
 import { createGraphReadOnlyAdapter } from "./graph-readonly-adapter.js";
+import { createNativeSendIdentityDiscovery } from "./send-identity-discovery.js";
+import { createPostgresProviderSendIdentityStore } from "../provider-send-identity-store.js";
 import {
   createImapFlowMutationClient,
   createPostgresImapAccountSettingsStore,
@@ -103,6 +105,27 @@ export function createConfiguredNativeAdapters(
       }),
     }),
   };
+}
+
+export function createConfiguredNativeSendIdentityDiscovery(
+  options: ConfiguredNativeAdaptersOptions,
+) {
+  const env = options.env ?? process.env;
+  const fetchImpl = options.fetchImpl ?? fetch;
+
+  return createNativeSendIdentityDiscovery({
+    store: createPostgresProviderSendIdentityStore(options.credentialClient),
+    gmail: createGmailApiClient({
+      accessTokenProvider: googleAccessTokenProvider({
+        credentialClient: options.credentialClient,
+        secretClient: options.secretClient ?? options.credentialClient,
+        env,
+        fetchImpl,
+      }),
+      baseUrl: optionalEnv(env.GMAIL_API_BASE_URL),
+      fetchImpl,
+    }),
+  });
 }
 
 export function createConfiguredNativeCommandProcessor(

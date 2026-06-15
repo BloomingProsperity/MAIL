@@ -67,6 +67,13 @@ describe("worker main wiring", () => {
     expect(main).toContain("...nativeSendTransports");
   });
 
+  it("discovers native send identities during native mailbox discovery", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createConfiguredNativeSendIdentityDiscovery");
+    expect(main).toContain("sendIdentityDiscovery:");
+  });
+
   it("names every worker lane for structured failure logs", async () => {
     const main = await readFile(mainPath, "utf8");
 

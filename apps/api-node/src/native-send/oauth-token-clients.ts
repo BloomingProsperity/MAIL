@@ -24,7 +24,7 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const MICROSOFT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const MICROSOFT_SCOPE =
-  "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send";
+  "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared";
 
 export function createGoogleOAuthRefreshClient(input: {
   clientId: string;

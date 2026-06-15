@@ -116,6 +116,86 @@ describe("native sync processor", () => {
     ]);
   });
 
+  it("runs provider send identity discovery after mailbox discovery", async () => {
+    const actions: unknown[] = [];
+    const processor = createNativeSyncProcessor({
+      adapters: {
+        gmail: {
+          provider: "gmail",
+          async listMailboxes(input) {
+            actions.push({ type: "adapter.listMailboxes", input });
+            return {
+              mailboxes: [
+                {
+                  identity: { provider: "gmail", labelId: "INBOX" },
+                  displayName: "Inbox",
+                  role: "inbox",
+                  raw: { id: "INBOX", name: "INBOX" },
+                },
+              ],
+            };
+          },
+          async sync() {
+            throw new Error("sync should not run during discovery");
+          },
+        },
+      },
+      sendIdentityDiscovery: {
+        async discoverProviderSendIdentities(input) {
+          actions.push({ type: "sendIdentity.discover", input });
+          return {
+            provider: input.provider,
+            accountId: input.accountId,
+            discoveredCount: 2,
+            upserted: 2,
+            disabled: 0,
+          };
+        },
+      },
+      cursorStore: {
+        async getCursor() {
+          throw new Error("cursor should not be read during discovery");
+        },
+        async upsertCursor() {},
+        async markCursorReset() {},
+      },
+      providerRefStore: {
+        async upsertMailboxRef(input) {
+          actions.push({ type: "mailbox.upsert", input });
+          return {
+            id: "mailbox_ref_1",
+            provider: input.identity.provider,
+            providerMailboxId: "INBOX",
+          };
+        },
+        async upsertMessageRef() {
+          throw new Error("message refs should not be written during discovery");
+        },
+        async recordTombstone() {
+          throw new Error("tombstones should not be written during discovery");
+        },
+      },
+    });
+
+    const result = await processor.discoverMailboxes({
+      accountId: "acc_1",
+      provider: "gmail",
+    });
+
+    expect(result.sendIdentityDiscovery).toEqual({
+      provider: "gmail",
+      accountId: "acc_1",
+      discoveredCount: 2,
+      upserted: 2,
+      disabled: 0,
+    });
+    expect(actions.map((action) => (action as { type: string }).type)).toEqual([
+      "adapter.listMailboxes",
+      "mailbox.upsert",
+      "sendIdentity.discover",
+    ]);
+  });
+
   it("passes explicit native mailboxes to the adapter", async () => {
     const calls: unknown[] = [];
     const processor = createNativeSyncProcessor({

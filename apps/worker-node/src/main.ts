@@ -15,6 +15,7 @@ import { createSyncAccountJobHandler } from "./mail-engine/sync-account-processo
 import {
   createConfiguredNativeAdapters,
   createConfiguredNativeCommandProcessor,
+  createConfiguredNativeSendIdentityDiscovery,
   createConfiguredNativeSendTransports,
 } from "./mail-provider/native-adapters.js";
 import { createNativeSyncProcessor } from "./mail-provider/native-sync-processor.js";
@@ -107,6 +108,10 @@ if (!databaseUrl) {
   });
   const nativeSyncProcessor = createNativeSyncProcessor({
     adapters: createConfiguredNativeAdapters({
+      credentialClient: pool,
+      env: process.env,
+    }),
+    sendIdentityDiscovery: createConfiguredNativeSendIdentityDiscovery({
       credentialClient: pool,
       env: process.env,
     }),

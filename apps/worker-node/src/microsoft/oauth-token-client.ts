@@ -25,7 +25,7 @@ export interface MicrosoftOAuthTokenClient {
 const DEFAULT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const DEFAULT_SCOPE =
-  "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send";
+  "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared";
 
 export function createMicrosoftOAuthTokenClient(
   options: MicrosoftOAuthTokenClientOptions,

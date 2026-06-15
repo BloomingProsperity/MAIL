@@ -102,6 +102,52 @@ describe("Gmail API client", () => {
     ]);
   });
 
+  it("lists Gmail send-as identities for provider-native From discovery", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createGmailApiClient({
+      accessTokenProvider: {
+        async getAccessToken(accountId) {
+          expect(accountId).toBe("acc_1");
+          return "access-token";
+        },
+      },
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return Response.json({
+          sendAs: [
+            {
+              sendAsEmail: "me@gmail.com",
+              displayName: "Me",
+              isDefault: true,
+              isPrimary: true,
+              verificationStatus: "accepted",
+            },
+            {
+              sendAsEmail: "support@example.com",
+              displayName: "Support",
+              isDefault: false,
+              isPrimary: false,
+              verificationStatus: "accepted",
+            },
+          ],
+        });
+      },
+    });
+
+    const result = await client.listSendAs({ accountId: "acc_1" });
+
+    expect(calls[0].url).toBe(
+      "https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs",
+    );
+    expect(calls[0].init?.headers).toMatchObject({
+      Authorization: "Bearer access-token",
+    });
+    expect(result.sendAs?.map((identity) => identity.sendAsEmail)).toEqual([
+      "me@gmail.com",
+      "support@example.com",
+    ]);
+  });
+
   it("gets message metadata without putting the token in the URL", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const client = createGmailApiClient({

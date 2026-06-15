@@ -72,6 +72,9 @@ describe("reauthorization recovery service", () => {
       authorizationUrl: expect.stringContaining("state=state_1"),
     });
     expect(result.authorizationUrl).toContain("login_hint=boss%40gmail.com");
+    expect(result.authorizationUrl).toContain(
+      "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.settings.basic",
+    );
     expect(updates).toEqual([
       {
         taskId: "task_oauth",

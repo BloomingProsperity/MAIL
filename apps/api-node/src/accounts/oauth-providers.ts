@@ -44,6 +44,7 @@ const GMAIL_SCOPES = [
   "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.settings.basic",
 ];
 
 const OUTLOOK_SCOPES = [
@@ -53,6 +54,7 @@ const OUTLOOK_SCOPES = [
   "offline_access",
   "https://graph.microsoft.com/Mail.Read",
   "https://graph.microsoft.com/Mail.Send",
+  "https://graph.microsoft.com/Mail.Send.Shared",
 ];
 
 export function createOAuthProviderRegistry(

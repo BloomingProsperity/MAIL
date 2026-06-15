@@ -37,6 +37,9 @@ describe("OAuth provider registry", () => {
     expect(url.searchParams.get("scope")).toContain(
       "https://www.googleapis.com/auth/gmail.send",
     );
+    expect(url.searchParams.get("scope")).toContain(
+      "https://www.googleapis.com/auth/gmail.settings.basic",
+    );
     expect(url.toString()).not.toContain("google-client-secret");
   });
 
@@ -68,6 +71,9 @@ describe("OAuth provider registry", () => {
     );
     expect(url.searchParams.get("scope")).toContain(
       "https://graph.microsoft.com/Mail.Send",
+    );
+    expect(url.searchParams.get("scope")).toContain(
+      "https://graph.microsoft.com/Mail.Send.Shared",
     );
     expect(url.toString()).not.toContain("microsoft-client-secret");
   });

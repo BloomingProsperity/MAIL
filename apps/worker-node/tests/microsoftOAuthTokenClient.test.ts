@@ -30,7 +30,7 @@ describe("Microsoft OAuth token client", () => {
       "content-type": "application/x-www-form-urlencoded",
     });
     expect(String(calls[0].init?.body)).toBe(
-      "client_id=client-id&client_secret=client-secret&refresh_token=refresh-token&grant_type=refresh_token&scope=offline_access+https%3A%2F%2Fgraph.microsoft.com%2FMail.Read+https%3A%2F%2Fgraph.microsoft.com%2FMail.Send",
+      "client_id=client-id&client_secret=client-secret&refresh_token=refresh-token&grant_type=refresh_token&scope=offline_access+https%3A%2F%2Fgraph.microsoft.com%2FMail.Read+https%3A%2F%2Fgraph.microsoft.com%2FMail.Send+https%3A%2F%2Fgraph.microsoft.com%2FMail.Send.Shared",
     );
     expect(token).toEqual({
       accessToken: "access-token",

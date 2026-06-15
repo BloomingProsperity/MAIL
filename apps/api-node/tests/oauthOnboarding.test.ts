@@ -71,7 +71,8 @@ describe("OAuth onboarding service", () => {
             accessToken: "access-token",
             refreshToken: "refresh-token-secret",
             expiresIn: 3600,
-            scope: "https://www.googleapis.com/auth/gmail.readonly openid email",
+            scope:
+              "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.settings.basic openid email",
             tokenType: "Bearer",
           };
         },
@@ -163,7 +164,7 @@ describe("OAuth onboarding service", () => {
         capabilities: { read: true },
         settings: {
           scopes:
-            "https://www.googleapis.com/auth/gmail.readonly openid email",
+            "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.settings.basic openid email",
         },
       },
     ]);
