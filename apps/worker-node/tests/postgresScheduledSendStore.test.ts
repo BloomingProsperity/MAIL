@@ -26,6 +26,12 @@ describe("Postgres scheduled send store", () => {
               bcc_emails: [],
               body_text: "Looks good.",
               body_html: null,
+              thread_action: "reply",
+              thread_in_reply_to: "<source@example.com>",
+              thread_references: ["<root@example.com>", "<source@example.com>"],
+              thread_emailengine_message_id: "emailengine_msg_1",
+              thread_gmail_thread_id: "gmail_thread_1",
+              thread_graph_message_id: "graph_msg_1",
             },
           ],
         };
@@ -45,6 +51,7 @@ describe("Postgres scheduled send store", () => {
     expect(queries[0].text).toMatch(/UPDATE email_drafts/i);
     expect(queries[0].text).toMatch(/JOIN connected_accounts/i);
     expect(queries[0].text).toMatch(/LEFT JOIN account_provider_settings/i);
+    expect(queries[0].text).toMatch(/claimed_draft\.thread_action/i);
     expect(queries[0].values).toEqual([
       "2026-06-13T12:30:00.000Z",
       "worker-a",
@@ -59,6 +66,14 @@ describe("Postgres scheduled send store", () => {
       subject: "Launch confirmation",
       bodyText: "Looks good.",
       attempts: 1,
+      threading: {
+        action: "reply",
+        inReplyTo: "<source@example.com>",
+        references: ["<root@example.com>", "<source@example.com>"],
+        emailEngineMessageId: "emailengine_msg_1",
+        gmailThreadId: "gmail_thread_1",
+        graphMessageId: "graph_msg_1",
+      },
     });
   });
 

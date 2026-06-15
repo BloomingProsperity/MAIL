@@ -5,6 +5,8 @@ import type {
   MailComposeStore,
   MailDraft,
   MailDraftStatus,
+  MailThreading,
+  MailThreadingAction,
   ScheduledSend,
   ScheduledSendStatus,
   ScheduledSendWithDraft,
@@ -36,6 +38,12 @@ interface DraftRow extends Record<string, unknown> {
   source: string;
   reply_to_message_id: string | null;
   source_message_id: string | null;
+  thread_action: string | null;
+  thread_in_reply_to: string | null;
+  thread_references: unknown;
+  thread_emailengine_message_id: string | null;
+  thread_gmail_thread_id: string | null;
+  thread_graph_message_id: string | null;
   hermes_skill_run_id: string | null;
   hermes_draft_text: string | null;
   provider_queue_id: string | null;
@@ -110,12 +118,42 @@ export function createPostgresMailComposeStore(
             source,
             reply_to_message_id,
             source_message_id,
+            thread_action,
+            thread_in_reply_to,
+            thread_references,
+            thread_emailengine_message_id,
+            thread_gmail_thread_id,
+            thread_graph_message_id,
             hermes_skill_run_id,
             hermes_draft_text,
             created_at,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::timestamptz, $16::timestamptz)
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            $11,
+            $12,
+            $13,
+            $14,
+            $15,
+            $16,
+            $17,
+            $18,
+            $19,
+            $20,
+            $21,
+            $22::timestamptz,
+            $22::timestamptz
+          )
           RETURNING ${draftColumns()}
         `,
         [
@@ -132,6 +170,12 @@ export function createPostgresMailComposeStore(
           input.source,
           input.replyToMessageId ?? null,
           input.sourceMessageId ?? null,
+          input.threading?.action ?? null,
+          input.threading?.inReplyTo ?? null,
+          input.threading?.references ?? [],
+          input.threading?.emailEngineMessageId ?? null,
+          input.threading?.gmailThreadId ?? null,
+          input.threading?.graphMessageId ?? null,
           input.hermesSkillRunId ?? null,
           input.hermesDraftText ?? null,
           input.now,
@@ -559,6 +603,12 @@ function draftColumns(prefix?: string): string {
     "source",
     "reply_to_message_id",
     "source_message_id",
+    "thread_action",
+    "thread_in_reply_to",
+    "thread_references",
+    "thread_emailengine_message_id",
+    "thread_gmail_thread_id",
+    "thread_graph_message_id",
     "hermes_skill_run_id",
     "hermes_draft_text",
     "provider_queue_id",
@@ -668,6 +718,7 @@ function rowToScheduledSend(row: ScheduledSendRow): ScheduledSend {
 }
 
 function rowToDraft(row: DraftRow): MailDraft {
+  const threading = rowToThreading(row);
   return {
     id: String(row.id),
     accountId: String(row.account_id),
@@ -691,6 +742,7 @@ function rowToDraft(row: DraftRow): MailDraft {
       ? { replyToMessageId: row.reply_to_message_id }
       : {}),
     ...(row.source_message_id ? { sourceMessageId: row.source_message_id } : {}),
+    ...(threading ? { threading } : {}),
     ...(row.hermes_skill_run_id
       ? { hermesSkillRunId: row.hermes_skill_run_id }
       : {}),
@@ -704,6 +756,38 @@ function rowToDraft(row: DraftRow): MailDraft {
     updatedAt: toIsoString(row.updated_at),
     ...(row.sent_at ? { sentAt: toIsoString(row.sent_at) } : {}),
   };
+}
+
+function rowToThreading(row: DraftRow): MailThreading | undefined {
+  const action = threadingAction(row.thread_action);
+  if (!action) {
+    return undefined;
+  }
+
+  const references = headerValues(row.thread_references);
+  const threading: MailThreading = {
+    action,
+    references,
+  };
+  const inReplyTo = headerValue(row.thread_in_reply_to);
+  const emailEngineMessageId = textValue(row.thread_emailengine_message_id);
+  const gmailThreadId = textValue(row.thread_gmail_thread_id);
+  const graphMessageId = textValue(row.thread_graph_message_id);
+
+  if (inReplyTo) {
+    threading.inReplyTo = inReplyTo;
+  }
+  if (emailEngineMessageId) {
+    threading.emailEngineMessageId = emailEngineMessageId;
+  }
+  if (gmailThreadId) {
+    threading.gmailThreadId = gmailThreadId;
+  }
+  if (graphMessageId) {
+    threading.graphMessageId = graphMessageId;
+  }
+
+  return threading;
 }
 
 function rowToAccount(row: DraftRow): MailComposeAccount {
@@ -764,6 +848,39 @@ function draftSource(value: string): MailDraft["source"] {
     return value;
   }
   return "manual";
+}
+
+function threadingAction(value: unknown): MailThreadingAction | undefined {
+  return value === "reply" || value === "reply_all" ? value : undefined;
+}
+
+function headerValues(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const unique = new Set<string>();
+  for (const item of value) {
+    const header = headerValue(item);
+    if (header) {
+      unique.add(header);
+    }
+  }
+  return [...unique];
+}
+
+function headerValue(value: unknown): string | undefined {
+  const text = textValue(value);
+  if (!text) {
+    return undefined;
+  }
+  return text.replace(/[\r\n]+/g, " ").trim();
+}
+
+function textValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 }
 
 function scheduledStatus(value: string): ScheduledSendStatus {

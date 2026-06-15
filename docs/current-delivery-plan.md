@@ -73,12 +73,19 @@ with more than smoke-level tests.
   Gmail, native Graph, native SMTP, and scheduled-send worker paths all carry
   the selected From identity; SMTP keeps the authenticated account as the
   envelope sender while allowing the verified alias in the visible From header.
-- Remaining gap: rich attachments, reply-all/forward modes, preview, IMAP Sent
-  folder append, provider-native send-as permission discovery, and deeper
-  command semantics still need focused backend slices and tests before Native
-  Engine can be promoted from parallel track to default path. Native provider
-  APIs do not provide the same idempotency guarantee as EmailEngine's submit
-  endpoint yet.
+- Current threading status: reply and reply-all drafts now persist provider
+  threading metadata on `email_drafts` before send. EmailEngine sends use its
+  native `reference` object, Gmail native sends include both RFC 2822
+  `In-Reply-To` / `References` headers and Gmail `threadId`, Microsoft Graph
+  threaded replies use MIME `/me/sendMail` so standard Internet headers are
+  preserved, and IMAP/SMTP sends include sanitized reply headers in
+  Nodemailer. The same metadata is hydrated by worker scheduled-send claims, so
+  delayed replies keep threading after retries or process restarts.
+- Remaining gap: rich attachments, IMAP Sent folder append, provider-native
+  send-as permission discovery, and deeper command semantics still need focused
+  backend slices and tests before Native Engine can be promoted from parallel
+  track to default path. Native provider APIs do not provide the same
+  idempotency guarantee as EmailEngine's submit endpoint yet.
 
 ### 3. Hermes Single AI Entry
 
@@ -170,11 +177,17 @@ with more than smoke-level tests.
   Seeds are generated from the app-owned mail read model, exclude verified
   self identities on reply-all, preserve `source_message_id`, and do not call
   provider transports or persist drafts until the user explicitly saves/sends.
+- Current threaded reply status: saving a reply/reply-all draft resolves the
+  source message's RFC Message-ID and provider refs from the app-owned read
+  model, stores them on the draft, and sends them through EmailEngine, native
+  Gmail, native Graph, or native SMTP. Scheduled send claims hydrate the same
+  `threading` object, so send-now and worker delivery behave the same as
+  immediate API sends.
 - Remaining gap: the current compose panel is intentionally compact; rich
-  editor, attachment upload/forward reattachment, provider-threaded reply
-  headers (`In-Reply-To` / `References`), provider-native permission discovery
-  for shared mailbox send-as, and Sent-folder provider parity are still
-  separate slices.
+  editor, attachment upload/forward reattachment, complete historical
+  `References` chain ingestion, provider-native permission discovery for
+  shared mailbox send-as, and Sent-folder provider parity are still separate
+  slices.
 
 ## Product References
 
@@ -189,9 +202,9 @@ with more than smoke-level tests.
 ## Immediate Delivery Order
 
 1. Expand Compose into a full production editor: rich editor, attachment
-   upload/reattachment, provider-threaded reply headers, provider-native
-   send-as permission discovery, and writing-style feedback for rewrite/polish
-   through the single AI entry.
+   upload/reattachment, complete historical `References` chain ingestion,
+   provider-native send-as permission discovery, and writing-style feedback for
+   rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
    GreenMail/high-volume SMTP smoke, Sent-folder append, and tests around
    QQ/163/custom-domain recovery behavior.

@@ -20,6 +20,12 @@ export interface SubmitMessageInput {
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
+  threading?: SubmitThreading;
+}
+
+export interface SubmitThreading {
+  action: "reply" | "reply_all";
+  emailEngineMessageId?: string;
 }
 
 export interface SubmitMessageResult {
@@ -81,6 +87,7 @@ export function createEmailEngineSubmitClient(
 }
 
 function toSubmitBody(input: SubmitMessageInput): Record<string, unknown> {
+  const reference = emailEngineReference(input.threading);
   return {
     ...(input.from ? { from: input.from } : {}),
     to: input.to,
@@ -89,6 +96,21 @@ function toSubmitBody(input: SubmitMessageInput): Record<string, unknown> {
     subject: input.subject,
     ...(input.bodyText ? { text: input.bodyText } : {}),
     ...(input.bodyHtml ? { html: input.bodyHtml } : {}),
+    ...(reference ? { reference } : {}),
+  };
+}
+
+function emailEngineReference(
+  threading: SubmitThreading | undefined,
+): Record<string, unknown> | undefined {
+  if (!threading?.emailEngineMessageId) {
+    return undefined;
+  }
+
+  return {
+    message: threading.emailEngineMessageId,
+    action: threading.action === "reply_all" ? "reply-all" : "reply",
+    inline: false,
   };
 }
 

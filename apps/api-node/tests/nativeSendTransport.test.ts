@@ -56,6 +56,48 @@ describe("API native send transport", () => {
     expect(sendMail).not.toHaveBeenCalled();
   });
 
+  it("adds Gmail reply headers and threadId for threaded replies", async () => {
+    const sendMessage = vi.fn(async () => ({ id: "gmail_msg_1" }));
+    const transport = createNativeSendTransport({
+      settingsStore: {
+        async getNativeProvider() {
+          return "gmail";
+        },
+      },
+      gmail: { sendMessage },
+      graph: { sendMail: vi.fn(async () => ({})) },
+      smtp: noopSmtpTransport(),
+      createBoundary: () => "boundary_1",
+    });
+
+    await transport.submitMessage({
+      accountId: "acc_gmail",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:send",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Re: Launch plan",
+      bodyText: "Thanks.",
+      threading: {
+        action: "reply",
+        inReplyTo: "<source@example.com>",
+        references: ["<root@example.com>", "<source@example.com>"],
+        gmailThreadId: "gmail_thread_1",
+      },
+    });
+
+    expect(sendMessage.mock.calls[0][0]).toMatchObject({
+      accountId: "acc_gmail",
+      threadId: "gmail_thread_1",
+    });
+    const decoded = decodeBase64Url(sendMessage.mock.calls[0][0].raw);
+    expect(decoded).toContain("In-Reply-To: <source@example.com>");
+    expect(decoded).toContain(
+      "References: <root@example.com> <source@example.com>",
+    );
+  });
+
   it("routes Graph native sends through Microsoft Graph sendMail", async () => {
     const sendMessage = vi.fn(async () => ({ id: "gmail_msg_1" }));
     const sendMail = vi.fn(async () => ({}));
@@ -104,6 +146,51 @@ describe("API native send transport", () => {
       saveToSentItems: true,
     });
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends Graph threaded replies as base64 MIME with reply headers", async () => {
+    const sendMail = vi.fn(async () => ({}));
+    const transport = createNativeSendTransport({
+      settingsStore: {
+        async getNativeProvider() {
+          return "graph";
+        },
+      },
+      gmail: { sendMessage: vi.fn(async () => ({})) },
+      graph: { sendMail },
+      smtp: noopSmtpTransport(),
+      createBoundary: () => "boundary_1",
+    });
+
+    await transport.submitMessage({
+      accountId: "acc_graph",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:send",
+      from: { address: "support@demo.site", name: "Support" },
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Re: Launch plan",
+      bodyText: "Thanks.",
+      threading: {
+        action: "reply",
+        inReplyTo: "<source@example.com>",
+        references: ["<root@example.com>", "<source@example.com>"],
+        graphMessageId: "graph_msg_1",
+      },
+    });
+
+    expect(sendMail).toHaveBeenCalledWith({
+      accountId: "acc_graph",
+      mime: expect.any(String),
+    });
+    const decoded = decodeBase64(sendMail.mock.calls[0][0].mime);
+    expect(decoded).toContain('From: "Support" <support@demo.site>');
+    expect(decoded).toContain("In-Reply-To: <source@example.com>");
+    expect(decoded).toContain(
+      "References: <root@example.com> <source@example.com>",
+    );
+    expect(decoded).toContain("Thanks.");
   });
 
   it("routes IMAP native sends through SMTP transport", async () => {
@@ -337,6 +424,15 @@ describe("API native send transport", () => {
         subject: "上线计划",
         bodyText: "Plain body",
         bodyHtml: "<p>HTML body</p>",
+        threading: {
+          action: "reply",
+          inReplyTo: "<source@example.com>\r\nBcc: leak@example.com",
+          references: [
+            "<root@example.com>",
+            "<source@example.com>",
+            "<source@example.com>",
+          ],
+        },
       }),
     ).resolves.toEqual({ messageId: "smtp_provider_msg_1" });
 
@@ -363,6 +459,8 @@ describe("API native send transport", () => {
           },
           headers: {
             "X-EmailHub-Idempotency-Key": "compose:draft_1:send",
+            "In-Reply-To": "<source@example.com> Bcc: leak@example.com",
+            References: "<root@example.com> <source@example.com>",
           },
           disableFileAccess: true,
           disableUrlAccess: true,
@@ -774,6 +872,10 @@ describe("API native send transport", () => {
 function decodeBase64Url(value: string): string {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
   return Buffer.from(base64, "base64").toString("utf8");
+}
+
+function decodeBase64(value: string): string {
+  return Buffer.from(value, "base64").toString("utf8");
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

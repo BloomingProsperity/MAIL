@@ -61,6 +61,12 @@ export interface SubmitMessageInput {
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
+  threading?: SubmitThreading;
+}
+
+export interface SubmitThreading {
+  action: "reply" | "reply_all";
+  emailEngineMessageId?: string;
 }
 
 export interface DownloadAttachmentInput {
@@ -274,9 +280,24 @@ export function createEmailEngineClient(
           subject: input.subject,
           text: input.bodyText,
           html: input.bodyHtml,
+          reference: emailEngineReference(input.threading),
         }),
       });
     },
+  };
+}
+
+function emailEngineReference(
+  threading: SubmitThreading | undefined,
+): Record<string, unknown> | undefined {
+  if (!threading?.emailEngineMessageId) {
+    return undefined;
+  }
+
+  return {
+    message: threading.emailEngineMessageId,
+    action: threading.action === "reply_all" ? "reply-all" : "reply",
+    inline: false,
   };
 }
 

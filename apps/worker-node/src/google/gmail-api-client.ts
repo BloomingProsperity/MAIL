@@ -32,6 +32,7 @@ export interface GmailTrashMessageInput {
 export interface GmailSendMessageInput {
   accountId: string;
   raw: string;
+  threadId?: string;
 }
 
 export interface GmailSendMessageResult {
@@ -203,7 +204,10 @@ export function createGmailApiClient(
         new URLSearchParams(),
         {
           method: "POST",
-          body: { raw: input.raw },
+          body: {
+            raw: input.raw,
+            ...(input.threadId ? { threadId: input.threadId } : {}),
+          },
         },
       );
     },

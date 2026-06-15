@@ -51,6 +51,7 @@ export type MailDraftSource =
   | "reply_all"
   | "forward";
 export type MailComposeSeedMode = "reply" | "reply_all" | "forward";
+export type MailThreadingAction = "reply" | "reply_all";
 export type MailEngineProvider = "emailengine" | "native";
 export type MailAccountSyncState = "syncing" | "reauth_required" | "paused";
 export type ScheduledSendStatus =
@@ -76,6 +77,7 @@ export interface MailDraft {
   source: MailDraftSource;
   replyToMessageId?: string;
   sourceMessageId?: string;
+  threading?: MailThreading;
   hermesSkillRunId?: string;
   hermesDraftText?: string;
   providerQueueId?: string;
@@ -214,6 +216,15 @@ export interface MailComposePreviewInput {
   sourceMessageId?: string;
 }
 
+export interface MailThreading {
+  action: MailThreadingAction;
+  inReplyTo?: string;
+  references: string[];
+  emailEngineMessageId?: string;
+  gmailThreadId?: string;
+  graphMessageId?: string;
+}
+
 export interface MailComposeStore {
   createDraft(
     input: Required<Pick<CreateMailDraftInput, "accountId" | "to">> & {
@@ -227,6 +238,7 @@ export interface MailComposeStore {
       source: MailDraftSource;
       replyToMessageId?: string;
       sourceMessageId?: string;
+      threading?: MailThreading;
       hermesSkillRunId?: string;
       hermesDraftText?: string;
       now: string;
@@ -308,6 +320,14 @@ export interface MailSendIdentityStore {
   listSendIdentities(input: { accountId: string }): Promise<MailSendIdentity[]>;
 }
 
+export interface MailThreadingMetadataStore {
+  getThreadingMetadata(input: {
+    accountId: string;
+    messageId: string;
+    action: MailThreadingAction;
+  }): Promise<MailThreading | undefined>;
+}
+
 export interface MailSendTransport {
   submitMessage(input: {
     accountId: string;
@@ -320,6 +340,7 @@ export interface MailSendTransport {
     subject: string;
     bodyText?: string;
     bodyHtml?: string;
+    threading?: MailThreading;
   }): Promise<{
     queueId?: string;
     messageId?: string;
@@ -369,6 +390,7 @@ export function createMailComposeService(options: {
   transports: Partial<Record<MailEngineProvider, MailSendTransport>>;
   createId: () => string;
   sendIdentityStore?: MailSendIdentityStore;
+  threadingStore?: MailThreadingMetadataStore;
   mailReadStore?: Pick<MailReadStore, "getMessage">;
   hermesDraftFeedbackStore?: HermesDraftFeedbackStore;
   now?: () => Date;
@@ -431,8 +453,13 @@ export function createMailComposeService(options: {
         normalized.accountId,
         normalized.from,
       );
+      const threading = await resolveThreading(
+        options.threadingStore,
+        normalized,
+      );
       const draft = await options.store.createDraft({
         ...normalized,
+        ...(threading ? { threading } : {}),
         id: options.createId(),
         now: currentIso(options.now),
       });
@@ -487,6 +514,7 @@ export function createMailComposeService(options: {
           subject: claimed.draft.subject,
           ...(claimed.draft.bodyText ? { bodyText: claimed.draft.bodyText } : {}),
           ...(claimed.draft.bodyHtml ? { bodyHtml: claimed.draft.bodyHtml } : {}),
+          ...(claimed.draft.threading ? { threading: claimed.draft.threading } : {}),
         });
 
         const sentAt = result.sendAt ?? currentIso(options.now);
@@ -630,6 +658,7 @@ export function createMailComposeService(options: {
           subject: claimed.draft.subject,
           ...(claimed.draft.bodyText ? { bodyText: claimed.draft.bodyText } : {}),
           ...(claimed.draft.bodyHtml ? { bodyHtml: claimed.draft.bodyHtml } : {}),
+          ...(claimed.draft.threading ? { threading: claimed.draft.threading } : {}),
         });
 
         return options.store.markScheduledSendSent({
@@ -921,6 +950,48 @@ async function listSelfAddresses(
   }
 
   return addresses;
+}
+
+async function resolveThreading(
+  store: MailThreadingMetadataStore | undefined,
+  input: {
+    accountId: string;
+    source: MailDraftSource;
+    replyToMessageId?: string;
+  },
+): Promise<MailThreading | undefined> {
+  const action = threadingActionForSource(input.source);
+  if (!action || !input.replyToMessageId) {
+    return undefined;
+  }
+  if (!store) {
+    return undefined;
+  }
+
+  const threading = await store.getThreadingMetadata({
+    accountId: input.accountId,
+    messageId: input.replyToMessageId,
+    action,
+  });
+  if (!threading) {
+    throw new InvalidMailComposeRequestError(
+      "reply source message was not found",
+    );
+  }
+
+  return threading;
+}
+
+function threadingActionForSource(
+  source: MailDraftSource,
+): MailThreadingAction | undefined {
+  if (source === "reply_all") {
+    return "reply_all";
+  }
+  if (source === "reply" || source === "hermes_reply") {
+    return "reply";
+  }
+  return undefined;
 }
 
 function previewWarnings(input: {

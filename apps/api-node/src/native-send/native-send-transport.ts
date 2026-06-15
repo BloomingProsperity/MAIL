@@ -1,7 +1,11 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
-import type { MailAddress, MailSendTransport } from "../mail-compose/mail-compose.js";
+import type {
+  MailAddress,
+  MailSendTransport,
+  MailThreading,
+} from "../mail-compose/mail-compose.js";
 import type {
   GmailSubmitClient,
   GraphSubmitClient,
@@ -87,6 +91,9 @@ export function createNativeSendTransport(input: {
                     input.createBoundary?.() ?? `emailhub-${randomUUID()}`,
                 }),
               ),
+              ...(message.threading?.gmailThreadId
+                ? { threadId: message.threading.gmailThreadId }
+                : {}),
             }),
         );
 
@@ -96,6 +103,26 @@ export function createNativeSendTransport(input: {
       }
 
       if (provider === "graph") {
+        if (hasThreadingHeaders(message.threading)) {
+          await submitWithReauthorizationMarking(
+            input.reauthorizationMarker,
+            { accountId: message.accountId, provider },
+            () =>
+              input.graph.sendMail({
+                accountId: message.accountId,
+                mime: base64(
+                  buildMimeMessage({
+                    ...message,
+                    boundary:
+                      input.createBoundary?.() ?? `emailhub-${randomUUID()}`,
+                  }),
+                ),
+              }),
+          );
+
+          return {};
+        }
+
         await submitWithReauthorizationMarking(
           input.reauthorizationMarker,
           { accountId: message.accountId, provider },
@@ -230,6 +257,7 @@ function buildMimeMessage(input: {
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
+  threading?: MailThreading;
   boundary: string;
 }): string {
   const headers = [
@@ -238,6 +266,7 @@ function buildMimeMessage(input: {
     input.cc.length > 0 ? ["Cc", addressHeader(input.cc)] : undefined,
     input.bcc.length > 0 ? ["Bcc", addressHeader(input.bcc)] : undefined,
     ["Subject", encodeHeader(input.subject)],
+    ...threadingHeaders(input.threading),
     ["MIME-Version", "1.0"],
   ].filter((header): header is string[] => Boolean(header));
 
@@ -335,6 +364,41 @@ function encodeHeaderPhrase(value: string): string {
 
 function sanitizeHeaderValue(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+function threadingHeaders(threading: MailThreading | undefined): string[][] {
+  if (!threading) {
+    return [];
+  }
+
+  const inReplyTo = optionalHeaderValue(threading.inReplyTo);
+  const references = uniqueHeaderValues(threading.references);
+  return [
+    ...(inReplyTo ? [["In-Reply-To", inReplyTo]] : []),
+    ...(references.length > 0 ? [["References", references.join(" ")]] : []),
+  ];
+}
+
+function hasThreadingHeaders(threading: MailThreading | undefined): boolean {
+  return threadingHeaders(threading).length > 0;
+}
+
+function uniqueHeaderValues(values: string[]): string[] {
+  return [
+    ...new Set(
+      values
+        .map(optionalHeaderValue)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+}
+
+function optionalHeaderValue(value: string | undefined): string | undefined {
+  return value ? sanitizeHeaderValue(value) : undefined;
+}
+
+function base64(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64");
 }
 
 function base64Url(value: string): string {

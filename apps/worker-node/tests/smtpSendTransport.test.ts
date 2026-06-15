@@ -105,6 +105,15 @@ describe("worker native SMTP send transport", () => {
       bcc: [{ address: "audit@example.com" }],
       subject: "Bridge update",
       bodyText: "Plain body",
+      threading: {
+        action: "reply",
+        inReplyTo: "<source@example.com>\r\nBcc: leak@example.com",
+        references: [
+          "<root@example.com>",
+          "<source@example.com>",
+          "<source@example.com>",
+        ],
+      },
     });
 
     expect(result.messageId).toMatch(/^<[a-f0-9]{32}@emailhub\.local>$/);
@@ -119,6 +128,12 @@ describe("worker native SMTP send transport", () => {
           envelope: {
             from: "me@proton.me",
             to: ["client@example.com", "team@example.com", "audit@example.com"],
+          },
+          headers: {
+            "X-EmailHub-Idempotency-Key":
+              "compose:draft_1:schedule:schedule_1:send",
+            "In-Reply-To": "<source@example.com> Bcc: leak@example.com",
+            References: "<root@example.com> <source@example.com>",
           },
           disableFileAccess: true,
           disableUrlAccess: true,

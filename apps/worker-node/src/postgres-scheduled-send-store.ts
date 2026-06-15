@@ -1,6 +1,8 @@
 import type { Queryable } from "./postgres-sync-job-queue.js";
 import type {
   MailAddress,
+  MailThreading,
+  MailThreadingAction,
   ScheduledSendJob,
   ScheduledSendStore,
 } from "./scheduled-send-runner.js";
@@ -21,6 +23,12 @@ interface ScheduledSendJobRow extends Record<string, unknown> {
   bcc_emails: unknown;
   body_text: string | null;
   body_html: string | null;
+  thread_action: string | null;
+  thread_in_reply_to: string | null;
+  thread_references: unknown;
+  thread_emailengine_message_id: string | null;
+  thread_gmail_thread_id: string | null;
+  thread_graph_message_id: string | null;
 }
 
 export function createPostgresScheduledSendStore(
@@ -85,7 +93,13 @@ export function createPostgresScheduledSendStore(
             claimed_draft.cc_emails,
             claimed_draft.bcc_emails,
             claimed_draft.body_text,
-            claimed_draft.body_html
+            claimed_draft.body_html,
+            claimed_draft.thread_action,
+            claimed_draft.thread_in_reply_to,
+            claimed_draft.thread_references,
+            claimed_draft.thread_emailengine_message_id,
+            claimed_draft.thread_gmail_thread_id,
+            claimed_draft.thread_graph_message_id
           FROM claimed
           JOIN claimed_draft ON claimed_draft.id = claimed.draft_id
           JOIN connected_accounts
@@ -194,6 +208,7 @@ export function createPostgresScheduledSendStore(
 }
 
 function rowToJob(row: ScheduledSendJobRow): ScheduledSendJob {
+  const threading = rowToThreading(row);
   return {
     id: String(row.id),
     accountId: String(row.account_id),
@@ -217,14 +232,80 @@ function rowToJob(row: ScheduledSendJobRow): ScheduledSendJob {
     subject: String(row.subject),
     ...(row.body_text ? { bodyText: row.body_text } : {}),
     ...(row.body_html ? { bodyHtml: row.body_html } : {}),
+    ...(threading ? { threading } : {}),
     scheduledAt: toIsoString(row.scheduled_at),
     attempts: Number(row.attempts),
   };
 }
 
+function rowToThreading(row: ScheduledSendJobRow): MailThreading | undefined {
+  const action = threadingAction(row.thread_action);
+  if (!action) {
+    return undefined;
+  }
+
+  const references = headerValues(row.thread_references);
+  const threading: MailThreading = {
+    action,
+    references,
+  };
+  const inReplyTo = headerValue(row.thread_in_reply_to);
+  const emailEngineMessageId = textValue(row.thread_emailengine_message_id);
+  const gmailThreadId = textValue(row.thread_gmail_thread_id);
+  const graphMessageId = textValue(row.thread_graph_message_id);
+
+  if (inReplyTo) {
+    threading.inReplyTo = inReplyTo;
+  }
+  if (emailEngineMessageId) {
+    threading.emailEngineMessageId = emailEngineMessageId;
+  }
+  if (gmailThreadId) {
+    threading.gmailThreadId = gmailThreadId;
+  }
+  if (graphMessageId) {
+    threading.graphMessageId = graphMessageId;
+  }
+
+  return threading;
+}
+
 function nativeProvider(value: unknown): ScheduledSendJob["nativeProvider"] {
   return value === "gmail" || value === "graph" || value === "imap"
     ? value
+    : undefined;
+}
+
+function threadingAction(value: unknown): MailThreadingAction | undefined {
+  return value === "reply" || value === "reply_all" ? value : undefined;
+}
+
+function headerValues(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const unique = new Set<string>();
+  for (const item of value) {
+    const header = headerValue(item);
+    if (header) {
+      unique.add(header);
+    }
+  }
+  return [...unique];
+}
+
+function headerValue(value: unknown): string | undefined {
+  const text = textValue(value);
+  if (!text) {
+    return undefined;
+  }
+  return text.replace(/[\r\n]+/g, " ").trim();
+}
+
+function textValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
     : undefined;
 }
 

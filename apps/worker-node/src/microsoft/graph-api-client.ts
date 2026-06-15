@@ -35,7 +35,8 @@ export interface GraphMoveMessageInput {
 
 export interface GraphSendMailInput {
   accountId: string;
-  message: Record<string, unknown>;
+  message?: Record<string, unknown>;
+  mime?: string;
   saveToSentItems?: boolean;
 }
 
@@ -94,10 +95,12 @@ export function createGraphApiClient(
     url: string,
     init: Omit<RequestInit, "headers" | "body"> & {
       body?: unknown;
+      rawBody?: string;
+      contentType?: string;
       prefer?: string;
     } = {},
   ): Promise<T> {
-    const { body, prefer, ...requestOptions } = init;
+    const { body, rawBody, contentType, prefer, ...requestOptions } = init;
     const token = await options.accessTokenProvider.getAccessToken(accountId);
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
@@ -107,8 +110,11 @@ export function createGraphApiClient(
       ...requestOptions,
       headers,
     };
-    if (body !== undefined) {
-      headers["Content-Type"] = "application/json";
+    if (rawBody !== undefined) {
+      headers["Content-Type"] = contentType ?? "text/plain";
+      requestInit.body = rawBody;
+    } else if (body !== undefined) {
+      headers["Content-Type"] = contentType ?? "application/json";
       requestInit.body = JSON.stringify(body);
     }
 
@@ -187,6 +193,18 @@ export function createGraphApiClient(
     },
 
     sendMail(input) {
+      if (input.mime) {
+        return request<unknown>(input.accountId, `${baseUrl}/me/sendMail`, {
+          method: "POST",
+          rawBody: input.mime,
+          contentType: "text/plain",
+        });
+      }
+
+      if (!input.message) {
+        throw new Error("Microsoft Graph sendMail requires a message or MIME body");
+      }
+
       return request<unknown>(input.accountId, `${baseUrl}/me/sendMail`, {
         method: "POST",
         body: {

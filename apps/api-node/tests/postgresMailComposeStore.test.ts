@@ -68,6 +68,12 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       null,
+      [],
+      null,
+      null,
+      null,
+      null,
+      null,
       "2026-06-13T08:00:00.000Z",
     ]);
     expect(draft).toMatchObject({
@@ -146,6 +152,114 @@ describe("Postgres mail compose store", () => {
       hermesSkillRunId: "run_reply_1",
       hermesDraftText:
         "Hi Lina,\n\nThanks for the update. I can confirm Thursday works well for us.\n\nBest,\nHua",
+    });
+  });
+
+  it("persists reply threading metadata with the draft", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresMailComposeStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "draft_1",
+              account_id: "acc_1",
+              from_address: null,
+              from_name: null,
+              subject: "Re: Launch confirmation",
+              to_emails: [{ address: "lina@example.com" }],
+              cc_emails: [],
+              bcc_emails: [],
+              body_text: "Thanks.",
+              body_html: null,
+              status: "draft",
+              source: "reply",
+              reply_to_message_id: "message_1",
+              source_message_id: "message_1",
+              thread_action: "reply",
+              thread_in_reply_to: "<source@example.com>",
+              thread_references: [
+                "<root@example.com>",
+                "<source@example.com>",
+              ],
+              thread_emailengine_message_id: "emailengine_msg_1",
+              thread_gmail_thread_id: "gmail_thread_1",
+              thread_graph_message_id: "graph_msg_1",
+              hermes_skill_run_id: null,
+              hermes_draft_text: null,
+              provider_queue_id: null,
+              provider_message_id: null,
+              error_message: null,
+              created_at: "2026-06-13T08:00:00.000Z",
+              updated_at: "2026-06-13T08:00:00.000Z",
+              sent_at: null,
+            },
+          ],
+        };
+      },
+    });
+
+    const draft = await store.createDraft({
+      id: "draft_1",
+      accountId: "acc_1",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Re: Launch confirmation",
+      bodyText: "Thanks.",
+      source: "reply",
+      replyToMessageId: "message_1",
+      sourceMessageId: "message_1",
+      threading: {
+        action: "reply",
+        inReplyTo: "<source@example.com>",
+        references: ["<root@example.com>", "<source@example.com>"],
+        emailEngineMessageId: "emailengine_msg_1",
+        gmailThreadId: "gmail_thread_1",
+        graphMessageId: "graph_msg_1",
+      },
+      now: "2026-06-13T08:00:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/thread_action/i);
+    expect(queries[0].values).toEqual([
+      "draft_1",
+      "acc_1",
+      null,
+      null,
+      "Re: Launch confirmation",
+      [{ address: "lina@example.com" }],
+      [],
+      [],
+      "Thanks.",
+      null,
+      "reply",
+      "message_1",
+      "message_1",
+      "reply",
+      "<source@example.com>",
+      ["<root@example.com>", "<source@example.com>"],
+      "emailengine_msg_1",
+      "gmail_thread_1",
+      "graph_msg_1",
+      null,
+      null,
+      "2026-06-13T08:00:00.000Z",
+    ]);
+    expect(draft).toMatchObject({
+      id: "draft_1",
+      source: "reply",
+      replyToMessageId: "message_1",
+      sourceMessageId: "message_1",
+      threading: {
+        action: "reply",
+        inReplyTo: "<source@example.com>",
+        references: ["<root@example.com>", "<source@example.com>"],
+        emailEngineMessageId: "emailengine_msg_1",
+        gmailThreadId: "gmail_thread_1",
+        graphMessageId: "graph_msg_1",
+      },
     });
   });
 

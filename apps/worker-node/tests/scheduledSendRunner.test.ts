@@ -10,7 +10,16 @@ import {
 describe("scheduled send runner", () => {
   it("submits a claimed scheduled draft and marks it sent", async () => {
     const store = createStore([
-      { ...job(), from: { address: "support@demo.site", name: "Support" } },
+      {
+        ...job(),
+        from: { address: "support@demo.site", name: "Support" },
+        threading: {
+          action: "reply" as const,
+          inReplyTo: "<source@example.com>",
+          references: ["<source@example.com>"],
+          emailEngineMessageId: "emailengine_msg_1",
+        },
+      },
     ]);
     const submitCalls: unknown[] = [];
 
@@ -46,6 +55,12 @@ describe("scheduled send runner", () => {
         bcc: [],
         subject: "Launch confirmation",
         bodyText: "Looks good.",
+        threading: {
+          action: "reply",
+          inReplyTo: "<source@example.com>",
+          references: ["<source@example.com>"],
+          emailEngineMessageId: "emailengine_msg_1",
+        },
       },
     ]);
     expect(store.sent).toEqual([

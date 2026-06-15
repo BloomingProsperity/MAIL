@@ -330,4 +330,33 @@ describe("Microsoft Graph API client", () => {
       saveToSentItems: true,
     });
   });
+
+  it("sends MIME mail through Graph sendMail as text/plain", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createGraphApiClient({
+      accessTokenProvider: {
+        async getAccessToken() {
+          return "access-token";
+        },
+      },
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return new Response(null, { status: 202 });
+      },
+      baseUrl: "https://graph.example/v1.0",
+    });
+
+    await client.sendMail({
+      accountId: "acc_1",
+      mime: "base64-rfc822-message",
+    });
+
+    expect(calls[0].url).toBe("https://graph.example/v1.0/me/sendMail");
+    expect(calls[0].init?.method).toBe("POST");
+    expect(calls[0].init?.headers).toMatchObject({
+      Authorization: "Bearer access-token",
+      "Content-Type": "text/plain",
+    });
+    expect(calls[0].init?.body).toBe("base64-rfc822-message");
+  });
 });

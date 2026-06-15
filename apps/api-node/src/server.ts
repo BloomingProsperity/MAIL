@@ -56,6 +56,7 @@ import { createPostgresMailActionStore } from "./mail-actions/postgres-mail-acti
 import { createMailComposeService } from "./mail-compose/mail-compose.js";
 import { createPostgresMailComposeStore } from "./mail-compose/postgres-mail-compose-store.js";
 import { createPostgresSendIdentityStore } from "./mail-compose/postgres-send-identity-store.js";
+import { createPostgresMailThreadingStore } from "./mail-compose/postgres-threading-store.js";
 import { createConfiguredNativeSendTransport } from "./native-send/native-send-transport.js";
 import { createPostgresMailEngineIngestStore } from "./mail-engine/postgres-ingest-store.js";
 import { createPostgresSmartInboxFeedbackStore } from "./smart-inbox/postgres-feedback-store.js";
@@ -181,6 +182,7 @@ if (pool) {
   config.mailComposeService = createMailComposeService({
     store: createPostgresMailComposeStore(pool),
     sendIdentityStore: createPostgresSendIdentityStore(pool),
+    threadingStore: createPostgresMailThreadingStore(pool),
     mailReadStore: config.mailReadStore,
     transports: {
       ...(config.emailEngineAccessTokenConfigured

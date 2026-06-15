@@ -43,6 +43,14 @@ describe("server wiring", () => {
     expect(source).toMatch(/createId:\s*randomUUID/);
   });
 
+  it("wires provider threading metadata into API compose", async () => {
+    const serverUrl = new URL("../src/server.ts", import.meta.url);
+    const source = await readFile(serverUrl, "utf8");
+
+    expect(source).toMatch(/createPostgresMailThreadingStore/);
+    expect(source).toMatch(/threadingStore:\s*createPostgresMailThreadingStore/);
+  });
+
   it("injects the structured logger into the API handler", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");

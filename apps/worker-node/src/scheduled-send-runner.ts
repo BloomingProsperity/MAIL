@@ -7,6 +7,16 @@ export interface MailAddress {
 
 export type ScheduledSendEngineProvider = "emailengine" | "native";
 export type ScheduledSendTransportKey = "emailengine" | NativeProvider;
+export type MailThreadingAction = "reply" | "reply_all";
+
+export interface MailThreading {
+  action: MailThreadingAction;
+  inReplyTo?: string;
+  references: string[];
+  emailEngineMessageId?: string;
+  gmailThreadId?: string;
+  graphMessageId?: string;
+}
 
 export interface ScheduledSendJob {
   id: string;
@@ -21,6 +31,7 @@ export interface ScheduledSendJob {
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
+  threading?: MailThreading;
   scheduledAt: string;
   attempts: number;
 }
@@ -60,6 +71,7 @@ export interface ScheduledSendTransport {
     subject: string;
     bodyText?: string;
     bodyHtml?: string;
+    threading?: MailThreading;
   }): Promise<{
     queueId?: string;
     messageId?: string;
@@ -144,6 +156,7 @@ async function processScheduledSend(
       subject: job.subject,
       ...(job.bodyText ? { bodyText: job.bodyText } : {}),
       ...(job.bodyHtml ? { bodyHtml: job.bodyHtml } : {}),
+      ...(job.threading ? { threading: job.threading } : {}),
     });
 
     await input.store.markScheduledSendSent({

@@ -227,6 +227,41 @@ describe("EmailEngine client", () => {
     expect(result).toEqual({ queueId: "queue_1", messageId: "msg_1" });
   });
 
+  it("submits scheduled replies with EmailEngine reference metadata", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createEmailEngineClient({
+      baseUrl: "http://emailengine:3000",
+      accessToken: "secret-token",
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return Response.json({ queueId: "queue_1" });
+      },
+    });
+
+    await client.submitMessage({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Re: Launch confirmation",
+      bodyText: "Thanks.",
+      threading: {
+        action: "reply",
+        emailEngineMessageId: "emailengine_msg_1",
+      },
+    });
+
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      reference: {
+        message: "emailengine_msg_1",
+        action: "reply",
+        inline: false,
+      },
+    });
+  });
+
   it("downloads attachment bytes through the EmailEngine attachment endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const client = createEmailEngineClient({

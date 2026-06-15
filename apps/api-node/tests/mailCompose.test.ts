@@ -138,6 +138,96 @@ describe("mail compose service", () => {
     ]);
   });
 
+  it("resolves provider threading metadata when creating reply drafts", async () => {
+    const calls: unknown[] = [];
+    const store = createStore({
+      async createDraft(input) {
+        calls.push(["create", input]);
+        return {
+          id: input.id,
+          accountId: input.accountId,
+          subject: input.subject,
+          to: input.to,
+          cc: input.cc,
+          bcc: input.bcc,
+          bodyText: input.bodyText,
+          status: "draft",
+          source: input.source,
+          replyToMessageId: input.replyToMessageId,
+          sourceMessageId: input.sourceMessageId,
+          threading: input.threading,
+          createdAt: input.now,
+          updatedAt: input.now,
+        };
+      },
+    });
+    const service = createMailComposeService({
+      store,
+      createId: () => "draft_1",
+      transports: {},
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      threadingStore: {
+        async getThreadingMetadata(input) {
+          calls.push(["threading", input]);
+          return {
+            action: input.action,
+            inReplyTo: "<source@example.com>",
+            references: ["<root@example.com>", "<source@example.com>"],
+            emailEngineMessageId: "emailengine_msg_1",
+            gmailThreadId: "gmail_thread_1",
+            graphMessageId: "graph_msg_1",
+          };
+        },
+      },
+    });
+
+    const draft = await service.createDraft({
+      accountId: "acc_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Re: Launch confirmation",
+      bodyText: "Thanks.",
+      source: "reply_all",
+      replyToMessageId: "message_1",
+    });
+
+    expect(calls).toEqual([
+      [
+        "threading",
+        {
+          accountId: "acc_1",
+          messageId: "message_1",
+          action: "reply_all",
+        },
+      ],
+      [
+        "create",
+        expect.objectContaining({
+          id: "draft_1",
+          accountId: "acc_1",
+          source: "reply_all",
+          replyToMessageId: "message_1",
+          sourceMessageId: "message_1",
+          threading: {
+            action: "reply_all",
+            inReplyTo: "<source@example.com>",
+            references: ["<root@example.com>", "<source@example.com>"],
+            emailEngineMessageId: "emailengine_msg_1",
+            gmailThreadId: "gmail_thread_1",
+            graphMessageId: "graph_msg_1",
+          },
+        }),
+      ],
+    ]);
+    expect(draft.threading).toEqual({
+      action: "reply_all",
+      inReplyTo: "<source@example.com>",
+      references: ["<root@example.com>", "<source@example.com>"],
+      emailEngineMessageId: "emailengine_msg_1",
+      gmailThreadId: "gmail_thread_1",
+      graphMessageId: "graph_msg_1",
+    });
+  });
+
   it("creates drafts with allowed send-as identities", async () => {
     const calls: unknown[] = [];
     const store = createStore({
@@ -420,6 +510,12 @@ describe("mail compose service", () => {
             ...draft(),
             from: { address: "support@demo.site", name: "Support" },
             status: "sending",
+            threading: {
+              action: "reply" as const,
+              inReplyTo: "<source@example.com>",
+              references: ["<source@example.com>"],
+              emailEngineMessageId: "emailengine_msg_1",
+            },
           },
         };
       },
@@ -469,6 +565,12 @@ describe("mail compose service", () => {
         bcc: [],
         subject: "Launch confirmation",
         bodyText: "Looks good.",
+        threading: {
+          action: "reply",
+          inReplyTo: "<source@example.com>",
+          references: ["<source@example.com>"],
+          emailEngineMessageId: "emailengine_msg_1",
+        },
       },
     ]);
     expect(calls).toEqual([
@@ -628,6 +730,12 @@ describe("mail compose service", () => {
             ...draft(),
             from: { address: "support@demo.site" },
             status: "sending",
+            threading: {
+              action: "reply_all" as const,
+              inReplyTo: "<source@example.com>",
+              references: ["<root@example.com>", "<source@example.com>"],
+              emailEngineMessageId: "emailengine_msg_1",
+            },
           },
         };
       },
@@ -676,6 +784,12 @@ describe("mail compose service", () => {
         bcc: [],
         subject: "Launch confirmation",
         bodyText: "Looks good.",
+        threading: {
+          action: "reply_all",
+          inReplyTo: "<source@example.com>",
+          references: ["<root@example.com>", "<source@example.com>"],
+          emailEngineMessageId: "emailengine_msg_1",
+        },
       },
     ]);
     expect(calls).toEqual([

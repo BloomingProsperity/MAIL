@@ -5,6 +5,7 @@ import nodemailer, { type SendMailOptions } from "nodemailer";
 import type { Queryable } from "../credentials/account-credential-store.js";
 import type {
   MailAddress,
+  MailThreading,
   ScheduledSendTransport,
 } from "../scheduled-send-runner.js";
 import type { SecretStore } from "../secrets/secret-store.js";
@@ -287,6 +288,7 @@ function mailOptions(
     },
     headers: {
       "X-EmailHub-Idempotency-Key": message.idempotencyKey,
+      ...threadingHeaders(message.threading),
     },
     disableFileAccess: true,
     disableUrlAccess: true,
@@ -341,6 +343,35 @@ function deterministicMessageId(
     .digest("hex")
     .slice(0, 32);
   return `<${digest}@emailhub.local>`;
+}
+
+function threadingHeaders(
+  threading: MailThreading | undefined,
+): Record<string, string> {
+  if (!threading) {
+    return {};
+  }
+
+  const inReplyTo = optionalHeaderValue(threading.inReplyTo);
+  const references = uniqueHeaderValues(threading.references);
+  return {
+    ...(inReplyTo ? { "In-Reply-To": inReplyTo } : {}),
+    ...(references.length > 0 ? { References: references.join(" ") } : {}),
+  };
+}
+
+function uniqueHeaderValues(values: string[]): string[] {
+  return [
+    ...new Set(
+      values
+        .map(optionalHeaderValue)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+}
+
+function optionalHeaderValue(value: string | undefined): string | undefined {
+  return value ? value.replace(/[\r\n]+/g, " ").trim() : undefined;
 }
 
 async function markSmtpReauthorization(

@@ -4,13 +4,15 @@ export interface GmailSubmitClient {
   sendMessage(input: {
     accountId: string;
     raw: string;
+    threadId?: string;
   }): Promise<{ id?: string; threadId?: string }>;
 }
 
 export interface GraphSubmitClient {
   sendMail(input: {
     accountId: string;
-    message: Record<string, unknown>;
+    message?: Record<string, unknown>;
+    mime?: string;
     saveToSentItems?: boolean;
   }): Promise<unknown>;
 }
@@ -51,7 +53,10 @@ export function createGmailSubmitClient(input: {
             authorization: `Bearer ${token}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({ raw: message.raw }),
+          body: JSON.stringify({
+            raw: message.raw,
+            ...(message.threadId ? { threadId: message.threadId } : {}),
+          }),
         },
       );
       const body = await readJson(response);
@@ -80,6 +85,27 @@ export function createGraphSubmitClient(input: {
       const token = await input.accessTokenProvider.getAccessToken(
         message.accountId,
       );
+      if (message.mime) {
+        const response = await fetchImpl(`${baseUrl}/me/sendMail`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "text/plain",
+          },
+          body: message.mime,
+        });
+        const body = await readJson(response);
+        if (!response.ok) {
+          throw providerError("Microsoft Graph", response.status, body);
+        }
+
+        return body;
+      }
+
+      if (!message.message) {
+        throw new Error("Microsoft Graph sendMail requires a message or MIME body");
+      }
+
       const response = await fetchImpl(`${baseUrl}/me/sendMail`, {
         method: "POST",
         headers: {

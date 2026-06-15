@@ -317,6 +317,7 @@ describe("Gmail API client", () => {
     const result = await client.sendMessage({
       accountId: "acc_1",
       raw,
+      threadId: "thr_sent_1",
     });
 
     expect(calls[0].url).toBe(
@@ -328,7 +329,10 @@ describe("Gmail API client", () => {
       Authorization: "Bearer access-token",
       "Content-Type": "application/json",
     });
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ raw });
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      raw,
+      threadId: "thr_sent_1",
+    });
     expect(result).toEqual({ id: "gmail_sent_1", threadId: "thr_sent_1" });
   });
 });
