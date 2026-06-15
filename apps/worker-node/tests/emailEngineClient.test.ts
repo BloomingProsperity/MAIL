@@ -304,6 +304,49 @@ describe("EmailEngine client", () => {
     });
   });
 
+  it("submits scheduled attachment content through EmailEngine", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createEmailEngineClient({
+      baseUrl: "http://emailengine:3000",
+      accessToken: "secret-token",
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return Response.json({ queueId: "queue_1" });
+      },
+    });
+
+    await client.submitMessage({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Launch confirmation",
+      bodyText: "Please review the brief.",
+      attachments: [
+        {
+          filename: "brief.txt",
+          contentType: "text/plain",
+          byteSize: 5,
+          inline: false,
+          contentBase64: "aGVsbG8=",
+        },
+      ],
+    });
+
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      attachments: [
+        {
+          filename: "brief.txt",
+          contentType: "text/plain",
+          content: "aGVsbG8=",
+          encoding: "base64",
+        },
+      ],
+    });
+  });
+
   it("downloads attachment bytes through the EmailEngine attachment endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const client = createEmailEngineClient({

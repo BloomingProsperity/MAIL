@@ -168,6 +168,16 @@ describe("Postgres mail compose store", () => {
         inline: false,
         providerAttachmentId: "ee_attachment_1",
       },
+      {
+        id: "upload_1",
+        source: "uploaded_file",
+        attachmentId: "upload_1",
+        filename: "brief.txt",
+        contentType: "text/plain",
+        byteSize: 5,
+        inline: false,
+        contentBase64: "aGVsbG8=",
+      },
     ];
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const store = createPostgresMailComposeStore({
@@ -228,6 +238,7 @@ describe("Postgres mail compose store", () => {
     expect(queries[0].text).toMatch(/attachment_manifest/i);
     expect(queries[0].values).toContainEqual(manifest);
     expect(JSON.stringify(draft)).not.toContain("ee_attachment_1");
+    expect(JSON.stringify(draft)).not.toContain("aGVsbG8=");
     expect(draft.attachments).toEqual([
       {
         id: "attachment_1",
@@ -237,6 +248,102 @@ describe("Postgres mail compose store", () => {
         contentType: "application/pdf",
         byteSize: 2048,
         inline: false,
+      },
+      {
+        id: "upload_1",
+        source: "uploaded_file",
+        attachmentId: "upload_1",
+        filename: "brief.txt",
+        contentType: "text/plain",
+        byteSize: 5,
+        inline: false,
+      },
+    ]);
+  });
+
+  it("hydrates uploaded attachment content for transport without exposing it", async () => {
+    const manifest = [
+      {
+        id: "upload_1",
+        source: "uploaded_file",
+        attachmentId: "upload_1",
+        filename: "brief.txt",
+        contentType: "text/plain",
+        byteSize: 5,
+        inline: false,
+        contentBase64: "aGVsbG8=",
+      },
+    ];
+    const store = createPostgresMailComposeStore({
+      async query() {
+        return {
+          rows: [
+            {
+              id: "draft_1",
+              account_id: "acc_1",
+              from_address: null,
+              from_name: null,
+              subject: "Launch confirmation",
+              to_emails: [{ address: "lina@example.com" }],
+              cc_emails: [],
+              bcc_emails: [],
+              body_text: "Looks good.",
+              body_html: null,
+              status: "draft",
+              source: "manual",
+              reply_to_message_id: null,
+              source_message_id: null,
+              thread_action: null,
+              thread_in_reply_to: null,
+              thread_references: [],
+              thread_emailengine_message_id: null,
+              thread_gmail_thread_id: null,
+              thread_graph_message_id: null,
+              attachment_manifest: manifest,
+              hermes_skill_run_id: null,
+              hermes_draft_text: null,
+              provider_queue_id: null,
+              provider_message_id: null,
+              error_message: null,
+              created_at: "2026-06-13T08:00:00.000Z",
+              updated_at: "2026-06-13T08:00:00.000Z",
+              sent_at: null,
+              account_email: "me@example.com",
+              sync_state: "syncing",
+              engine_provider: "emailengine",
+            },
+          ],
+        };
+      },
+    });
+
+    const result = await store.getDraftWithAccount({
+      accountId: "acc_1",
+      draftId: "draft_1",
+    });
+
+    expect(JSON.stringify(result?.draft)).not.toContain("aGVsbG8=");
+    expect(result?.draft.attachments).toEqual([
+      {
+        id: "upload_1",
+        source: "uploaded_file",
+        attachmentId: "upload_1",
+        filename: "brief.txt",
+        contentType: "text/plain",
+        byteSize: 5,
+        inline: false,
+      },
+    ]);
+    expect(result?.transportAttachments).toEqual([
+      {
+        id: "upload_1",
+        source: "uploaded_file",
+        attachmentId: "upload_1",
+        filename: "brief.txt",
+        contentType: "text/plain",
+        byteSize: 5,
+        inline: false,
+        contentBase64: "aGVsbG8=",
       },
     ]);
   });

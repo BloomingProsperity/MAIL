@@ -147,6 +147,7 @@ import {
 } from "../logging/operational-events.js";
 
 const DEFAULT_MAX_REQUEST_BODY_BYTES = 1_048_576;
+const DEFAULT_MAX_COMPOSE_REQUEST_BODY_BYTES = 40 * 1024 * 1024;
 
 export interface ImapSmtpEndpointSettings {
   host: string;
@@ -353,6 +354,7 @@ export interface ApiConfig {
   emailEngineWebhookSecret: string;
   emailEngineAccessTokenConfigured?: boolean;
   maxRequestBodyBytes?: number;
+  maxComposeRequestBodyBytes?: number;
   mailEngineIngestStore?: MailEngineIngestStore;
   mailReadStore?: MailReadStore;
   attachmentDownloadService?: AttachmentDownloadService;
@@ -397,6 +399,8 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
     config.mailEngineIngestStore ?? createInMemoryMailEngineIngestStore();
   const maxRequestBodyBytes =
     config.maxRequestBodyBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES;
+  const maxComposeRequestBodyBytes =
+    config.maxComposeRequestBodyBytes ?? DEFAULT_MAX_COMPOSE_REQUEST_BODY_BYTES;
 
   return async (request, response) => {
     const requestId =
@@ -423,6 +427,8 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
     });
 
     const readRequestBody = () => readBody(request, maxRequestBodyBytes);
+    const readComposeRequestBody = () =>
+      readBody(request, maxComposeRequestBodyBytes);
 
     try {
       if (request.method === "GET" && request.url === "/health") {
@@ -775,7 +781,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           const result = await config.mailComposeService.createDraft(
             parseMailComposeDraftInput(
               mailComposeRoute.accountId,
-              await readRequestBody(),
+              await readComposeRequestBody(),
             ),
           );
           writeJson(response, 201, result);
@@ -789,7 +795,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           const result = await config.mailComposeService.previewDraft(
             parseMailComposePreviewInput(
               mailComposeRoute.accountId,
-              await readRequestBody(),
+              await readComposeRequestBody(),
             ),
           );
           writeJson(response, 200, result);
@@ -5541,8 +5547,11 @@ function parseMailComposeAttachments(
     }
     const record = item as Record<string, unknown>;
     const source =
-      record.source === undefined || record.source === "message_attachment"
+      record.source === undefined
         ? "message_attachment"
+        : record.source === "message_attachment" ||
+            record.source === "uploaded_file"
+          ? record.source
         : undefined;
     const attachmentId =
       isNonEmptyString(record.attachmentId)
@@ -5569,6 +5578,9 @@ function parseMailComposeAttachments(
       inline: record.inline === true,
       ...(isNonEmptyString(record.contentId)
         ? { contentId: record.contentId }
+        : {}),
+      ...(source === "uploaded_file" && isNonEmptyString(record.contentBase64)
+        ? { contentBase64: record.contentBase64 }
         : {}),
     };
   });

@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -231,6 +233,89 @@ describe("mail compose service", () => {
       attachmentId: "attachment_1",
       filename: "proposal.pdf",
     });
+  });
+
+  it("stores uploaded attachment content snapshots without exposing base64", async () => {
+    const contentBase64 = Buffer.from("hello attachment").toString("base64");
+    const storeCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async createDraft(input) {
+          storeCalls.push(input);
+          return {
+            id: input.id,
+            accountId: input.accountId,
+            to: input.to,
+            cc: input.cc,
+            bcc: input.bcc,
+            subject: input.subject,
+            bodyText: input.bodyText,
+            source: input.source,
+            attachments: input.attachments?.map((attachment) => ({
+              id: attachment.id,
+              source: attachment.source,
+              attachmentId: attachment.attachmentId,
+              filename: attachment.filename,
+              contentType: attachment.contentType,
+              byteSize: attachment.byteSize,
+              inline: attachment.inline,
+            })),
+            status: "draft",
+            createdAt: input.now,
+            updatedAt: input.now,
+          };
+        },
+      }),
+      createId: () => "draft_1",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      transports: {},
+    });
+
+    const draft = await service.createDraft({
+      accountId: "acc_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Launch confirmation",
+      bodyText: "Please review the proposal.",
+      attachments: [
+        {
+          source: "uploaded_file",
+          attachmentId: "upload_1",
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 1,
+          contentBase64,
+        },
+      ],
+    });
+
+    expect(storeCalls).toEqual([
+      expect.objectContaining({
+        attachments: [
+          {
+            id: "upload_1",
+            source: "uploaded_file",
+            attachmentId: "upload_1",
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: Buffer.byteLength("hello attachment"),
+            inline: false,
+            contentBase64,
+          },
+        ],
+      }),
+    ]);
+    expect(JSON.stringify(draft)).not.toContain(contentBase64);
+    expect(draft.attachments).toEqual([
+      {
+        id: "upload_1",
+        source: "uploaded_file",
+        attachmentId: "upload_1",
+        filename: "proposal.pdf",
+        contentType: "application/pdf",
+        byteSize: Buffer.byteLength("hello attachment"),
+        inline: false,
+      },
+    ]);
   });
 
   it("resolves provider threading metadata when creating reply drafts", async () => {
@@ -559,6 +644,16 @@ describe("mail compose service", () => {
       bodyText: " Looks good. ",
       source: "reply",
       replyToMessageId: "message_1",
+      attachments: [
+        {
+          source: "uploaded_file",
+          attachmentId: "upload_1",
+          filename: "brief.txt",
+          contentType: "text/plain",
+          byteSize: 1,
+          contentBase64: Buffer.from("hello").toString("base64"),
+        },
+      ],
     });
 
     expect(preview).toMatchObject({
@@ -569,12 +664,50 @@ describe("mail compose service", () => {
       source: "reply",
       replyToMessageId: "message_1",
       sourceMessageId: "message_1",
+      attachments: [
+        {
+          id: "upload_1",
+          source: "uploaded_file",
+          attachmentId: "upload_1",
+          filename: "brief.txt",
+          contentType: "text/plain",
+          byteSize: 5,
+          inline: false,
+        },
+      ],
       warnings: [],
       readyToSend: true,
       generatedAt: "2026-06-13T08:00:00.000Z",
     });
+    expect(JSON.stringify(preview)).not.toContain("aGVsbG8=");
     expect(preview.estimatedSizeBytes).toBeGreaterThan(0);
     expect(storeCalls).toEqual([]);
+  });
+
+  it("rejects uploaded attachments with invalid base64 content", async () => {
+    const service = createMailComposeService({
+      store: createStore({}),
+      createId: () => "draft_1",
+      transports: {},
+    });
+
+    await expect(
+      service.createDraft({
+        accountId: "acc_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch confirmation",
+        bodyText: "Please review the proposal.",
+        attachments: [
+          {
+            source: "uploaded_file",
+            attachmentId: "upload_1",
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            contentBase64: "not base64!",
+          },
+        ],
+      }),
+    ).rejects.toThrow("attachment content is invalid");
   });
 
   it("claims a draft, submits it through the account engine, and marks it sent", async () => {
@@ -622,6 +755,16 @@ describe("mail compose service", () => {
               byteSize: 2048,
               inline: false,
               providerAttachmentId: "ee_attachment_1",
+            },
+            {
+              id: "upload_1",
+              source: "uploaded_file",
+              attachmentId: "upload_1",
+              filename: "brief.txt",
+              contentType: "text/plain",
+              byteSize: 5,
+              inline: false,
+              contentBase64: "aGVsbG8=",
             },
           ],
         };
@@ -679,6 +822,13 @@ describe("mail compose service", () => {
             byteSize: 2048,
             inline: false,
             providerAttachmentId: "ee_attachment_1",
+          },
+          {
+            filename: "brief.txt",
+            contentType: "text/plain",
+            byteSize: 5,
+            inline: false,
+            contentBase64: "aGVsbG8=",
           },
         ],
         threading: {

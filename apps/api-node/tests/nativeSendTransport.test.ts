@@ -276,6 +276,50 @@ describe("API native send transport", () => {
     expect(decoded).toContain("Thanks.");
   });
 
+  it("sends Graph content-backed attachments as MIME", async () => {
+    const sendMail = vi.fn(async () => ({}));
+    const transport = createNativeSendTransport({
+      settingsStore: {
+        async getNativeProvider() {
+          return "graph";
+        },
+      },
+      gmail: { sendMessage: vi.fn(async () => ({})) },
+      graph: { sendMail },
+      smtp: noopSmtpTransport(),
+      createBoundary: () => "boundary_1",
+    });
+
+    await transport.submitMessage({
+      accountId: "acc_graph",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:send",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Launch plan",
+      bodyText: "Plain body",
+      attachments: [
+        {
+          filename: "brief.txt",
+          contentType: "text/plain",
+          byteSize: 5,
+          inline: false,
+          contentBase64: "aGVsbG8=",
+        },
+      ],
+    });
+
+    expect(sendMail).toHaveBeenCalledWith({
+      accountId: "acc_graph",
+      mime: expect.any(String),
+    });
+    const decoded = decodeBase64(sendMail.mock.calls[0][0].mime);
+    expect(decoded).toContain('Content-Type: multipart/mixed; boundary="boundary_1"');
+    expect(decoded).toContain('Content-Disposition: attachment; filename="brief.txt"');
+    expect(decoded).toContain("aGVsbG8=");
+  });
+
   it("routes IMAP native sends through SMTP transport", async () => {
     const submitMessage = vi.fn(async () => ({ messageId: "smtp_msg_1" }));
     const transport = createNativeSendTransport({

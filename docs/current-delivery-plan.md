@@ -84,12 +84,13 @@ with more than smoke-level tests.
   and IMAP envelope/header data. The same metadata is hydrated by worker
   scheduled-send claims, so delayed replies keep threading after retries or
   process restarts.
-- Remaining gap: direct file upload/content snapshots for native attachment
-  sends, IMAP Sent folder append, provider-native send-as permission discovery,
-  and deeper command semantics still need focused backend slices and tests
-  before Native Engine can be promoted from parallel track to default path.
-  Native provider APIs do not provide the same idempotency guarantee as
-  EmailEngine's submit endpoint yet.
+- Remaining gap: chunked/object-storage uploads for larger attachments,
+  forwarded provider attachment content snapshots for native sends, IMAP Sent
+  folder append, provider-native send-as permission discovery, and deeper
+  command semantics still need focused backend slices and tests before Native
+  Engine can be promoted from parallel track to default path. Native provider
+  APIs do not provide the same idempotency guarantee as EmailEngine's submit
+  endpoint yet.
 
 ### 3. Hermes Single AI Entry
 
@@ -193,14 +194,18 @@ with more than smoke-level tests.
   `attachment_manifest` that exposes only local attachment ids to the frontend
   while keeping provider attachment ids internal for transport submission.
   EmailEngine sends reuse existing provider attachments through its submit
-  `attachments[].reference` contract. Native Gmail, native Graph MIME, and
-  native SMTP can send attachments only when the manifest has durable
-  `contentBase64` bytes; if a native path receives only an EmailEngine provider
+  `attachments[].reference` contract. Direct compose uploads now enter the
+  same manifest as `uploaded_file` content snapshots with decoded-size
+  validation, 20-file / 25 MB limits, a compose-specific API body cap, and an
+  Nginx self-hosting body cap. EmailEngine submits uploaded files as base64
+  content, while native Gmail, native Graph MIME, and native SMTP send the same
+  `contentBase64` bytes. If a native path receives only an EmailEngine provider
   reference it fails loudly instead of silently dropping the file.
 - Remaining gap: the current compose panel is intentionally compact; rich
-  editor, direct file upload, durable content snapshots for forwarded
-  attachments, provider-native permission discovery for shared mailbox send-as,
-  and Sent-folder provider parity are still separate slices.
+  editor, chunked/object-storage uploads for larger files, durable content
+  snapshots for forwarded provider attachments, provider-native permission
+  discovery for shared mailbox send-as, and Sent-folder provider parity are
+  still separate slices.
 
 ## Product References
 
@@ -214,10 +219,10 @@ with more than smoke-level tests.
 
 ## Immediate Delivery Order
 
-1. Expand Compose into a full production editor: rich editor, direct file
-   upload, forwarded attachment content snapshots for native transports,
-   provider-native send-as permission discovery, and writing-style feedback for
-   rewrite/polish through the single AI entry.
+1. Expand Compose into a full production editor: rich editor, chunked/object
+   storage uploads, forwarded attachment content snapshots for native
+   transports, provider-native send-as permission discovery, and writing-style
+   feedback for rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
    GreenMail/high-volume SMTP smoke, Sent-folder append, and tests around
    QQ/163/custom-domain recovery behavior.

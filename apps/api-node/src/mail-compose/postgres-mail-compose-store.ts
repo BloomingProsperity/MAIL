@@ -800,15 +800,31 @@ function attachmentManifest(value: unknown): MailDraftTransportAttachment[] {
       const id = textValue(record.id) ?? textValue(record.attachmentId);
       const attachmentId = textValue(record.attachmentId) ?? id;
       const providerAttachmentId = textValue(record.providerAttachmentId);
-      if (!id || !attachmentId || !providerAttachmentId) {
+      const contentBase64 = textValue(record.contentBase64);
+      const source =
+        record.source === undefined || record.source === "message_attachment"
+          ? "message_attachment"
+          : record.source === "uploaded_file"
+            ? "uploaded_file"
+            : undefined;
+      if (!id || !attachmentId || !source) {
         return undefined;
       }
 
       const contentId = textValue(record.contentId);
-      const contentBase64 = textValue(record.contentBase64);
+      if (source === "uploaded_file" && !contentBase64) {
+        return undefined;
+      }
+      if (
+        source === "message_attachment" &&
+        !providerAttachmentId &&
+        !contentBase64
+      ) {
+        return undefined;
+      }
       return {
         id: sanitizeText(id),
-        source: "message_attachment" as const,
+        source,
         attachmentId: sanitizeText(attachmentId),
         filename: sanitizeFilename(textValue(record.filename) ?? "attachment"),
         contentType: sanitizeContentType(
@@ -817,7 +833,9 @@ function attachmentManifest(value: unknown): MailDraftTransportAttachment[] {
         byteSize: Math.max(0, numberValue(record.byteSize)),
         inline: record.inline === true,
         ...(contentId ? { contentId: sanitizeText(contentId) } : {}),
-        providerAttachmentId: sanitizeText(providerAttachmentId),
+        ...(providerAttachmentId
+          ? { providerAttachmentId: sanitizeText(providerAttachmentId) }
+          : {}),
         ...(contentBase64 ? { contentBase64 } : {}),
       };
     })

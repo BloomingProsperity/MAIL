@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import type {
   AttachmentDto,
   MailReadStore,
@@ -63,7 +65,10 @@ export type ScheduledSendStatus =
   | "failed"
   | "dead_letter";
 
-export type MailDraftAttachmentSource = "message_attachment";
+const MAX_DRAFT_ATTACHMENTS = 20;
+const MAX_DRAFT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+export type MailDraftAttachmentSource = "message_attachment" | "uploaded_file";
 
 export interface MailDraftAttachment {
   id: string;
@@ -77,7 +82,7 @@ export interface MailDraftAttachment {
 }
 
 export interface MailDraftTransportAttachment extends MailDraftAttachment {
-  providerAttachmentId: string;
+  providerAttachmentId?: string;
   contentBase64?: string;
 }
 
@@ -89,6 +94,7 @@ export interface CreateMailDraftAttachmentInput {
   byteSize?: number;
   inline?: boolean;
   contentId?: string;
+  contentBase64?: string;
 }
 
 export interface MailSendAttachment {
@@ -1061,11 +1067,23 @@ async function resolveDraftAttachments(
     return [];
   }
   if (!store?.getAttachmentDownload) {
-    throw new InvalidMailComposeRequestError("attachment store is unavailable");
+    if (
+      normalized.some((attachment) => attachment.source === "message_attachment")
+    ) {
+      throw new InvalidMailComposeRequestError("attachment store is unavailable");
+    }
   }
 
   const resolved: MailDraftTransportAttachment[] = [];
   for (const attachment of normalized) {
+    if (attachment.source === "uploaded_file") {
+      resolved.push(uploadedDraftAttachment(attachment));
+      continue;
+    }
+
+    if (!store?.getAttachmentDownload) {
+      throw new InvalidMailComposeRequestError("attachment store is unavailable");
+    }
     const download = await store.getAttachmentDownload({
       accountId,
       attachmentId: attachment.attachmentId,
@@ -1091,24 +1109,47 @@ async function resolveDraftAttachments(
   return enforceAttachmentLimits(resolved);
 }
 
+function uploadedDraftAttachment(
+  attachment: CreateMailDraftAttachmentInput,
+): MailDraftTransportAttachment {
+  const content = normalizeAttachmentContentBase64(attachment.contentBase64);
+  const filename = sanitizeFilename(attachment.filename ?? "attachment");
+  const contentType = sanitizeContentType(
+    attachment.contentType ?? "application/octet-stream",
+  );
+  const contentId = optionalTrimmed(attachment.contentId);
+  return {
+    id: attachment.attachmentId,
+    source: "uploaded_file",
+    attachmentId: attachment.attachmentId,
+    filename,
+    contentType,
+    byteSize: content.byteSize,
+    inline: Boolean(attachment.inline),
+    ...(contentId ? { contentId: sanitizeContentId(contentId) } : {}),
+    contentBase64: content.contentBase64,
+  };
+}
+
 function normalizeAttachmentInputs(
   attachments: CreateMailDraftAttachmentInput[] | undefined,
 ): CreateMailDraftAttachmentInput[] {
   if (!attachments || attachments.length === 0) {
     return [];
   }
-  if (attachments.length > 20) {
+  if (attachments.length > MAX_DRAFT_ATTACHMENTS) {
     throw new InvalidMailComposeRequestError("too many attachments");
   }
 
   const seen = new Set<string>();
   const normalized: CreateMailDraftAttachmentInput[] = [];
   for (const attachment of attachments) {
-    if (
-      !attachment ||
-      attachment.source === undefined ||
-      attachment.source === "message_attachment"
-    ) {
+    if (!attachment) {
+      throw new InvalidMailComposeRequestError("attachment is invalid");
+    }
+
+    const source = attachment.source ?? "message_attachment";
+    if (source === "message_attachment" || source === "uploaded_file") {
       const attachmentId = optionalTrimmed(attachment?.attachmentId);
       if (!attachmentId || /[\u0000-\u001f]/.test(attachmentId)) {
         throw new InvalidMailComposeRequestError("attachment id is invalid");
@@ -1121,7 +1162,7 @@ function normalizeAttachmentInputs(
       const contentType = optionalTrimmed(attachment?.contentType);
       const contentId = optionalTrimmed(attachment?.contentId);
       const normalizedAttachment: CreateMailDraftAttachmentInput = {
-        source: "message_attachment",
+        source,
         attachmentId,
         ...(filename ? { filename: sanitizeFilename(filename) } : {}),
         ...(contentType ? { contentType: sanitizeContentType(contentType) } : {}),
@@ -1131,6 +1172,13 @@ function normalizeAttachmentInputs(
           : {}),
         inline: Boolean(attachment?.inline),
         ...(contentId ? { contentId: sanitizeContentId(contentId) } : {}),
+        ...(source === "uploaded_file"
+          ? {
+              contentBase64: normalizeAttachmentContentBase64(
+                attachment.contentBase64,
+              ).contentBase64,
+            }
+          : {}),
       };
       normalized.push(normalizedAttachment);
       continue;
@@ -1149,7 +1197,19 @@ function enforceAttachmentInputLimits(
     (sum, attachment) => sum + (attachment.byteSize ?? 0),
     0,
   );
-  if (knownTotal > 25 * 1024 * 1024) {
+  if (knownTotal > MAX_DRAFT_ATTACHMENT_BYTES) {
+    throw new InvalidMailComposeRequestError("attachments are too large");
+  }
+  const uploadedTotal = attachments.reduce((sum, attachment) => {
+    if (attachment.source !== "uploaded_file") {
+      return sum;
+    }
+    return (
+      sum +
+      normalizeAttachmentContentBase64(attachment.contentBase64).byteSize
+    );
+  }, 0);
+  if (uploadedTotal > MAX_DRAFT_ATTACHMENT_BYTES) {
     throw new InvalidMailComposeRequestError("attachments are too large");
   }
   return attachments;
@@ -1162,7 +1222,7 @@ function enforceAttachmentLimits<T extends { byteSize: number }>(
     (sum, attachment) => sum + attachment.byteSize,
     0,
   );
-  if (total > 25 * 1024 * 1024) {
+  if (total > MAX_DRAFT_ATTACHMENT_BYTES) {
     throw new InvalidMailComposeRequestError("attachments are too large");
   }
   return attachments;
@@ -1173,15 +1233,19 @@ function publicDraftAttachmentFromInput(
 ): MailDraftAttachment {
   const attachmentId = optionalTrimmed(attachment.attachmentId) ?? "attachment";
   const contentId = optionalTrimmed(attachment.contentId);
+  const byteSize =
+    attachment.source === "uploaded_file"
+      ? normalizeAttachmentContentBase64(attachment.contentBase64).byteSize
+      : (attachment.byteSize ?? 0);
   return {
     id: attachmentId,
-    source: "message_attachment",
+    source: attachment.source ?? "message_attachment",
     attachmentId,
     filename: sanitizeFilename(attachment.filename ?? "attachment"),
     contentType: sanitizeContentType(
       attachment.contentType ?? "application/octet-stream",
     ),
-    byteSize: attachment.byteSize ?? 0,
+    byteSize,
     inline: Boolean(attachment.inline),
     ...(contentId ? { contentId: sanitizeContentId(contentId) } : {}),
   };
@@ -1196,11 +1260,39 @@ function sendAttachments(
     byteSize: attachment.byteSize,
     inline: attachment.inline,
     ...(attachment.contentId ? { contentId: attachment.contentId } : {}),
-    providerAttachmentId: attachment.providerAttachmentId,
+    ...(attachment.providerAttachmentId
+      ? { providerAttachmentId: attachment.providerAttachmentId }
+      : {}),
     ...(attachment.contentBase64
       ? { contentBase64: attachment.contentBase64 }
       : {}),
   }));
+}
+
+function normalizeAttachmentContentBase64(
+  value: string | undefined,
+): { contentBase64: string; byteSize: number } {
+  const compact = value?.replace(/\s+/g, "") ?? "";
+  if (!compact) {
+    throw new InvalidMailComposeRequestError("attachment content is required");
+  }
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact) || compact.length % 4 === 1) {
+    throw new InvalidMailComposeRequestError("attachment content is invalid");
+  }
+
+  const buffer = Buffer.from(compact, "base64");
+  const canonical = buffer.toString("base64");
+  if (canonical.replace(/=+$/g, "") !== compact.replace(/=+$/g, "")) {
+    throw new InvalidMailComposeRequestError("attachment content is invalid");
+  }
+  if (buffer.byteLength > MAX_DRAFT_ATTACHMENT_BYTES) {
+    throw new InvalidMailComposeRequestError("attachments are too large");
+  }
+
+  return {
+    contentBase64: canonical,
+    byteSize: buffer.byteLength,
+  };
 }
 
 function threadingActionForSource(

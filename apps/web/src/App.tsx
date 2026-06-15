@@ -75,6 +75,10 @@ type QuickReplyAction = {
   label: string;
   instruction: string;
 };
+
+const MAX_COMPOSE_ATTACHMENTS = 20;
+const MAX_COMPOSE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
 type AddMailProviderGroupId =
   | "gmail"
   | "outlook"
@@ -1554,6 +1558,42 @@ function MailWorkspace(props: {
     }
   }
 
+  async function addComposeAttachments(files: FileList | null) {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    setComposeBusy(true);
+    try {
+      const nextAttachments = await Promise.all(
+        Array.from(files).map((file) =>
+          composeAttachmentFromFile(file, props.accountId),
+        ),
+      );
+      const merged = [...composeAttachments, ...nextAttachments];
+      if (merged.length > MAX_COMPOSE_ATTACHMENTS) {
+        setComposeNotice(`最多只能添加 ${MAX_COMPOSE_ATTACHMENTS} 个附件。`);
+        return;
+      }
+      const totalBytes = merged.reduce(
+        (sum, attachment) => sum + attachment.byteSize,
+        0,
+      );
+      if (totalBytes > MAX_COMPOSE_ATTACHMENT_BYTES) {
+        setComposeNotice("附件总大小不能超过 25 MB。");
+        return;
+      }
+
+      setComposeAttachments(merged);
+      setComposeNotice(`已添加 ${nextAttachments.length} 个附件。`);
+      setComposePreview(undefined);
+    } catch {
+      setComposeNotice("附件读取失败，请重新选择文件。");
+    } finally {
+      setComposeBusy(false);
+    }
+  }
+
   function clearComposeForm() {
     setComposeTo("");
     setComposeCc("");
@@ -1803,6 +1843,20 @@ function MailWorkspace(props: {
             }}
             placeholder="写邮件正文，或先在右侧用 Hermes 生成回复草稿"
           />
+          <label className="compose-file-button">
+            <Paperclip size={15} />
+            <span>添加附件</span>
+            <input
+              aria-label="Attach files to compose"
+              type="file"
+              multiple
+              disabled={composeBusy}
+              onChange={(event) => {
+                void addComposeAttachments(event.currentTarget.files);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
           {composeAttachments.length > 0 ? (
             <div className="compose-attachment-list" aria-label="Compose attachments">
               {composeAttachments.map((attachment) => (
@@ -4944,6 +4998,57 @@ function composeAttachmentFromSeed(
     byteSize: attachment.byteSize,
     inline: attachment.inline,
   };
+}
+
+async function composeAttachmentFromFile(
+  file: File,
+  accountId: string,
+): Promise<MailDraftAttachmentDto> {
+  const contentBase64 = await fileToBase64(file);
+  const attachmentId = `upload_${accountId}_${Date.now()}_${Math.random()
+    .toString(16)
+    .slice(2)}_${file.name}_${file.size}_${file.lastModified}`;
+  return {
+    id: attachmentId,
+    source: "uploaded_file",
+    attachmentId,
+    filename: file.name || "attachment",
+    contentType: file.type || "application/octet-stream",
+    byteSize: file.size,
+    inline: false,
+    contentBase64,
+  };
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  if (typeof file.arrayBuffer !== "function") {
+    return fileToBase64WithReader(file);
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.slice(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function fileToBase64WithReader(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("file read failed"));
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const marker = "base64,";
+      const index = result.indexOf(marker);
+      if (index < 0) {
+        reject(new Error("file read failed"));
+        return;
+      }
+      resolve(result.slice(index + marker.length));
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function formatAttachmentSize(byteSize: number): string {

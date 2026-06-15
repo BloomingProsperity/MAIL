@@ -151,10 +151,12 @@ describe("mail compose routes", () => {
               attachments: [
                 {
                   id: "attachment_1",
+                  source: "uploaded_file",
                   filename: "proposal.pdf",
                   contentType: "application/pdf",
                   byteSize: 2048.9,
                   inline: false,
+                  contentBase64: "aGVsbG8=",
                 },
               ],
             }),
@@ -179,12 +181,13 @@ describe("mail compose routes", () => {
             source: "manual",
             attachments: [
               {
-                source: "message_attachment",
+                source: "uploaded_file",
                 attachmentId: "attachment_1",
                 filename: "proposal.pdf",
                 contentType: "application/pdf",
                 byteSize: 2048,
                 inline: false,
+                contentBase64: "aGVsbG8=",
               },
             ],
           },
@@ -257,6 +260,65 @@ describe("mail compose routes", () => {
         ]);
       },
       { mailComposeService },
+    );
+  });
+
+  it("uses the compose request body limit for uploaded draft attachments", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async createDraft(input: unknown) {
+        calls.push(input);
+        return {
+          id: "draft_1",
+          accountId: "acc_1",
+          to: [{ address: "lina@example.com" }],
+          cc: [],
+          bcc: [],
+          subject: "Launch confirmation",
+          bodyText: "Looks good.",
+          status: "draft",
+          source: "manual",
+          createdAt: "2026-06-13T08:00:00.000Z",
+          updatedAt: "2026-06-13T08:00:00.000Z",
+        };
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/compose/drafts`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              to: [{ address: "lina@example.com" }],
+              subject: "Launch confirmation",
+              bodyText: "Looks good.",
+              attachments: [
+                {
+                  source: "uploaded_file",
+                  attachmentId: "upload_1",
+                  filename: "brief.txt",
+                  contentType: "text/plain",
+                  contentBase64: "aGVsbG8=",
+                },
+              ],
+            }),
+          },
+        );
+
+        expect(response.status).toBe(201);
+        expect(calls).toHaveLength(1);
+      },
+      {
+        mailComposeService,
+        maxRequestBodyBytes: 64,
+        maxComposeRequestBodyBytes: 2048,
+      },
     );
   });
 

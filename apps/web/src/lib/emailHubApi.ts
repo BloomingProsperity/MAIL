@@ -702,13 +702,14 @@ export interface MailAddressDto {
 
 export interface MailDraftAttachmentDto {
   id: string;
-  source: "message_attachment";
+  source: "message_attachment" | "uploaded_file";
   attachmentId: string;
   filename: string;
   contentType: string;
   byteSize: number;
   inline: boolean;
   contentId?: string;
+  contentBase64?: string;
 }
 
 export interface MailDraftDto {

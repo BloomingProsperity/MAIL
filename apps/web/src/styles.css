@@ -582,6 +582,26 @@ h2 {
   min-width: 0;
 }
 
+.compose-file-button {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  max-width: 160px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 7px 9px;
+}
+
+.compose-file-button input {
+  display: none;
+}
+
 .compose-attachment-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

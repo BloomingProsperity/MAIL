@@ -1729,6 +1729,51 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("adds uploaded files to the composed draft payload", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Please review the launch plan." },
+    });
+    fireEvent.change(screen.getByLabelText("Attach files to compose"), {
+      target: {
+        files: [new File(["hello"], "brief.txt", { type: "text/plain" })],
+      },
+    });
+
+    expect(await screen.findByText("brief.txt")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "Please review the launch plan.",
+        source: "manual",
+        attachments: [
+          expect.objectContaining({
+            source: "uploaded_file",
+            filename: "brief.txt",
+            contentType: "text/plain",
+            byteSize: 5,
+            inline: false,
+            contentBase64: "aGVsbG8=",
+          }),
+        ],
+      });
+    });
+  });
+
   it("sends selected send-as identity from the compose panel", async () => {
     const api = createApiFixture();
 

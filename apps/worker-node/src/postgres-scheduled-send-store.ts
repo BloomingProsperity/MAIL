@@ -257,10 +257,26 @@ function attachmentManifest(value: unknown): MailSendAttachment[] {
       const contentType = textValue(record.contentType);
       const providerAttachmentId = textValue(record.providerAttachmentId);
       const contentBase64 = textValue(record.contentBase64);
+      const source =
+        record.source === undefined || record.source === "message_attachment"
+          ? "message_attachment"
+          : record.source === "uploaded_file"
+            ? "uploaded_file"
+            : undefined;
       if (
+        !source ||
         !filename ||
-        !contentType ||
-        (!providerAttachmentId && !contentBase64)
+        !contentType
+      ) {
+        return undefined;
+      }
+      if (source === "uploaded_file" && !contentBase64) {
+        return undefined;
+      }
+      if (
+        source === "message_attachment" &&
+        !providerAttachmentId &&
+        !contentBase64
       ) {
         return undefined;
       }
