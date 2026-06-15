@@ -1,0 +1,101 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+const testDir = dirname(fileURLToPath(import.meta.url));
+const mainPath = join(testDir, "..", "src", "main.ts");
+
+describe("worker main wiring", () => {
+  it("runs engine commands inside the worker polling loop", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createPostgresEngineCommandQueue");
+    expect(main).toContain("createEngineCommandDispatcher");
+    expect(main).toContain("runEngineCommandBatch");
+    expect(main).toContain("commandQueue");
+  });
+
+  it("runs follow-up reminders inside the worker polling loop", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createPostgresFollowUpReminderStore");
+    expect(main).toContain("runFollowUpReminderBatch");
+    expect(main).toContain("followUpReminderStore");
+  });
+
+  it("uses structured logging for worker lifecycle and job results", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createJsonLogger");
+    expect(main).toContain('service: "email-hub-worker"');
+    expect(main).toContain('logger.info("worker_ready"');
+    expect(main).toContain('logger.info("worker_result"');
+    expect(main).toContain('logger.error("worker_tick_failed"');
+  });
+
+  it("persists worker result diagnostics for API troubleshooting", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createPostgresOperationalEventRecorder");
+    expect(main).toContain("recordWorkerResultDiagnostic");
+    expect(main).toContain("operationalEventRecorder");
+  });
+
+  it("wraps all worker lanes in one global overlap guard", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createWorkerLoopRunner");
+    expect(main).toContain("lanes:");
+    expect(main).toContain("runEngineCommandBatch");
+    expect(main).toContain("runScheduledSendBatch");
+    expect(main).toContain("runFollowUpReminderBatch");
+    expect(main).toContain("runAliasDeliveryBatch");
+    expect(main).toContain("runAttachmentTextExtractionBatch");
+  });
+
+  it("routes scheduled sends through EmailEngine and native transports", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createConfiguredNativeSendTransports");
+    expect(main).toContain("nativeSendTransports");
+    expect(main).toContain("transports: {");
+    expect(main).toContain("emailengine: emailEngine");
+    expect(main).toContain("...nativeSendTransports");
+  });
+
+  it("names every worker lane for structured failure logs", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain('name: "sync"');
+    expect(main).toContain('name: "engine_commands"');
+    expect(main).toContain('name: "scheduled_send"');
+    expect(main).toContain('name: "follow_up_reminders"');
+    expect(main).toContain('name: "alias_delivery"');
+    expect(main).toContain('name: "attachment_text_extraction"');
+  });
+
+  it("registers graceful shutdown for the poller timer and Postgres pool", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createRuntimeShutdownHandler");
+    expect(main).toContain('process.once("SIGTERM"');
+    expect(main).toContain('process.once("SIGINT"');
+    expect(main).toContain("currentTick");
+    expect(main).toContain('name: "worker_active_tick"');
+    expect(main).toContain("clearInterval(pollTimer)");
+    expect(main).toContain("pool.end()");
+  });
+
+  it("registers process signals before logging worker readiness", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    const signalIndex = main.indexOf('process.once("SIGTERM"');
+    const readyIndex = main.indexOf('logger.info("worker_ready"');
+
+    expect(signalIndex).toBeGreaterThanOrEqual(0);
+    expect(readyIndex).toBeGreaterThanOrEqual(0);
+    expect(signalIndex).toBeLessThan(readyIndex);
+  });
+});

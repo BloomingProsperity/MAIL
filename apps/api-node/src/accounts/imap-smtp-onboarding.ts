@@ -1,0 +1,620 @@
+import type {
+  BootstrapSyncJob,
+  BootstrapSyncJobStore,
+  EnqueueInitialSyncInput,
+} from "./bootstrap-sync-job-store.js";
+import type {
+  EmailEngineAccountsClient,
+  EmailEngineConnectionCheck,
+  RegisterImapSmtpAccountInput,
+} from "../mail-engine/email-engine-accounts-client.js";
+
+export interface ImapSmtpEndpointSettings {
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  secret: string;
+}
+
+export interface ImapSmtpProviderPreset {
+  imap: Pick<ImapSmtpEndpointSettings, "host" | "port" | "secure">;
+  smtp: Pick<ImapSmtpEndpointSettings, "host" | "port" | "secure">;
+}
+
+export type ImapSmtpProviderPresetOverrides = Partial<
+  Record<string, ImapSmtpProviderPreset>
+>;
+
+export interface ImapSmtpOnboardingInput {
+  email: string;
+  provider: string;
+  displayName?: string;
+  username?: string;
+  secret?: string;
+  imap?: ImapSmtpEndpointSettings;
+  smtp?: ImapSmtpEndpointSettings;
+}
+
+export interface OnboardingTask {
+  id: string;
+  email: string;
+  provider: string;
+  authMethod: "password" | "oauth";
+  status: "pending" | "completed" | "failed";
+  errorMessage?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface ConnectedAccount {
+  id: string;
+  email: string;
+  provider: string;
+  authMethod: "password";
+  displayName?: string;
+  syncState: "syncing" | "reauth_required";
+  engineProvider: "emailengine";
+}
+
+export interface AccountOnboardingResult {
+  task: OnboardingTask;
+  account?: ConnectedAccount;
+  syncJob?: BootstrapSyncJob;
+}
+
+export interface AccountOnboardingService {
+  onboardImapSmtp(
+    input: ImapSmtpOnboardingInput,
+  ): Promise<AccountOnboardingResult>;
+  testImapSmtpConnection(
+    input: ImapSmtpOnboardingInput,
+  ): Promise<ImapSmtpConnectionTestResult>;
+}
+
+export interface AccountOnboardingStore {
+  createTask(input: OnboardingTask): Promise<OnboardingTask>;
+  completeTask(input: {
+    taskId: string;
+    account: ConnectedAccount;
+  }): Promise<AccountOnboardingResult>;
+  completeTaskAndEnqueueInitialSync?(input: {
+    taskId: string;
+    account: ConnectedAccount;
+    initialSync: EnqueueInitialSyncInput;
+  }): Promise<AccountOnboardingResult & { syncJob: BootstrapSyncJob }>;
+  failTask(input: {
+    taskId: string;
+    errorMessage: string;
+  }): Promise<OnboardingTask>;
+}
+
+export interface InMemoryAccountOnboardingStore extends AccountOnboardingStore {
+  listTasks(): OnboardingTask[];
+  listAccounts(): ConnectedAccount[];
+}
+
+export interface ImapSmtpOnboardingServiceOptions {
+  store: AccountOnboardingStore;
+  emailEngineAccounts: Pick<
+    EmailEngineAccountsClient,
+    "registerImapSmtpAccount"
+  > &
+    Partial<Pick<EmailEngineAccountsClient, "verifyImapSmtpAccount">>;
+  bootstrapSyncJobs?: BootstrapSyncJobStore;
+  createId: () => string;
+  providerPresetOverrides?: ImapSmtpProviderPresetOverrides;
+}
+
+export interface ImapSmtpConnectionCheckResult {
+  ok: boolean;
+  code?: string;
+  error?: string;
+}
+
+export type ImapSmtpConnectionDiagnosticSeverity = "action_required";
+
+export interface ImapSmtpConnectionDiagnostic {
+  code: string;
+  provider: string;
+  severity: ImapSmtpConnectionDiagnosticSeverity;
+  affected: "account" | "imap" | "smtp";
+  message: string;
+  recoveryAction: string;
+}
+
+export interface ImapSmtpConnectionTestResult {
+  provider: string;
+  ok: boolean;
+  checks: {
+    imap: ImapSmtpConnectionCheckResult;
+    smtp: ImapSmtpConnectionCheckResult;
+  };
+  diagnostics: ImapSmtpConnectionDiagnostic[];
+}
+
+export function createImapSmtpOnboardingService(
+  options: ImapSmtpOnboardingServiceOptions,
+): AccountOnboardingService {
+  return {
+    async testImapSmtpConnection(input) {
+      if (!options.emailEngineAccounts.verifyImapSmtpAccount) {
+        throw new Error("EmailEngine account verification is not configured");
+      }
+
+      const settings = resolveImapSmtpSettings(input, {
+        providerPresetOverrides: options.providerPresetOverrides,
+      });
+      const result = await options.emailEngineAccounts.verifyImapSmtpAccount({
+        email: input.email,
+        imap: settings.imap,
+        smtp: settings.smtp,
+      });
+      const imap = normalizeConnectionCheck(result.imap);
+      const smtp = normalizeConnectionCheck(result.smtp);
+
+      return {
+        provider: settings.provider,
+        ok: imap.ok && smtp.ok,
+        checks: { imap, smtp },
+        diagnostics: buildImapSmtpConnectionDiagnostics(settings.provider, {
+          imap,
+          smtp,
+        }),
+      };
+    },
+    async onboardImapSmtp(input) {
+      const settings = resolveImapSmtpSettings(input, {
+        providerPresetOverrides: options.providerPresetOverrides,
+      });
+      const taskId = options.createId();
+      const accountId = options.createId();
+
+      await options.store.createTask({
+        id: taskId,
+        email: input.email,
+        provider: settings.provider,
+        authMethod: "password",
+        status: "pending",
+        payload: redactedPayload(input, accountId, settings),
+      });
+
+      let result: AccountOnboardingResult;
+      try {
+        const registrationInput: RegisterImapSmtpAccountInput = {
+          accountId,
+          email: input.email,
+          displayName: input.displayName,
+          imap: settings.imap,
+          smtp: settings.smtp,
+        };
+        await options.emailEngineAccounts.registerImapSmtpAccount(
+          registrationInput,
+        );
+
+        const account: ConnectedAccount = {
+          id: accountId,
+          email: input.email,
+          provider: settings.provider,
+          authMethod: "password",
+          displayName: input.displayName,
+          syncState: "syncing",
+          engineProvider: "emailengine",
+        };
+        const initialSync: EnqueueInitialSyncInput = {
+          accountId,
+          provider: settings.provider,
+          engineProvider: "emailengine",
+          sourceTaskId: taskId,
+        };
+
+        if (options.store.completeTaskAndEnqueueInitialSync) {
+          result = await options.store.completeTaskAndEnqueueInitialSync({
+            taskId,
+            account,
+            initialSync,
+          });
+        } else {
+          result = await options.store.completeTask({
+            taskId,
+            account,
+          });
+
+          const syncJob = await options.bootstrapSyncJobs?.enqueueInitialSync(
+            initialSync,
+          );
+          result = {
+            ...result,
+            ...(syncJob ? { syncJob } : {}),
+          };
+        }
+      } catch (error) {
+        await options.store.failTask({
+          taskId,
+          errorMessage:
+            error instanceof Error ? error.message : "unknown onboarding error",
+        });
+        throw error;
+      }
+
+      return result;
+    },
+  };
+}
+
+function normalizeConnectionCheck(
+  check: EmailEngineConnectionCheck | undefined,
+): ImapSmtpConnectionCheckResult {
+  const ok = check?.success !== false;
+  return {
+    ok,
+    ...(check?.code ? { code: check.code } : {}),
+    ...(check?.error ? { error: check.error } : {}),
+  };
+}
+
+export function buildImapSmtpConnectionDiagnostics(
+  provider: string,
+  checks: {
+    imap: ImapSmtpConnectionCheckResult;
+    smtp: ImapSmtpConnectionCheckResult;
+  },
+): ImapSmtpConnectionDiagnostic[] {
+  if (checks.imap.ok && checks.smtp.ok) {
+    return [];
+  }
+
+  if (
+    provider === "proton_bridge" &&
+    (isConnectionFailure(checks.imap) || isConnectionFailure(checks.smtp))
+  ) {
+    return [
+      {
+        code: "proton_bridge_unreachable",
+        provider,
+        severity: "action_required",
+        affected: "account",
+        message:
+          "Start Proton Bridge on this computer, keep it signed in, then test this mailbox again.",
+        recoveryAction: "start_proton_bridge",
+      },
+    ];
+  }
+
+  if (isAuthenticationFailure(checks.imap) || isAuthenticationFailure(checks.smtp)) {
+    const diagnostic = authenticationDiagnostic(provider);
+    if (diagnostic) {
+      return [diagnostic];
+    }
+  }
+
+  if (isConnectionFailure(checks.imap) || isConnectionFailure(checks.smtp)) {
+    return [
+      {
+        code: "mail_server_unreachable",
+        provider,
+        severity: "action_required",
+        affected: "account",
+        message:
+          "Check this mailbox server address, port, and network connection, then test again.",
+        recoveryAction: "check_mail_server_connection",
+      },
+    ];
+  }
+
+  return [
+    {
+      code: "mail_credentials_rejected",
+      provider,
+      severity: "action_required",
+      affected: "account",
+      message:
+        "Check this mailbox username and mailbox-specific password, then test again.",
+      recoveryAction: "check_mailbox_credentials",
+    },
+  ];
+}
+
+function authenticationDiagnostic(
+  provider: string,
+): ImapSmtpConnectionDiagnostic | undefined {
+  if (provider === "icloud") {
+    return {
+      code: "icloud_app_specific_password_required",
+      provider,
+      severity: "action_required",
+      affected: "account",
+      message:
+        "Use an Apple app-specific password for iCloud Mail. Apple ID passwords will not work.",
+      recoveryAction: "create_apple_app_specific_password",
+    };
+  }
+
+  if (provider === "qq") {
+    return {
+      code: "qq_authorization_code_required",
+      provider,
+      severity: "action_required",
+      affected: "account",
+      message:
+        "Use the authorization code generated in QQ Mail settings, not your normal account password.",
+      recoveryAction: "enable_qq_mail_authorization_code",
+    };
+  }
+
+  if (provider === "163") {
+    return {
+      code: "netease_163_authorization_code_required",
+      provider,
+      severity: "action_required",
+      affected: "account",
+      message:
+        "Use the authorization code generated in 163 Mail settings, not your normal account password.",
+      recoveryAction: "enable_163_mail_authorization_code",
+    };
+  }
+
+  return undefined;
+}
+
+function isAuthenticationFailure(check: ImapSmtpConnectionCheckResult): boolean {
+  if (check.ok) {
+    return false;
+  }
+
+  const code = normalizedErrorCode(check.code);
+  if (
+    [
+      "EAUTH",
+      "AUTHENTICATIONFAILED",
+      "AUTHENTICATION_FAILED",
+      "AUTHFAILED",
+      "AUTH_FAILED",
+      "LOGINFAILED",
+      "LOGIN_FAILED",
+    ].includes(code)
+  ) {
+    return true;
+  }
+
+  const error = check.error?.toLowerCase() ?? "";
+  return (
+    error.includes("auth") ||
+    error.includes("invalid login") ||
+    error.includes("invalid password") ||
+    error.includes("login failed")
+  );
+}
+
+function isConnectionFailure(check: ImapSmtpConnectionCheckResult): boolean {
+  if (check.ok) {
+    return false;
+  }
+
+  return [
+    "ECONNREFUSED",
+    "ECONNRESET",
+    "ETIMEDOUT",
+    "ENOTFOUND",
+    "EAI_AGAIN",
+  ].includes(normalizedErrorCode(check.code));
+}
+
+function normalizedErrorCode(code: string | undefined): string {
+  return code?.trim().toUpperCase() ?? "";
+}
+
+export interface ResolvedImapSmtpSettings {
+  provider: string;
+  providerPreset?: string;
+  imap: ImapSmtpEndpointSettings;
+  smtp: ImapSmtpEndpointSettings;
+}
+
+export function hasImapSmtpProviderPreset(provider: string): boolean {
+  return normalizeImapSmtpProvider(provider) in IMAP_SMTP_PROVIDER_PRESETS;
+}
+
+export function normalizeImapSmtpProvider(provider: string): string {
+  const normalized = provider.trim().toLowerCase();
+  const compact = normalized.replace(/[\s._-]/g, "");
+  if (
+    [
+      "icloud",
+      "icloudmail",
+      "icloudcom",
+      "apple",
+      "applemail",
+      "appleicloud",
+      "mecom",
+      "maccom",
+      "icould",
+    ].includes(compact)
+  ) {
+    return "icloud";
+  }
+  if (normalized === "proton" || normalized === "protonmail") {
+    return "proton_bridge";
+  }
+  if (normalized === "qqmail") {
+    return "qq";
+  }
+  if (normalized === "netease" || normalized === "163mail") {
+    return "163";
+  }
+
+  return normalized;
+}
+
+export function resolveImapSmtpSettings(
+  input: ImapSmtpOnboardingInput,
+  options: {
+    providerPresetOverrides?: ImapSmtpProviderPresetOverrides;
+  } = {},
+): ResolvedImapSmtpSettings {
+  const provider = normalizeImapSmtpProvider(input.provider);
+  if (input.imap && input.smtp) {
+    return {
+      provider,
+      imap: input.imap,
+      smtp: input.smtp,
+    };
+  }
+
+  const preset =
+    options.providerPresetOverrides?.[provider] ??
+    IMAP_SMTP_PROVIDER_PRESETS[provider];
+  if (!preset) {
+    throw new Error("imap and smtp settings are required");
+  }
+
+  if (!input.secret || input.secret.trim().length === 0) {
+    throw new Error("secret is required");
+  }
+
+  const usernames = resolveEndpointUsernames({
+    provider,
+    email: input.email,
+    username: input.username,
+  });
+  const secret = input.secret.trim();
+  return {
+    provider,
+    providerPreset: provider,
+    imap: {
+      host: preset.imap.host,
+      port: preset.imap.port,
+      secure: preset.imap.secure,
+      username: usernames.imap,
+      secret,
+    },
+    smtp: {
+      host: preset.smtp.host,
+      port: preset.smtp.port,
+      secure: preset.smtp.secure,
+      username: usernames.smtp,
+      secret,
+    },
+  };
+}
+
+function resolveEndpointUsernames(input: {
+  provider: string;
+  email: string;
+  username?: string;
+}): { imap: string; smtp: string } {
+  const explicitUsername = input.username?.trim();
+  const email = input.email.trim();
+
+  if (input.provider === "icloud") {
+    return {
+      imap: explicitUsername || iCloudImapUsername(email),
+      smtp: email,
+    };
+  }
+
+  const username = explicitUsername || email;
+  return { imap: username, smtp: username };
+}
+
+function iCloudImapUsername(email: string): string {
+  const atIndex = email.indexOf("@");
+  return atIndex > 0 ? email.slice(0, atIndex) : email;
+}
+
+const IMAP_SMTP_PROVIDER_PRESETS: Record<string, ImapSmtpProviderPreset> = {
+  "163": {
+    imap: { host: "imap.163.com", port: 993, secure: true },
+    smtp: { host: "smtp.163.com", port: 465, secure: true },
+  },
+  qq: {
+    imap: { host: "imap.qq.com", port: 993, secure: true },
+    smtp: { host: "smtp.qq.com", port: 465, secure: true },
+  },
+  icloud: {
+    imap: { host: "imap.mail.me.com", port: 993, secure: true },
+    smtp: { host: "smtp.mail.me.com", port: 587, secure: false },
+  },
+  proton_bridge: {
+    imap: { host: "127.0.0.1", port: 1143, secure: false },
+    smtp: { host: "127.0.0.1", port: 1025, secure: false },
+  },
+};
+
+export function createInMemoryAccountOnboardingStore(): InMemoryAccountOnboardingStore {
+  const tasks: OnboardingTask[] = [];
+  const accounts: ConnectedAccount[] = [];
+
+  return {
+    async createTask(input) {
+      tasks.push({ ...input });
+      return { ...input };
+    },
+    async completeTask(input) {
+      const task = findTask(tasks, input.taskId);
+      task.status = "completed";
+      accounts.push({ ...input.account });
+      return {
+        task: publicTask(task),
+        account: { ...input.account },
+      };
+    },
+    async failTask(input) {
+      const task = findTask(tasks, input.taskId);
+      task.status = "failed";
+      task.errorMessage = input.errorMessage;
+      return { ...task };
+    },
+    listTasks() {
+      return tasks.map((task) => ({ ...task }));
+    },
+    listAccounts() {
+      return accounts.map((account) => ({ ...account }));
+    },
+  };
+}
+
+function redactedPayload(
+  input: ImapSmtpOnboardingInput,
+  accountId: string,
+  settings: ResolvedImapSmtpSettings,
+): Record<string, unknown> {
+  return {
+    accountId,
+    ...(settings.providerPreset
+      ? { providerPreset: settings.providerPreset }
+      : {}),
+    displayName: input.displayName,
+    imap: redactEndpoint(settings.imap),
+    smtp: redactEndpoint(settings.smtp),
+  };
+}
+
+function redactEndpoint(endpoint: ImapSmtpEndpointSettings) {
+  return {
+    host: endpoint.host,
+    port: endpoint.port,
+    secure: endpoint.secure,
+    username: endpoint.username,
+    secret: "[redacted]",
+  };
+}
+
+function findTask(tasks: OnboardingTask[], taskId: string): OnboardingTask {
+  const task = tasks.find((item) => item.id === taskId);
+  if (!task) {
+    throw new Error(`onboarding task not found: ${taskId}`);
+  }
+
+  return task;
+}
+
+function publicTask(task: OnboardingTask): OnboardingTask {
+  return {
+    id: task.id,
+    email: task.email,
+    provider: task.provider,
+    authMethod: task.authMethod,
+    status: task.status,
+    ...(task.errorMessage ? { errorMessage: task.errorMessage } : {}),
+  };
+}

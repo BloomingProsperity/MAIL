@@ -1,0 +1,25 @@
+{
+  "name": "@email-hub/api-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "smoke:emailengine-webhook": "tsx src/emailengine-webhook-smoke.ts",
+    "smoke:emailengine-real-webhook": "tsx src/emailengine-real-webhook-smoke.ts",
+    "smoke:imap-smtp-onboarding": "tsx src/imap-smtp-onboarding-smoke.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@types/pg": "^8.20.0",
+    "pg": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}

@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+target/
+
+# IDE / Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets & credentials (NEVER commit)
+.env
+.env.local
+.env.*.local
+*.pem
+secrets/
+credentials/
+*.key
+
+# Logs & temp
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# Database / local data (for local-first apps)
+*.db
+*.sqlite
+*.sqlite3
+data/
+cache/
+
+# Email specific (large binaries, attachments cache)
+attachments/
+downloads/
+*.eml
+
+# Test / coverage
+coverage/
+.nyc_output/
+.pytest_cache/
+*.tsbuildinfo
+.playwright-mcp/
+
+# Misc
+*.bak
+*.patch
+todo.md
+plan-draft.md
+
+# Tooling traces (AI sessions etc.)
+.codex/
+.turn-diffs/
+captures/
+checkpoints/

@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Email Hub UI Preview</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css?v=grounded-20260612c" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M21 4 3 11.4l7.6 2.1L13.2 21 21 4Z" />
+            </svg>
+          </div>
+          <div class="brand-copy">
+            <strong>Email Hub</strong>
+            <span>快开、快找、快回复</span>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-item active" data-view="inbox">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="m4 7 8 6 8-6" /></svg>
+            </span>
+            <span>收件箱</span>
+            <strong>23</strong>
+          </button>
+          <button class="nav-item" data-view="add-mail">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+            </span>
+            <span>添加邮箱</span>
+          </button>
+          <button class="nav-item" data-view="todo">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6" /><path d="M4 4h16v16H4z" /></svg>
+            </span>
+            <span>待办</span>
+            <strong>7</strong>
+          </button>
+          <button class="nav-item" data-view="search">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4 4" /></svg>
+            </span>
+            <span>搜索</span>
+          </button>
+          <button class="nav-item" data-view="settings">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" /><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.4 1a7.3 7.3 0 0 0-2-1.1L14.2 3h-4.4l-.4 2.8a7.3 7.3 0 0 0-2 1.1l-2.4-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.4-1a7.3 7.3 0 0 0 2 1.1l.4 2.8h4.4l.4-2.8a7.3 7.3 0 0 0 2-1.1l2.4 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2Z" /></svg>
+            </span>
+            <span>设置</span>
+          </button>
+        </nav>
+
+        <div class="account-mini">
+          <span class="avatar">林</span>
+          <div>
+            <strong>Hermes 在线</strong>
+            <span>邮箱助手已连接</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <section class="view active" data-view-panel="inbox">
+          <header class="topbar">
+            <div>
+              <h1>收件箱</h1>
+              <p>打开就先看该处理的邮件，AI 只做加速，不抢主界面。</p>
+            </div>
+            <div class="top-actions">
+              <button class="ghost-button" data-view-target="add-mail">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                添加邮箱
+              </button>
+              <button class="primary-button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5l16 7-16 7Z" /></svg>
+                写邮件
+              </button>
+            </div>
+          </header>
+
+          <section class="mail-layout">
+            <aside class="priority-rail" aria-label="收件箱分组">
+              <button class="bucket active">现在处理 <strong>9</strong></button>
+              <button class="bucket">待回复 <strong>12</strong></button>
+              <button class="bucket">重点 <strong>18</strong></button>
+              <button class="bucket">客户/项目 <strong>6</strong></button>
+              <button class="bucket">通知/票据 <strong>41</strong></button>
+              <button class="bucket">订阅 <strong>80</strong></button>
+            </aside>
+
+            <section class="mail-list-panel">
+              <div class="list-head">
+                <div>
+                  <h2>现在处理</h2>
+                  <span>按规则、历史行为和 Hermes 原因排序</span>
+                </div>
+                <button class="small-button">智能排序</button>
+              </div>
+
+              <button class="mail-row selected">
+                <span class="sender">Stripe</span>
+                <span class="score">95</span>
+                <span class="subject">Invoice failed for client workspace</span>
+                <span class="preview">来自 billing@demo.site 转发，今天需要处理。</span>
+                <span class="tag danger">账单</span>
+                <span class="reason">客户域名 + 支付失败 + 今天到期</span>
+              </button>
+
+              <button class="mail-row">
+                <span class="sender">support@acme.cn</span>
+                <span class="score">88</span>
+                <span class="subject">客户反馈：验证码没有收到</span>
+                <span class="preview">可能和别名转发规则有关，建议优先回复。</span>
+                <span class="tag hot">待回复</span>
+                <span class="reason">问题邮件 + 直接询问 + 客户联系人</span>
+              </button>
+
+              <button class="mail-row">
+                <span class="sender">Outlook</span>
+                <span class="score">82</span>
+                <span class="subject">mark@outlook.com 已完成同步</span>
+                <span class="preview">最近邮件和日历邀请已经进入统一收件箱。</span>
+                <span class="tag good">账号</span>
+                <span class="reason">新邮箱接入 + 后台同步中</span>
+              </button>
+
+              <button class="mail-row">
+                <span class="sender">GitHub</span>
+                <span class="score">64</span>
+                <span class="subject">Pull request review requested</span>
+                <span class="preview">开发标签，已归入项目邮件。</span>
+                <span class="tag cool">项目</span>
+                <span class="reason">常处理仓库 + 项目关键词</span>
+              </button>
+            </section>
+
+            <article class="reader-panel">
+              <div class="message-toolbar">
+                <button aria-label="返回"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" /></svg></button>
+                <button aria-label="归档"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z" /><path d="M3 4h18v3H3z" /><path d="M9 12h6" /></svg></button>
+                <button aria-label="稍后提醒"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><path d="M12 8v5l3 2" /></svg></button>
+                <button aria-label="标签"><svg viewBox="0 0 24 24"><path d="M4 4h10l6 6-10 10-6-6V4Z" /><path d="M9 9h.1" /></svg></button>
+              </div>
+
+              <div class="message-top">
+                <span class="avatar large">S</span>
+                <div>
+                  <h2>Invoice failed for client workspace</h2>
+                  <p>来自 Stripe，经 billing@demo.site 转发到 me@gmail.com</p>
+                </div>
+              </div>
+
+              <div class="message-summary">
+                <div class="summary-title">
+                  <strong>Hermes 总结</strong>
+                  <span>Hermes 生成</span>
+                </div>
+                <p>客户工作区扣款失败，可能影响续费。建议今天回复并同步负责人，附上更新付款方式的链接。</p>
+              </div>
+
+              <p class="message-body">
+                The latest invoice for this workspace could not be paid. Please update
+                the payment method or contact the workspace owner before the retry window
+                closes.
+              </p>
+
+              <div class="quick-actions">
+                <button>Hermes 写回复</button>
+                <button>生成待办</button>
+                <button>稍后提醒</button>
+                <button>永远置顶该客户</button>
+              </div>
+
+              <section class="reply-draft">
+                <div>
+                  <strong>推荐回复身份</strong>
+                  <span>billing@demo.site</span>
+                </div>
+                <button>插入草稿</button>
+              </section>
+            </article>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="add-mail">
+          <header class="topbar">
+            <div>
+              <h1>添加邮箱</h1>
+              <p>从邮箱目录选择服务，接入后统一同步到收件箱。</p>
+            </div>
+            <button class="primary-button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+              手动添加
+            </button>
+          </header>
+
+          <section class="add-mail-layout">
+            <div class="provider-directory">
+              <div class="provider-toolbar">
+                <label class="provider-search">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4 4" /></svg>
+                  <input type="search" value="搜索 Gmail、Outlook、QQ..." />
+                </label>
+                <div class="segmented">
+                  <button class="active">全部</button>
+                  <button>常用</button>
+                  <button>域名邮箱</button>
+                </div>
+              </div>
+
+              <section class="provider-section">
+                <h2>常用邮箱</h2>
+                <div class="provider-cards">
+                  <article class="mail-provider-card active">
+                    <span class="provider-mark google">G</span>
+                    <div class="provider-meta">
+                      <strong>Gmail</strong>
+                      <span>Google 账号授权</span>
+                    </div>
+                    <button>连接</button>
+                  </article>
+                  <article class="mail-provider-card">
+                    <span class="provider-mark outlook">O</span>
+                    <div class="provider-meta">
+                      <strong>Outlook</strong>
+                      <span>Outlook / Microsoft 365</span>
+                    </div>
+                    <button>连接</button>
+                  </article>
+                  <article class="mail-provider-card">
+                    <span class="provider-mark netease">163</span>
+                    <div class="provider-meta">
+                      <strong>163 邮箱</strong>
+                      <span>授权码 / IMAP</span>
+                    </div>
+                    <button>连接</button>
+                  </article>
+                  <article class="mail-provider-card">
+                    <span class="provider-mark qq">Q</span>
+                    <div class="provider-meta">
+                      <strong>QQ 邮箱</strong>
+                      <span>授权码 / IMAP</span>
+                    </div>
+                    <button>连接</button>
+                  </article>
+                  <article class="mail-provider-card">
+                    <span class="provider-mark proton">P</span>
+                    <div class="provider-meta">
+                      <strong>Proton Mail</strong>
+                      <span>Bridge / 自托管网关</span>
+                    </div>
+                    <button>连接</button>
+                  </article>
+                  <article class="mail-provider-card">
+                    <span class="provider-mark domain">@</span>
+                    <div class="provider-meta">
+                      <strong>个人域名邮箱</strong>
+                      <span>IMAP / SMTP / MX</span>
+                    </div>
+                    <button>连接</button>
+                  </article>
+                </div>
+              </section>
+
+              <section class="connected-panel">
+                <div class="panel-head">
+                  <h2>已接入邮箱</h2>
+                  <span>3 个账号</span>
+                </div>
+                <div class="connected-row">
+                  <span class="provider-mark google">G</span>
+                  <div>
+                    <strong>me@gmail.com</strong>
+                    <span>同步正常</span>
+                  </div>
+                  <button>管理</button>
+                </div>
+                <div class="connected-row">
+                  <span class="provider-mark outlook">O</span>
+                  <div>
+                    <strong>mark@outlook.com</strong>
+                    <span>正在同步最近邮件</span>
+                  </div>
+                  <button>管理</button>
+                </div>
+                <div class="connected-row">
+                  <span class="provider-mark domain">@</span>
+                  <div>
+                    <strong>billing@demo.site</strong>
+                    <span>作为回复身份使用</span>
+                  </div>
+                  <button>管理</button>
+                </div>
+              </section>
+            </div>
+
+            <aside class="connect-preview">
+              <div class="preview-card-head">
+                <span class="provider-mark google">G</span>
+                <div>
+                  <h2>连接 Gmail</h2>
+                  <p>将打开 Google 授权页面。</p>
+                </div>
+              </div>
+              <div class="step-list">
+                <div class="step-item active">
+                  <span>1</span>
+                  <div>
+                    <strong>选择账号</strong>
+                    <p>使用浏览器里已有的 Google 账号。</p>
+                  </div>
+                </div>
+                <div class="step-item">
+                  <span>2</span>
+                  <div>
+                    <strong>允许同步</strong>
+                    <p>授权后开始拉取邮件和线程。</p>
+                  </div>
+                </div>
+                <div class="step-item">
+                  <span>3</span>
+                  <div>
+                    <strong>进入收件箱</strong>
+                    <p>邮件自动合并到统一视图。</p>
+                  </div>
+                </div>
+              </div>
+              <button class="primary-button connect-full">继续连接 Gmail</button>
+            </aside>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="todo">
+          <header class="topbar">
+            <div>
+              <h1>待办</h1>
+              <p>从邮件里抽出来的回复、跟进、截止时间，集中处理。</p>
+            </div>
+            <button class="ghost-button">同步日历</button>
+          </header>
+          <div class="simple-panel">
+            <div class="task-row">
+              <div>
+                <strong>今天回复 Stripe 账单失败邮件</strong>
+                <span>来自 billing@demo.site，Hermes 判断今天到期。</span>
+              </div>
+              <button>完成</button>
+            </div>
+            <div class="task-row">
+              <div>
+                <strong>确认 support@acme.cn 验证码问题</strong>
+                <span>可能与转发规则或验证码邮件过滤有关。</span>
+              </div>
+              <button>完成</button>
+            </div>
+            <div class="task-row">
+              <div>
+                <strong>跟进 hello@demo.site 的新客户线索</strong>
+                <span>建议用 sales@demo.site 身份回复。</span>
+              </div>
+              <button>完成</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" data-view-panel="search">
+          <header class="topbar">
+            <div>
+              <h1>搜索</h1>
+              <p>关键词、语义、附件、别名、账号一起搜。</p>
+            </div>
+          </header>
+          <section class="search-page">
+            <label class="big-search">
+              <span>全局搜索</span>
+              <input type="search" value="找最近一周失败的客户账单邮件" />
+            </label>
+            <div class="search-results">
+              <article>
+                <strong>Stripe - Invoice failed for client workspace</strong>
+                <span>命中：账单、失败、客户、billing@demo.site</span>
+              </article>
+              <article>
+                <strong>Finance - 5月报销单审核通过</strong>
+                <span>命中附件：invoice-may.pdf</span>
+              </article>
+              <article>
+                <strong>招商银行 - 信用卡账单</strong>
+                <span>命中：账单，已归入通知/票据</span>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="settings">
+          <header class="topbar">
+            <div>
+              <h1>设置</h1>
+              <p>这里只保留全局配置，邮箱接入放到“添加邮箱”。</p>
+            </div>
+            <button class="primary-button">保存设置</button>
+          </header>
+
+          <section class="settings-stack">
+            <article class="settings-section">
+              <div class="section-aside">
+                <span class="section-number">1</span>
+                <h2>Hermes</h2>
+                <p>邮件助手、搜索、写信和分类都交给 Hermes。</p>
+                <button class="ghost-button slim">测试连接</button>
+              </div>
+              <div class="hermes-panel">
+                <div class="hermes-status">
+                  <span class="status-dot"></span>
+                  <div>
+                    <strong>Hermes Mail Agent</strong>
+                    <span>运行中</span>
+                  </div>
+                </div>
+                <div class="form-grid hermes-form">
+                  <label>
+                    Hermes 地址
+                    <input value="http://127.0.0.1:8000" />
+                  </label>
+                  <label>
+                    Token
+                    <input value="local-hermes-token" />
+                  </label>
+                  <label>
+                    默认能力
+                    <select>
+                      <option>搜索、总结、写回复、分类</option>
+                      <option>只读搜索与总结</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            </article>
+
+            <article class="settings-section">
+              <div class="section-aside">
+                <span class="section-number">2</span>
+                <h2>别名转发</h2>
+                <p>写信和回复时自动用对身份。</p>
+                <button class="ghost-button slim">添加别名</button>
+              </div>
+              <div class="table-card compact">
+                <div class="table-row table-head">
+                  <span>别名地址</span>
+                  <span>转发到</span>
+                  <span>状态</span>
+                  <span>操作</span>
+                </div>
+                <div class="table-row">
+                  <span>billing@demo.site</span>
+                  <span>me@gmail.com</span>
+                  <strong class="switch-pill on">启用</strong>
+                  <button>编辑</button>
+                </div>
+                <div class="table-row">
+                  <span>support@demo.site</span>
+                  <span>team@company.cn</span>
+                  <strong class="switch-pill on">启用</strong>
+                  <button>编辑</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="settings-section">
+              <div class="section-aside">
+                <span class="section-number">3</span>
+                <h2>域名管理</h2>
+                <p>域名接入后生成 MX/TXT 指引。</p>
+                <button class="ghost-button slim">添加域名</button>
+              </div>
+              <div class="table-card compact">
+                <div class="table-row table-head">
+                  <span>域名</span>
+                  <span>MX</span>
+                  <span>SPF/DKIM</span>
+                  <span>状态</span>
+                </div>
+                <div class="table-row">
+                  <span>demo.site</span>
+                  <span>已生效</span>
+                  <span>已生效</span>
+                  <strong class="pill green">正常</strong>
+                </div>
+                <div class="table-row">
+                  <span>mail.demo.site</span>
+                  <span>未生效</span>
+                  <span>待检测</span>
+                  <strong class="pill amber">异常</strong>
+                </div>
+              </div>
+            </article>
+          </section>
+        </section>
+      </main>
+
+      <section class="ai-dock" aria-label="AI 助手">
+        <div class="ai-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="m6 7 5 5-5 5" /><path d="M13 17h5" /></svg>
+        </div>
+        <div class="ai-main">
+          <input aria-label="AI 命令" value="搜索邮件、写回复、整理收件箱..." />
+          <div class="prompt-chips">
+            <button>总结这个线程</button>
+            <button>写回复</button>
+            <button>找最近账单</button>
+            <button>批量归档订阅</button>
+          </div>
+        </div>
+        <button class="model-select">Hermes</button>
+        <button class="send-button" aria-label="发送 AI 命令">
+          <svg viewBox="0 0 24 24"><path d="M4 19V5l16 7-16 7Z" /></svg>
+        </button>
+      </section>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

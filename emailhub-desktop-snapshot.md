@@ -1,0 +1,31 @@
+- generic [ref=e3] [box=0,0,1905,1100]:
+  - complementary "全局功能栏" [ref=e4] [box=0,0,228,889]:
+    - generic [ref=e5] [box=16,24,195,59]:
+      - img [ref=e7] [box=28,34,20,20]
+      - generic [ref=e10] [box=68,24,72,39]
+    - navigation [ref=e13] [box=16,83,195,306]:
+      - button "邮箱 128" [ref=e14] [cursor=pointer] [box=16,83,195,46]
+      - button "添加邮箱" [ref=e20] [cursor=pointer] [box=16,135,195,46]
+      - button "待办 9" [ref=e25] [cursor=pointer] [box=16,187,195,46]
+      - button "搜索" [ref=e31] [cursor=pointer] [box=16,239,195,46]
+      - button "Hermes" [ref=e36] [cursor=pointer] [box=16,291,195,46]
+      - button "设置" [ref=e41] [cursor=pointer] [box=16,343,195,46]
+    - generic [ref=e48] [box=36,822,114,43]:
+      - strong [ref=e49] [box=36,822,114,24]: 已连接 5 个邮箱
+      - generic [ref=e50] [box=36,848,114,17]: Hermes 本地在线
+  - main [ref=e51] [box=228,0,1677,1100]:
+    - generic [ref=e52] [box=252,22,1629,966]:
+      - generic [ref=e53] [box=252,22,1629,49]
+      - generic [ref=e72] [box=252,89,1629,900]
+  - region "Hermes 快捷输入" [ref=e318] [box=252,807,1629,64]:
+    - button "Hermes" [ref=e319] [cursor=pointer] [box=263,820,130,38]:
+      - img [ref=e320] [box=276,830,18,18]
+      - text: Hermes
+      - img [ref=e323] [box=366,832,14,14]
+    - textbox [ref=e325] [box=403,818,1155,42]: 搜索邮件、写回复、整理收件箱...
+    - generic [ref=e326] [box=1568,820,250,38]:
+      - button "搜索邮件" [ref=e327] [cursor=pointer] [box=1568,820,78,38]
+      - button "写回复" [ref=e328] [cursor=pointer] [box=1654,820,65,38]
+      - button "整理收件箱" [ref=e329] [cursor=pointer] [box=1727,820,91,38]
+    - button "发送给 Hermes" [ref=e330] [cursor=pointer] [box=1828,820,42,38]:
+      - img [ref=e331] [box=1840,830,18,18]

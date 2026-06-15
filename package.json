@@ -1,0 +1,28 @@
+{
+  "name": "email-hub",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/api-node",
+    "apps/worker-node",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w apps/api-node",
+    "build:api": "npm run build -w apps/api-node",
+    "test:api": "npm run test -w apps/api-node",
+    "dev:worker": "npm run dev -w apps/worker-node",
+    "build:worker": "npm run build -w apps/worker-node",
+    "test:worker": "npm run test -w apps/worker-node",
+    "test:worker:postgres": "npm run test:postgres -w apps/worker-node",
+    "build:backend": "npm run build:api && npm run build:worker",
+    "test:backend": "npm run test:api && npm run test:worker",
+    "smoke:emailengine-webhook": "npm run smoke:emailengine-webhook -w apps/api-node",
+    "smoke:emailengine-real-webhook": "npm run smoke:emailengine-real-webhook -w apps/api-node",
+    "smoke:imap-smtp-onboarding": "npm run smoke:imap-smtp-onboarding -w apps/api-node",
+    "dev": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/web",
+    "test": "npm run test -w apps/web",
+    "lint": "npm run lint -w apps/web"
+  }
+}
