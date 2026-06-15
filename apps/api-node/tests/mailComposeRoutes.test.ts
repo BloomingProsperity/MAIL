@@ -148,6 +148,15 @@ describe("mail compose routes", () => {
               subject: "Launch confirmation",
               bodyText: "Looks good.",
               source: "manual",
+              attachments: [
+                {
+                  id: "attachment_1",
+                  filename: "proposal.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 2048.9,
+                  inline: false,
+                },
+              ],
             }),
           },
         );
@@ -168,6 +177,16 @@ describe("mail compose routes", () => {
             subject: "Launch confirmation",
             bodyText: "Looks good.",
             source: "manual",
+            attachments: [
+              {
+                source: "message_attachment",
+                attachmentId: "attachment_1",
+                filename: "proposal.pdf",
+                contentType: "application/pdf",
+                byteSize: 2048,
+                inline: false,
+              },
+            ],
           },
         ]);
       },
@@ -283,6 +302,16 @@ describe("mail compose routes", () => {
               bodyText: "Looks good.",
               source: "reply",
               replyToMessageId: "message_1",
+              attachments: [
+                {
+                  attachmentId: "attachment_1",
+                  filename: "proposal.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 2048,
+                  inline: true,
+                  contentId: "cid-1",
+                },
+              ],
             }),
           },
         );
@@ -302,6 +331,17 @@ describe("mail compose routes", () => {
             bodyText: "Looks good.",
             source: "reply",
             replyToMessageId: "message_1",
+            attachments: [
+              {
+                source: "message_attachment",
+                attachmentId: "attachment_1",
+                filename: "proposal.pdf",
+                contentType: "application/pdf",
+                byteSize: 2048,
+                inline: true,
+                contentId: "cid-1",
+              },
+            ],
           },
         ]);
       },

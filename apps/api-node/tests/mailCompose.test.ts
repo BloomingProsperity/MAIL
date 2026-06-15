@@ -138,6 +138,101 @@ describe("mail compose service", () => {
     ]);
   });
 
+  it("resolves forwarded attachment refs before storing a draft", async () => {
+    const storeCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async createDraft(input) {
+          storeCalls.push(input);
+          return {
+            id: input.id,
+            accountId: input.accountId,
+            to: input.to,
+            cc: input.cc,
+            bcc: input.bcc,
+            subject: input.subject,
+            bodyText: input.bodyText,
+            source: input.source,
+            attachments: input.attachments?.map((attachment) => ({
+              id: attachment.id,
+              source: attachment.source,
+              attachmentId: attachment.attachmentId,
+              filename: attachment.filename,
+              contentType: attachment.contentType,
+              byteSize: attachment.byteSize,
+              inline: attachment.inline,
+            })),
+            status: "draft",
+            createdAt: input.now,
+            updatedAt: input.now,
+          };
+        },
+      }),
+      createId: () => "draft_1",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      transports: {},
+      mailReadStore: {
+        async getMessage() {
+          throw new Error("not used");
+        },
+        async getAttachmentDownload(input) {
+          expect(input).toEqual({
+            accountId: "acc_1",
+            attachmentId: "attachment_1",
+          });
+          return {
+            id: "attachment_1",
+            accountId: "acc_1",
+            providerAttachmentId: "ee_attachment_1",
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+          };
+        },
+      },
+    });
+
+    const draft = await service.createDraft({
+      accountId: "acc_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Fwd: Launch confirmation",
+      bodyText: "Forwarding the proposal.",
+      source: "forward",
+      sourceMessageId: "message_1",
+      attachments: [
+        {
+          source: "message_attachment",
+          attachmentId: "attachment_1",
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 2048,
+        },
+      ],
+    });
+
+    expect(storeCalls).toEqual([
+      expect.objectContaining({
+        attachments: [
+          {
+            id: "attachment_1",
+            source: "message_attachment",
+            attachmentId: "attachment_1",
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+            providerAttachmentId: "ee_attachment_1",
+          },
+        ],
+      }),
+    ]);
+    expect(JSON.stringify(draft)).not.toContain("ee_attachment_1");
+    expect(draft.attachments?.[0]).toMatchObject({
+      attachmentId: "attachment_1",
+      filename: "proposal.pdf",
+    });
+  });
+
   it("resolves provider threading metadata when creating reply drafts", async () => {
     const calls: unknown[] = [];
     const store = createStore({
@@ -517,6 +612,18 @@ describe("mail compose service", () => {
               emailEngineMessageId: "emailengine_msg_1",
             },
           },
+          transportAttachments: [
+            {
+              id: "attachment_1",
+              source: "message_attachment",
+              attachmentId: "attachment_1",
+              filename: "proposal.pdf",
+              contentType: "application/pdf",
+              byteSize: 2048,
+              inline: false,
+              providerAttachmentId: "ee_attachment_1",
+            },
+          ],
         };
       },
       async markDraftSent(input) {
@@ -565,6 +672,15 @@ describe("mail compose service", () => {
         bcc: [],
         subject: "Launch confirmation",
         bodyText: "Looks good.",
+        attachments: [
+          {
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+            providerAttachmentId: "ee_attachment_1",
+          },
+        ],
         threading: {
           action: "reply",
           inReplyTo: "<source@example.com>",
@@ -737,6 +853,18 @@ describe("mail compose service", () => {
               emailEngineMessageId: "emailengine_msg_1",
             },
           },
+          transportAttachments: [
+            {
+              id: "attachment_1",
+              source: "message_attachment",
+              attachmentId: "attachment_1",
+              filename: "proposal.pdf",
+              contentType: "application/pdf",
+              byteSize: 2048,
+              inline: false,
+              providerAttachmentId: "ee_attachment_1",
+            },
+          ],
         };
       },
       async markScheduledSendSent(input) {
@@ -784,6 +912,15 @@ describe("mail compose service", () => {
         bcc: [],
         subject: "Launch confirmation",
         bodyText: "Looks good.",
+        attachments: [
+          {
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+            providerAttachmentId: "ee_attachment_1",
+          },
+        ],
         threading: {
           action: "reply_all",
           inReplyTo: "<source@example.com>",

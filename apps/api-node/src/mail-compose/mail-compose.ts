@@ -63,6 +63,44 @@ export type ScheduledSendStatus =
   | "failed"
   | "dead_letter";
 
+export type MailDraftAttachmentSource = "message_attachment";
+
+export interface MailDraftAttachment {
+  id: string;
+  source: MailDraftAttachmentSource;
+  attachmentId: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  inline: boolean;
+  contentId?: string;
+}
+
+export interface MailDraftTransportAttachment extends MailDraftAttachment {
+  providerAttachmentId: string;
+  contentBase64?: string;
+}
+
+export interface CreateMailDraftAttachmentInput {
+  source?: MailDraftAttachmentSource;
+  attachmentId: string;
+  filename?: string;
+  contentType?: string;
+  byteSize?: number;
+  inline?: boolean;
+  contentId?: string;
+}
+
+export interface MailSendAttachment {
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  inline: boolean;
+  contentId?: string;
+  providerAttachmentId?: string;
+  contentBase64?: string;
+}
+
 export interface MailDraft {
   id: string;
   accountId: string;
@@ -77,6 +115,7 @@ export interface MailDraft {
   source: MailDraftSource;
   replyToMessageId?: string;
   sourceMessageId?: string;
+  attachments?: MailDraftAttachment[];
   threading?: MailThreading;
   hermesSkillRunId?: string;
   hermesDraftText?: string;
@@ -98,6 +137,7 @@ export interface MailComposeAccount {
 export interface DraftWithAccount {
   draft: MailDraft;
   account: MailComposeAccount;
+  transportAttachments?: MailDraftTransportAttachment[];
 }
 
 export interface ScheduledSend {
@@ -126,6 +166,7 @@ export interface ScheduledSendWithDraft {
   scheduledSend: ScheduledSend;
   draft: MailDraft;
   account: MailComposeAccount;
+  transportAttachments?: MailDraftTransportAttachment[];
 }
 
 export interface CreateMailDraftInput {
@@ -140,6 +181,7 @@ export interface CreateMailDraftInput {
   source?: MailDraftSource;
   replyToMessageId?: string;
   sourceMessageId?: string;
+  attachments?: CreateMailDraftAttachmentInput[];
   hermesSkillRunId?: string;
   hermesDraftText?: string;
 }
@@ -189,6 +231,7 @@ export interface MailComposePreview {
   source: MailDraftSource;
   replyToMessageId?: string;
   sourceMessageId?: string;
+  attachments?: MailDraftAttachment[];
   warnings: MailComposePreviewWarning[];
   estimatedSizeBytes: number;
   readyToSend: boolean;
@@ -214,6 +257,7 @@ export interface MailComposePreviewInput {
   source?: MailDraftSource;
   replyToMessageId?: string;
   sourceMessageId?: string;
+  attachments?: CreateMailDraftAttachmentInput[];
 }
 
 export interface MailThreading {
@@ -238,6 +282,7 @@ export interface MailComposeStore {
       source: MailDraftSource;
       replyToMessageId?: string;
       sourceMessageId?: string;
+      attachments?: MailDraftTransportAttachment[];
       threading?: MailThreading;
       hermesSkillRunId?: string;
       hermesDraftText?: string;
@@ -340,6 +385,7 @@ export interface MailSendTransport {
     subject: string;
     bodyText?: string;
     bodyHtml?: string;
+    attachments?: MailSendAttachment[];
     threading?: MailThreading;
   }): Promise<{
     queueId?: string;
@@ -391,7 +437,8 @@ export function createMailComposeService(options: {
   createId: () => string;
   sendIdentityStore?: MailSendIdentityStore;
   threadingStore?: MailThreadingMetadataStore;
-  mailReadStore?: Pick<MailReadStore, "getMessage">;
+  mailReadStore?: Pick<MailReadStore, "getMessage"> &
+    Partial<Pick<MailReadStore, "getAttachmentDownload">>;
   hermesDraftFeedbackStore?: HermesDraftFeedbackStore;
   now?: () => Date;
 }): MailComposeService {
@@ -453,12 +500,19 @@ export function createMailComposeService(options: {
         normalized.accountId,
         normalized.from,
       );
+      const attachments = await resolveDraftAttachments(
+        options.mailReadStore,
+        normalized.accountId,
+        normalized.attachments,
+      );
       const threading = await resolveThreading(
         options.threadingStore,
         normalized,
       );
+      const { attachments: _attachmentInputs, ...draftInput } = normalized;
       const draft = await options.store.createDraft({
-        ...normalized,
+        ...draftInput,
+        ...(attachments.length > 0 ? { attachments } : {}),
         ...(threading ? { threading } : {}),
         id: options.createId(),
         now: currentIso(options.now),
@@ -514,6 +568,9 @@ export function createMailComposeService(options: {
           subject: claimed.draft.subject,
           ...(claimed.draft.bodyText ? { bodyText: claimed.draft.bodyText } : {}),
           ...(claimed.draft.bodyHtml ? { bodyHtml: claimed.draft.bodyHtml } : {}),
+          ...((claimed.transportAttachments?.length ?? 0) > 0
+            ? { attachments: sendAttachments(claimed.transportAttachments ?? []) }
+            : {}),
           ...(claimed.draft.threading ? { threading: claimed.draft.threading } : {}),
         });
 
@@ -658,6 +715,9 @@ export function createMailComposeService(options: {
           subject: claimed.draft.subject,
           ...(claimed.draft.bodyText ? { bodyText: claimed.draft.bodyText } : {}),
           ...(claimed.draft.bodyHtml ? { bodyHtml: claimed.draft.bodyHtml } : {}),
+          ...((claimed.transportAttachments?.length ?? 0) > 0
+            ? { attachments: sendAttachments(claimed.transportAttachments ?? []) }
+            : {}),
           ...(claimed.draft.threading ? { threading: claimed.draft.threading } : {}),
         });
 
@@ -695,6 +755,7 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
   source: MailDraftSource;
   replyToMessageId?: string;
   sourceMessageId?: string;
+  attachments?: CreateMailDraftAttachmentInput[];
   hermesSkillRunId?: string;
   hermesDraftText?: string;
 } {
@@ -708,6 +769,7 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
   const replyToMessageId = optionalTrimmed(input.replyToMessageId);
   const sourceMessageId =
     optionalTrimmed(input.sourceMessageId) ?? replyToMessageId;
+  const attachments = normalizeAttachmentInputs(input.attachments);
 
   if (to.length === 0) {
     throw new InvalidMailComposeRequestError("recipient is required");
@@ -728,6 +790,7 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
     source: normalizeDraftSource(input.source),
     ...(replyToMessageId ? { replyToMessageId } : {}),
     ...(sourceMessageId ? { sourceMessageId } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
     ...(optionalTrimmed(input.hermesSkillRunId)
       ? { hermesSkillRunId: optionalTrimmed(input.hermesSkillRunId) }
       : {}),
@@ -749,6 +812,7 @@ function normalizePreviewInput(input: MailComposePreviewInput): {
   source: MailDraftSource;
   replyToMessageId?: string;
   sourceMessageId?: string;
+  attachments?: CreateMailDraftAttachmentInput[];
 } {
   assertNonEmpty(input.accountId);
   const from = normalizeOptionalSender(input.from);
@@ -760,6 +824,7 @@ function normalizePreviewInput(input: MailComposePreviewInput): {
   const replyToMessageId = optionalTrimmed(input.replyToMessageId);
   const sourceMessageId =
     optionalTrimmed(input.sourceMessageId) ?? replyToMessageId;
+  const attachments = normalizeAttachmentInputs(input.attachments);
 
   return {
     accountId: input.accountId.trim(),
@@ -773,6 +838,7 @@ function normalizePreviewInput(input: MailComposePreviewInput): {
     source: normalizeDraftSource(input.source),
     ...(replyToMessageId ? { replyToMessageId } : {}),
     ...(sourceMessageId ? { sourceMessageId } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
 
@@ -796,6 +862,9 @@ function buildPreview(
       : {}),
     ...(input.sourceMessageId
       ? { sourceMessageId: input.sourceMessageId }
+      : {}),
+    ...(input.attachments && input.attachments.length > 0
+      ? { attachments: input.attachments.map(publicDraftAttachmentFromInput) }
       : {}),
     warnings,
     estimatedSizeBytes: estimateDraftSize(input),
@@ -982,6 +1051,158 @@ async function resolveThreading(
   return threading;
 }
 
+async function resolveDraftAttachments(
+  store: Partial<Pick<MailReadStore, "getAttachmentDownload">> | undefined,
+  accountId: string,
+  attachments: CreateMailDraftAttachmentInput[] | undefined,
+): Promise<MailDraftTransportAttachment[]> {
+  const normalized = normalizeAttachmentInputs(attachments);
+  if (normalized.length === 0) {
+    return [];
+  }
+  if (!store?.getAttachmentDownload) {
+    throw new InvalidMailComposeRequestError("attachment store is unavailable");
+  }
+
+  const resolved: MailDraftTransportAttachment[] = [];
+  for (const attachment of normalized) {
+    const download = await store.getAttachmentDownload({
+      accountId,
+      attachmentId: attachment.attachmentId,
+    });
+    if (!download) {
+      throw new InvalidMailComposeRequestError("attachment was not found");
+    }
+
+    const contentId = optionalTrimmed(attachment.contentId);
+    resolved.push({
+      id: download.id,
+      source: "message_attachment",
+      attachmentId: download.id,
+      filename: sanitizeFilename(download.filename),
+      contentType: sanitizeContentType(download.contentType),
+      byteSize: download.byteSize,
+      inline: Boolean(attachment.inline),
+      ...(contentId ? { contentId: sanitizeContentId(contentId) } : {}),
+      providerAttachmentId: download.providerAttachmentId,
+    });
+  }
+
+  return enforceAttachmentLimits(resolved);
+}
+
+function normalizeAttachmentInputs(
+  attachments: CreateMailDraftAttachmentInput[] | undefined,
+): CreateMailDraftAttachmentInput[] {
+  if (!attachments || attachments.length === 0) {
+    return [];
+  }
+  if (attachments.length > 20) {
+    throw new InvalidMailComposeRequestError("too many attachments");
+  }
+
+  const seen = new Set<string>();
+  const normalized: CreateMailDraftAttachmentInput[] = [];
+  for (const attachment of attachments) {
+    if (
+      !attachment ||
+      attachment.source === undefined ||
+      attachment.source === "message_attachment"
+    ) {
+      const attachmentId = optionalTrimmed(attachment?.attachmentId);
+      if (!attachmentId || /[\u0000-\u001f]/.test(attachmentId)) {
+        throw new InvalidMailComposeRequestError("attachment id is invalid");
+      }
+      if (seen.has(attachmentId)) {
+        continue;
+      }
+      seen.add(attachmentId);
+      const filename = optionalTrimmed(attachment?.filename);
+      const contentType = optionalTrimmed(attachment?.contentType);
+      const contentId = optionalTrimmed(attachment?.contentId);
+      const normalizedAttachment: CreateMailDraftAttachmentInput = {
+        source: "message_attachment",
+        attachmentId,
+        ...(filename ? { filename: sanitizeFilename(filename) } : {}),
+        ...(contentType ? { contentType: sanitizeContentType(contentType) } : {}),
+        ...(typeof attachment?.byteSize === "number" &&
+        Number.isFinite(attachment.byteSize)
+          ? { byteSize: Math.max(0, Math.floor(attachment.byteSize)) }
+          : {}),
+        inline: Boolean(attachment?.inline),
+        ...(contentId ? { contentId: sanitizeContentId(contentId) } : {}),
+      };
+      normalized.push(normalizedAttachment);
+      continue;
+    }
+
+    throw new InvalidMailComposeRequestError("attachment source is unsupported");
+  }
+
+  return enforceAttachmentInputLimits(normalized);
+}
+
+function enforceAttachmentInputLimits(
+  attachments: CreateMailDraftAttachmentInput[],
+): CreateMailDraftAttachmentInput[] {
+  const knownTotal = attachments.reduce(
+    (sum, attachment) => sum + (attachment.byteSize ?? 0),
+    0,
+  );
+  if (knownTotal > 25 * 1024 * 1024) {
+    throw new InvalidMailComposeRequestError("attachments are too large");
+  }
+  return attachments;
+}
+
+function enforceAttachmentLimits<T extends { byteSize: number }>(
+  attachments: T[],
+): T[] {
+  const total = attachments.reduce(
+    (sum, attachment) => sum + attachment.byteSize,
+    0,
+  );
+  if (total > 25 * 1024 * 1024) {
+    throw new InvalidMailComposeRequestError("attachments are too large");
+  }
+  return attachments;
+}
+
+function publicDraftAttachmentFromInput(
+  attachment: CreateMailDraftAttachmentInput,
+): MailDraftAttachment {
+  const attachmentId = optionalTrimmed(attachment.attachmentId) ?? "attachment";
+  const contentId = optionalTrimmed(attachment.contentId);
+  return {
+    id: attachmentId,
+    source: "message_attachment",
+    attachmentId,
+    filename: sanitizeFilename(attachment.filename ?? "attachment"),
+    contentType: sanitizeContentType(
+      attachment.contentType ?? "application/octet-stream",
+    ),
+    byteSize: attachment.byteSize ?? 0,
+    inline: Boolean(attachment.inline),
+    ...(contentId ? { contentId: sanitizeContentId(contentId) } : {}),
+  };
+}
+
+function sendAttachments(
+  attachments: MailDraftTransportAttachment[],
+): MailSendAttachment[] {
+  return attachments.map((attachment) => ({
+    filename: attachment.filename,
+    contentType: attachment.contentType,
+    byteSize: attachment.byteSize,
+    inline: attachment.inline,
+    ...(attachment.contentId ? { contentId: attachment.contentId } : {}),
+    providerAttachmentId: attachment.providerAttachmentId,
+    ...(attachment.contentBase64
+      ? { contentBase64: attachment.contentBase64 }
+      : {}),
+  }));
+}
+
 function threadingActionForSource(
   source: MailDraftSource,
 ): MailThreadingAction | undefined {
@@ -1069,11 +1290,27 @@ function stripHtml(value: string): string {
 function seedAttachment(attachment: AttachmentDto): MailComposeSeedAttachment {
   return {
     id: attachment.id,
-    filename: attachment.filename,
-    contentType: attachment.contentType,
+    filename: sanitizeFilename(attachment.filename),
+    contentType: sanitizeContentType(attachment.contentType),
     byteSize: attachment.byteSize,
     inline: attachment.inline,
   };
+}
+
+function sanitizeFilename(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, " ").trim();
+  return sanitized.length > 0 ? sanitized.slice(0, 255) : "attachment";
+}
+
+function sanitizeContentType(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, "").trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(sanitized)
+    ? sanitized
+    : "application/octet-stream";
+}
+
+function sanitizeContentId(value: string): string {
+  return value.replace(/[\r\n<> \u0000]+/g, "").trim().slice(0, 255);
 }
 
 function parseMessageAddressList(values: string[]): MailAddress[] {

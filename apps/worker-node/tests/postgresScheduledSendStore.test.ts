@@ -32,6 +32,18 @@ describe("Postgres scheduled send store", () => {
               thread_emailengine_message_id: "emailengine_msg_1",
               thread_gmail_thread_id: "gmail_thread_1",
               thread_graph_message_id: "graph_msg_1",
+              attachment_manifest: [
+                {
+                  id: "attachment_1",
+                  source: "message_attachment",
+                  attachmentId: "attachment_1",
+                  filename: "proposal.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 2048,
+                  inline: false,
+                  providerAttachmentId: "ee_attachment_1",
+                },
+              ],
             },
           ],
         };
@@ -52,6 +64,7 @@ describe("Postgres scheduled send store", () => {
     expect(queries[0].text).toMatch(/JOIN connected_accounts/i);
     expect(queries[0].text).toMatch(/LEFT JOIN account_provider_settings/i);
     expect(queries[0].text).toMatch(/claimed_draft\.thread_action/i);
+    expect(queries[0].text).toMatch(/claimed_draft\.attachment_manifest/i);
     expect(queries[0].values).toEqual([
       "2026-06-13T12:30:00.000Z",
       "worker-a",
@@ -74,6 +87,15 @@ describe("Postgres scheduled send store", () => {
         gmailThreadId: "gmail_thread_1",
         graphMessageId: "graph_msg_1",
       },
+      attachments: [
+        {
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 2048,
+          inline: false,
+          providerAttachmentId: "ee_attachment_1",
+        },
+      ],
     });
   });
 

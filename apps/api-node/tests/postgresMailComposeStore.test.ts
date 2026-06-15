@@ -72,6 +72,7 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       null,
+      [],
       null,
       null,
       "2026-06-13T08:00:00.000Z",
@@ -153,6 +154,91 @@ describe("Postgres mail compose store", () => {
       hermesDraftText:
         "Hi Lina,\n\nThanks for the update. I can confirm Thursday works well for us.\n\nBest,\nHua",
     });
+  });
+
+  it("stores draft attachment manifests without exposing provider ids in the DTO", async () => {
+    const manifest = [
+      {
+        id: "attachment_1",
+        source: "message_attachment",
+        attachmentId: "attachment_1",
+        filename: "proposal.pdf",
+        contentType: "application/pdf",
+        byteSize: 2048,
+        inline: false,
+        providerAttachmentId: "ee_attachment_1",
+      },
+    ];
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresMailComposeStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "draft_1",
+              account_id: "acc_1",
+              from_address: null,
+              from_name: null,
+              subject: "Fwd: Launch confirmation",
+              to_emails: [{ address: "lina@example.com" }],
+              cc_emails: [],
+              bcc_emails: [],
+              body_text: "Forwarding the proposal.",
+              body_html: null,
+              status: "draft",
+              source: "forward",
+              reply_to_message_id: null,
+              source_message_id: "message_1",
+              thread_action: null,
+              thread_in_reply_to: null,
+              thread_references: [],
+              thread_emailengine_message_id: null,
+              thread_gmail_thread_id: null,
+              thread_graph_message_id: null,
+              attachment_manifest: manifest,
+              hermes_skill_run_id: null,
+              hermes_draft_text: null,
+              provider_queue_id: null,
+              provider_message_id: null,
+              error_message: null,
+              created_at: "2026-06-13T08:00:00.000Z",
+              updated_at: "2026-06-13T08:00:00.000Z",
+              sent_at: null,
+            },
+          ],
+        };
+      },
+    });
+
+    const draft = await store.createDraft({
+      id: "draft_1",
+      accountId: "acc_1",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Fwd: Launch confirmation",
+      bodyText: "Forwarding the proposal.",
+      source: "forward",
+      sourceMessageId: "message_1",
+      attachments: manifest as any,
+      now: "2026-06-13T08:00:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/attachment_manifest/i);
+    expect(queries[0].values).toContainEqual(manifest);
+    expect(JSON.stringify(draft)).not.toContain("ee_attachment_1");
+    expect(draft.attachments).toEqual([
+      {
+        id: "attachment_1",
+        source: "message_attachment",
+        attachmentId: "attachment_1",
+        filename: "proposal.pdf",
+        contentType: "application/pdf",
+        byteSize: 2048,
+        inline: false,
+      },
+    ]);
   });
 
   it("persists reply threading metadata with the draft", async () => {
@@ -243,6 +329,7 @@ describe("Postgres mail compose store", () => {
       "emailengine_msg_1",
       "gmail_thread_1",
       "graph_msg_1",
+      [],
       null,
       null,
       "2026-06-13T08:00:00.000Z",

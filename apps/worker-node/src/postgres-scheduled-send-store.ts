@@ -1,6 +1,7 @@
 import type { Queryable } from "./postgres-sync-job-queue.js";
 import type {
   MailAddress,
+  MailSendAttachment,
   MailThreading,
   MailThreadingAction,
   ScheduledSendJob,
@@ -23,6 +24,7 @@ interface ScheduledSendJobRow extends Record<string, unknown> {
   bcc_emails: unknown;
   body_text: string | null;
   body_html: string | null;
+  attachment_manifest: unknown;
   thread_action: string | null;
   thread_in_reply_to: string | null;
   thread_references: unknown;
@@ -94,6 +96,7 @@ export function createPostgresScheduledSendStore(
             claimed_draft.bcc_emails,
             claimed_draft.body_text,
             claimed_draft.body_html,
+            claimed_draft.attachment_manifest,
             claimed_draft.thread_action,
             claimed_draft.thread_in_reply_to,
             claimed_draft.thread_references,
@@ -232,10 +235,50 @@ function rowToJob(row: ScheduledSendJobRow): ScheduledSendJob {
     subject: String(row.subject),
     ...(row.body_text ? { bodyText: row.body_text } : {}),
     ...(row.body_html ? { bodyHtml: row.body_html } : {}),
+    ...(() => {
+      const attachments = attachmentManifest(row.attachment_manifest);
+      return attachments.length > 0 ? { attachments } : {};
+    })(),
     ...(threading ? { threading } : {}),
     scheduledAt: toIsoString(row.scheduled_at),
     attempts: Number(row.attempts),
   };
+}
+
+function attachmentManifest(value: unknown): MailSendAttachment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      const record = recordValue(item);
+      const filename = textValue(record.filename);
+      const contentType = textValue(record.contentType);
+      const providerAttachmentId = textValue(record.providerAttachmentId);
+      const contentBase64 = textValue(record.contentBase64);
+      if (
+        !filename ||
+        !contentType ||
+        (!providerAttachmentId && !contentBase64)
+      ) {
+        return undefined;
+      }
+
+      const contentId = textValue(record.contentId);
+      return {
+        filename: sanitizeFilename(filename),
+        contentType: sanitizeContentType(contentType),
+        byteSize: Math.max(0, numberValue(record.byteSize)),
+        inline: record.inline === true,
+        ...(contentId ? { contentId: sanitizeText(contentId) } : {}),
+        ...(providerAttachmentId
+          ? { providerAttachmentId: sanitizeText(providerAttachmentId) }
+          : {}),
+        ...(contentBase64 ? { contentBase64 } : {}),
+      };
+    })
+    .filter((item): item is MailSendAttachment => Boolean(item));
 }
 
 function rowToThreading(row: ScheduledSendJobRow): MailThreading | undefined {
@@ -307,6 +350,39 @@ function textValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function numberValue(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.floor(value);
+  }
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function sanitizeText(value: string): string {
+  return value.replace(/[\r\n\u0000]+/g, " ").trim();
+}
+
+function sanitizeFilename(value: string): string {
+  const sanitized = sanitizeText(value);
+  return sanitized.length > 0 ? sanitized.slice(0, 255) : "attachment";
+}
+
+function sanitizeContentType(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, "").trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(sanitized)
+    ? sanitized
+    : "application/octet-stream";
 }
 
 function addresses(value: unknown): MailAddress[] {

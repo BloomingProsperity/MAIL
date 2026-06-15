@@ -56,6 +56,89 @@ describe("API native send transport", () => {
     expect(sendMail).not.toHaveBeenCalled();
   });
 
+  it("includes content-backed attachments in Gmail native MIME", async () => {
+    const sendMessage = vi.fn(async () => ({ id: "gmail_msg_1" }));
+    const transport = createNativeSendTransport({
+      settingsStore: {
+        async getNativeProvider() {
+          return "gmail";
+        },
+      },
+      gmail: { sendMessage },
+      graph: { sendMail: vi.fn(async () => ({})) },
+      smtp: noopSmtpTransport(),
+      createBoundary: () => "boundary_1",
+    });
+
+    await transport.submitMessage({
+      accountId: "acc_gmail",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:send",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Launch plan",
+      bodyText: "Plain body",
+      attachments: [
+        {
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 16,
+          inline: false,
+          contentBase64: Buffer.from("hello attachment").toString("base64"),
+        },
+      ],
+    });
+
+    const decoded = decodeBase64Url(sendMessage.mock.calls[0][0].raw);
+    expect(decoded).toContain('Content-Type: multipart/mixed; boundary="boundary_1"');
+    expect(decoded).toContain(
+      'Content-Disposition: attachment; filename="proposal.pdf"',
+    );
+    expect(decoded).toContain("Content-Transfer-Encoding: base64");
+    expect(decoded).toContain(
+      Buffer.from("hello attachment").toString("base64"),
+    );
+  });
+
+  it("rejects native attachment references without content bytes", async () => {
+    const sendMessage = vi.fn(async () => ({ id: "gmail_msg_1" }));
+    const transport = createNativeSendTransport({
+      settingsStore: {
+        async getNativeProvider() {
+          return "gmail";
+        },
+      },
+      gmail: { sendMessage },
+      graph: { sendMail: vi.fn(async () => ({})) },
+      smtp: noopSmtpTransport(),
+      createBoundary: () => "boundary_1",
+    });
+
+    await expect(
+      transport.submitMessage({
+        accountId: "acc_gmail",
+        draftId: "draft_1",
+        idempotencyKey: "compose:draft_1:send",
+        to: [{ address: "lina@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Launch plan",
+        bodyText: "Plain body",
+        attachments: [
+          {
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+            providerAttachmentId: "ee_attachment_1",
+          },
+        ],
+      }),
+    ).rejects.toThrow("native send attachment content is unavailable");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("adds Gmail reply headers and threadId for threaded replies", async () => {
     const sendMessage = vi.fn(async () => ({ id: "gmail_msg_1" }));
     const transport = createNativeSendTransport({
@@ -467,6 +550,131 @@ describe("API native send transport", () => {
         }),
       }),
     ]);
+  });
+
+  it("passes content-backed attachments to native SMTP", async () => {
+    const sent: unknown[] = [];
+    const transport = createSmtpNativeSendTransport({
+      settingsStore: {
+        async getSettings() {
+          return {
+            accountId: "acc_imap",
+            provider: "custom",
+            fromAddress: "support@example.com",
+            host: "smtp.example.com",
+            port: 587,
+            secure: false,
+            username: "support@example.com",
+            secretRef: "db:smtp_secret",
+            smtp: {
+              host: "smtp.example.com",
+              port: 587,
+              secure: false,
+              username: "support@example.com",
+            },
+          };
+        },
+      },
+      secretStore: {
+        async getSecret() {
+          return "smtp-secret";
+        },
+      },
+      async sendMail(input) {
+        sent.push(input);
+        return { messageId: "smtp_msg_1" };
+      },
+    });
+
+    await transport.submitMessage({
+      accountId: "acc_imap",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:send",
+      to: [{ address: "client@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Launch plan",
+      bodyText: "Plain body",
+      attachments: [
+        {
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 16,
+          inline: false,
+          contentBase64: Buffer.from("hello attachment").toString("base64"),
+        },
+      ],
+    });
+
+    expect(sent).toEqual([
+      expect.objectContaining({
+        mail: expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              filename: "proposal.pdf",
+              contentType: "application/pdf",
+              content: Buffer.from("hello attachment"),
+              contentDisposition: "attachment",
+            }),
+          ],
+        }),
+      }),
+    ]);
+  });
+
+  it("rejects native SMTP attachment references without content bytes", async () => {
+    const sendMail = vi.fn(async () => ({ messageId: "smtp_msg_1" }));
+    const transport = createSmtpNativeSendTransport({
+      settingsStore: {
+        async getSettings() {
+          return {
+            accountId: "acc_imap",
+            provider: "custom",
+            fromAddress: "support@example.com",
+            host: "smtp.example.com",
+            port: 587,
+            secure: false,
+            username: "support@example.com",
+            secretRef: "db:smtp_secret",
+            smtp: {
+              host: "smtp.example.com",
+              port: 587,
+              secure: false,
+              username: "support@example.com",
+            },
+          };
+        },
+      },
+      secretStore: {
+        async getSecret() {
+          return "smtp-secret";
+        },
+      },
+      sendMail,
+    });
+
+    await expect(
+      transport.submitMessage({
+        accountId: "acc_imap",
+        draftId: "draft_1",
+        idempotencyKey: "compose:draft_1:send",
+        to: [{ address: "client@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Launch plan",
+        bodyText: "Plain body",
+        attachments: [
+          {
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+            providerAttachmentId: "ee_attachment_1",
+          },
+        ],
+      }),
+    ).rejects.toThrow("SMTP attachment content is unavailable");
+    expect(sendMail).not.toHaveBeenCalled();
   });
 
   it("rejects SMTP addresses with header injection characters", async () => {

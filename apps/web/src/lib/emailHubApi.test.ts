@@ -1478,6 +1478,17 @@ describe("emailHubApi", () => {
       source: "reply",
       replyToMessageId: "message_1",
       sourceMessageId: "message_1",
+      attachments: [
+        {
+          id: "attachment_1",
+          source: "message_attachment",
+          attachmentId: "attachment_1",
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 2048,
+          inline: false,
+        },
+      ],
     });
     await api.sendMailDraft({ accountId: "account_1", draftId: "draft_1" });
 
@@ -1494,6 +1505,17 @@ describe("emailHubApi", () => {
           source: "reply",
           replyToMessageId: "message_1",
           sourceMessageId: "message_1",
+          attachments: [
+            {
+              id: "attachment_1",
+              source: "message_attachment",
+              attachmentId: "attachment_1",
+              filename: "proposal.pdf",
+              contentType: "application/pdf",
+              byteSize: 2048,
+              inline: false,
+            },
+          ],
         }),
       }),
     );
@@ -1595,6 +1617,17 @@ describe("emailHubApi", () => {
       source: seed.source,
       replyToMessageId: seed.replyToMessageId,
       sourceMessageId: seed.sourceMessageId,
+      attachments: [
+        {
+          id: "attachment_1",
+          source: "message_attachment",
+          attachmentId: "attachment_1",
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 2048,
+          inline: false,
+        },
+      ],
     });
 
     expect(seed.source).toBe("reply_all");
@@ -1619,6 +1652,17 @@ describe("emailHubApi", () => {
           source: "reply_all",
           replyToMessageId: "message_1",
           sourceMessageId: "message_1",
+          attachments: [
+            {
+              id: "attachment_1",
+              source: "message_attachment",
+              attachmentId: "attachment_1",
+              filename: "proposal.pdf",
+              contentType: "application/pdf",
+              byteSize: 2048,
+              inline: false,
+            },
+          ],
         }),
       }),
     );

@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
 import nodemailer, { type SendMailOptions } from "nodemailer";
@@ -304,6 +305,9 @@ function mailOptions(
     subject: message.subject,
     ...(message.bodyText ? { text: message.bodyText } : {}),
     ...(message.bodyHtml ? { html: message.bodyHtml } : {}),
+    ...((message.attachments?.length ?? 0) > 0
+      ? { attachments: smtpAttachments(message.attachments ?? []) }
+      : {}),
     messageId: deterministicMessageId(message),
     envelope: {
       from: safeHeaderAddress(settings.fromAddress),
@@ -318,6 +322,27 @@ function mailOptions(
     disableFileAccess: true,
     disableUrlAccess: true,
   };
+}
+
+function smtpAttachments(
+  attachments: NonNullable<
+    Parameters<MailSendTransport["submitMessage"]>[0]["attachments"]
+  >,
+): SendMailOptions["attachments"] {
+  return attachments.map((attachment) => {
+    if (!attachment.contentBase64) {
+      throw new Error("SMTP attachment content is unavailable");
+    }
+    return {
+      filename: sanitizeAttachmentFilename(attachment.filename),
+      contentType: sanitizeContentType(attachment.contentType),
+      content: Buffer.from(attachment.contentBase64, "base64"),
+      cid: attachment.contentId
+        ? attachment.contentId.replace(/[\r\n<> \u0000]+/g, "").trim()
+        : undefined,
+      contentDisposition: attachment.inline ? "inline" : "attachment",
+    };
+  });
 }
 
 function rowToSmtpSettings(
@@ -476,6 +501,18 @@ function safeHeaderAddress(value: string): string {
 
 function sanitizeHeaderPhrase(value: string): string {
   return value.replace(/[\r\n"]+/g, " ").trim();
+}
+
+function sanitizeAttachmentFilename(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, " ").trim();
+  return sanitized.length > 0 ? sanitized : "attachment";
+}
+
+function sanitizeContentType(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, "").trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(sanitized)
+    ? sanitized
+    : "application/octet-stream";
 }
 
 function recordValue(value: unknown): Record<string, unknown> {

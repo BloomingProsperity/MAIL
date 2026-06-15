@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -140,6 +142,131 @@ describe("worker native SMTP send transport", () => {
         }),
       }),
     ]);
+  });
+
+  it("passes content-backed attachments to SMTP delivery", async () => {
+    const sent: unknown[] = [];
+    const transport = createSmtpNativeSendTransport({
+      settingsStore: {
+        async getSettings() {
+          return {
+            accountId: "acc_imap",
+            provider: "custom",
+            fromAddress: "me@example.com",
+            host: "smtp.example.com",
+            port: 587,
+            secure: false,
+            username: "me@example.com",
+            secretRef: "db:smtp_secret",
+            smtp: {
+              host: "smtp.example.com",
+              port: 587,
+              secure: false,
+              username: "me@example.com",
+            },
+          };
+        },
+      },
+      secretStore: {
+        async getSecret() {
+          return "smtp-secret";
+        },
+      },
+      async sendMail(input) {
+        sent.push(input);
+        return {};
+      },
+    });
+
+    await transport.submitMessage({
+      accountId: "acc_imap",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+      to: [{ address: "client@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Bridge update",
+      bodyText: "Plain body",
+      attachments: [
+        {
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 16,
+          inline: false,
+          contentBase64: Buffer.from("hello attachment").toString("base64"),
+        },
+      ],
+    });
+
+    expect(sent).toEqual([
+      expect.objectContaining({
+        mail: expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              filename: "proposal.pdf",
+              contentType: "application/pdf",
+              content: Buffer.from("hello attachment"),
+              contentDisposition: "attachment",
+            }),
+          ],
+        }),
+      }),
+    ]);
+  });
+
+  it("rejects SMTP attachment references without content bytes", async () => {
+    const sendMail = vi.fn(async () => ({ messageId: "smtp_msg_1" }));
+    const transport = createSmtpNativeSendTransport({
+      settingsStore: {
+        async getSettings() {
+          return {
+            accountId: "acc_imap",
+            provider: "custom",
+            fromAddress: "me@example.com",
+            host: "smtp.example.com",
+            port: 587,
+            secure: false,
+            username: "me@example.com",
+            secretRef: "db:smtp_secret",
+            smtp: {
+              host: "smtp.example.com",
+              port: 587,
+              secure: false,
+              username: "me@example.com",
+            },
+          };
+        },
+      },
+      secretStore: {
+        async getSecret() {
+          return "smtp-secret";
+        },
+      },
+      sendMail,
+    });
+
+    await expect(
+      transport.submitMessage({
+        accountId: "acc_imap",
+        draftId: "draft_1",
+        idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+        to: [{ address: "client@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Bridge update",
+        bodyText: "Plain body",
+        attachments: [
+          {
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+            providerAttachmentId: "ee_attachment_1",
+          },
+        ],
+      }),
+    ).rejects.toThrow("SMTP attachment content is unavailable");
+    expect(sendMail).not.toHaveBeenCalled();
   });
 
   it("rejects SMTP addresses with header injection characters", async () => {

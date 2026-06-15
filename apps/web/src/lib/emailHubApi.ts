@@ -700,6 +700,17 @@ export interface MailAddressDto {
   name?: string;
 }
 
+export interface MailDraftAttachmentDto {
+  id: string;
+  source: "message_attachment";
+  attachmentId: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  inline: boolean;
+  contentId?: string;
+}
+
 export interface MailDraftDto {
   id: string;
   accountId: string;
@@ -714,6 +725,7 @@ export interface MailDraftDto {
   source: MailDraftSource;
   replyToMessageId?: string;
   sourceMessageId?: string;
+  attachments?: MailDraftAttachmentDto[];
   hermesSkillRunId?: string;
   hermesDraftText?: string;
   providerQueueId?: string;
@@ -786,6 +798,7 @@ export interface MailComposePreviewDto {
   source: MailDraftSource;
   replyToMessageId?: string;
   sourceMessageId?: string;
+  attachments?: MailDraftAttachmentDto[];
   warnings: MailComposePreviewWarning[];
   estimatedSizeBytes: number;
   readyToSend: boolean;
@@ -1127,6 +1140,7 @@ export interface EmailHubApi {
     source?: MailDraftSource;
     replyToMessageId?: string;
     sourceMessageId?: string;
+    attachments?: MailDraftAttachmentDto[];
     hermesSkillRunId?: string;
     hermesDraftText?: string;
   }): Promise<MailDraftDto>;
@@ -1148,6 +1162,7 @@ export interface EmailHubApi {
     source?: MailDraftSource;
     replyToMessageId?: string;
     sourceMessageId?: string;
+    attachments?: MailDraftAttachmentDto[];
   }): Promise<MailComposePreviewDto>;
   listSendIdentities(input: { accountId: string }): Promise<MailSendIdentityPage>;
   sendMailDraft(input: {

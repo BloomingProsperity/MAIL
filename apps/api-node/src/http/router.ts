@@ -104,6 +104,7 @@ import {
 } from "../sync-center/sync-control.js";
 import {
   InvalidMailComposeRequestError,
+  type CreateMailDraftAttachmentInput,
   type CreateMailDraftInput,
   type MailAddress,
   type MailComposePreviewInput,
@@ -5145,6 +5146,7 @@ function parseMailComposeDraftInput(
     source?: unknown;
     replyToMessageId?: unknown;
     sourceMessageId?: unknown;
+    attachments?: unknown;
     hermesSkillRunId?: unknown;
     hermesDraftText?: unknown;
   };
@@ -5169,6 +5171,10 @@ function parseMailComposeDraftInput(
     ...(isNonEmptyString(payload.sourceMessageId)
       ? { sourceMessageId: payload.sourceMessageId }
       : {}),
+    ...(() => {
+      const attachments = parseMailComposeAttachments(payload.attachments);
+      return attachments.length > 0 ? { attachments } : {};
+    })(),
     ...(isNonEmptyString(payload.hermesSkillRunId)
       ? { hermesSkillRunId: payload.hermesSkillRunId }
       : {}),
@@ -5195,6 +5201,7 @@ function parseMailComposePreviewInput(
     source?: unknown;
     replyToMessageId?: unknown;
     sourceMessageId?: unknown;
+    attachments?: unknown;
   };
 
   const from = parseMailComposeFrom(payload);
@@ -5216,6 +5223,10 @@ function parseMailComposePreviewInput(
     ...(isNonEmptyString(payload.sourceMessageId)
       ? { sourceMessageId: payload.sourceMessageId }
       : {}),
+    ...(() => {
+      const attachments = parseMailComposeAttachments(payload.attachments);
+      return attachments.length > 0 ? { attachments } : {};
+    })(),
   };
 }
 
@@ -5509,6 +5520,58 @@ function parseMailComposeSource(value: unknown): MailDraftSource | undefined {
     return value;
   }
   throw new InvalidMailComposeRequestError();
+}
+
+function parseMailComposeAttachments(
+  value: unknown,
+): CreateMailDraftAttachmentInput[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new InvalidMailComposeRequestError("attachments are invalid");
+  }
+  if (value.length > 20) {
+    throw new InvalidMailComposeRequestError("too many attachments");
+  }
+
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new InvalidMailComposeRequestError("attachment is invalid");
+    }
+    const record = item as Record<string, unknown>;
+    const source =
+      record.source === undefined || record.source === "message_attachment"
+        ? "message_attachment"
+        : undefined;
+    const attachmentId =
+      isNonEmptyString(record.attachmentId)
+        ? record.attachmentId
+        : isNonEmptyString(record.id)
+          ? record.id
+          : undefined;
+    if (!source || !attachmentId || /[\u0000-\u001f]/.test(attachmentId)) {
+      throw new InvalidMailComposeRequestError("attachment is invalid");
+    }
+
+    return {
+      source,
+      attachmentId,
+      ...(isNonEmptyString(record.filename)
+        ? { filename: record.filename }
+        : {}),
+      ...(isNonEmptyString(record.contentType)
+        ? { contentType: record.contentType }
+        : {}),
+      ...(typeof record.byteSize === "number" && Number.isFinite(record.byteSize)
+        ? { byteSize: Math.max(0, Math.floor(record.byteSize)) }
+        : {}),
+      inline: record.inline === true,
+      ...(isNonEmptyString(record.contentId)
+        ? { contentId: record.contentId }
+        : {}),
+    };
+  });
 }
 
 function parseMailComposeAddresses(

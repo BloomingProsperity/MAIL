@@ -43,7 +43,9 @@ import type {
   MailQuickFilter,
   MailActionResult,
   MailComposePreviewDto,
+  MailComposeSeedAttachmentDto,
   MailComposeSeedMode,
+  MailDraftAttachmentDto,
   MailDraftSource,
   MailProviderCapabilityDto,
   MailSearchScope,
@@ -1153,6 +1155,9 @@ function MailWorkspace(props: {
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [composeSource, setComposeSource] = useState<MailDraftSource>("manual");
+  const [composeAttachments, setComposeAttachments] = useState<
+    MailDraftAttachmentDto[]
+  >([]);
   const [composeReplyToMessageId, setComposeReplyToMessageId] = useState<
     string | undefined
   >();
@@ -1269,6 +1274,9 @@ function MailWorkspace(props: {
       setComposeSubject(seed.subject);
       setComposeBody(seed.bodyText);
       setComposeSource(seed.source);
+      setComposeAttachments(
+        seed.mode === "forward" ? seed.attachments.map(composeAttachmentFromSeed) : [],
+      );
       setComposeReplyToMessageId(seed.replyToMessageId);
       setComposeSourceMessageId(seed.sourceMessageId);
       setComposePreview(undefined);
@@ -1302,6 +1310,9 @@ function MailWorkspace(props: {
         subject: composeSubject,
         bodyText: composeBody,
         source: composeSource,
+        ...(composeAttachments.length > 0
+          ? { attachments: composeAttachments }
+          : {}),
         ...(composeReplyToMessageId
           ? { replyToMessageId: composeReplyToMessageId }
           : {}),
@@ -1502,6 +1513,9 @@ function MailWorkspace(props: {
         subject: composeSubject.trim(),
         bodyText,
         source: composeSource,
+        ...(composeAttachments.length > 0
+          ? { attachments: composeAttachments }
+          : {}),
         ...(composeReplyToMessageId
           ? { replyToMessageId: composeReplyToMessageId }
           : {}),
@@ -1547,6 +1561,7 @@ function MailWorkspace(props: {
     setComposeSubject("");
     setComposeBody("");
     setComposeSource("manual");
+    setComposeAttachments([]);
     setComposeReplyToMessageId(undefined);
     setComposeSourceMessageId(undefined);
     setComposePreview(undefined);
@@ -1788,6 +1803,36 @@ function MailWorkspace(props: {
             }}
             placeholder="写邮件正文，或先在右侧用 Hermes 生成回复草稿"
           />
+          {composeAttachments.length > 0 ? (
+            <div className="compose-attachment-list" aria-label="Compose attachments">
+              {composeAttachments.map((attachment) => (
+                <div className="compose-attachment-row" key={attachment.attachmentId}>
+                  <Paperclip size={15} />
+                  <div>
+                    <strong>{attachment.filename}</strong>
+                    <span>
+                      {formatAttachmentSize(attachment.byteSize)}
+                      {attachment.inline ? " · inline" : ""}
+                    </span>
+                  </div>
+                  <button
+                    className="tiny-button"
+                    type="button"
+                    aria-label={`Remove attachment ${attachment.filename}`}
+                    disabled={composeBusy}
+                    onClick={() => {
+                      setComposeAttachments((current) =>
+                        current.filter((item) => item.attachmentId !== attachment.attachmentId),
+                      );
+                      setComposePreview(undefined);
+                    }}
+                  >
+                    移除
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className="composer-tool-row">
             <button
               className="tiny-button"
@@ -4885,6 +4930,27 @@ function seedRescheduleTimes(
   }
 
   return next;
+}
+
+function composeAttachmentFromSeed(
+  attachment: MailComposeSeedAttachmentDto,
+): MailDraftAttachmentDto {
+  return {
+    id: attachment.id,
+    source: "message_attachment",
+    attachmentId: attachment.id,
+    filename: attachment.filename,
+    contentType: attachment.contentType,
+    byteSize: attachment.byteSize,
+    inline: attachment.inline,
+  };
+}
+
+function formatAttachmentSize(byteSize: number): string {
+  if (byteSize >= 1024 * 1024) {
+    return `${(byteSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${Math.max(1, Math.ceil(byteSize / 1024))} KB`;
 }
 
 function bucketLabel(bucket: string): string {

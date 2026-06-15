@@ -118,4 +118,46 @@ describe("EmailEngine submit client", () => {
       },
     });
   });
+
+  it("submits forwarded attachment references through EmailEngine", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createEmailEngineSubmitClient({
+      baseUrl: "http://emailengine:3000",
+      accessToken: "secret-token",
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return Response.json({ queueId: "queue_1" });
+      },
+    });
+
+    await client.submitMessage({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:send",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Fwd: Launch confirmation",
+      bodyText: "Forwarding the proposal.",
+      attachments: [
+        {
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 2048,
+          inline: false,
+          providerAttachmentId: "ee_attachment_1",
+        },
+      ],
+    });
+
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      attachments: [
+        {
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          reference: "ee_attachment_1",
+        },
+      ],
+    });
+  });
 });

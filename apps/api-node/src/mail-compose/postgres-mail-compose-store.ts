@@ -4,6 +4,8 @@ import type {
   MailComposeAccount,
   MailComposeStore,
   MailDraft,
+  MailDraftAttachment,
+  MailDraftTransportAttachment,
   MailDraftStatus,
   MailThreading,
   MailThreadingAction,
@@ -44,6 +46,7 @@ interface DraftRow extends Record<string, unknown> {
   thread_emailengine_message_id: string | null;
   thread_gmail_thread_id: string | null;
   thread_graph_message_id: string | null;
+  attachment_manifest: unknown;
   hermes_skill_run_id: string | null;
   hermes_draft_text: string | null;
   provider_queue_id: string | null;
@@ -124,6 +127,7 @@ export function createPostgresMailComposeStore(
             thread_emailengine_message_id,
             thread_gmail_thread_id,
             thread_graph_message_id,
+            attachment_manifest,
             hermes_skill_run_id,
             hermes_draft_text,
             created_at,
@@ -151,8 +155,9 @@ export function createPostgresMailComposeStore(
             $19,
             $20,
             $21,
-            $22::timestamptz,
-            $22::timestamptz
+            $22,
+            $23::timestamptz,
+            $23::timestamptz
           )
           RETURNING ${draftColumns()}
         `,
@@ -176,6 +181,7 @@ export function createPostgresMailComposeStore(
           input.threading?.emailEngineMessageId ?? null,
           input.threading?.gmailThreadId ?? null,
           input.threading?.graphMessageId ?? null,
+          input.attachments ?? [],
           input.hermesSkillRunId ?? null,
           input.hermesDraftText ?? null,
           input.now,
@@ -609,6 +615,7 @@ function draftColumns(prefix?: string): string {
     "thread_emailengine_message_id",
     "thread_gmail_thread_id",
     "thread_graph_message_id",
+    "attachment_manifest",
     "hermes_skill_run_id",
     "hermes_draft_text",
     "provider_queue_id",
@@ -653,15 +660,18 @@ function scheduledColumns(prefix?: string, aliasPrefix = ""): string {
 }
 
 function rowToDraftWithAccount(row: DraftRow): DraftWithAccount {
+  const attachments = attachmentManifest(row.attachment_manifest);
   return {
-    draft: rowToDraft(row),
+    draft: rowToDraft(row, attachments),
     account: rowToAccount(row),
+    ...(attachments.length > 0 ? { transportAttachments: attachments } : {}),
   };
 }
 
 function rowToScheduledSendWithDraft(
   row: ScheduledSendWithDraftRow,
 ): ScheduledSendWithDraft {
+  const attachments = attachmentManifest(row.attachment_manifest);
   return {
     scheduledSend: rowToScheduledSend({
       id: row.scheduled_id,
@@ -681,8 +691,9 @@ function rowToScheduledSendWithDraft(
       cancelled_at: row.scheduled_cancelled_at,
       completed_at: row.scheduled_completed_at,
     }),
-    draft: rowToDraft(row),
+    draft: rowToDraft(row, attachments),
     account: rowToAccount(row),
+    ...(attachments.length > 0 ? { transportAttachments: attachments } : {}),
   };
 }
 
@@ -717,8 +728,12 @@ function rowToScheduledSend(row: ScheduledSendRow): ScheduledSend {
   };
 }
 
-function rowToDraft(row: DraftRow): MailDraft {
+function rowToDraft(
+  row: DraftRow,
+  transportAttachments = attachmentManifest(row.attachment_manifest),
+): MailDraft {
   const threading = rowToThreading(row);
+  const attachments = publicAttachments(transportAttachments);
   return {
     id: String(row.id),
     accountId: String(row.account_id),
@@ -742,6 +757,7 @@ function rowToDraft(row: DraftRow): MailDraft {
       ? { replyToMessageId: row.reply_to_message_id }
       : {}),
     ...(row.source_message_id ? { sourceMessageId: row.source_message_id } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
     ...(threading ? { threading } : {}),
     ...(row.hermes_skill_run_id
       ? { hermesSkillRunId: row.hermes_skill_run_id }
@@ -756,6 +772,56 @@ function rowToDraft(row: DraftRow): MailDraft {
     updatedAt: toIsoString(row.updated_at),
     ...(row.sent_at ? { sentAt: toIsoString(row.sent_at) } : {}),
   };
+}
+
+function publicAttachments(
+  attachments: MailDraftTransportAttachment[],
+): MailDraftAttachment[] {
+  return attachments.map((attachment) => ({
+    id: attachment.id,
+    source: attachment.source,
+    attachmentId: attachment.attachmentId,
+    filename: attachment.filename,
+    contentType: attachment.contentType,
+    byteSize: attachment.byteSize,
+    inline: attachment.inline,
+    ...(attachment.contentId ? { contentId: attachment.contentId } : {}),
+  }));
+}
+
+function attachmentManifest(value: unknown): MailDraftTransportAttachment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      const record = recordValue(item);
+      const id = textValue(record.id) ?? textValue(record.attachmentId);
+      const attachmentId = textValue(record.attachmentId) ?? id;
+      const providerAttachmentId = textValue(record.providerAttachmentId);
+      if (!id || !attachmentId || !providerAttachmentId) {
+        return undefined;
+      }
+
+      const contentId = textValue(record.contentId);
+      const contentBase64 = textValue(record.contentBase64);
+      return {
+        id: sanitizeText(id),
+        source: "message_attachment" as const,
+        attachmentId: sanitizeText(attachmentId),
+        filename: sanitizeFilename(textValue(record.filename) ?? "attachment"),
+        contentType: sanitizeContentType(
+          textValue(record.contentType) ?? "application/octet-stream",
+        ),
+        byteSize: Math.max(0, numberValue(record.byteSize)),
+        inline: record.inline === true,
+        ...(contentId ? { contentId: sanitizeText(contentId) } : {}),
+        providerAttachmentId: sanitizeText(providerAttachmentId),
+        ...(contentBase64 ? { contentBase64 } : {}),
+      };
+    })
+    .filter((item): item is MailDraftTransportAttachment => Boolean(item));
 }
 
 function rowToThreading(row: DraftRow): MailThreading | undefined {
@@ -881,6 +947,39 @@ function textValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function numberValue(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.floor(value);
+  }
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function sanitizeText(value: string): string {
+  return value.replace(/[\r\n\u0000]+/g, " ").trim();
+}
+
+function sanitizeFilename(value: string): string {
+  const sanitized = sanitizeText(value);
+  return sanitized.length > 0 ? sanitized.slice(0, 255) : "attachment";
+}
+
+function sanitizeContentType(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, "").trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(sanitized)
+    ? sanitized
+    : "application/octet-stream";
 }
 
 function scheduledStatus(value: string): ScheduledSendStatus {

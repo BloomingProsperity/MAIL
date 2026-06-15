@@ -19,6 +19,15 @@ describe("scheduled send runner", () => {
           references: ["<source@example.com>"],
           emailEngineMessageId: "emailengine_msg_1",
         },
+        attachments: [
+          {
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+            providerAttachmentId: "ee_attachment_1",
+          },
+        ],
       },
     ]);
     const submitCalls: unknown[] = [];
@@ -55,6 +64,15 @@ describe("scheduled send runner", () => {
         bcc: [],
         subject: "Launch confirmation",
         bodyText: "Looks good.",
+        attachments: [
+          {
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+            providerAttachmentId: "ee_attachment_1",
+          },
+        ],
         threading: {
           action: "reply",
           inReplyTo: "<source@example.com>",

@@ -576,6 +576,46 @@ h2 {
   min-width: 0;
 }
 
+.compose-attachment-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.compose-attachment-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: var(--bg-soft);
+}
+
+.compose-attachment-row > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.compose-attachment-row strong,
+.compose-attachment-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compose-attachment-row strong {
+  font-size: 12px;
+}
+
+.compose-attachment-row span {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
 .compose-preview-box {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) auto;

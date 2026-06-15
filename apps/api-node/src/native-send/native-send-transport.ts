@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import type {
   MailAddress,
+  MailSendAttachment,
   MailSendTransport,
   MailThreading,
 } from "../mail-compose/mail-compose.js";
@@ -103,7 +104,7 @@ export function createNativeSendTransport(input: {
       }
 
       if (provider === "graph") {
-        if (hasThreadingHeaders(message.threading)) {
+        if (hasThreadingHeaders(message.threading) || (message.attachments?.length ?? 0) > 0) {
           await submitWithReauthorizationMarking(
             input.reauthorizationMarker,
             { accountId: message.accountId, provider },
@@ -257,6 +258,7 @@ function buildMimeMessage(input: {
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
+  attachments?: MailSendAttachment[];
   threading?: MailThreading;
   boundary: string;
 }): string {
@@ -270,10 +272,46 @@ function buildMimeMessage(input: {
     ["MIME-Version", "1.0"],
   ].filter((header): header is string[] => Boolean(header));
 
+  const attachments = sendableAttachments(input.attachments ?? []);
   return [
     ...headers.map(([name, value]) => `${name}: ${value}`),
     "",
-    mimeBody(input),
+    attachments.length > 0
+      ? mimeBodyWithAttachments(input, attachments)
+      : mimeBody(input),
+  ].join("\r\n");
+}
+
+function mimeBodyWithAttachments(
+  input: {
+    bodyText?: string;
+    bodyHtml?: string;
+    boundary: string;
+  },
+  attachments: Array<
+    MailSendAttachment & { contentBase64: string }
+  >,
+): string {
+  const boundary = sanitizeHeaderValue(input.boundary);
+  const bodyBoundary = `${boundary}-body`;
+  return [
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    mimeBody({ ...input, boundary: bodyBoundary }),
+    ...attachments.flatMap((attachment) => [
+      `--${boundary}`,
+      `Content-Type: ${sanitizeContentType(attachment.contentType)}; name="${encodeHeaderParameter(attachment.filename)}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-Disposition: ${attachment.inline ? "inline" : "attachment"}; filename="${encodeHeaderParameter(attachment.filename)}"`,
+      ...(attachment.contentId
+        ? [`Content-ID: <${sanitizeContentId(attachment.contentId)}>`]
+        : []),
+      "",
+      wrapBase64(attachment.contentBase64),
+    ]),
+    `--${boundary}--`,
+    "",
   ].join("\r\n");
 }
 
@@ -364,6 +402,39 @@ function encodeHeaderPhrase(value: string): string {
 
 function sanitizeHeaderValue(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+function sanitizeContentType(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, "").trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(sanitized)
+    ? sanitized
+    : "application/octet-stream";
+}
+
+function encodeHeaderParameter(value: string): string {
+  return sanitizeHeaderValue(value).replace(/["\\]/g, "_");
+}
+
+function sanitizeContentId(value: string): string {
+  return value.replace(/[\r\n<> \u0000]+/g, "").trim();
+}
+
+function sendableAttachments(
+  attachments: MailSendAttachment[],
+): Array<MailSendAttachment & { contentBase64: string }> {
+  return attachments.map((attachment) => {
+    if (!attachment.contentBase64) {
+      throw new Error("native send attachment content is unavailable");
+    }
+    return {
+      ...attachment,
+      contentBase64: attachment.contentBase64,
+    };
+  });
+}
+
+function wrapBase64(value: string): string {
+  return value.replace(/\s+/g, "").replace(/.{1,76}/g, "$&\r\n").trimEnd();
 }
 
 function threadingHeaders(threading: MailThreading | undefined): string[][] {

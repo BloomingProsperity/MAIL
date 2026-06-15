@@ -395,4 +395,16 @@ describe("mail engine runtime migration", () => {
     expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS messages_rfc_references_gin_idx/i);
     expect(sql).toMatch(/USING GIN \(rfc_references_message_ids\)/i);
   });
+
+  it("stores draft attachment manifests for compose sends", async () => {
+    const sql = await readMigrationFile("0037_email_draft_attachment_manifest.sql");
+
+    expect(sql).toMatch(/ALTER TABLE email_drafts/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS attachment_manifest JSONB/i);
+    expect(sql).toMatch(/DEFAULT '\[\]'::jsonb/i);
+    expect(sql).toMatch(
+      /CREATE INDEX IF NOT EXISTS email_drafts_attachment_manifest_gin_idx/i,
+    );
+    expect(sql).toMatch(/USING GIN \(attachment_manifest\)/i);
+  });
 });

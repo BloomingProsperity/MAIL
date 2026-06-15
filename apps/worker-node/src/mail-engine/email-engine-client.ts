@@ -61,7 +61,18 @@ export interface SubmitMessageInput {
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
+  attachments?: SubmitAttachment[];
   threading?: SubmitThreading;
+}
+
+export interface SubmitAttachment {
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  inline: boolean;
+  contentId?: string;
+  providerAttachmentId?: string;
+  contentBase64?: string;
 }
 
 export interface SubmitThreading {
@@ -280,6 +291,7 @@ export function createEmailEngineClient(
           subject: input.subject,
           text: input.bodyText,
           html: input.bodyHtml,
+          attachments: input.attachments?.map(toSubmitAttachment),
           reference: emailEngineReference(input.threading),
         }),
       });
@@ -299,6 +311,44 @@ function emailEngineReference(
     action: threading.action === "reply_all" ? "reply-all" : "reply",
     inline: false,
   };
+}
+
+function toSubmitAttachment(
+  attachment: SubmitAttachment,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    filename: sanitizeHeaderLikeValue(attachment.filename),
+    contentType: sanitizeContentType(attachment.contentType),
+    ...(attachment.inline ? { disposition: "inline" } : {}),
+    ...(attachment.contentId ? { cid: sanitizeCid(attachment.contentId) } : {}),
+  };
+  if (attachment.contentBase64) {
+    payload.content = attachment.contentBase64;
+    payload.encoding = "base64";
+    return payload;
+  }
+  if (attachment.providerAttachmentId) {
+    payload.reference = attachment.providerAttachmentId;
+    return payload;
+  }
+
+  throw new Error("EmailEngine attachment is missing content");
+}
+
+function sanitizeHeaderLikeValue(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, " ").trim();
+  return sanitized.length > 0 ? sanitized : "attachment";
+}
+
+function sanitizeContentType(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, "").trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(sanitized)
+    ? sanitized
+    : "application/octet-stream";
+}
+
+function sanitizeCid(value: string): string {
+  return value.replace(/[\r\n<> \u0000]+/g, "").trim();
 }
 
 function normalizeBaseUrl(baseUrl: string): string {

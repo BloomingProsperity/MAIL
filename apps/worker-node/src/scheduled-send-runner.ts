@@ -18,6 +18,16 @@ export interface MailThreading {
   graphMessageId?: string;
 }
 
+export interface MailSendAttachment {
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  inline: boolean;
+  contentId?: string;
+  providerAttachmentId?: string;
+  contentBase64?: string;
+}
+
 export interface ScheduledSendJob {
   id: string;
   accountId: string;
@@ -31,6 +41,7 @@ export interface ScheduledSendJob {
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
+  attachments?: MailSendAttachment[];
   threading?: MailThreading;
   scheduledAt: string;
   attempts: number;
@@ -71,6 +82,7 @@ export interface ScheduledSendTransport {
     subject: string;
     bodyText?: string;
     bodyHtml?: string;
+    attachments?: MailSendAttachment[];
     threading?: MailThreading;
   }): Promise<{
     queueId?: string;
@@ -156,6 +168,9 @@ async function processScheduledSend(
       subject: job.subject,
       ...(job.bodyText ? { bodyText: job.bodyText } : {}),
       ...(job.bodyHtml ? { bodyHtml: job.bodyHtml } : {}),
+      ...((job.attachments?.length ?? 0) > 0
+        ? { attachments: job.attachments }
+        : {}),
       ...(job.threading ? { threading: job.threading } : {}),
     });
 

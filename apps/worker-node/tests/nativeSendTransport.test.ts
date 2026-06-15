@@ -62,6 +62,85 @@ describe("native send transports", () => {
     expect(decoded).toContain("<p>Looks <strong>good</strong>.</p>");
   });
 
+  it("includes content-backed attachments in Gmail scheduled MIME", async () => {
+    const calls: unknown[] = [];
+    const transport = createGmailNativeSendTransport({
+      gmail: {
+        async sendMessage(input) {
+          calls.push(input);
+          return { id: "gmail_msg_1" };
+        },
+      },
+      createBoundary: () => "boundary_1",
+    });
+
+    await transport.submitMessage({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Launch confirmation",
+      bodyText: "Forwarding the proposal.",
+      attachments: [
+        {
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 16,
+          inline: false,
+          contentBase64: Buffer.from("hello attachment").toString("base64"),
+        },
+      ],
+    });
+
+    const raw = (calls[0] as { raw: string }).raw;
+    const decoded = Buffer.from(toBase64(raw), "base64").toString("utf8");
+    expect(decoded).toContain('Content-Type: multipart/mixed; boundary="boundary_1"');
+    expect(decoded).toContain(
+      'Content-Disposition: attachment; filename="proposal.pdf"',
+    );
+    expect(decoded).toContain(
+      Buffer.from("hello attachment").toString("base64"),
+    );
+  });
+
+  it("rejects native scheduled attachment references without content bytes", async () => {
+    const calls: unknown[] = [];
+    const transport = createGmailNativeSendTransport({
+      gmail: {
+        async sendMessage(input) {
+          calls.push(input);
+          return { id: "gmail_msg_1" };
+        },
+      },
+      createBoundary: () => "boundary_1",
+    });
+
+    await expect(
+      transport.submitMessage({
+        accountId: "acc_1",
+        draftId: "draft_1",
+        idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+        to: [{ address: "lina@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Launch confirmation",
+        bodyText: "Forwarding the proposal.",
+        attachments: [
+          {
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+            providerAttachmentId: "ee_attachment_1",
+          },
+        ],
+      }),
+    ).rejects.toThrow("native send attachment content is unavailable");
+    expect(calls).toEqual([]);
+  });
+
   it("submits Graph sendMail payloads with recipient buckets", async () => {
     const calls: unknown[] = [];
     const transport = createGraphNativeSendTransport({

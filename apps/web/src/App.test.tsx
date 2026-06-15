@@ -1807,6 +1807,69 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("carries forwarded seed attachments into the composed draft payload", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.createComposeSeed).mockResolvedValueOnce({
+      accountId: "account_1",
+      messageId: "message_1",
+      mode: "forward",
+      to: [],
+      cc: [],
+      bcc: [],
+      subject: "Fwd: Live subject",
+      bodyText:
+        "\n\n---------- Forwarded message ---------\nFrom: Live Client <client@example.com>\nSubject: Live subject\n\nLive body from backend",
+      source: "forward",
+      sourceMessageId: "message_1",
+      attachments: [
+        {
+          id: "attachment_1",
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          byteSize: 2048,
+          inline: false,
+        },
+      ],
+      warnings: ["missing_recipient"],
+      generatedAt: "2026-06-13T10:00:00.000Z",
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "转发" }));
+
+    expect(await screen.findByText("proposal.pdf")).toBeTruthy();
+    expect(screen.getByText("2 KB")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Fwd: Live subject",
+        bodyText:
+          "---------- Forwarded message ---------\nFrom: Live Client <client@example.com>\nSubject: Live subject\n\nLive body from backend",
+        source: "forward",
+        sourceMessageId: "message_1",
+        attachments: [
+          {
+            id: "attachment_1",
+            source: "message_attachment",
+            attachmentId: "attachment_1",
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+            inline: false,
+          },
+        ],
+      });
+    });
+  });
+
   it("previews composed mail without sending it", async () => {
     const api = createApiFixture();
 
