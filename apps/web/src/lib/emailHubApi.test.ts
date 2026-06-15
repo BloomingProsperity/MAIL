@@ -1843,6 +1843,94 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("loads and updates scheduled outbox drafts through compose routes", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        scheduledSend: {
+          id: "schedule/1",
+          accountId: "account 1",
+          draftId: "draft_1",
+          scheduledAt: "2026-06-14T09:30:00.000Z",
+          status: "scheduled",
+          attempts: 0,
+          maxAttempts: 5,
+          notBefore: "2026-06-14T09:30:00.000Z",
+          canEdit: true,
+          canSendNow: true,
+          canDelete: true,
+          createdAt: "2026-06-13T10:00:00.000Z",
+          updatedAt: "2026-06-13T10:00:00.000Z",
+        },
+        draft: {
+          id: "draft_1",
+          accountId: "account 1",
+          to: [{ address: "lina@example.com" }],
+          cc: [],
+          bcc: [],
+          subject: "Scheduled subject",
+          bodyText: "Scheduled body",
+          status: "scheduled",
+          source: "manual",
+          createdAt: "2026-06-13T10:00:00.000Z",
+          updatedAt: "2026-06-13T10:00:00.000Z",
+        },
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    await api.getScheduledDraft({
+      accountId: "account 1",
+      scheduledId: "schedule/1",
+    });
+    await api.updateScheduledDraft({
+      accountId: "account 1",
+      scheduledId: "schedule/1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Updated scheduled subject",
+      bodyText: "Updated scheduled body",
+      attachments: [
+        {
+          id: "upload_1",
+          source: "uploaded_file",
+          attachmentId: "upload_1",
+          filename: "plan.pdf",
+          contentType: "application/pdf",
+          byteSize: 4,
+          inline: false,
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/accounts/account%201/outbox/schedule%2F1/draft",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/accounts/account%201/outbox/schedule%2F1/draft",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          to: [{ address: "lina@example.com" }],
+          subject: "Updated scheduled subject",
+          bodyText: "Updated scheduled body",
+          attachments: [
+            {
+              id: "upload_1",
+              source: "uploaded_file",
+              attachmentId: "upload_1",
+              filename: "plan.pdf",
+              contentType: "application/pdf",
+              byteSize: 4,
+              inline: false,
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
   it("lists domain destinations for alias routing settings", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

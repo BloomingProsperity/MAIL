@@ -2449,6 +2449,175 @@ describe("Email Hub first UI baseline", () => {
       });
     });
   });
+
+  it("loads an outbox draft into the compose panel for editing", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("draft_1");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+    );
+
+    await waitFor(() => {
+      expect(api.getScheduledDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        scheduledId: "schedule_1",
+      });
+    });
+    expect((screen.getByLabelText("Compose subject") as HTMLInputElement).value).toBe(
+      "Scheduled subject",
+    );
+    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
+      "Scheduled body",
+    );
+    expect((screen.getByLabelText("Compose recipients") as HTMLInputElement).value).toBe(
+      "Client <client@example.com>",
+    );
+    expect(screen.getByText(/待发：schedule_1/)).toBeTruthy();
+    expect(screen.getByText("plan.pdf")).toBeTruthy();
+  });
+
+  it("updates an edited outbox draft without creating a replacement", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("draft_1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+    );
+    await screen.findByText(/待发草稿已载入：schedule_1/);
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Edited scheduled body." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.updateScheduledDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        scheduledId: "schedule_1",
+        to: [{ address: "client@example.com", name: "Client" }],
+        subject: "Scheduled subject",
+        bodyText: "Edited scheduled body.",
+        source: "manual",
+        replyToMessageId: "message_1",
+        attachments: [
+          {
+            id: "upload_1",
+            source: "uploaded_file",
+            attachmentId: "upload_1",
+            filename: "plan.pdf",
+            contentType: "application/pdf",
+            byteSize: 4,
+            inline: false,
+          },
+        ],
+      });
+    });
+    expect(api.createMailDraft).not.toHaveBeenCalled();
+    expect(api.updateMailDraft).not.toHaveBeenCalled();
+    expect(await screen.findByText(/待发草稿已更新：draft_1/)).toBeTruthy();
+  });
+
+  it("sends an edited outbox draft through the scheduled item", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("draft_1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+    );
+    await screen.findByText(/待发草稿已载入：schedule_1/);
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Send the edited scheduled body now." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await waitFor(() => {
+      expect(api.updateScheduledDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "account_1",
+          scheduledId: "schedule_1",
+          bodyText: "Send the edited scheduled body now.",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(api.sendScheduledNow).toHaveBeenCalledWith({
+        accountId: "account_1",
+        scheduledId: "schedule_1",
+      });
+    });
+    expect(api.sendMailDraft).not.toHaveBeenCalled();
+    expect(api.createMailDraft).not.toHaveBeenCalled();
+  });
+
+  it("reschedules an edited outbox draft after updating the same scheduled id", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("draft_1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+    );
+    await screen.findByText(/待发草稿已载入：schedule_1/);
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Edited then rescheduled body." },
+    });
+    fireEvent.change(screen.getByLabelText("Compose scheduled time"), {
+      target: { value: "2026-06-14T12:30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Schedule composed draft" }));
+
+    await waitFor(() => {
+      expect(api.updateScheduledDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "account_1",
+          scheduledId: "schedule_1",
+          bodyText: "Edited then rescheduled body.",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(api.rescheduleScheduledSend).toHaveBeenCalledWith({
+        accountId: "account_1",
+        scheduledId: "schedule_1",
+        scheduledAt: "2026-06-14T12:30:00.000Z",
+      });
+    });
+    expect(api.scheduleMailDraft).not.toHaveBeenCalled();
+    expect(api.createMailDraft).not.toHaveBeenCalled();
+  });
+
+  it("does not send an outbox draft when updating it fails", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("draft_1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+    );
+    await screen.findByText(/待发草稿已载入：schedule_1/);
+
+    vi.mocked(api.updateScheduledDraft).mockRejectedValueOnce(
+      new Error("scheduled draft was claimed"),
+    );
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "This update will fail." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await waitFor(() => {
+      expect(api.updateScheduledDraft).toHaveBeenCalled();
+    });
+    expect(api.sendScheduledNow).not.toHaveBeenCalled();
+    expect(api.sendMailDraft).not.toHaveBeenCalled();
+    expect(await screen.findByText("写信操作失败，请稍后再试。")).toBeTruthy();
+  });
 });
 
 function createApiFixture(): EmailHubApi {
@@ -3163,6 +3332,42 @@ function createApiFixture(): EmailHubApi {
     listOutbox: vi.fn(async () => ({
       accountId: "account_1",
       items: [scheduledSendFixture()],
+    })),
+    getScheduledDraft: vi.fn(async () => ({
+      scheduledSend: scheduledSendFixture(),
+      draft: mailDraftFixture({
+        status: "scheduled",
+        subject: "Scheduled subject",
+        bodyText: "Scheduled body",
+        attachments: [
+          {
+            id: "upload_1",
+            source: "uploaded_file",
+            attachmentId: "upload_1",
+            filename: "plan.pdf",
+            contentType: "application/pdf",
+            byteSize: 4,
+            inline: false,
+          },
+        ],
+      }),
+    })),
+    updateScheduledDraft: vi.fn(async (input) => ({
+      scheduledSend: scheduledSendFixture({
+        id: input.scheduledId,
+      }),
+      draft: mailDraftFixture({
+        status: "scheduled",
+        accountId: input.accountId,
+        to: input.to,
+        cc: input.cc ?? [],
+        bcc: input.bcc ?? [],
+        subject: input.subject ?? "",
+        ...(input.bodyText ? { bodyText: input.bodyText } : {}),
+        ...(input.bodyHtml ? { bodyHtml: input.bodyHtml } : {}),
+        source: input.source ?? "manual",
+        ...(input.attachments ? { attachments: input.attachments } : {}),
+      }),
     })),
     sendScheduledNow: vi.fn(async () =>
       scheduledSendFixture({

@@ -173,9 +173,12 @@ with more than smoke-level tests.
   reply through `/api/hermes/skills/quick_reply/run`, and Hermes rewrite/polish
   through `/api/hermes/skills/rewrite_polish/run`. The outbox panel loads
   `/api/accounts/:accountId/outbox`, and each row routes reschedule, send now,
-  and cancel to the matching backend contract. API client route tests and App
-  behavior tests cover the full create/send/schedule/list/reschedule/send-now/
-  cancel flow plus send-as, Cc/Bcc draft payloads, editable Hermes quick
+  cancel, and edit-draft to the matching backend contract. Scheduled outbox
+  edits load the app-owned draft detail, preserve the existing `draftId` and
+  `scheduledId`, and update the same outbox row before save, send-now, or
+  reschedule. API client route tests and App behavior tests cover the full
+  create/send/schedule/list/edit/reschedule/send-now/cancel flow plus send-as,
+  Cc/Bcc draft payloads, editable Hermes quick
   replies, editable Hermes polishing, backend-generated reply/reply-all/forward
   seeds, and backend compose preview.
 - Current backend status: outbox listing now returns active queue items only
@@ -212,8 +215,8 @@ with more than smoke-level tests.
   silently dropping the file.
 - Remaining gap: the current compose panel is intentionally compact; rich
   editor, chunked/object-storage uploads for larger files, provider-native
-  permission discovery for shared mailbox send-as, and Sent-folder provider
-  parity are still separate slices.
+  permission discovery for shared mailbox send-as, draft-list editing outside
+  the outbox, and Sent-folder provider parity are still separate slices.
 
 ## Product References
 

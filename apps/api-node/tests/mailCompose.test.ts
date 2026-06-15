@@ -1244,6 +1244,338 @@ describe("mail compose service", () => {
     });
   });
 
+  it("loads an editable scheduled draft with its current content", async () => {
+    const calls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async getScheduledDraft(input) {
+          calls.push(input);
+          return {
+            scheduledSend: scheduledSend({
+              scheduledAt: "2026-06-13T12:30:00.000Z",
+            }),
+            draft: {
+              ...draft(),
+              status: "scheduled",
+              subject: "Scheduled launch",
+              bodyText: "Send later body.",
+              attachments: [
+                {
+                  id: "upload_1",
+                  source: "uploaded_file" as const,
+                  attachmentId: "upload_1",
+                  filename: "plan.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 12,
+                  inline: false,
+                },
+              ],
+            },
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+      }),
+      createId: () => "unused",
+      transports: {},
+    });
+
+    const detail = await service.getScheduledDraft({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+    });
+
+    expect(calls).toEqual([{ accountId: "acc_1", scheduledId: "schedule_1" }]);
+    expect(detail).toMatchObject({
+      scheduledSend: {
+        id: "schedule_1",
+        draftId: "draft_1",
+        canEdit: true,
+      },
+      draft: {
+        id: "draft_1",
+        status: "scheduled",
+        subject: "Scheduled launch",
+        bodyText: "Send later body.",
+      },
+    });
+  });
+
+  it("updates scheduled draft content without creating a replacement", async () => {
+    const calls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async getScheduledDraft(input) {
+          calls.push(["get", input]);
+          return {
+            scheduledSend: scheduledSend({ id: input.scheduledId }),
+            draft: {
+              ...draft(),
+              status: "scheduled",
+              attachments: [
+                {
+                  id: "upload_1",
+                  source: "uploaded_file" as const,
+                  attachmentId: "upload_1",
+                  filename: "plan.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 4,
+                  inline: false,
+                },
+              ],
+            },
+            transportAttachments: [
+              {
+                id: "upload_1",
+                source: "uploaded_file",
+                attachmentId: "upload_1",
+                filename: "plan.pdf",
+                contentType: "application/pdf",
+                byteSize: 4,
+                inline: false,
+                contentBase64: "cGxhbg==",
+              },
+            ],
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+        async updateScheduledDraft(input) {
+          calls.push(["update", input]);
+          return {
+            scheduledSend: scheduledSend({
+              id: input.scheduledId,
+              status: "scheduled",
+            }),
+            draft: {
+              ...draft(),
+              status: "scheduled",
+              subject: input.subject,
+              to: input.to,
+              cc: input.cc,
+              bcc: input.bcc,
+              bodyText: input.bodyText,
+              attachments: input.attachments?.map((attachment) => ({
+                id: attachment.id,
+                source: attachment.source,
+                attachmentId: attachment.attachmentId,
+                filename: attachment.filename,
+                contentType: attachment.contentType,
+                byteSize: attachment.byteSize,
+                inline: attachment.inline,
+              })),
+              updatedAt: input.now,
+            },
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+      }),
+      createId: () => "unused_new_draft_id",
+      now: () => new Date("2026-06-13T08:30:00.000Z"),
+      transports: {},
+    });
+
+    const detail = await service.updateScheduledDraft({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+      to: [{ address: "Lina@Example.com", name: "Lina" }],
+      subject: " Updated scheduled launch ",
+      bodyText: "Edited send-later body.",
+      attachments: [
+        {
+          id: "upload_1",
+          source: "uploaded_file",
+          attachmentId: "upload_1",
+          filename: "plan.pdf",
+          contentType: "application/pdf",
+          byteSize: 8,
+        },
+      ],
+    });
+
+    expect(calls).toEqual([
+      ["get", { accountId: "acc_1", scheduledId: "schedule_1" }],
+      [
+        "update",
+        expect.objectContaining({
+          accountId: "acc_1",
+          scheduledId: "schedule_1",
+          to: [{ address: "lina@example.com", name: "Lina" }],
+          cc: [],
+          bcc: [],
+          subject: "Updated scheduled launch",
+          bodyText: "Edited send-later body.",
+          source: "manual",
+          attachments: [
+            expect.objectContaining({
+              id: "upload_1",
+              source: "uploaded_file",
+              filename: "plan.pdf",
+              contentBase64: "cGxhbg==",
+            }),
+          ],
+          now: "2026-06-13T08:30:00.000Z",
+        }),
+      ],
+    ]);
+    expect(detail).toMatchObject({
+      scheduledSend: {
+        id: "schedule_1",
+        status: "scheduled",
+      },
+      draft: {
+        id: "draft_1",
+        status: "scheduled",
+        bodyText: "Edited send-later body.",
+      },
+    });
+  });
+
+  it("keeps scheduled draft attachments when body-only edits omit attachments", async () => {
+    const calls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async updateScheduledDraft(input) {
+          calls.push(input);
+          return {
+            scheduledSend: scheduledSend({
+              id: input.scheduledId,
+              status: "scheduled",
+            }),
+            draft: {
+              ...draft(),
+              status: "scheduled",
+              bodyText: input.bodyText,
+              attachments: [
+                {
+                  id: "upload_1",
+                  source: "uploaded_file" as const,
+                  attachmentId: "upload_1",
+                  filename: "plan.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 4,
+                  inline: false,
+                },
+              ],
+              updatedAt: input.now,
+            },
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+      }),
+      createId: () => "unused",
+      now: () => new Date("2026-06-13T08:30:00.000Z"),
+      transports: {},
+    });
+
+    const detail = await service.updateScheduledDraft({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Scheduled launch",
+      bodyText: "Body-only edit.",
+    });
+
+    expect(calls).toEqual([
+      expect.not.objectContaining({
+        attachments: expect.anything(),
+      }),
+    ]);
+    expect(detail.draft).toMatchObject({
+      bodyText: "Body-only edit.",
+      attachments: [
+        {
+          id: "upload_1",
+          source: "uploaded_file",
+          filename: "plan.pdf",
+        },
+      ],
+    });
+  });
+
+  it("rejects scheduled attachment edits when existing uploaded bytes are unavailable", async () => {
+    const service = createMailComposeService({
+      store: createStore({
+        async getScheduledDraft() {
+          return {
+            scheduledSend: scheduledSend(),
+            draft: { ...draft(), status: "scheduled" },
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+        async updateScheduledDraft() {
+          throw new Error("not expected");
+        },
+      }),
+      createId: () => "unused",
+      transports: {},
+    });
+
+    await expect(
+      service.updateScheduledDraft({
+        accountId: "acc_1",
+        scheduledId: "schedule_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Scheduled launch",
+        bodyText: "Missing bytes.",
+        attachments: [
+          {
+            source: "uploaded_file",
+            attachmentId: "upload_1",
+            filename: "plan.pdf",
+            contentType: "application/pdf",
+            byteSize: 4,
+          },
+        ],
+      }),
+    ).rejects.toThrow("attachment content is required");
+  });
+
+  it("rejects updating missing or claimed scheduled draft rows", async () => {
+    const service = createMailComposeService({
+      store: createStore({
+        async updateScheduledDraft() {
+          return undefined;
+        },
+      }),
+      createId: () => "unused",
+      transports: {},
+    });
+
+    await expect(
+      service.updateScheduledDraft({
+        accountId: "acc_1",
+        scheduledId: "schedule_claimed",
+        to: [{ address: "lina@example.com" }],
+        subject: "Too late",
+        bodyText: "Worker already claimed this.",
+      }),
+    ).rejects.toThrow("scheduled draft was not found");
+  });
+
   it("sends a scheduled draft now through the account engine", async () => {
     const calls: unknown[] = [];
     const store = createStore({
@@ -1402,6 +1734,12 @@ function createStore(overrides: Partial<MailComposeStore>): MailComposeStore {
       throw new Error("not used");
     },
     async listScheduledSends() {
+      throw new Error("not used");
+    },
+    async getScheduledDraft() {
+      throw new Error("not used");
+    },
+    async updateScheduledDraft() {
       throw new Error("not used");
     },
     async rescheduleScheduledSend() {

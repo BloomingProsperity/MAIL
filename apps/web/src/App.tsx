@@ -50,6 +50,7 @@ import type {
   MailComposeSeedAttachmentDto,
   MailComposeSeedMode,
   MailDraftAttachmentDto,
+  MailDraftDto,
   MailDraftSource,
   MailProviderCapabilityDto,
   MailSearchScope,
@@ -1176,6 +1177,9 @@ function MailWorkspace(props: {
   const [composePreview, setComposePreview] =
     useState<MailComposePreviewDto | undefined>();
   const [composeDraftId, setComposeDraftId] = useState<string | undefined>();
+  const [composeScheduledId, setComposeScheduledId] = useState<
+    string | undefined
+  >();
   const [composeScheduledAt, setComposeScheduledAt] = useState(
     defaultScheduleDateTimeLocal(),
   );
@@ -1199,6 +1203,7 @@ function MailWorkspace(props: {
 
   useEffect(() => {
     setComposeDraftId(undefined);
+    setComposeScheduledId(undefined);
   }, [props.accountId]);
 
   useEffect(() => {
@@ -1295,12 +1300,57 @@ function MailWorkspace(props: {
     setComposeHermesSkillRunId(options.hermesSkillRunId);
     setComposeHermesDraftText(options.hermesDraftText);
     setComposeDraftId(undefined);
+    setComposeScheduledId(undefined);
     setComposePreview(undefined);
     setComposeNotice(
       options.notice ??
         (seed.warnings.includes("missing_recipient")
           ? "转发草稿已准备，请补充收件人。"
           : "回复草稿已准备，可以继续编辑。"),
+    );
+  }
+
+  function applyDraftToCompose(draft: MailDraftDto, scheduled?: ScheduledSendDto) {
+    setComposeTo(formatComposeAddressList(draft.to));
+    setComposeCc(formatComposeAddressList(draft.cc));
+    setComposeBcc(formatComposeAddressList(draft.bcc));
+    setComposeSubject(draft.subject);
+    setComposeBody(draft.bodyText ?? "");
+    setComposeSource(draft.source);
+    setComposeAttachments(draft.attachments ?? []);
+    setComposeReplyToMessageId(draft.replyToMessageId);
+    setComposeSourceMessageId(draft.sourceMessageId);
+    setComposeHermesSkillRunId(draft.hermesSkillRunId);
+    setComposeHermesDraftText(draft.hermesDraftText);
+    setComposeDraftId(draft.id);
+    setComposeScheduledId(scheduled?.id);
+    if (scheduled) {
+      setComposeScheduledAt(isoToDateTimeLocal(scheduled.scheduledAt));
+    }
+    setComposeFrom(resolveComposeIdentityId(draft.from));
+    setComposePreview(undefined);
+    setComposeNotice(
+      scheduled
+        ? `待发草稿已载入：${scheduled.id}`
+        : `草稿已载入：${draft.id}`,
+    );
+  }
+
+  function resolveComposeIdentityId(from?: MailDraftDto["from"]): string {
+    if (from) {
+      const matched = sendIdentities.find(
+        (identity) =>
+          identity.from.address.toLowerCase() === from.address.toLowerCase(),
+      );
+      if (matched) {
+        return matched.id;
+      }
+    }
+
+    return (
+      sendIdentities.find((identity) => identity.isDefault)?.id ??
+      sendIdentities[0]?.id ??
+      composeFrom
     );
   }
 
@@ -1487,6 +1537,17 @@ function MailWorkspace(props: {
       });
 
       if (action === "send") {
+        if (composeScheduledId) {
+          await props.api.sendScheduledNow({
+            accountId: props.accountId,
+            scheduledId: composeScheduledId,
+          });
+          setComposeNotice(`待发邮件已提交立即发送：${composeScheduledId}`);
+          clearComposeForm();
+          await refreshOutbox();
+          return;
+        }
+
         const result = await props.api.sendMailDraft({
           accountId: props.accountId,
           draftId: draft.id,
@@ -1497,6 +1558,18 @@ function MailWorkspace(props: {
       }
 
       if (action === "schedule" && scheduledAt) {
+        if (composeScheduledId) {
+          const scheduled = await props.api.rescheduleScheduledSend({
+            accountId: props.accountId,
+            scheduledId: composeScheduledId,
+            scheduledAt,
+          });
+          setComposeNotice(`待发邮件已更新：${formatMailDate(scheduled.scheduledAt)}`);
+          clearComposeForm();
+          await refreshOutbox();
+          return;
+        }
+
         const scheduled = await props.api.scheduleMailDraft({
           accountId: props.accountId,
           draftId: draft.id,
@@ -1510,8 +1583,15 @@ function MailWorkspace(props: {
 
       setComposeDraftId(draft.id);
       setComposeNotice(
-        composeDraftId ? `草稿已更新：${draft.id}` : `草稿已保存：${draft.id}`,
+        composeScheduledId
+          ? `待发草稿已更新：${draft.id}`
+          : composeDraftId
+            ? `草稿已更新：${draft.id}`
+            : `草稿已保存：${draft.id}`,
       );
+      if (composeScheduledId) {
+        await refreshOutbox();
+      }
     } catch {
       setComposeNotice("写信操作失败，请稍后再试。");
     } finally {
@@ -1559,6 +1639,13 @@ function MailWorkspace(props: {
     bodyText: string;
   }) {
     const payload = composeDraftPayload(input);
+    if (composeScheduledId) {
+      return props.api!.updateScheduledDraft({
+        ...payload,
+        scheduledId: composeScheduledId,
+      }).then((detail) => detail.draft);
+    }
+
     if (composeDraftId) {
       return props.api!.updateMailDraft({
         ...payload,
@@ -1618,6 +1705,7 @@ function MailWorkspace(props: {
     setComposeHermesSkillRunId(undefined);
     setComposeHermesDraftText(undefined);
     setComposeDraftId(undefined);
+    setComposeScheduledId(undefined);
     setComposePreview(undefined);
     setComposeScheduledAt(defaultScheduleDateTimeLocal());
   }
@@ -1648,6 +1736,27 @@ function MailWorkspace(props: {
       setComposeNotice("Hermes 润色暂时不可用。");
     } finally {
       setComposeBusy(false);
+    }
+  }
+
+  async function editOutboxItem(item: ScheduledSendDto) {
+    if (!props.api || !item.canEdit) {
+      return;
+    }
+
+    setOutboxBusyId(item.id);
+    try {
+      const detail = await props.api.getScheduledDraft({
+        accountId: props.accountId,
+        scheduledId: item.id,
+      });
+      applyDraftToCompose(detail.draft, detail.scheduledSend);
+      setOutboxNotice(`已载入待发草稿：${item.id}`);
+      focusComposeTarget("body");
+    } catch {
+      setOutboxNotice("加载待发草稿失败，请稍后再试。");
+    } finally {
+      setOutboxBusyId(undefined);
     }
   }
 
@@ -1791,6 +1900,7 @@ function MailWorkspace(props: {
               <span>
                 当前账号：{props.accountId}
                 {composeDraftId ? ` · 草稿：${composeDraftId}` : ""}
+                {composeScheduledId ? ` · 待发：${composeScheduledId}` : ""}
               </span>
             </div>
             <Send size={18} />
@@ -2043,6 +2153,15 @@ function MailWorkspace(props: {
                     }
                   />
                   <div className="outbox-actions">
+                    <button
+                      className="tiny-button"
+                      type="button"
+                      aria-label={`Edit scheduled draft ${item.id}`}
+                      disabled={!item.canEdit || outboxBusyId === item.id}
+                      onClick={() => void editOutboxItem(item)}
+                    >
+                      编辑
+                    </button>
                     <button
                       className="tiny-button"
                       type="button"

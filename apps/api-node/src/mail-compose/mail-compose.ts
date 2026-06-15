@@ -175,6 +175,11 @@ export interface ScheduledSendWithDraft {
   transportAttachments?: MailDraftTransportAttachment[];
 }
 
+export interface ScheduledSendDraftDetail {
+  scheduledSend: ScheduledSend;
+  draft: MailDraft;
+}
+
 export interface CreateMailDraftInput {
   accountId: string;
   from?: MailAddress;
@@ -194,6 +199,10 @@ export interface CreateMailDraftInput {
 
 export interface UpdateMailDraftInput extends CreateMailDraftInput {
   draftId: string;
+}
+
+export interface UpdateScheduledMailDraftInput extends CreateMailDraftInput {
+  scheduledId: string;
 }
 
 export interface MailComposeSeedAttachment {
@@ -353,6 +362,30 @@ export interface MailComposeStore {
     accountId: string;
     limit: number;
   }): Promise<ScheduledSend[]>;
+  getScheduledDraft(input: {
+    accountId: string;
+    scheduledId: string;
+  }): Promise<ScheduledSendWithDraft | undefined>;
+  updateScheduledDraft(
+    input: Required<
+      Pick<UpdateScheduledMailDraftInput, "accountId" | "scheduledId" | "to">
+    > & {
+      from?: MailAddress;
+      cc: MailAddress[];
+      bcc: MailAddress[];
+      subject: string;
+      bodyText?: string;
+      bodyHtml?: string;
+      source: MailDraftSource;
+      replyToMessageId?: string;
+      sourceMessageId?: string;
+      attachments?: MailDraftTransportAttachment[];
+      threading?: MailThreading;
+      hermesSkillRunId?: string;
+      hermesDraftText?: string;
+      now: string;
+    },
+  ): Promise<ScheduledSendWithDraft | undefined>;
   rescheduleScheduledSend(input: {
     accountId: string;
     scheduledId: string;
@@ -456,6 +489,13 @@ export interface MailComposeService {
     accountId: string;
     limit?: number;
   }): Promise<{ accountId: string; items: ScheduledSend[] }>;
+  getScheduledDraft(input: {
+    accountId: string;
+    scheduledId: string;
+  }): Promise<ScheduledSendDraftDetail>;
+  updateScheduledDraft(
+    input: UpdateScheduledMailDraftInput,
+  ): Promise<ScheduledSendDraftDetail>;
   rescheduleScheduledSend(input: {
     accountId: string;
     scheduledId: string;
@@ -713,6 +753,84 @@ export function createMailComposeService(options: {
           accountId: input.accountId,
           limit: normalizeOutboxLimit(input.limit),
         }),
+      };
+    },
+
+    async getScheduledDraft(input) {
+      assertNonEmpty(input.accountId);
+      assertNonEmpty(input.scheduledId);
+      const loaded = await options.store.getScheduledDraft({
+        accountId: input.accountId,
+        scheduledId: input.scheduledId,
+      });
+      if (!loaded) {
+        throw new InvalidMailComposeRequestError("scheduled draft was not found");
+      }
+
+      return {
+        scheduledSend: loaded.scheduledSend,
+        draft: loaded.draft,
+      };
+    },
+
+    async updateScheduledDraft(input) {
+      assertNonEmpty(input.scheduledId);
+      const attachmentsRequested = input.attachments !== undefined;
+      const existing = attachmentsRequested
+        ? await options.store.getScheduledDraft({
+            accountId: input.accountId,
+            scheduledId: input.scheduledId,
+          })
+        : undefined;
+      if (attachmentsRequested && !existing) {
+        throw new InvalidMailComposeRequestError("scheduled draft was not found");
+      }
+      const normalized = normalizeDraftInput({
+        ...input,
+        ...(attachmentsRequested
+          ? {
+              attachments: hydrateExistingDraftAttachmentInputs(
+                input.attachments ?? [],
+                existing?.transportAttachments ?? [],
+              ),
+            }
+          : {}),
+      });
+      await ensureAllowedSender(
+        options.sendIdentityStore,
+        normalized.accountId,
+        normalized.from,
+      );
+      const attachments = await resolveDraftAttachments(
+        options.mailReadStore,
+        options.attachmentContentStore,
+        normalized.accountId,
+        normalized.attachments,
+      );
+      const threading = await resolveThreading(
+        options.threadingStore,
+        normalized,
+      );
+      const { attachments: _attachmentInputs, ...draftInput } = normalized;
+      const loaded = await options.store.updateScheduledDraft({
+        ...draftInput,
+        scheduledId: input.scheduledId.trim(),
+        ...(attachmentsRequested ? { attachments } : {}),
+        ...(threading ? { threading } : {}),
+        now: currentIso(options.now),
+      });
+      if (!loaded) {
+        throw new InvalidMailComposeRequestError("scheduled draft was not found");
+      }
+
+      await recordHermesDraftFeedback(
+        options.hermesDraftFeedbackStore,
+        loaded.draft,
+      );
+
+      return {
+        scheduledSend: loaded.scheduledSend,
+        draft: loaded.draft,
       };
     },
 
@@ -1198,6 +1316,41 @@ async function resolveDraftAttachments(
   }
 
   return enforceAttachmentLimits(resolved);
+}
+
+function hydrateExistingDraftAttachmentInputs(
+  attachments: CreateMailDraftAttachmentInput[],
+  existingAttachments: MailDraftTransportAttachment[],
+): CreateMailDraftAttachmentInput[] {
+  if (attachments.length === 0 || existingAttachments.length === 0) {
+    return attachments;
+  }
+
+  return attachments.map((attachment) => {
+    const source = attachment.source ?? "message_attachment";
+    if (source !== "uploaded_file" || optionalTrimmed(attachment.contentBase64)) {
+      return attachment;
+    }
+
+    const existing = existingAttachments.find(
+      (item) =>
+        item.source === "uploaded_file" &&
+        item.attachmentId === attachment.attachmentId &&
+        optionalTrimmed(item.contentBase64),
+    );
+    if (!existing) {
+      return attachment;
+    }
+
+    return {
+      ...attachment,
+      filename: attachment.filename ?? existing.filename,
+      contentType: attachment.contentType ?? existing.contentType,
+      byteSize: attachment.byteSize ?? existing.byteSize,
+      inline: attachment.inline ?? existing.inline,
+      contentBase64: existing.contentBase64,
+    };
+  });
 }
 
 async function downloadMessageAttachmentContent(input: {

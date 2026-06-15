@@ -703,6 +703,151 @@ describe("mail compose routes", () => {
     );
   });
 
+  it("loads an outbox draft through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+      async getScheduledDraft(input: unknown) {
+        calls.push(input);
+        return {
+          scheduledSend: {
+            id: "schedule_1",
+            accountId: "acc_1",
+            draftId: "draft_1",
+            scheduledAt: "2026-06-13T12:30:00.000Z",
+            status: "scheduled",
+            canEdit: true,
+            canSendNow: true,
+            canDelete: true,
+          },
+          draft: {
+            id: "draft_1",
+            accountId: "acc_1",
+            to: [{ address: "client@example.com" }],
+            cc: [],
+            bcc: [],
+            subject: "Scheduled subject",
+            bodyText: "Scheduled body",
+            status: "scheduled",
+            source: "manual",
+            updatedAt: "2026-06-13T10:05:00.000Z",
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/outbox/schedule_1/draft`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          scheduledSend: {
+            id: "schedule_1",
+            draftId: "draft_1",
+            status: "scheduled",
+          },
+          draft: {
+            id: "draft_1",
+            subject: "Scheduled subject",
+            bodyText: "Scheduled body",
+          },
+        });
+        expect(calls).toEqual([{ accountId: "acc_1", scheduledId: "schedule_1" }]);
+      },
+      { mailComposeService },
+    );
+  });
+
+  it("updates an outbox draft through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+      async updateScheduledDraft(input: unknown) {
+        calls.push(input);
+        return {
+          scheduledSend: {
+            id: "schedule_1",
+            accountId: "acc_1",
+            draftId: "draft_1",
+            scheduledAt: "2026-06-13T12:30:00.000Z",
+            status: "scheduled",
+            canEdit: true,
+            canSendNow: true,
+            canDelete: true,
+          },
+          draft: {
+            id: "draft_1",
+            accountId: "acc_1",
+            to: [{ address: "client@example.com" }],
+            cc: [],
+            bcc: [],
+            subject: "Updated scheduled subject",
+            bodyText: "Updated scheduled body",
+            status: "scheduled",
+            source: "manual",
+            updatedAt: "2026-06-13T10:05:00.000Z",
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/outbox/schedule_1/draft`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              to: [{ address: "client@example.com" }],
+              subject: "Updated scheduled subject",
+              bodyText: "Updated scheduled body",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          scheduledSend: {
+            id: "schedule_1",
+            draftId: "draft_1",
+            status: "scheduled",
+          },
+          draft: {
+            id: "draft_1",
+            subject: "Updated scheduled subject",
+            bodyText: "Updated scheduled body",
+          },
+        });
+        expect(calls).toEqual([
+          {
+            accountId: "acc_1",
+            scheduledId: "schedule_1",
+            to: [{ address: "client@example.com" }],
+            cc: [],
+            bcc: [],
+            subject: "Updated scheduled subject",
+            bodyText: "Updated scheduled body",
+          },
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
   it("sends a scheduled draft immediately through the compose service", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {

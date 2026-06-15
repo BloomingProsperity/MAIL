@@ -111,6 +111,7 @@ import {
   type MailComposeSeedMode,
   type MailComposeService,
   type MailDraftSource,
+  type UpdateScheduledMailDraftInput,
   type UpdateMailDraftInput,
 } from "../mail-compose/mail-compose.js";
 import {
@@ -882,6 +883,33 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
             scheduledId: mailComposeRoute.scheduledId,
           });
           writeJson(response, 202, result);
+          return;
+        }
+
+        if (
+          mailComposeRoute.action === "scheduled_draft" &&
+          request.method === "GET"
+        ) {
+          const result = await config.mailComposeService.getScheduledDraft({
+            accountId: mailComposeRoute.accountId,
+            scheduledId: mailComposeRoute.scheduledId,
+          });
+          writeJson(response, 200, result);
+          return;
+        }
+
+        if (
+          mailComposeRoute.action === "scheduled_draft" &&
+          request.method === "PATCH"
+        ) {
+          const result = await config.mailComposeService.updateScheduledDraft(
+            parseScheduledMailComposeDraftInput(
+              mailComposeRoute.accountId,
+              mailComposeRoute.scheduledId,
+              await readComposeRequestBody(),
+            ),
+          );
+          writeJson(response, 200, result);
           return;
         }
 
@@ -3174,7 +3202,7 @@ function parseMailComposeRoute(
   | { action: "schedule_draft"; accountId: string; draftId: string }
   | { action: "list_outbox"; accountId: string; limit?: number }
   | {
-      action: "send_scheduled_now" | "scheduled_item";
+      action: "send_scheduled_now" | "scheduled_draft" | "scheduled_item";
       accountId: string;
       scheduledId: string;
     }
@@ -3200,6 +3228,16 @@ function parseMailComposeRoute(
       action: "list_outbox",
       accountId: decodeURIComponent(outboxMatch[1]),
       ...parseOptionalMailComposeLimit(url.searchParams.get("limit")),
+    };
+  }
+
+  const outboxDraftMatch =
+    /^\/api\/accounts\/([^/]+)\/outbox\/([^/]+)\/draft$/.exec(url.pathname);
+  if (outboxDraftMatch) {
+    return {
+      action: "scheduled_draft",
+      accountId: decodeURIComponent(outboxDraftMatch[1]),
+      scheduledId: decodeURIComponent(outboxDraftMatch[2]),
     };
   }
 
@@ -5225,6 +5263,17 @@ function parseMailComposeDraftInput(
     ...(isNonEmptyString(payload.hermesDraftText)
       ? { hermesDraftText: payload.hermesDraftText }
       : {}),
+  };
+}
+
+function parseScheduledMailComposeDraftInput(
+  accountId: string,
+  scheduledId: string,
+  body: string,
+): UpdateScheduledMailDraftInput {
+  return {
+    ...parseMailComposeDraftInput(accountId, body),
+    scheduledId,
   };
 }
 

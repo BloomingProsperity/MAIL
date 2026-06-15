@@ -432,6 +432,126 @@ export function createPostgresMailComposeStore(
       return result.rows.map(rowToScheduledSend);
     },
 
+    async getScheduledDraft(input) {
+      const result = await client.query<ScheduledSendWithDraftRow>(
+        `
+          SELECT
+            ${scheduledColumns("scheduled_sends", "scheduled_")},
+            ${draftColumns("email_drafts")},
+            connected_accounts.email AS account_email,
+            connected_accounts.sync_state,
+            connected_accounts.engine_provider
+          FROM scheduled_sends
+          JOIN email_drafts
+            ON email_drafts.account_id = scheduled_sends.account_id
+           AND email_drafts.id = scheduled_sends.draft_id
+          JOIN connected_accounts
+            ON connected_accounts.id = scheduled_sends.account_id
+          WHERE scheduled_sends.account_id = $1
+            AND scheduled_sends.id = $2
+            AND scheduled_sends.status IN ('scheduled', 'failed')
+            AND email_drafts.status = 'scheduled'
+          LIMIT 1
+        `,
+        [input.accountId, input.scheduledId],
+      );
+
+      return result.rows[0]
+        ? rowToScheduledSendWithDraft(result.rows[0])
+        : undefined;
+    },
+
+    async updateScheduledDraft(input) {
+      const result = await client.query<ScheduledSendWithDraftRow>(
+        `
+          WITH editable_schedule AS (
+            UPDATE scheduled_sends
+            SET status = 'scheduled',
+                attempts = 0,
+                not_before = scheduled_at,
+                lease_owner = NULL,
+                lease_expires_at = NULL,
+                last_error = NULL,
+                updated_at = $23::timestamptz
+            WHERE account_id = $1
+              AND id = $2
+              AND status IN ('scheduled', 'failed')
+            RETURNING *
+          ), updated_draft AS (
+            UPDATE email_drafts
+            SET from_address = $3,
+                from_name = $4,
+                subject = $5,
+                to_emails = $6,
+                cc_emails = $7,
+                bcc_emails = $8,
+                body_text = $9,
+                body_html = $10,
+                source = $11,
+                reply_to_message_id = $12,
+                source_message_id = $13,
+                thread_action = $14,
+                thread_in_reply_to = $15,
+                thread_references = $16,
+                thread_emailengine_message_id = $17,
+                thread_gmail_thread_id = $18,
+                thread_graph_message_id = $19,
+                attachment_manifest = COALESCE($20, email_drafts.attachment_manifest),
+                hermes_skill_run_id = $21,
+                hermes_draft_text = $22,
+                error_message = NULL,
+                updated_at = $23::timestamptz
+            FROM editable_schedule
+            WHERE email_drafts.account_id = editable_schedule.account_id
+              AND email_drafts.id = editable_schedule.draft_id
+              AND email_drafts.status = 'scheduled'
+            RETURNING email_drafts.*
+          )
+          SELECT
+            ${scheduledColumns("editable_schedule", "scheduled_")},
+            ${draftColumns("updated_draft")},
+            connected_accounts.email AS account_email,
+            connected_accounts.sync_state,
+            connected_accounts.engine_provider
+          FROM editable_schedule
+          JOIN updated_draft
+            ON updated_draft.account_id = editable_schedule.account_id
+           AND updated_draft.id = editable_schedule.draft_id
+          JOIN connected_accounts
+            ON connected_accounts.id = editable_schedule.account_id
+        `,
+        [
+          input.accountId,
+          input.scheduledId,
+          input.from?.address ?? null,
+          input.from?.name ?? null,
+          input.subject,
+          input.to,
+          input.cc,
+          input.bcc,
+          input.bodyText ?? null,
+          input.bodyHtml ?? null,
+          input.source,
+          input.replyToMessageId ?? null,
+          input.sourceMessageId ?? null,
+          input.threading?.action ?? null,
+          input.threading?.inReplyTo ?? null,
+          input.threading?.references ?? [],
+          input.threading?.emailEngineMessageId ?? null,
+          input.threading?.gmailThreadId ?? null,
+          input.threading?.graphMessageId ?? null,
+          input.attachments ?? null,
+          input.hermesSkillRunId ?? null,
+          input.hermesDraftText ?? null,
+          input.now,
+        ],
+      );
+
+      return result.rows[0]
+        ? rowToScheduledSendWithDraft(result.rows[0])
+        : undefined;
+    },
+
     async rescheduleScheduledSend(input) {
       const result = await client.query<ScheduledSendRow>(
         `

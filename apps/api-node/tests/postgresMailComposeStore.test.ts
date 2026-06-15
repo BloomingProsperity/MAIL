@@ -859,6 +859,232 @@ describe("Postgres mail compose store", () => {
     ]);
   });
 
+  it("loads only editable scheduled outbox drafts", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresMailComposeStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              ...scheduledRowWithPrefix(),
+              ...draftRow({ status: "scheduled" }),
+              account_email: "me@example.com",
+              sync_state: "syncing",
+              engine_provider: "emailengine",
+            },
+          ],
+        };
+      },
+    });
+
+    const result = await store.getScheduledDraft({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+    });
+
+    expect(queries[0].text).toMatch(/FROM scheduled_sends/i);
+    expect(queries[0].text).toMatch(/JOIN email_drafts/i);
+    expect(queries[0].text).toMatch(
+      /scheduled_sends.status IN \('scheduled', 'failed'\)/i,
+    );
+    expect(queries[0].text).toMatch(/email_drafts.status = 'scheduled'/i);
+    expect(queries[0].values).toEqual(["acc_1", "schedule_1"]);
+    expect(result).toMatchObject({
+      scheduledSend: {
+        id: "schedule_1",
+        status: "scheduled",
+      },
+      draft: {
+        id: "draft_1",
+        status: "scheduled",
+        subject: "Launch confirmation",
+      },
+      account: {
+        engineProvider: "emailengine",
+      },
+    });
+  });
+
+  it("updates only editable scheduled outbox drafts", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresMailComposeStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              ...scheduledRowWithPrefix({
+                scheduled_status: "scheduled",
+                scheduled_attempts: 0,
+                scheduled_last_error: null,
+              }),
+              ...draftRow({
+                status: "scheduled",
+                subject: "Edited scheduled launch",
+                body_text: "Edited body.",
+                updated_at: "2026-06-13T08:30:00.000Z",
+              }),
+              account_email: "me@example.com",
+              sync_state: "syncing",
+              engine_provider: "emailengine",
+            },
+          ],
+        };
+      },
+    });
+
+    const result = await store.updateScheduledDraft({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+      from: { address: "support@example.com", name: "Support" },
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Edited scheduled launch",
+      bodyText: "Edited body.",
+      source: "manual",
+      attachments: [
+        {
+          id: "upload_1",
+          source: "uploaded_file",
+          attachmentId: "upload_1",
+          filename: "plan.pdf",
+          contentType: "application/pdf",
+          byteSize: 4,
+          inline: false,
+          contentBase64: "cGxhbg==",
+        },
+      ],
+      now: "2026-06-13T08:30:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/WITH editable_schedule AS/i);
+    expect(queries[0].text).toMatch(/UPDATE scheduled_sends/i);
+    expect(queries[0].text).toMatch(/status = 'scheduled'/i);
+    expect(queries[0].text).toMatch(/attempts = 0/i);
+    expect(queries[0].text).toMatch(/last_error = NULL/i);
+    expect(queries[0].text).toMatch(
+      /AND status IN \('scheduled', 'failed'\)/i,
+    );
+    expect(queries[0].text).toMatch(/UPDATE email_drafts/i);
+    expect(queries[0].text).toMatch(/email_drafts.status = 'scheduled'/i);
+    expect(queries[0].text).toMatch(/attachment_manifest = COALESCE/i);
+    expect(queries[0].values).toEqual([
+      "acc_1",
+      "schedule_1",
+      "support@example.com",
+      "Support",
+      "Edited scheduled launch",
+      [{ address: "lina@example.com" }],
+      [],
+      [],
+      "Edited body.",
+      null,
+      "manual",
+      null,
+      null,
+      null,
+      null,
+      [],
+      null,
+      null,
+      null,
+      [
+        {
+          id: "upload_1",
+          source: "uploaded_file",
+          attachmentId: "upload_1",
+          filename: "plan.pdf",
+          contentType: "application/pdf",
+          byteSize: 4,
+          inline: false,
+          contentBase64: "cGxhbg==",
+        },
+      ],
+      null,
+      null,
+      "2026-06-13T08:30:00.000Z",
+    ]);
+    expect(result).toMatchObject({
+      scheduledSend: {
+        id: "schedule_1",
+        status: "scheduled",
+        attempts: 0,
+        canEdit: true,
+      },
+      draft: {
+        id: "draft_1",
+        status: "scheduled",
+        subject: "Edited scheduled launch",
+        bodyText: "Edited body.",
+      },
+    });
+    expect(JSON.stringify(result?.draft)).not.toContain("cGxhbg==");
+  });
+
+  it("preserves scheduled draft attachments when no attachment payload is sent", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresMailComposeStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              ...scheduledRowWithPrefix(),
+              ...draftRow({
+                status: "scheduled",
+                body_text: "Body-only edit.",
+                attachment_manifest: [
+                  {
+                    id: "upload_1",
+                    source: "uploaded_file",
+                    attachmentId: "upload_1",
+                    filename: "plan.pdf",
+                    contentType: "application/pdf",
+                    byteSize: 4,
+                    inline: false,
+                    contentBase64: "cGxhbg==",
+                  },
+                ],
+              }),
+              account_email: "me@example.com",
+              sync_state: "syncing",
+              engine_provider: "emailengine",
+            },
+          ],
+        };
+      },
+    });
+
+    const result = await store.updateScheduledDraft({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Launch confirmation",
+      bodyText: "Body-only edit.",
+      source: "manual",
+      now: "2026-06-13T08:30:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/attachment_manifest = COALESCE/i);
+    expect(queries[0].values?.[19]).toBeNull();
+    expect(result?.draft.attachments).toEqual([
+      {
+        id: "upload_1",
+        source: "uploaded_file",
+        attachmentId: "upload_1",
+        filename: "plan.pdf",
+        contentType: "application/pdf",
+        byteSize: 4,
+        inline: false,
+      },
+    ]);
+    expect(JSON.stringify(result?.draft)).not.toContain("cGxhbg==");
+  });
+
   it("claims a scheduled send with a lease and moves the draft to sending", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const store = createPostgresMailComposeStore({
@@ -1097,6 +1323,41 @@ function scheduledRow(overrides = {}) {
     sent_at: null,
     cancelled_at: null,
     completed_at: null,
+    ...overrides,
+  };
+}
+
+function draftRow(overrides = {}) {
+  return {
+    id: "draft_1",
+    account_id: "acc_1",
+    from_address: null,
+    from_name: null,
+    subject: "Launch confirmation",
+    to_emails: [{ address: "lina@example.com" }],
+    cc_emails: [],
+    bcc_emails: [],
+    body_text: "Looks good.",
+    body_html: null,
+    status: "draft",
+    source: "manual",
+    reply_to_message_id: null,
+    source_message_id: null,
+    thread_action: null,
+    thread_in_reply_to: null,
+    thread_references: [],
+    thread_emailengine_message_id: null,
+    thread_gmail_thread_id: null,
+    thread_graph_message_id: null,
+    attachment_manifest: [],
+    hermes_skill_run_id: null,
+    hermes_draft_text: null,
+    provider_queue_id: null,
+    provider_message_id: null,
+    error_message: null,
+    created_at: "2026-06-13T08:00:00.000Z",
+    updated_at: "2026-06-13T08:00:00.000Z",
+    sent_at: null,
     ...overrides,
   };
 }

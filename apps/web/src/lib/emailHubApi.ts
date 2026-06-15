@@ -846,6 +846,11 @@ export interface OutboxPageDto {
   items: ScheduledSendDto[];
 }
 
+export interface ScheduledDraftDetailDto {
+  scheduledSend: ScheduledSendDto;
+  draft: MailDraftDto;
+}
+
 export interface FollowUpPage {
   accountId: string;
   status: FollowUpListStatus;
@@ -1206,6 +1211,27 @@ export interface EmailHubApi {
     accountId: string;
     limit?: number;
   }): Promise<OutboxPageDto>;
+  getScheduledDraft(input: {
+    accountId: string;
+    scheduledId: string;
+  }): Promise<ScheduledDraftDetailDto>;
+  updateScheduledDraft(input: {
+    accountId: string;
+    scheduledId: string;
+    from?: MailAddressDto;
+    to: MailAddressDto[];
+    cc?: MailAddressDto[];
+    bcc?: MailAddressDto[];
+    subject?: string;
+    bodyText?: string;
+    bodyHtml?: string;
+    source?: MailDraftSource;
+    replyToMessageId?: string;
+    sourceMessageId?: string;
+    attachments?: MailDraftAttachmentDto[];
+    hermesSkillRunId?: string;
+    hermesDraftText?: string;
+  }): Promise<ScheduledDraftDetailDto>;
   sendScheduledNow(input: {
     accountId: string;
     scheduledId: string;
@@ -1815,6 +1841,27 @@ export function createEmailHubApi(
         fetchImpl,
         baseUrl,
         `/api/accounts/${encodePath(input.accountId)}/outbox${suffix}`,
+      );
+    },
+
+    getScheduledDraft(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/outbox/${encodePath(input.scheduledId)}/draft`,
+      );
+    },
+
+    updateScheduledDraft(input) {
+      const { accountId, scheduledId, ...body } = input;
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(accountId)}/outbox/${encodePath(scheduledId)}/draft`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(cleanObject(body)),
+        },
       );
     },
 
