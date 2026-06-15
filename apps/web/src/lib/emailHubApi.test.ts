@@ -1633,6 +1633,81 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("adds Graph provider send identity candidates", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "provider:identity_1",
+        accountId: "account_1",
+        from: { address: "team@example.com", name: "Team Inbox" },
+        source: "provider_native",
+        isDefault: false,
+        verified: false,
+        provider: "graph",
+        providerIdentityId: "team@example.com",
+        identityType: "shared_mailbox",
+        verificationState: "pending",
+        enabled: false,
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const candidate = await api.addProviderSendIdentityCandidate({
+      accountId: "account_1",
+      provider: "graph",
+      address: "team@example.com",
+      name: "Team Inbox",
+      identityType: "shared_mailbox",
+    });
+
+    expect(candidate.verificationState).toBe("pending");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/send-identities/provider-candidates",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          provider: "graph",
+          address: "team@example.com",
+          name: "Team Inbox",
+          identityType: "shared_mailbox",
+        }),
+      }),
+    );
+  });
+
+  it("verifies Graph provider send identity candidates", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        accountId: "account_1",
+        verified: true,
+        candidate: {
+          id: "provider:identity_1",
+          accountId: "account_1",
+          from: { address: "team@example.com", name: "Team Inbox" },
+          source: "provider_native",
+          isDefault: false,
+          verified: true,
+          provider: "graph",
+          providerIdentityId: "team@example.com",
+          identityType: "shared_mailbox",
+          verificationState: "verified",
+          enabled: true,
+        },
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.verifyProviderSendIdentityCandidate({
+      accountId: "account_1",
+      candidateId: "provider:identity_1",
+    });
+
+    expect(result.verified).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/send-identities/provider-candidates/provider%3Aidentity_1/verify",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("downloads message attachments as blobs with server filenames", async () => {
     const attachmentBlob = new Blob(["hello attachment"], { type: "text/plain" });
     const fetchMock = vi.fn(async () =>

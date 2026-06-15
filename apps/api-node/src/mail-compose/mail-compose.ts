@@ -53,6 +53,22 @@ export interface MailSendIdentity {
   identityType?: MailSendIdentityType;
 }
 
+export type MailSendIdentityVerificationState =
+  | "verified"
+  | "pending"
+  | "unverified"
+  | "failed";
+
+export interface MailSendIdentityCandidate extends MailSendIdentity {
+  provider: string;
+  providerIdentityId: string;
+  identityType: MailSendIdentityType;
+  verificationState: MailSendIdentityVerificationState;
+  enabled: boolean;
+  verificationRecipient: MailAddress;
+  verificationError?: string;
+}
+
 export type MailDraftStatus =
   | "draft"
   | "scheduled"
@@ -437,6 +453,34 @@ export interface MailComposeStore {
 
 export interface MailSendIdentityStore {
   listSendIdentities(input: { accountId: string }): Promise<MailSendIdentity[]>;
+  listProviderSendIdentityCandidates?(input: {
+    accountId: string;
+  }): Promise<MailSendIdentityCandidate[]>;
+  upsertProviderSendIdentityCandidate?(input: {
+    accountId: string;
+    provider: "graph";
+    from: MailAddress;
+    identityType: Extract<
+      MailSendIdentityType,
+      "shared_mailbox" | "send_on_behalf" | "unknown"
+    >;
+    now: string;
+  }): Promise<MailSendIdentityCandidate>;
+  getProviderSendIdentityCandidate?(input: {
+    accountId: string;
+    candidateId: string;
+  }): Promise<MailSendIdentityCandidate | undefined>;
+  markProviderSendIdentityCandidateVerification?(input: {
+    accountId: string;
+    candidateId: string;
+    verificationState: Extract<
+      MailSendIdentityVerificationState,
+      "verified" | "failed"
+    >;
+    enabled: boolean;
+    verificationError?: string;
+    now: string;
+  }): Promise<MailSendIdentityCandidate | undefined>;
 }
 
 export interface MailThreadingMetadataStore {
@@ -479,10 +523,38 @@ export interface MailSendTransport {
   }>;
 }
 
+export interface GraphSendIdentityVerifier {
+  sendVerification(input: {
+    accountId: string;
+    from: MailAddress;
+    to: MailAddress;
+    now: string;
+  }): Promise<void>;
+}
+
 export interface MailComposeService {
   listSendIdentities(input: {
     accountId: string;
-  }): Promise<{ accountId: string; items: MailSendIdentity[] }>;
+  }): Promise<{
+    accountId: string;
+    items: MailSendIdentity[];
+    candidates?: MailSendIdentityCandidate[];
+  }>;
+  addProviderSendIdentityCandidate(input: {
+    accountId: string;
+    provider: "graph";
+    from: MailAddress;
+    identityType: "shared_mailbox" | "send_on_behalf" | "unknown";
+  }): Promise<MailSendIdentityCandidate>;
+  verifyProviderSendIdentityCandidate(input: {
+    accountId: string;
+    candidateId: string;
+  }): Promise<{
+    accountId: string;
+    candidate: MailSendIdentityCandidate;
+    verified: boolean;
+    errorCode?: string;
+  }>;
   createComposeSeed(input: MailComposeSeedInput): Promise<MailComposeSeed>;
   previewDraft(input: MailComposePreviewInput): Promise<MailComposePreview>;
   createDraft(input: CreateMailDraftInput): Promise<MailDraft>;
@@ -529,6 +601,7 @@ export function createMailComposeService(options: {
   transports: Partial<Record<MailEngineProvider, MailSendTransport>>;
   createId: () => string;
   sendIdentityStore?: MailSendIdentityStore;
+  graphSendIdentityVerifier?: GraphSendIdentityVerifier;
   threadingStore?: MailThreadingMetadataStore;
   mailReadStore?: Pick<MailReadStore, "getMessage"> &
     Partial<Pick<MailReadStore, "getAttachmentDownload">>;
@@ -539,9 +612,130 @@ export function createMailComposeService(options: {
   return {
     async listSendIdentities(input) {
       assertNonEmpty(input.accountId);
+      const candidates = await listProviderSendIdentityCandidates(
+        options.sendIdentityStore,
+        input.accountId,
+      );
       return {
         accountId: input.accountId,
         items: await listSendIdentities(options.sendIdentityStore, input.accountId),
+        ...(candidates.length > 0 ? { candidates } : {}),
+      };
+    },
+
+    async addProviderSendIdentityCandidate(input) {
+      assertNonEmpty(input.accountId);
+      const from = normalizeAddress(input.from);
+      const identityType = normalizeGraphCandidateIdentityType(input.identityType);
+      if (!options.sendIdentityStore?.upsertProviderSendIdentityCandidate) {
+        throw new InvalidMailComposeRequestError(
+          "provider send identity candidates are unavailable",
+        );
+      }
+
+      try {
+        return await options.sendIdentityStore.upsertProviderSendIdentityCandidate({
+          accountId: input.accountId,
+          provider: "graph",
+          from,
+          identityType,
+          now: isoNow(options.now),
+        });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "Graph native account was not found"
+        ) {
+          throw new InvalidMailComposeRequestError(
+            "Graph native account was not found",
+          );
+        }
+        throw error;
+      }
+    },
+
+    async verifyProviderSendIdentityCandidate(input) {
+      assertNonEmpty(input.accountId);
+      assertNonEmpty(input.candidateId);
+      if (
+        !options.sendIdentityStore?.getProviderSendIdentityCandidate ||
+        !options.sendIdentityStore.markProviderSendIdentityCandidateVerification
+      ) {
+        throw new InvalidMailComposeRequestError(
+          "provider send identity candidates are unavailable",
+        );
+      }
+      if (!options.graphSendIdentityVerifier) {
+        throw new InvalidMailComposeRequestError(
+          "Graph send identity verification is unavailable",
+        );
+      }
+
+      const candidate =
+        await options.sendIdentityStore.getProviderSendIdentityCandidate({
+          accountId: input.accountId,
+          candidateId: input.candidateId,
+        });
+      if (!candidate || candidate.provider !== "graph") {
+        throw new InvalidMailComposeRequestError("send identity candidate not found");
+      }
+      if (candidate.verificationState === "verified" && candidate.enabled) {
+        return {
+          accountId: input.accountId,
+          candidate,
+          verified: true,
+        };
+      }
+
+      const now = isoNow(options.now);
+      try {
+        await options.graphSendIdentityVerifier.sendVerification({
+          accountId: input.accountId,
+          from: candidate.from,
+          to: candidate.verificationRecipient,
+          now,
+        });
+      } catch (error) {
+        const failed =
+          await options.sendIdentityStore.markProviderSendIdentityCandidateVerification({
+            accountId: input.accountId,
+            candidateId: input.candidateId,
+            verificationState: "failed",
+            enabled: false,
+            verificationError: providerVerificationErrorCode(error),
+            now,
+          });
+        if (!failed) {
+          throw new InvalidMailComposeRequestError(
+            "send identity candidate not found",
+          );
+        }
+        return {
+          accountId: input.accountId,
+          candidate: failed,
+          verified: false,
+          ...(failed.verificationError
+            ? { errorCode: failed.verificationError }
+            : {}),
+        };
+      }
+
+      const verified =
+        await options.sendIdentityStore.markProviderSendIdentityCandidateVerification({
+          accountId: input.accountId,
+          candidateId: input.candidateId,
+          verificationState: "verified",
+          enabled: true,
+          now,
+        });
+      if (!verified) {
+        throw new InvalidMailComposeRequestError("send identity candidate not found");
+      }
+
+      return {
+        accountId: input.accountId,
+        candidate: verified,
+        verified: true,
       };
     },
 
@@ -1838,6 +2032,49 @@ async function listSendIdentities(
   }
 
   return store.listSendIdentities({ accountId });
+}
+
+async function listProviderSendIdentityCandidates(
+  store: MailSendIdentityStore | undefined,
+  accountId: string,
+): Promise<MailSendIdentityCandidate[]> {
+  if (!store?.listProviderSendIdentityCandidates) {
+    return [];
+  }
+
+  return store.listProviderSendIdentityCandidates({ accountId });
+}
+
+function normalizeGraphCandidateIdentityType(
+  value: "shared_mailbox" | "send_on_behalf" | "unknown",
+): "shared_mailbox" | "send_on_behalf" | "unknown" {
+  if (
+    value === "shared_mailbox" ||
+    value === "send_on_behalf" ||
+    value === "unknown"
+  ) {
+    return value;
+  }
+
+  throw new InvalidMailComposeRequestError("send identity type is invalid");
+}
+
+function isoNow(now: (() => Date) | undefined): string {
+  return (now?.() ?? new Date()).toISOString();
+}
+
+function providerVerificationErrorCode(error: unknown): string {
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    if (typeof record.code === "string" && record.code.trim()) {
+      return record.code.trim();
+    }
+    if (typeof record.message === "string" && record.message.trim()) {
+      return record.message.trim().slice(0, 160);
+    }
+  }
+
+  return "unknown_error";
 }
 
 async function ensureAllowedSender(

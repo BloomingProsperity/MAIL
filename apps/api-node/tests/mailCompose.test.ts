@@ -141,6 +141,179 @@ describe("mail compose service", () => {
     ]);
   });
 
+  it("adds an explicit Graph shared sender candidate without making it sendable", async () => {
+    const upserts: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore(),
+      createId: () => "unused",
+      now: () => new Date("2026-06-15T20:00:00.000Z"),
+      transports: {},
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [];
+        },
+        async upsertProviderSendIdentityCandidate(input) {
+          upserts.push(input);
+          return sendIdentityCandidate({
+            from: input.from,
+            verificationState: "pending",
+            enabled: false,
+          });
+        },
+      },
+    });
+
+    const candidate = await service.addProviderSendIdentityCandidate({
+      accountId: "acc_1",
+      provider: "graph",
+      from: { address: "Team@Example.com", name: "Team Inbox" },
+      identityType: "shared_mailbox",
+    });
+
+    expect(upserts).toEqual([
+      {
+        accountId: "acc_1",
+        provider: "graph",
+        from: { address: "team@example.com", name: "Team Inbox" },
+        identityType: "shared_mailbox",
+        now: "2026-06-15T20:00:00.000Z",
+      },
+    ]);
+    expect(candidate).toMatchObject({
+      from: { address: "team@example.com", name: "Team Inbox" },
+      verificationState: "pending",
+      enabled: false,
+      verified: false,
+    });
+  });
+
+  it("verifies a Graph shared sender candidate only after a successful test send", async () => {
+    const verificationCalls: unknown[] = [];
+    const marks: unknown[] = [];
+    const pending = sendIdentityCandidate({
+      verificationState: "pending",
+      enabled: false,
+    });
+    const verified = sendIdentityCandidate({
+      verificationState: "verified",
+      enabled: true,
+    });
+    const service = createMailComposeService({
+      store: createStore(),
+      createId: () => "unused",
+      now: () => new Date("2026-06-15T20:05:00.000Z"),
+      transports: {},
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [];
+        },
+        async getProviderSendIdentityCandidate(input) {
+          expect(input).toEqual({
+            accountId: "acc_1",
+            candidateId: "provider:identity_1",
+          });
+          return pending;
+        },
+        async markProviderSendIdentityCandidateVerification(input) {
+          marks.push(input);
+          return verified;
+        },
+      },
+      graphSendIdentityVerifier: {
+        async sendVerification(input) {
+          verificationCalls.push(input);
+        },
+      },
+    });
+
+    const result = await service.verifyProviderSendIdentityCandidate({
+      accountId: "acc_1",
+      candidateId: "provider:identity_1",
+    });
+
+    expect(verificationCalls).toEqual([
+      {
+        accountId: "acc_1",
+        from: { address: "team@example.com", name: "Team Inbox" },
+        to: { address: "me@example.com" },
+        now: "2026-06-15T20:05:00.000Z",
+      },
+    ]);
+    expect(marks).toEqual([
+      {
+        accountId: "acc_1",
+        candidateId: "provider:identity_1",
+        verificationState: "verified",
+        enabled: true,
+        now: "2026-06-15T20:05:00.000Z",
+      },
+    ]);
+    expect(result).toEqual({
+      accountId: "acc_1",
+      candidate: verified,
+      verified: true,
+    });
+  });
+
+  it("marks a Graph shared sender candidate failed when the test send is denied", async () => {
+    const marks: unknown[] = [];
+    const failed = sendIdentityCandidate({
+      verificationState: "failed",
+      enabled: false,
+      verificationError: "ErrorSendAsDenied",
+    });
+    const service = createMailComposeService({
+      store: createStore(),
+      createId: () => "unused",
+      now: () => new Date("2026-06-15T20:10:00.000Z"),
+      transports: {},
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [];
+        },
+        async getProviderSendIdentityCandidate() {
+          return sendIdentityCandidate({
+            verificationState: "pending",
+            enabled: false,
+          });
+        },
+        async markProviderSendIdentityCandidateVerification(input) {
+          marks.push(input);
+          return failed;
+        },
+      },
+      graphSendIdentityVerifier: {
+        async sendVerification() {
+          throw Object.assign(new Error("denied"), {
+            code: "ErrorSendAsDenied",
+          });
+        },
+      },
+    });
+
+    const result = await service.verifyProviderSendIdentityCandidate({
+      accountId: "acc_1",
+      candidateId: "provider:identity_1",
+    });
+
+    expect(marks).toEqual([
+      {
+        accountId: "acc_1",
+        candidateId: "provider:identity_1",
+        verificationState: "failed",
+        enabled: false,
+        verificationError: "ErrorSendAsDenied",
+        now: "2026-06-15T20:10:00.000Z",
+      },
+    ]);
+    expect(result).toEqual({
+      accountId: "acc_1",
+      candidate: failed,
+      verified: false,
+      errorCode: "ErrorSendAsDenied",
+    });
+  });
+
   it("updates an existing draft without creating a replacement", async () => {
     const calls: unknown[] = [];
     const store = createStore({
@@ -2134,6 +2307,24 @@ function sendIdentityStoreFor(input: { address: string; name?: string }) {
         },
       ];
     },
+  };
+}
+
+function sendIdentityCandidate(overrides = {}) {
+  return {
+    id: "provider:identity_1",
+    accountId: "acc_1",
+    from: { address: "team@example.com", name: "Team Inbox" },
+    source: "provider_native" as const,
+    isDefault: false,
+    verified: false,
+    provider: "graph",
+    providerIdentityId: "team@example.com",
+    identityType: "shared_mailbox" as const,
+    verificationState: "pending" as const,
+    enabled: false,
+    verificationRecipient: { address: "me@example.com" },
+    ...overrides,
   };
 }
 

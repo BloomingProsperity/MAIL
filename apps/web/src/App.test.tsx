@@ -1930,6 +1930,113 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText(/邮件已进入发送队列：draft_1/)).toBeTruthy();
   });
 
+  it("adds and verifies an Outlook shared sender candidate from compose", async () => {
+    const api = createApiFixture();
+    const accountIdentity = {
+      id: "account:account_1",
+      accountId: "account_1",
+      from: { address: "work@demo.site", name: "Work" },
+      source: "account" as const,
+      isDefault: true,
+      verified: true,
+    };
+    const pendingCandidate = {
+      id: "provider:identity_candidate",
+      accountId: "account_1",
+      from: { address: "shared@example.com", name: "Shared" },
+      source: "provider_native" as const,
+      isDefault: false,
+      verified: false,
+      provider: "graph",
+      providerIdentityId: "shared@example.com",
+      identityType: "shared_mailbox" as const,
+      verificationState: "pending" as const,
+      enabled: false,
+    };
+    const verifiedCandidate = {
+      ...pendingCandidate,
+      verified: true,
+      verificationState: "verified" as const,
+      enabled: true,
+    };
+    const verifiedIdentity = {
+      id: "provider:identity_candidate",
+      accountId: "account_1",
+      from: { address: "shared@example.com", name: "Shared" },
+      source: "provider_native" as const,
+      isDefault: false,
+      verified: true,
+      provider: "graph",
+      providerIdentityId: "shared@example.com",
+      identityType: "shared_mailbox" as const,
+    };
+
+    vi.mocked(api.listSendIdentities)
+      .mockResolvedValueOnce({
+        accountId: "account_1",
+        items: [accountIdentity],
+        candidates: [],
+      })
+      .mockResolvedValueOnce({
+        accountId: "account_1",
+        items: [accountIdentity, verifiedIdentity],
+        candidates: [verifiedCandidate],
+      });
+    vi.mocked(api.addProviderSendIdentityCandidate).mockResolvedValue(
+      pendingCandidate,
+    );
+    vi.mocked(api.verifyProviderSendIdentityCandidate).mockResolvedValue({
+      accountId: "account_1",
+      verified: true,
+      candidate: verifiedCandidate,
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Outlook shared sender address"), {
+      target: { value: "shared@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Outlook shared sender name"), {
+      target: { value: "Shared" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Add Outlook shared sender candidate",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.addProviderSendIdentityCandidate).toHaveBeenCalledWith({
+        accountId: "account_1",
+        provider: "graph",
+        address: "shared@example.com",
+        name: "Shared",
+        identityType: "shared_mailbox",
+      });
+    });
+    expect(await screen.findByText("待验证")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Verify Outlook shared sender shared@example.com",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.verifyProviderSendIdentityCandidate).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "provider:identity_candidate",
+      });
+    });
+    expect(await screen.findByText(/共享发件人已验证：shared@example.com/)).toBeTruthy();
+    expect(
+      screen.getByRole("option", {
+        name: /Shared <shared@example.com> · Outlook共享邮箱/,
+      }),
+    ).toBeTruthy();
+  });
+
   it("updates the saved composed draft instead of creating duplicates", async () => {
     const api = createApiFixture();
 
@@ -3386,6 +3493,39 @@ function createApiFixture(): EmailHubApi {
           identityType: "shared_mailbox" as const,
         },
       ],
+    })),
+    addProviderSendIdentityCandidate: vi.fn(async (input) => ({
+      id: "provider:identity_candidate",
+      accountId: input.accountId,
+      from: {
+        address: input.address.toLowerCase(),
+        ...(input.name ? { name: input.name } : {}),
+      },
+      source: "provider_native" as const,
+      isDefault: false,
+      verified: false,
+      provider: "graph",
+      providerIdentityId: input.address.toLowerCase(),
+      identityType: input.identityType,
+      verificationState: "pending" as const,
+      enabled: false,
+    })),
+    verifyProviderSendIdentityCandidate: vi.fn(async (input) => ({
+      accountId: input.accountId,
+      verified: true,
+      candidate: {
+        id: input.candidateId,
+        accountId: input.accountId,
+        from: { address: "shared@example.com", name: "Shared" },
+        source: "provider_native" as const,
+        isDefault: false,
+        verified: true,
+        provider: "graph",
+        providerIdentityId: "shared@example.com",
+        identityType: "shared_mailbox" as const,
+        verificationState: "verified" as const,
+        enabled: true,
+      },
     })),
     createComposeSeed: vi.fn(async (input) => ({
       accountId: input.accountId,

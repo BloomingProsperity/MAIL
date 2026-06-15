@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createGraphSendIdentityVerifier,
   createConfiguredNativeSendTransport,
   createNativeSendTransport,
   createPostgresNativeAccountSettingsStore,
@@ -16,6 +17,44 @@ import {
 } from "../src/native-send/smtp-send-transport";
 
 describe("API native send transport", () => {
+  it("sends explicit Graph shared sender verification mail with the candidate From", async () => {
+    const sendMail = vi.fn(async () => ({}));
+    const verifier = createGraphSendIdentityVerifier({
+      graph: { sendMail },
+    });
+
+    await verifier.sendVerification({
+      accountId: "acc_1",
+      from: { address: "team@example.com", name: "Team Inbox" },
+      to: { address: "me@example.com", name: "Me" },
+      now: "2026-06-15T20:00:00.000Z",
+    });
+
+    expect(sendMail).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      message: {
+        subject: "Email Hub shared sender verification",
+        from: {
+          emailAddress: { address: "team@example.com", name: "Team Inbox" },
+        },
+        body: {
+          contentType: "Text",
+          content: [
+            "Email Hub is verifying this Outlook shared sender.",
+            "From: team@example.com",
+            "Requested at: 2026-06-15T20:00:00.000Z",
+          ].join("\n"),
+        },
+        toRecipients: [
+          {
+            emailAddress: { address: "me@example.com", name: "Me" },
+          },
+        ],
+      },
+      saveToSentItems: false,
+    });
+  });
+
   it("routes Gmail native sends through Gmail messages.send with RFC 2822 MIME", async () => {
     const sendMessage = vi.fn(async () => ({ id: "gmail_msg_1" }));
     const sendMail = vi.fn(async () => ({}));

@@ -563,6 +563,56 @@ h2 {
   min-width: 0;
 }
 
+.provider-candidate-box {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.provider-candidate-entry {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 1fr) minmax(104px, 0.8fr) auto;
+  gap: 6px;
+  align-items: end;
+  min-width: 0;
+}
+
+.provider-candidate-list {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.provider-candidate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-soft);
+}
+
+.provider-candidate-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+  font-size: 12px;
+}
+
+.provider-candidate-row strong {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .compose-schedule-row {
   display: grid;
   grid-template-columns: minmax(180px, 260px);
@@ -1993,9 +2043,19 @@ h2 {
   }
 
   .compose-recipient-grid,
+  .provider-candidate-entry,
   .compose-schedule-row,
   .outbox-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .provider-candidate-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .provider-candidate-row .tiny-button {
+    grid-column: 1 / -1;
+    justify-self: flex-start;
   }
 
   .outbox-actions {

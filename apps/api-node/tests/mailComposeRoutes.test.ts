@@ -133,6 +133,135 @@ describe("mail compose routes", () => {
     );
   });
 
+  it("adds a Graph provider send identity candidate through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async listSendIdentities() {
+        throw new Error("not used");
+      },
+      async addProviderSendIdentityCandidate(input: unknown) {
+        calls.push(input);
+        return {
+          id: "provider:identity_1",
+          accountId: "acc_1",
+          from: { address: "team@example.com", name: "Team Inbox" },
+          source: "provider_native",
+          isDefault: false,
+          verified: false,
+          provider: "graph",
+          providerIdentityId: "team@example.com",
+          identityType: "shared_mailbox",
+          verificationState: "pending",
+          enabled: false,
+          verificationRecipient: { address: "me@example.com" },
+        };
+      },
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/send-identities/provider-candidates`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              provider: "graph",
+              address: "Team@Example.com",
+              name: "Team Inbox",
+              identityType: "shared_mailbox",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(201);
+        expect(await response.json()).toMatchObject({
+          id: "provider:identity_1",
+          verificationState: "pending",
+          enabled: false,
+        });
+        expect(calls).toEqual([
+          {
+            accountId: "acc_1",
+            provider: "graph",
+            from: { address: "Team@Example.com", name: "Team Inbox" },
+            identityType: "shared_mailbox",
+          },
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
+  it("verifies a Graph provider send identity candidate through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async listSendIdentities() {
+        throw new Error("not used");
+      },
+      async verifyProviderSendIdentityCandidate(input: unknown) {
+        calls.push(input);
+        return {
+          accountId: "acc_1",
+          verified: true,
+          candidate: {
+            id: "provider:identity_1",
+            accountId: "acc_1",
+            from: { address: "team@example.com", name: "Team Inbox" },
+            source: "provider_native",
+            isDefault: false,
+            verified: true,
+            provider: "graph",
+            providerIdentityId: "team@example.com",
+            identityType: "shared_mailbox",
+            verificationState: "verified",
+            enabled: true,
+            verificationRecipient: { address: "me@example.com" },
+          },
+        };
+      },
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/send-identities/provider-candidates/${encodeURIComponent("provider:identity_1")}/verify`,
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          accountId: "acc_1",
+          verified: true,
+          candidate: {
+            id: "provider:identity_1",
+            verificationState: "verified",
+            enabled: true,
+          },
+        });
+        expect(calls).toEqual([
+          {
+            accountId: "acc_1",
+            candidateId: "provider:identity_1",
+          },
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
   it("creates a draft through the compose service", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {

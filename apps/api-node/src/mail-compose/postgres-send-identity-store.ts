@@ -1,4 +1,5 @@
 import type {
+  MailSendIdentityCandidate,
   MailSendIdentity,
   MailSendIdentityStore,
 } from "./mail-compose.js";
@@ -25,6 +26,20 @@ interface SendIdentityRow extends Record<string, unknown> {
   provider: string | null;
   provider_identity_id: string | null;
   identity_type: string | null;
+}
+
+interface SendIdentityCandidateRow extends Record<string, unknown> {
+  id: string;
+  account_id: string;
+  address: string;
+  name: string | null;
+  provider: string;
+  provider_identity_id: string;
+  identity_type: string;
+  verification_state: string;
+  enabled: boolean;
+  account_email: string;
+  verification_error: string | null;
 }
 
 export function createPostgresSendIdentityStore(
@@ -124,6 +139,238 @@ export function createPostgresSendIdentityStore(
 
       return result.rows.map(rowToIdentity);
     },
+
+    async listProviderSendIdentityCandidates(input) {
+      const result = await client.query<SendIdentityCandidateRow>(
+        `
+          SELECT
+            'provider:' || provider_send_identities.id::text AS id,
+            provider_send_identities.account_id,
+            lower(provider_send_identities.email) AS address,
+            provider_send_identities.display_name AS name,
+            provider_send_identities.provider,
+            provider_send_identities.provider_identity_id,
+            provider_send_identities.identity_type,
+            provider_send_identities.verification_state,
+            provider_send_identities.enabled,
+            lower(connected_accounts.email) AS account_email,
+            provider_send_identities.capabilities->>'verificationError'
+              AS verification_error
+          FROM provider_send_identities
+          JOIN connected_accounts
+            ON connected_accounts.id = provider_send_identities.account_id
+          WHERE provider_send_identities.account_id = $1
+            AND provider_send_identities.provider = 'graph'
+            AND provider_send_identities.capabilities->>'explicitCandidate' = 'true'
+          ORDER BY
+            provider_send_identities.verification_state = 'verified' DESC,
+            lower(provider_send_identities.email) ASC
+        `,
+        [input.accountId],
+      );
+
+      return result.rows.map(rowToCandidate);
+    },
+
+    async upsertProviderSendIdentityCandidate(input) {
+      const result = await client.query<SendIdentityCandidateRow>(
+        `
+          WITH graph_account AS (
+            SELECT
+              connected_accounts.id AS account_id,
+              lower(connected_accounts.email) AS account_email
+            FROM connected_accounts
+            JOIN account_provider_settings
+              ON account_provider_settings.account_id = connected_accounts.id
+             AND account_provider_settings.native_provider = 'graph'
+            WHERE connected_accounts.id = $1
+          ), upserted AS (
+            INSERT INTO provider_send_identities (
+              id,
+              account_id,
+              provider,
+              provider_identity_id,
+              email,
+              display_name,
+              identity_type,
+              verification_state,
+              enabled,
+              is_default,
+              capabilities,
+              discovered_at,
+              last_seen_at,
+              updated_at
+            )
+            SELECT
+              gen_random_uuid(),
+              graph_account.account_id,
+              'graph',
+              lower($2),
+              lower($2),
+              $3,
+              $4,
+              'pending',
+              FALSE,
+              FALSE,
+              jsonb_build_object(
+                'explicitCandidate', TRUE,
+                'verificationMethod', 'graph_test_send',
+                'requestedAt', $5::text
+              ),
+              $5::timestamptz,
+              $5::timestamptz,
+              $5::timestamptz
+            FROM graph_account
+            ON CONFLICT (account_id, provider, provider_identity_id)
+            DO UPDATE SET
+              email = EXCLUDED.email,
+              display_name = EXCLUDED.display_name,
+              identity_type = EXCLUDED.identity_type,
+              verification_state = CASE
+                WHEN provider_send_identities.verification_state = 'verified'
+                  THEN 'verified'
+                ELSE 'pending'
+              END,
+              enabled = CASE
+                WHEN provider_send_identities.verification_state = 'verified'
+                  THEN TRUE
+                ELSE FALSE
+              END,
+              capabilities =
+                (
+                  provider_send_identities.capabilities ||
+                  EXCLUDED.capabilities
+                ) - 'verificationError',
+              last_seen_at = EXCLUDED.last_seen_at,
+              updated_at = EXCLUDED.updated_at
+            RETURNING
+              'provider:' || id::text AS id,
+              account_id,
+              lower(email) AS address,
+              display_name AS name,
+              provider,
+              provider_identity_id,
+              identity_type,
+              verification_state,
+              enabled,
+              capabilities->>'verificationError' AS verification_error
+          )
+          SELECT
+            upserted.*,
+            graph_account.account_email
+          FROM upserted
+          JOIN graph_account
+            ON graph_account.account_id = upserted.account_id
+        `,
+        [
+          input.accountId,
+          input.from.address,
+          input.from.name ?? null,
+          input.identityType,
+          input.now,
+        ],
+      );
+
+      const candidate = result.rows[0];
+      if (!candidate) {
+        throw new Error("Graph native account was not found");
+      }
+
+      return rowToCandidate(candidate);
+    },
+
+    async getProviderSendIdentityCandidate(input) {
+      const result = await client.query<SendIdentityCandidateRow>(
+        `
+          SELECT
+            'provider:' || provider_send_identities.id::text AS id,
+            provider_send_identities.account_id,
+            lower(provider_send_identities.email) AS address,
+            provider_send_identities.display_name AS name,
+            provider_send_identities.provider,
+            provider_send_identities.provider_identity_id,
+            provider_send_identities.identity_type,
+            provider_send_identities.verification_state,
+            provider_send_identities.enabled,
+            lower(connected_accounts.email) AS account_email,
+            provider_send_identities.capabilities->>'verificationError'
+              AS verification_error
+          FROM provider_send_identities
+          JOIN connected_accounts
+            ON connected_accounts.id = provider_send_identities.account_id
+          WHERE provider_send_identities.account_id = $1
+            AND provider_send_identities.provider = 'graph'
+            AND provider_send_identities.capabilities->>'explicitCandidate' = 'true'
+            AND (
+              'provider:' || provider_send_identities.id::text = $2
+              OR provider_send_identities.id::text = $2
+            )
+          LIMIT 1
+        `,
+        [input.accountId, input.candidateId],
+      );
+
+      return result.rows[0] ? rowToCandidate(result.rows[0]) : undefined;
+    },
+
+    async markProviderSendIdentityCandidateVerification(input) {
+      const result = await client.query<SendIdentityCandidateRow>(
+        `
+          WITH updated AS (
+            UPDATE provider_send_identities
+            SET verification_state = $3,
+                enabled = $4,
+                capabilities = CASE
+                  WHEN $5::text IS NULL THEN
+                    (capabilities - 'verificationError') ||
+                    jsonb_build_object('verifiedAt', $6::text)
+                  ELSE
+                    capabilities ||
+                    jsonb_build_object(
+                      'verificationError', $5::text,
+                      'failedAt', $6::text
+                    )
+                END,
+                last_seen_at = $6::timestamptz,
+                updated_at = $6::timestamptz
+            WHERE account_id = $1
+              AND provider = 'graph'
+              AND capabilities->>'explicitCandidate' = 'true'
+              AND (
+                'provider:' || id::text = $2
+                OR id::text = $2
+              )
+            RETURNING
+              'provider:' || id::text AS id,
+              account_id,
+              lower(email) AS address,
+              display_name AS name,
+              provider,
+              provider_identity_id,
+              identity_type,
+              verification_state,
+              enabled,
+              capabilities->>'verificationError' AS verification_error
+          )
+          SELECT
+            updated.*,
+            lower(connected_accounts.email) AS account_email
+          FROM updated
+          JOIN connected_accounts
+            ON connected_accounts.id = updated.account_id
+        `,
+        [
+          input.accountId,
+          input.candidateId,
+          input.verificationState,
+          input.enabled,
+          input.verificationError ?? null,
+          input.now,
+        ],
+      );
+
+      return result.rows[0] ? rowToCandidate(result.rows[0]) : undefined;
+    },
   };
 }
 
@@ -143,6 +390,27 @@ function rowToIdentity(row: SendIdentityRow): MailSendIdentity {
       ? { providerIdentityId: row.provider_identity_id }
       : {}),
     ...(row.identity_type ? { identityType: identityType(row.identity_type) } : {}),
+  };
+}
+
+function rowToCandidate(row: SendIdentityCandidateRow): MailSendIdentityCandidate {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    from: {
+      address: row.address,
+      ...(row.name ? { name: row.name } : {}),
+    },
+    source: "provider_native",
+    isDefault: false,
+    verified: row.verification_state === "verified" && row.enabled,
+    provider: row.provider,
+    providerIdentityId: row.provider_identity_id,
+    identityType: identityType(row.identity_type),
+    verificationState: verificationState(row.verification_state),
+    enabled: row.enabled,
+    verificationRecipient: { address: row.account_email },
+    ...(row.verification_error ? { verificationError: row.verification_error } : {}),
   };
 }
 
@@ -166,4 +434,17 @@ function identityType(value: string): NonNullable<MailSendIdentity["identityType
   }
 
   return "account";
+}
+
+function verificationState(value: string): MailSendIdentityCandidate["verificationState"] {
+  if (
+    value === "verified" ||
+    value === "pending" ||
+    value === "unverified" ||
+    value === "failed"
+  ) {
+    return value;
+  }
+
+  return "unverified";
 }

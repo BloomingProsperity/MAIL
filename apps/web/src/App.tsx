@@ -54,6 +54,7 @@ import type {
   MailDraftSource,
   MailProviderCapabilityDto,
   MailSearchScope,
+  MailSendIdentityCandidateDto,
   MailSendIdentityDto,
   MailboxDto,
   MessageDetailDto,
@@ -1153,6 +1154,14 @@ function MailWorkspace(props: {
 }) {
   const [composeFrom, setComposeFrom] = useState("");
   const [sendIdentities, setSendIdentities] = useState<MailSendIdentityDto[]>([]);
+  const [sendIdentityCandidates, setSendIdentityCandidates] = useState<
+    MailSendIdentityCandidateDto[]
+  >([]);
+  const [graphCandidateAddress, setGraphCandidateAddress] = useState("");
+  const [graphCandidateName, setGraphCandidateName] = useState("");
+  const [graphCandidateType, setGraphCandidateType] = useState<
+    "shared_mailbox" | "send_on_behalf" | "unknown"
+  >("shared_mailbox");
   const [composeTo, setComposeTo] = useState("");
   const [composeCc, setComposeCc] = useState("");
   const [composeBcc, setComposeBcc] = useState("");
@@ -1210,6 +1219,7 @@ function MailWorkspace(props: {
     if (!props.api) {
       const identities = previewSendIdentities(props.accountId);
       setSendIdentities(identities);
+      setSendIdentityCandidates([]);
       setComposeFrom(identities[0]?.id ?? "");
       return;
     }
@@ -1222,6 +1232,7 @@ function MailWorkspace(props: {
           return;
         }
         setSendIdentities(page.items);
+        setSendIdentityCandidates(page.candidates ?? []);
         setComposeFrom((current) =>
           page.items.some((identity) => identity.id === current)
             ? current
@@ -1233,6 +1244,7 @@ function MailWorkspace(props: {
       .catch(() => {
         if (alive) {
           setSendIdentities([]);
+          setSendIdentityCandidates([]);
           setComposeFrom("");
         }
       });
@@ -1266,6 +1278,25 @@ function MailWorkspace(props: {
       : undefined;
   const detailAttachments = props.selectedDetail?.attachments;
 
+  async function refreshSendIdentityState(preferredId?: string) {
+    if (!props.api) {
+      return;
+    }
+
+    const page = await props.api.listSendIdentities({ accountId: props.accountId });
+    setSendIdentities(page.items);
+    setSendIdentityCandidates(page.candidates ?? []);
+    setComposeFrom((current) =>
+      page.items.some((identity) => identity.id === preferredId)
+        ? preferredId!
+        : page.items.some((identity) => identity.id === current)
+          ? current
+          : page.items.find((identity) => identity.isDefault)?.id ??
+            page.items[0]?.id ??
+            "",
+    );
+  }
+
   async function refreshOutbox() {
     if (!props.api) {
       return;
@@ -1274,6 +1305,74 @@ function MailWorkspace(props: {
     const page = await props.api.listOutbox({ accountId: props.accountId, limit: 20 });
     setOutboxItems(page.items);
     setRescheduleTimes((current) => seedRescheduleTimes(current, page.items));
+  }
+
+  async function addGraphSendIdentityCandidate() {
+    if (!props.api) {
+      setComposeNotice("发件身份服务暂时不可用。");
+      return;
+    }
+
+    const address = graphCandidateAddress.trim();
+    if (!address) {
+      setComposeNotice("请填写 Outlook 共享发件地址。");
+      return;
+    }
+
+    setComposeBusy(true);
+    try {
+      const candidate = await props.api.addProviderSendIdentityCandidate({
+        accountId: props.accountId,
+        provider: "graph",
+        address,
+        ...(graphCandidateName.trim()
+          ? { name: graphCandidateName.trim() }
+          : {}),
+        identityType: graphCandidateType,
+      });
+      setGraphCandidateAddress("");
+      setGraphCandidateName("");
+      setSendIdentityCandidates((current) =>
+        upsertSendIdentityCandidate(current, candidate),
+      );
+      setComposeNotice(`共享发件人待验证：${candidate.from.address}`);
+    } catch {
+      setComposeNotice("共享发件人添加失败。");
+    } finally {
+      setComposeBusy(false);
+    }
+  }
+
+  async function verifyGraphSendIdentityCandidate(
+    candidate: MailSendIdentityCandidateDto,
+  ) {
+    if (!props.api) {
+      setComposeNotice("发件身份服务暂时不可用。");
+      return;
+    }
+
+    setComposeBusy(true);
+    try {
+      const result = await props.api.verifyProviderSendIdentityCandidate({
+        accountId: props.accountId,
+        candidateId: candidate.id,
+      });
+      setSendIdentityCandidates((current) =>
+        upsertSendIdentityCandidate(current, result.candidate),
+      );
+      if (result.verified) {
+        await refreshSendIdentityState(result.candidate.id);
+        setComposeNotice(`共享发件人已验证：${result.candidate.from.address}`);
+      } else {
+        setComposeNotice(
+          `共享发件人验证失败：${result.errorCode ?? "权限不足"}`,
+        );
+      }
+    } catch {
+      setComposeNotice("共享发件人验证失败。");
+    } finally {
+      setComposeBusy(false);
+    }
   }
 
   function applySeedToCompose(
@@ -1935,6 +2034,83 @@ function MailWorkspace(props: {
               )}
             </select>
           </label>
+          <div
+            className="provider-candidate-box"
+            aria-label="Outlook shared sender candidates"
+          >
+            <div className="provider-candidate-entry">
+              <label>
+                <span>Outlook 共享 From</span>
+                <input
+                  aria-label="Outlook shared sender address"
+                  value={graphCandidateAddress}
+                  onChange={(event) => setGraphCandidateAddress(event.target.value)}
+                  placeholder="shared@example.com"
+                />
+              </label>
+              <label>
+                <span>名称</span>
+                <input
+                  aria-label="Outlook shared sender name"
+                  value={graphCandidateName}
+                  onChange={(event) => setGraphCandidateName(event.target.value)}
+                  placeholder="Team Inbox"
+                />
+              </label>
+              <label>
+                <span>类型</span>
+                <select
+                  aria-label="Outlook shared sender type"
+                  value={graphCandidateType}
+                  onChange={(event) =>
+                    setGraphCandidateType(
+                      event.target.value as typeof graphCandidateType,
+                    )
+                  }
+                >
+                  <option value="shared_mailbox">共享邮箱</option>
+                  <option value="send_on_behalf">代表发送</option>
+                  <option value="unknown">未知</option>
+                </select>
+              </label>
+              <button
+                className="tiny-button"
+                type="button"
+                aria-label="Add Outlook shared sender candidate"
+                disabled={composeBusy}
+                onClick={() => void addGraphSendIdentityCandidate()}
+              >
+                添加
+              </button>
+            </div>
+            {sendIdentityCandidates.length > 0 ? (
+              <div className="provider-candidate-list">
+                {sendIdentityCandidates.map((candidate) => (
+                  <div className="provider-candidate-row" key={candidate.id}>
+                    <span>
+                      {candidate.from.name
+                        ? `${candidate.from.name} <${candidate.from.address}>`
+                        : candidate.from.address}
+                    </span>
+                    <strong>{formatSendIdentityCandidateState(candidate)}</strong>
+                    <button
+                      className="tiny-button"
+                      type="button"
+                      aria-label={`Verify Outlook shared sender ${candidate.from.address}`}
+                      disabled={
+                        composeBusy ||
+                        (candidate.verificationState === "verified" &&
+                          candidate.enabled)
+                      }
+                      onClick={() => void verifyGraphSendIdentityCandidate(candidate)}
+                    >
+                      验证
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <div className="compose-recipient-grid">
             <label>
               <span>收件人</span>
@@ -2542,6 +2718,16 @@ function previewSendIdentities(accountId: string): MailSendIdentityDto[] {
   ];
 }
 
+function upsertSendIdentityCandidate(
+  candidates: MailSendIdentityCandidateDto[],
+  candidate: MailSendIdentityCandidateDto,
+): MailSendIdentityCandidateDto[] {
+  const next = candidates.filter((item) => item.id !== candidate.id);
+  return [...next, candidate].sort((left, right) =>
+    left.from.address.localeCompare(right.from.address),
+  );
+}
+
 function formatSendIdentity(identity: MailSendIdentityDto): string {
   const label = identity.from.name
     ? `${identity.from.name} <${identity.from.address}>`
@@ -2554,6 +2740,23 @@ function formatSendIdentity(identity: MailSendIdentityDto): string {
       : []),
   ];
   return markers.length > 0 ? `${label} · ${markers.join(" · ")}` : label;
+}
+
+function formatSendIdentityCandidateState(
+  candidate: MailSendIdentityCandidateDto,
+): string {
+  if (candidate.verificationState === "verified" && candidate.enabled) {
+    return "已验证";
+  }
+  if (candidate.verificationState === "failed") {
+    return candidate.verificationError
+      ? `失败 ${candidate.verificationError}`
+      : "失败";
+  }
+  if (candidate.verificationState === "pending") {
+    return "待验证";
+  }
+  return "未验证";
 }
 
 function providerNativeIdentityLabel(identity: MailSendIdentityDto): string {

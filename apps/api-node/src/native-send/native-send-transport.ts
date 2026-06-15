@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import type {
   MailAddress,
+  GraphSendIdentityVerifier,
   MailSendAttachment,
   MailSendTransport,
   MailThreading,
@@ -164,6 +165,36 @@ export function createNativeSendTransport(input: {
   };
 }
 
+export function createGraphSendIdentityVerifier(input: {
+  graph: GraphSubmitClient;
+}): GraphSendIdentityVerifier {
+  return {
+    async sendVerification(message) {
+      await input.graph.sendMail({
+        accountId: message.accountId,
+        message: {
+          subject: "Email Hub shared sender verification",
+          from: { emailAddress: graphEmailAddress(message.from) },
+          body: {
+            contentType: "Text",
+            content: [
+              "Email Hub is verifying this Outlook shared sender.",
+              `From: ${message.from.address}`,
+              `Requested at: ${message.now}`,
+            ].join("\n"),
+          },
+          toRecipients: [
+            {
+              emailAddress: graphEmailAddress(message.to),
+            },
+          ],
+        },
+        saveToSentItems: false,
+      });
+    },
+  };
+}
+
 export function createConfiguredNativeSendTransport(input: {
   client: Queryable;
   createId: () => string;
@@ -229,6 +260,38 @@ export function createConfiguredNativeSendTransport(input: {
       }),
       ...(input.smtpSendMail ? { sendMail: input.smtpSendMail } : {}),
       ...(input.smtpSentAppender ? { sentAppender: input.smtpSentAppender } : {}),
+    }),
+  });
+}
+
+export function createConfiguredGraphSendIdentityVerifier(input: {
+  client: Queryable;
+  env?: Record<string, string | undefined>;
+  fetchImpl?: typeof fetch;
+}): GraphSendIdentityVerifier {
+  const env = input.env ?? process.env;
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const microsoftClientId = optionalEnv(env.MICROSOFT_OAUTH_CLIENT_ID);
+
+  return createGraphSendIdentityVerifier({
+    graph: createGraphSubmitClient({
+      accessTokenProvider: microsoftClientId
+        ? createDatabaseAccessTokenProvider({
+            client: input.client,
+            credentialKind: MICROSOFT_OAUTH_REFRESH_TOKEN_KIND,
+            tokenClient: createMicrosoftOAuthRefreshClient({
+              clientId: microsoftClientId,
+              clientSecret: optionalEnv(env.MICROSOFT_OAUTH_CLIENT_SECRET),
+              tokenUrl: optionalEnv(env.MICROSOFT_OAUTH_TOKEN_URL),
+              scope: optionalEnv(env.MICROSOFT_GRAPH_SCOPE),
+              fetchImpl,
+            }),
+          })
+        : missingAccessTokenProvider(
+            "MICROSOFT_OAUTH_CLIENT_ID missing; cannot verify Graph send identities",
+          ),
+      baseUrl: optionalEnv(env.MICROSOFT_GRAPH_BASE_URL),
+      fetchImpl,
     }),
   });
 }

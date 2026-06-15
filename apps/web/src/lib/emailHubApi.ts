@@ -767,9 +767,26 @@ export interface MailSendIdentityDto {
   identityType?: MailSendIdentityType;
 }
 
+export type MailSendIdentityVerificationState =
+  | "verified"
+  | "pending"
+  | "unverified"
+  | "failed";
+
+export interface MailSendIdentityCandidateDto extends MailSendIdentityDto {
+  provider: string;
+  providerIdentityId: string;
+  identityType: MailSendIdentityType;
+  verificationState: MailSendIdentityVerificationState;
+  enabled: boolean;
+  verificationRecipient?: MailAddressDto;
+  verificationError?: string;
+}
+
 export interface MailSendIdentityPage {
   accountId: string;
   items: MailSendIdentityDto[];
+  candidates?: MailSendIdentityCandidateDto[];
 }
 
 export type MailComposeSeedMode = "reply" | "reply_all" | "forward";
@@ -1211,6 +1228,22 @@ export interface EmailHubApi {
     attachments?: MailDraftAttachmentDto[];
   }): Promise<MailComposePreviewDto>;
   listSendIdentities(input: { accountId: string }): Promise<MailSendIdentityPage>;
+  addProviderSendIdentityCandidate(input: {
+    accountId: string;
+    provider: "graph";
+    address: string;
+    name?: string;
+    identityType: "shared_mailbox" | "send_on_behalf" | "unknown";
+  }): Promise<MailSendIdentityCandidateDto>;
+  verifyProviderSendIdentityCandidate(input: {
+    accountId: string;
+    candidateId: string;
+  }): Promise<{
+    accountId: string;
+    candidate: MailSendIdentityCandidateDto;
+    verified: boolean;
+    errorCode?: string;
+  }>;
   sendMailDraft(input: {
     accountId: string;
     draftId: string;
@@ -1819,6 +1852,32 @@ export function createEmailHubApi(
         fetchImpl,
         baseUrl,
         `/api/accounts/${encodePath(input.accountId)}/send-identities`,
+      );
+    },
+
+    addProviderSendIdentityCandidate(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/send-identities/provider-candidates`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            provider: input.provider,
+            address: input.address,
+            ...(input.name ? { name: input.name } : {}),
+            identityType: input.identityType,
+          }),
+        },
+      );
+    },
+
+    verifyProviderSendIdentityCandidate(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/send-identities/provider-candidates/${encodePath(input.candidateId)}/verify`,
+        { method: "POST" },
       );
     },
 

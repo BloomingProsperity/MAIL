@@ -777,6 +777,34 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (
+          mailComposeRoute.action === "add_send_identity_candidate" &&
+          request.method === "POST"
+        ) {
+          const result =
+            await config.mailComposeService.addProviderSendIdentityCandidate(
+              parseProviderSendIdentityCandidateInput(
+                mailComposeRoute.accountId,
+                await readRequestBody(),
+              ),
+            );
+          writeJson(response, 201, result);
+          return;
+        }
+
+        if (
+          mailComposeRoute.action === "verify_send_identity_candidate" &&
+          request.method === "POST"
+        ) {
+          const result =
+            await config.mailComposeService.verifyProviderSendIdentityCandidate({
+              accountId: mailComposeRoute.accountId,
+              candidateId: mailComposeRoute.candidateId,
+            });
+          writeJson(response, 200, result);
+          return;
+        }
+
+        if (
           mailComposeRoute.action === "create_draft" &&
           request.method === "POST"
         ) {
@@ -3189,6 +3217,12 @@ function parseMailComposeRoute(
   requestUrl: string | undefined,
 ):
   | { action: "list_send_identities"; accountId: string }
+  | { action: "add_send_identity_candidate"; accountId: string }
+  | {
+      action: "verify_send_identity_candidate";
+      accountId: string;
+      candidateId: string;
+    }
   | { action: "create_draft"; accountId: string }
   | { action: "update_draft"; accountId: string; draftId: string }
   | { action: "preview_draft"; accountId: string }
@@ -3219,6 +3253,29 @@ function parseMailComposeRoute(
     return {
       action: "list_send_identities",
       accountId: decodeURIComponent(sendIdentitiesMatch[1]),
+    };
+  }
+
+  const sendIdentityCandidatesMatch =
+    /^\/api\/accounts\/([^/]+)\/send-identities\/provider-candidates$/.exec(
+      url.pathname,
+    );
+  if (sendIdentityCandidatesMatch) {
+    return {
+      action: "add_send_identity_candidate",
+      accountId: decodeURIComponent(sendIdentityCandidatesMatch[1]),
+    };
+  }
+
+  const verifySendIdentityCandidateMatch =
+    /^\/api\/accounts\/([^/]+)\/send-identities\/provider-candidates\/([^/]+)\/verify$/.exec(
+      url.pathname,
+    );
+  if (verifySendIdentityCandidateMatch) {
+    return {
+      action: "verify_send_identity_candidate",
+      accountId: decodeURIComponent(verifySendIdentityCandidateMatch[1]),
+      candidateId: decodeURIComponent(verifySendIdentityCandidateMatch[2]),
     };
   }
 
@@ -5348,6 +5405,65 @@ function parseMailComposeSeedInput(
     mode,
     ...(from ? { from } : {}),
   };
+}
+
+function parseProviderSendIdentityCandidateInput(
+  accountId: string,
+  body: string,
+): Parameters<MailComposeService["addProviderSendIdentityCandidate"]>[0] {
+  const payload = JSON.parse(body) as {
+    provider?: unknown;
+    address?: unknown;
+    email?: unknown;
+    name?: unknown;
+    displayName?: unknown;
+    identityType?: unknown;
+  };
+  if (payload.provider !== "graph") {
+    throw new InvalidMailComposeRequestError("send identity provider is invalid");
+  }
+
+  const address = isNonEmptyString(payload.address)
+    ? payload.address
+    : isNonEmptyString(payload.email)
+      ? payload.email
+      : undefined;
+  if (!address) {
+    throw new InvalidMailComposeRequestError("send identity address is required");
+  }
+
+  const identityType = parseProviderSendIdentityCandidateType(
+    payload.identityType,
+  );
+  const name = isNonEmptyString(payload.name)
+    ? payload.name
+    : isNonEmptyString(payload.displayName)
+      ? payload.displayName
+      : undefined;
+
+  return {
+    accountId,
+    provider: "graph",
+    from: {
+      address,
+      ...(name ? { name } : {}),
+    },
+    identityType,
+  };
+}
+
+function parseProviderSendIdentityCandidateType(
+  value: unknown,
+): "shared_mailbox" | "send_on_behalf" | "unknown" {
+  if (
+    value === "shared_mailbox" ||
+    value === "send_on_behalf" ||
+    value === "unknown"
+  ) {
+    return value;
+  }
+
+  return "shared_mailbox";
 }
 
 function parseMailComposeFrom(payload: {
