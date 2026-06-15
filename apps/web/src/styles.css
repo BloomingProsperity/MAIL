@@ -3,6 +3,7 @@
   --bg-sidebar: #eef7f4;
   --bg-panel: #ffffff;
   --bg-soft: #f9faf8;
+  --bg-muted: #f1f3f1;
   --border-light: #e5e9e5;
   --border-soft: #eef0ec;
   --text-main: #1f2933;
@@ -23,6 +24,8 @@
   --yellow: #d99a22;
   --purple-soft: #f0eafb;
   --purple: #8a6ed3;
+  --danger-soft: #fdeaea;
+  --danger: #c2413b;
   --shadow-panel: 0 14px 32px rgba(31, 41, 51, 0.07);
 }
 
@@ -1490,6 +1493,142 @@ h2 {
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
+.transfer-account-picker,
+.migration-result-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg-soft);
+}
+
+.transfer-account-picker > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.transfer-account-picker span,
+.migration-summary-grid span,
+.migration-task-list span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.transfer-account-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.file-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.migration-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.migration-summary-grid p {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--bg-panel);
+}
+
+.migration-summary-grid strong {
+  font-size: 18px;
+}
+
+.migration-table-wrap {
+  overflow-x: auto;
+}
+
+.migration-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.migration-table th,
+.migration-table td {
+  border-bottom: 1px solid var(--border-light);
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.migration-table td {
+  color: var(--text-secondary);
+}
+
+.migration-status {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-weight: 800;
+}
+
+.status-ready {
+  background: var(--mint-soft);
+  color: var(--mint-text);
+}
+
+.status-needs_oauth {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.status-disabled {
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+}
+
+.status-invalid {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.migration-task-list {
+  display: grid;
+  gap: 8px;
+}
+
+.migration-task-list p {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--bg-panel);
+}
+
 .page-panel,
 .skill-card {
   padding: 14px;
@@ -2224,8 +2363,14 @@ h2 {
   .settings-layout,
   .settings-card-grid,
   .alias-form-grid,
+  .migration-summary-grid,
   .mode-grid {
     grid-template-columns: 1fr;
+  }
+
+  .transfer-account-picker > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .search-form {

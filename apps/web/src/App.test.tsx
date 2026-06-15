@@ -1099,6 +1099,19 @@ describe("Email Hub first UI baseline", () => {
   it("previews CSV import and imports account transfer packages from Add Mail", async () => {
     const api = createApiFixture();
     const csv = "email,provider,auth_method,secret\nsupport@qq.com,qq,password,code";
+    const transferPackage = {
+      schemaVersion: 1 as const,
+      exportedAt: "2026-06-14T08:00:00.000Z",
+      accounts: [
+        {
+          email: "sync@example.com",
+          provider: "gmail",
+          authMethod: "oauth" as const,
+          engineProvider: "native" as const,
+          displayName: "Sync",
+        },
+      ],
+    };
 
     render(<App api={api} defaultAccountId="account_1" />);
     fireEvent.click(
@@ -1113,35 +1126,55 @@ describe("Email Hub first UI baseline", () => {
     await waitFor(() => {
       expect(api.previewAccountCsv).toHaveBeenCalledWith({ csv });
     });
+    expect(await screen.findByText("owner@gmail.com")).toBeTruthy();
+    expect(await screen.findByText("email is invalid")).toBeTruthy();
+    expect((await screen.findAllByText("需登录")).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "创建导入任务" }));
     await waitFor(() => {
       expect(api.createAccountCsvImport).toHaveBeenCalledWith({ csv });
     });
+    expect(await screen.findByText(/已创建 2 个导入任务/)).toBeTruthy();
 
+    fireEvent.click(
+      await screen.findByLabelText("Select transfer account sync@example.com"),
+    );
     fireEvent.click(screen.getByRole("button", { name: "导出安全配置" }));
     await waitFor(() => {
-      expect(api.exportAccountTransfer).toHaveBeenCalledWith();
+      expect(api.exportAccountTransfer).toHaveBeenCalledWith({
+        accountIds: ["account_1"],
+      });
     });
+
+    fireEvent.change(screen.getByLabelText("Account transfer file"), {
+      target: {
+        files: [
+          new File([JSON.stringify(transferPackage)], "transfer.json", {
+            type: "application/json",
+          }),
+        ],
+      },
+    });
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText("Account transfer package") as HTMLTextAreaElement)
+          .value,
+      ).toContain("sync@example.com");
+    });
+    expect(await screen.findByText(/已读取迁移包文件/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "导入迁移包" }));
     await waitFor(() => {
       expect(api.importAccountTransfer).toHaveBeenCalledWith({
-        package: {
-          schemaVersion: 1,
-          exportedAt: "2026-06-14T08:00:00.000Z",
-          accounts: [
-            {
-              email: "sync@example.com",
-              provider: "gmail",
-              authMethod: "oauth",
-              engineProvider: "native",
-              displayName: "Sync",
-            },
-          ],
-        },
+        package: transferPackage,
       });
     });
+    expect(await screen.findByText(/已导入 1 个账号/)).toBeTruthy();
+    const transferResult = await screen.findByLabelText("账号迁移导入结果");
+    expect(within(transferResult).getByText("sync@example.com")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开同步中心授权" }));
+    expect(await screen.findByRole("heading", { name: "同步中心" })).toBeTruthy();
   });
 
   it("loads common categories through the backend saved view route", async () => {
@@ -3891,23 +3924,96 @@ function createApiFixture(): EmailHubApi {
     })),
     previewAccountCsv: vi.fn(async () => ({
       summary: {
-        totalRows: 0,
-        ready: 0,
-        needsOAuth: 0,
+        totalRows: 3,
+        ready: 1,
+        needsOAuth: 1,
         disabled: 0,
-        invalid: 0,
+        invalid: 1,
       },
-      rows: [],
+      rows: [
+        {
+          rowNumber: 2,
+          email: "support@qq.com",
+          provider: "qq",
+          authMethod: "password" as const,
+          status: "ready" as const,
+          errors: [],
+          warnings: [],
+        },
+        {
+          rowNumber: 3,
+          email: "owner@gmail.com",
+          provider: "gmail",
+          authMethod: "oauth" as const,
+          status: "needs_oauth" as const,
+          errors: [],
+          warnings: [],
+        },
+        {
+          rowNumber: 4,
+          email: "bad",
+          provider: "qq",
+          authMethod: "password" as const,
+          status: "invalid" as const,
+          errors: ["email is invalid"],
+          warnings: [],
+        },
+      ],
     })),
     createAccountCsvImport: vi.fn(async () => ({
       summary: {
-        totalRows: 0,
-        ready: 0,
-        needsOAuth: 0,
+        totalRows: 3,
+        ready: 1,
+        needsOAuth: 1,
         disabled: 0,
-        invalid: 0,
+        invalid: 1,
       },
-      rows: [],
+      rows: [
+        {
+          rowNumber: 2,
+          email: "support@qq.com",
+          provider: "qq",
+          authMethod: "password" as const,
+          status: "ready" as const,
+          errors: [],
+          warnings: [],
+        },
+        {
+          rowNumber: 3,
+          email: "owner@gmail.com",
+          provider: "gmail",
+          authMethod: "oauth" as const,
+          status: "needs_oauth" as const,
+          errors: [],
+          warnings: [],
+        },
+        {
+          rowNumber: 4,
+          email: "bad",
+          provider: "qq",
+          authMethod: "password" as const,
+          status: "invalid" as const,
+          errors: ["email is invalid"],
+          warnings: [],
+        },
+      ],
+      createdTaskCount: 2,
+      tasks: [
+        {
+          id: "task_csv_1",
+          email: "support@qq.com",
+          provider: "qq",
+          authMethod: "password",
+          status: "pending",
+        },
+        {
+          id: "task_csv_2",
+          email: "owner@gmail.com",
+          provider: "gmail",
+          authMethod: "oauth",
+          status: "pending",
+        },
+      ],
     })),
     exportAccountTransfer: vi.fn(async () => ({
       schemaVersion: 1 as const,

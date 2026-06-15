@@ -206,9 +206,17 @@ with more than smoke-level tests.
   (`GET /api/domains/:domainId/catch-all`) in addition to the existing write
   path, and the Postgres store reads the durable `routing_rules` row without
   writing a default rule.
-- Remaining migration gap: CSV import still needs row-level preview tables and
-  OAuth follow-up actions, and account transfer still needs file import/export,
-  account selection, and a stronger reauthorization handoff.
+- Current migration UX status: Add Mail now renders backend CSV import previews
+  as row-level tables with ready/OAuth/disabled/invalid status, errors, warnings,
+  summary counts, and created task counts after execution. Account transfer can
+  select export accounts from Sync Center, export a transfer-safe JSON package,
+  import a JSON file back into the textarea, show imported reauthorization task
+  details, and offer a direct Sync Center handoff when CSV OAuth rows or
+  transfer imports require authorization.
+- Remaining migration gap: Sync Center still needs a first-class IMAP/SMTP
+  password reauthorization form for transfer/password tasks instead of routing
+  those users back through generic Add Mail copy. CSV template download and
+  row-specific OAuth start actions remain useful follow-up polish.
 
 ### 6. Frontend Wiring
 

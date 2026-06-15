@@ -688,6 +688,30 @@ export interface SyncCenterDiagnosticsInput {
   limit?: number;
 }
 
+export type AccountImportRowStatus =
+  | "ready"
+  | "needs_oauth"
+  | "disabled"
+  | "invalid";
+
+export interface AccountImportPreviewRow {
+  rowNumber: number;
+  email?: string;
+  provider?: string;
+  authMethod?: "password" | "oauth";
+  status: AccountImportRowStatus;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface AccountImportTaskDto {
+  id: string;
+  email: string;
+  provider: string;
+  authMethod: string;
+  status: string;
+}
+
 export interface AccountImportPreview {
   summary: {
     totalRows: number;
@@ -696,7 +720,12 @@ export interface AccountImportPreview {
     disabled: number;
     invalid: number;
   };
-  rows: unknown[];
+  rows: AccountImportPreviewRow[];
+}
+
+export interface AccountImportCreateResult extends AccountImportPreview {
+  createdTaskCount: number;
+  tasks: AccountImportTaskDto[];
 }
 
 export interface AccountTransferAccount {
@@ -1144,7 +1173,9 @@ export interface EmailHubApi {
     input: HermesEmailSearchQaInput,
   ): Promise<HermesEmailSearchQaResult>;
   previewAccountCsv(input: { csv: string }): Promise<AccountImportPreview>;
-  createAccountCsvImport(input: { csv: string }): Promise<AccountImportPreview>;
+  createAccountCsvImport(input: {
+    csv: string;
+  }): Promise<AccountImportCreateResult>;
   exportAccountTransfer(input?: {
     accountIds?: string[];
   }): Promise<AccountTransferPackage>;

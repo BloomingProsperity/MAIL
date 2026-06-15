@@ -24,6 +24,10 @@ import {
 import type {
   AttachmentDownload,
   AttachmentDto,
+  AccountImportCreateResult,
+  AccountImportPreview,
+  AccountImportPreviewRow,
+  AccountTransferImportResult,
   DomainAliasDto,
   DomainCatchAllMode,
   DomainCatchAllRuleDto,
@@ -1007,6 +1011,7 @@ export function App(props: AppProps = {}) {
               })
             }
             onConnected={(nextAccountId) => void handleConnectedAccount(nextAccountId)}
+            onOpenSyncCenter={() => setActiveView("sync")}
           />
         ) : null}
         {activeView === "sync" ? (
@@ -3620,6 +3625,7 @@ function AddMailPage(props: {
   providerGroupId?: AddMailProviderGroupId;
   oauthRedirect: (url: string) => void;
   onConnected?: (accountId?: string) => void;
+  onOpenSyncCenter?: () => void;
 }) {
   const [notice, setNotice] = useState("");
   const [email, setEmail] = useState("");
@@ -3642,7 +3648,15 @@ function AddMailPage(props: {
   const [providerOptions, setProviderOptions] =
     useState<ProviderOption[]>(providers);
   const [csvImportText, setCsvImportText] = useState("");
+  const [csvPreview, setCsvPreview] = useState<AccountImportPreview | undefined>();
+  const [csvImportResult, setCsvImportResult] =
+    useState<AccountImportCreateResult | undefined>();
   const [transferPackageText, setTransferPackageText] = useState("");
+  const [transferAccounts, setTransferAccounts] = useState<SyncCenterAccountDto[]>([]);
+  const [selectedTransferAccountIds, setSelectedTransferAccountIds] = useState<string[]>([]);
+  const [transferImportResult, setTransferImportResult] =
+    useState<AccountTransferImportResult | undefined>();
+  const [transferFileName, setTransferFileName] = useState("");
   const [bulkNotice, setBulkNotice] = useState("");
   const [bulkBusy, setBulkBusy] = useState("");
 
@@ -3666,6 +3680,39 @@ function AddMailPage(props: {
       .catch(() => {
         if (!cancelled) {
           setProviderOptions(providers);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [props.api]);
+
+  useEffect(() => {
+    if (!props.api) {
+      setTransferAccounts([]);
+      setSelectedTransferAccountIds([]);
+      return;
+    }
+
+    let cancelled = false;
+    props.api
+      .listSyncCenterAccounts()
+      .then((page) => {
+        if (cancelled) {
+          return;
+        }
+        setTransferAccounts(page.items);
+        setSelectedTransferAccountIds((current) =>
+          current.filter((accountId) =>
+            page.items.some((account) => account.accountId === accountId),
+          ),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTransferAccounts([]);
+          setSelectedTransferAccountIds([]);
         }
       });
 
@@ -3823,6 +3870,8 @@ function AddMailPage(props: {
     setBulkBusy("csv-preview");
     try {
       const result = await props.api.previewAccountCsv({ csv: csvImportText });
+      setCsvPreview(result);
+      setCsvImportResult(undefined);
       setBulkNotice(
         `预览完成：${result.summary.ready} 个可接入，${result.summary.needsOAuth} 个需要登录，${result.summary.invalid} 个需要修正。`,
       );
@@ -3846,8 +3895,10 @@ function AddMailPage(props: {
     setBulkBusy("csv-import");
     try {
       const result = await props.api.createAccountCsvImport({ csv: csvImportText });
+      setCsvPreview(result);
+      setCsvImportResult(result);
       setBulkNotice(
-        `已创建 ${result.summary.ready + result.summary.needsOAuth} 个导入任务。`,
+        `已创建 ${result.createdTaskCount} 个导入任务，${result.summary.needsOAuth} 个需要在同步中心继续授权。`,
       );
       props.onConnected?.();
     } catch {
@@ -3864,10 +3915,25 @@ function AddMailPage(props: {
     }
 
     setBulkBusy("transfer-export");
+    setTransferImportResult(undefined);
     try {
-      const transferPackage = await props.api.exportAccountTransfer();
+      const selectedAccountIds = selectedTransferAccountIds;
+      const transferPackage =
+        selectedAccountIds.length > 0
+          ? await props.api.exportAccountTransfer({
+              accountIds: selectedAccountIds,
+            })
+          : await props.api.exportAccountTransfer();
       setTransferPackageText(JSON.stringify(transferPackage, null, 2));
-      setBulkNotice(`已导出 ${transferPackage.accounts.length} 个账号配置，不包含密码或令牌。`);
+      const downloaded = downloadJsonFile(
+        `email-hub-transfer-${transferPackage.exportedAt.slice(0, 10)}.json`,
+        transferPackage,
+      );
+      setBulkNotice(
+        `已导出 ${transferPackage.accounts.length} 个账号配置，不包含密码或令牌。${
+          downloaded ? "迁移包文件已生成。" : "迁移包已放入文本框。"
+        }`,
+      );
     } catch {
       setBulkNotice("账号配置导出失败。");
     } finally {
@@ -3898,6 +3964,7 @@ function AddMailPage(props: {
       const result = await props.api.importAccountTransfer({
         package: transferPackage,
       });
+      setTransferImportResult(result);
       setBulkNotice(
         `已导入 ${result.importedTaskCount} 个账号，${result.reauthRequiredCount} 个需要重新授权。`,
       );
@@ -3908,6 +3975,40 @@ function AddMailPage(props: {
       setBulkBusy("");
     }
   }
+
+  async function loadTransferPackageFile(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    setBulkBusy("transfer-file");
+    try {
+      const text = await readBrowserFileText(file);
+      const transferPackage = JSON.parse(text) as AccountTransferPackage;
+      setTransferPackageText(JSON.stringify(transferPackage, null, 2));
+      setTransferFileName(file.name);
+      setTransferImportResult(undefined);
+      setBulkNotice(
+        `已读取迁移包文件：${file.name}，包含 ${transferPackage.accounts?.length ?? 0} 个账号。`,
+      );
+    } catch {
+      setBulkNotice("迁移包文件读取失败，请选择有效 JSON 文件。");
+    } finally {
+      setBulkBusy("");
+    }
+  }
+
+  function toggleTransferAccount(accountId: string, checked: boolean) {
+    setSelectedTransferAccountIds((current) =>
+      checked
+        ? [...new Set([...current, accountId])]
+        : current.filter((item) => item !== accountId),
+    );
+  }
+
+  const showSyncCenterAction =
+    (csvImportResult?.summary.needsOAuth ?? 0) > 0 ||
+    (transferImportResult?.reauthRequiredCount ?? 0) > 0;
 
   return (
     <section className="workspace-page page-scroll">
@@ -4087,8 +4188,17 @@ function AddMailPage(props: {
         <div className="custom-server-heading">
           <div>
             <h2>批量导入 / 账号转移</h2>
-            <p>CSV 会创建待处理接入任务；迁移包只保存安全配置，导入后需要重新授权。</p>
+            <p>CSV 先预览再创建任务；迁移包只保存安全配置，导入后从同步中心重新授权。</p>
           </div>
+          {showSyncCenterAction ? (
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => props.onOpenSyncCenter?.()}
+            >
+              打开同步中心授权
+            </button>
+          ) : null}
         </div>
         {bulkNotice ? (
           <div className="backend-notice" role="status">
@@ -4101,12 +4211,18 @@ function AddMailPage(props: {
             <textarea
               aria-label="Account CSV import"
               value={csvImportText}
-              placeholder="email,provider,display_name,auth_method,..."
-              onChange={(event) => setCsvImportText(event.currentTarget.value)}
+              placeholder="email,provider,auth_method,secret,display_name,labels"
+              onChange={(event) => {
+                setCsvImportText(event.currentTarget.value);
+                setCsvPreview(undefined);
+                setCsvImportResult(undefined);
+              }}
             />
           </label>
           <label>
-            <span>账号迁移包</span>
+            <span>
+              账号迁移包{transferFileName ? ` · ${transferFileName}` : ""}
+            </span>
             <textarea
               aria-label="Account transfer package"
               value={transferPackageText}
@@ -4116,6 +4232,40 @@ function AddMailPage(props: {
               }
             />
           </label>
+        </div>
+        <div className="transfer-account-picker" aria-label="迁移导出账号选择">
+          <div>
+            <strong>导出账号范围</strong>
+            <span>
+              {selectedTransferAccountIds.length > 0
+                ? `已选择 ${selectedTransferAccountIds.length} 个账号`
+                : "未选择时导出全部安全配置"}
+            </span>
+          </div>
+          <div className="transfer-account-list">
+            {transferAccounts.length > 0 ? (
+              transferAccounts.map((account) => (
+                <label key={account.accountId} className="field-toggle">
+                  <input
+                    aria-label={`Select transfer account ${account.email}`}
+                    checked={selectedTransferAccountIds.includes(account.accountId)}
+                    type="checkbox"
+                    onChange={(event) =>
+                      toggleTransferAccount(
+                        account.accountId,
+                        event.currentTarget.checked,
+                      )
+                    }
+                  />
+                  <span>
+                    {account.email} · {formatSyncStateLabel(account.syncState)}
+                  </span>
+                </label>
+              ))
+            ) : (
+              <span>连接服务后会列出可导出的账号。</span>
+            )}
+          </div>
         </div>
         <div className="inline-actions">
           <button
@@ -4142,6 +4292,17 @@ function AddMailPage(props: {
           >
             导出安全配置
           </button>
+          <label className="file-button">
+            <input
+              aria-label="Account transfer file"
+              accept="application/json,.json"
+              type="file"
+              onChange={(event) =>
+                void loadTransferPackageFile(event.currentTarget.files?.[0])
+              }
+            />
+            导入迁移包文件
+          </label>
           <button
             className="ghost-button"
             type="button"
@@ -4151,6 +4312,15 @@ function AddMailPage(props: {
             导入迁移包
           </button>
         </div>
+        {csvPreview ? (
+          <CsvImportPreviewTable
+            result={csvPreview}
+            createdTaskCount={csvImportResult?.createdTaskCount}
+          />
+        ) : null}
+        {transferImportResult ? (
+          <TransferImportResultPanel result={transferImportResult} />
+        ) : null}
       </section>
 
       {diagnostics.length > 0 ? (
@@ -4166,6 +4336,153 @@ function AddMailPage(props: {
       ) : null}
     </section>
   );
+}
+
+function CsvImportPreviewTable(props: {
+  result: AccountImportPreview;
+  createdTaskCount?: number;
+}) {
+  return (
+    <section className="migration-result-panel" aria-label="CSV 导入预览结果">
+      <div className="migration-summary-grid">
+        <p>
+          <strong>{props.result.summary.totalRows}</strong>
+          <span>总行数</span>
+        </p>
+        <p>
+          <strong>{props.result.summary.ready}</strong>
+          <span>可直接接入</span>
+        </p>
+        <p>
+          <strong>{props.result.summary.needsOAuth}</strong>
+          <span>需要登录</span>
+        </p>
+        <p>
+          <strong>{props.result.summary.invalid}</strong>
+          <span>需要修正</span>
+        </p>
+        {props.createdTaskCount !== undefined ? (
+          <p>
+            <strong>{props.createdTaskCount}</strong>
+            <span>已创建任务</span>
+          </p>
+        ) : null}
+      </div>
+      <div className="migration-table-wrap">
+        <table className="migration-table">
+          <thead>
+            <tr>
+              <th>行</th>
+              <th>邮箱</th>
+              <th>服务商</th>
+              <th>授权</th>
+              <th>状态</th>
+              <th>问题</th>
+            </tr>
+          </thead>
+          <tbody>
+            {props.result.rows.map((row) => (
+              <tr key={row.rowNumber}>
+                <td>{row.rowNumber}</td>
+                <td>{row.email ?? "未填写"}</td>
+                <td>{row.provider ?? "未识别"}</td>
+                <td>{row.authMethod === "oauth" ? "网页登录" : "专用密码"}</td>
+                <td>
+                  <span className={`migration-status status-${row.status}`}>
+                    {formatCsvImportStatus(row.status)}
+                  </span>
+                </td>
+                <td>{formatCsvImportIssues(row)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function TransferImportResultPanel(props: {
+  result: AccountTransferImportResult;
+}) {
+  return (
+    <section className="migration-result-panel" aria-label="账号迁移导入结果">
+      <div className="migration-summary-grid">
+        <p>
+          <strong>{props.result.importedTaskCount}</strong>
+          <span>已导入账号</span>
+        </p>
+        <p>
+          <strong>{props.result.reauthRequiredCount}</strong>
+          <span>需要重新授权</span>
+        </p>
+      </div>
+      <div className="migration-task-list">
+        {props.result.tasks.map((task) => (
+          <p key={task.id}>
+            <strong>{task.email}</strong>
+            <span>
+              {task.provider} · {task.authMethod === "oauth" ? "网页登录" : "专用密码"} · {task.status}
+            </span>
+          </p>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function formatCsvImportStatus(status: AccountImportPreviewRow["status"]): string {
+  if (status === "ready") return "可接入";
+  if (status === "needs_oauth") return "需登录";
+  if (status === "disabled") return "已跳过";
+  return "需修正";
+}
+
+function formatCsvImportIssues(row: AccountImportPreviewRow): string {
+  const issues = [...row.errors, ...row.warnings];
+  return issues.length > 0 ? issues.join("；") : "无";
+}
+
+async function readBrowserFileText(file: File): Promise<string> {
+  if (typeof file.text === "function") {
+    return file.text();
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("file read failed"));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsText(file);
+  });
+}
+
+function downloadJsonFile(filename: string, value: unknown): boolean {
+  if (
+    typeof document === "undefined" ||
+    typeof navigator === "undefined" ||
+    typeof URL === "undefined" ||
+    typeof URL.createObjectURL !== "function" ||
+    navigator.userAgent.toLowerCase().includes("jsdom")
+  ) {
+    return false;
+  }
+
+  const blob = new Blob([JSON.stringify(value, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+  return true;
 }
 
 function buildPresetOnboardingInput(
