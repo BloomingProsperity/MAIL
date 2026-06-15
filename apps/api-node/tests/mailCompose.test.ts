@@ -314,6 +314,150 @@ describe("mail compose service", () => {
     });
   });
 
+  it("verifies a Graph shared sender user target after base From verification", async () => {
+    const verificationCalls: unknown[] = [];
+    const marks: unknown[] = [];
+    const verified = sendIdentityCandidate({
+      verificationState: "verified",
+      enabled: true,
+      verified: true,
+      sendMailTargetMode: "me",
+      userSendMailEligible: false,
+    });
+    const targetVerified = sendIdentityCandidate({
+      verificationState: "verified",
+      enabled: true,
+      verified: true,
+      sendMailTargetMode: "users",
+      userSendMailEligible: true,
+      targetMailbox: { userPrincipalName: "shared@example.com" },
+      sentItemsBehavior: "from_mailbox",
+    });
+    const service = createMailComposeService({
+      store: createStore(),
+      createId: () => "unused",
+      now: () => new Date("2026-06-15T20:15:00.000Z"),
+      transports: {},
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [];
+        },
+        async getProviderSendIdentityCandidate() {
+          return verified;
+        },
+        async markProviderSendIdentityCandidateUserTargetVerification(input) {
+          marks.push(input);
+          return targetVerified;
+        },
+      },
+      graphSendIdentityVerifier: {
+        async sendVerification() {
+          throw new Error("not used");
+        },
+        async sendUserTargetVerification(input) {
+          verificationCalls.push(input);
+        },
+      },
+    });
+
+    const result = await service.verifyProviderSendIdentityUserTarget({
+      accountId: "acc_1",
+      candidateId: "provider:identity_1",
+      targetMailbox: "Shared@Example.com",
+    });
+
+    expect(verificationCalls).toEqual([
+      {
+        accountId: "acc_1",
+        from: { address: "team@example.com", name: "Team Inbox" },
+        to: { address: "me@example.com" },
+        targetMailbox: "shared@example.com",
+        now: "2026-06-15T20:15:00.000Z",
+      },
+    ]);
+    expect(marks).toEqual([
+      {
+        accountId: "acc_1",
+        candidateId: "provider:identity_1",
+        targetMailbox: "shared@example.com",
+        verified: true,
+        now: "2026-06-15T20:15:00.000Z",
+      },
+    ]);
+    expect(result).toEqual({
+      accountId: "acc_1",
+      candidate: targetVerified,
+      verified: true,
+    });
+  });
+
+  it("keeps a base-verified Graph sender usable when user target verification fails", async () => {
+    const marks: unknown[] = [];
+    const targetFailed = sendIdentityCandidate({
+      verificationState: "verified",
+      enabled: true,
+      verified: true,
+      sendMailTargetMode: "me",
+      userSendMailEligible: false,
+      userTargetVerificationError: "ErrorAccessDenied",
+    });
+    const service = createMailComposeService({
+      store: createStore(),
+      createId: () => "unused",
+      now: () => new Date("2026-06-15T20:20:00.000Z"),
+      transports: {},
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [];
+        },
+        async getProviderSendIdentityCandidate() {
+          return sendIdentityCandidate({
+            verificationState: "verified",
+            enabled: true,
+            verified: true,
+          });
+        },
+        async markProviderSendIdentityCandidateUserTargetVerification(input) {
+          marks.push(input);
+          return targetFailed;
+        },
+      },
+      graphSendIdentityVerifier: {
+        async sendVerification() {
+          throw new Error("not used");
+        },
+        async sendUserTargetVerification() {
+          throw Object.assign(new Error("denied"), {
+            code: "ErrorAccessDenied",
+          });
+        },
+      },
+    });
+
+    const result = await service.verifyProviderSendIdentityUserTarget({
+      accountId: "acc_1",
+      candidateId: "provider:identity_1",
+      targetMailbox: "shared@example.com",
+    });
+
+    expect(marks).toEqual([
+      {
+        accountId: "acc_1",
+        candidateId: "provider:identity_1",
+        targetMailbox: "shared@example.com",
+        verified: false,
+        verificationError: "ErrorAccessDenied",
+        now: "2026-06-15T20:20:00.000Z",
+      },
+    ]);
+    expect(result).toEqual({
+      accountId: "acc_1",
+      candidate: targetFailed,
+      verified: false,
+      errorCode: "ErrorAccessDenied",
+    });
+  });
+
   it("updates an existing draft without creating a replacement", async () => {
     const calls: unknown[] = [];
     const store = createStore({

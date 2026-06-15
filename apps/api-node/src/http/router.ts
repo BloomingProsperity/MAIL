@@ -805,6 +805,22 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (
+          mailComposeRoute.action === "verify_send_identity_user_target" &&
+          request.method === "POST"
+        ) {
+          const result =
+            await config.mailComposeService.verifyProviderSendIdentityUserTarget(
+              parseProviderSendIdentityUserTargetInput(
+                mailComposeRoute.accountId,
+                mailComposeRoute.candidateId,
+                await readRequestBody(),
+              ),
+            );
+          writeJson(response, 200, result);
+          return;
+        }
+
+        if (
           mailComposeRoute.action === "create_draft" &&
           request.method === "POST"
         ) {
@@ -3223,6 +3239,11 @@ function parseMailComposeRoute(
       accountId: string;
       candidateId: string;
     }
+  | {
+      action: "verify_send_identity_user_target";
+      accountId: string;
+      candidateId: string;
+    }
   | { action: "create_draft"; accountId: string }
   | { action: "update_draft"; accountId: string; draftId: string }
   | { action: "preview_draft"; accountId: string }
@@ -3276,6 +3297,18 @@ function parseMailComposeRoute(
       action: "verify_send_identity_candidate",
       accountId: decodeURIComponent(verifySendIdentityCandidateMatch[1]),
       candidateId: decodeURIComponent(verifySendIdentityCandidateMatch[2]),
+    };
+  }
+
+  const verifySendIdentityUserTargetMatch =
+    /^\/api\/accounts\/([^/]+)\/send-identities\/provider-candidates\/([^/]+)\/verify-user-target$/.exec(
+      url.pathname,
+    );
+  if (verifySendIdentityUserTargetMatch) {
+    return {
+      action: "verify_send_identity_user_target",
+      accountId: decodeURIComponent(verifySendIdentityUserTargetMatch[1]),
+      candidateId: decodeURIComponent(verifySendIdentityUserTargetMatch[2]),
     };
   }
 
@@ -5464,6 +5497,36 @@ function parseProviderSendIdentityCandidateType(
   }
 
   return "shared_mailbox";
+}
+
+function parseProviderSendIdentityUserTargetInput(
+  accountId: string,
+  candidateId: string,
+  body: string,
+): Parameters<MailComposeService["verifyProviderSendIdentityUserTarget"]>[0] {
+  const payload = JSON.parse(body) as {
+    targetMailbox?: unknown;
+    targetMailboxUserPrincipalName?: unknown;
+    userPrincipalName?: unknown;
+  };
+  const targetMailbox = isNonEmptyString(payload.targetMailbox)
+    ? payload.targetMailbox
+    : isNonEmptyString(payload.targetMailboxUserPrincipalName)
+      ? payload.targetMailboxUserPrincipalName
+      : isNonEmptyString(payload.userPrincipalName)
+        ? payload.userPrincipalName
+        : undefined;
+  if (!targetMailbox) {
+    throw new InvalidMailComposeRequestError(
+      "Graph target mailbox is required",
+    );
+  }
+
+  return {
+    accountId,
+    candidateId,
+    targetMailbox,
+  };
 }
 
 function parseMailComposeFrom(payload: {

@@ -781,6 +781,14 @@ export interface MailSendIdentityCandidateDto extends MailSendIdentityDto {
   enabled: boolean;
   verificationRecipient?: MailAddressDto;
   verificationError?: string;
+  sendMailTargetMode?: "me" | "users";
+  userSendMailEligible?: boolean;
+  targetMailbox?: {
+    userId?: string;
+    userPrincipalName?: string;
+  };
+  sentItemsBehavior?: "signed_in_user" | "from_mailbox";
+  userTargetVerificationError?: string;
 }
 
 export interface MailSendIdentityPage {
@@ -1238,6 +1246,16 @@ export interface EmailHubApi {
   verifyProviderSendIdentityCandidate(input: {
     accountId: string;
     candidateId: string;
+  }): Promise<{
+    accountId: string;
+    candidate: MailSendIdentityCandidateDto;
+    verified: boolean;
+    errorCode?: string;
+  }>;
+  verifyProviderSendIdentityUserTarget(input: {
+    accountId: string;
+    candidateId: string;
+    targetMailbox: string;
   }): Promise<{
     accountId: string;
     candidate: MailSendIdentityCandidateDto;
@@ -1878,6 +1896,20 @@ export function createEmailHubApi(
         baseUrl,
         `/api/accounts/${encodePath(input.accountId)}/send-identities/provider-candidates/${encodePath(input.candidateId)}/verify`,
         { method: "POST" },
+      );
+    },
+
+    verifyProviderSendIdentityUserTarget(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/send-identities/provider-candidates/${encodePath(input.candidateId)}/verify-user-target`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            targetMailbox: input.targetMailbox,
+          }),
+        },
       );
     },
 

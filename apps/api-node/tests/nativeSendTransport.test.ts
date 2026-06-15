@@ -56,6 +56,47 @@ describe("API native send transport", () => {
     });
   });
 
+  it("sends Graph shared mailbox target verification through the user endpoint", async () => {
+    const sendMail = vi.fn(async () => ({}));
+    const verifier = createGraphSendIdentityVerifier({
+      graph: { sendMail },
+    });
+
+    await verifier.sendUserTargetVerification?.({
+      accountId: "acc_1",
+      from: { address: "team@example.com", name: "Team Inbox" },
+      to: { address: "me@example.com", name: "Me" },
+      targetMailbox: "team@example.com",
+      now: "2026-06-15T20:15:00.000Z",
+    });
+
+    expect(sendMail).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      targetMailbox: "team@example.com",
+      message: {
+        subject: "Email Hub shared mailbox target verification",
+        from: {
+          emailAddress: { address: "team@example.com", name: "Team Inbox" },
+        },
+        body: {
+          contentType: "Text",
+          content: [
+            "Email Hub is verifying Outlook shared mailbox Sent Items routing.",
+            "From: team@example.com",
+            "Graph target mailbox: team@example.com",
+            "Requested at: 2026-06-15T20:15:00.000Z",
+          ].join("\n"),
+        },
+        toRecipients: [
+          {
+            emailAddress: { address: "me@example.com", name: "Me" },
+          },
+        ],
+      },
+      saveToSentItems: true,
+    });
+  });
+
   it("routes Gmail native sends through Gmail messages.send with RFC 2822 MIME", async () => {
     const sendMessage = vi.fn(async () => ({ id: "gmail_msg_1" }));
     const sendMail = vi.fn(async () => ({}));

@@ -40,6 +40,12 @@ interface SendIdentityCandidateRow extends Record<string, unknown> {
   enabled: boolean;
   account_email: string;
   verification_error: string | null;
+  target_mode: string | null;
+  user_endpoint_eligible: string | null;
+  target_mailbox_user_id: string | null;
+  target_mailbox_upn: string | null;
+  sent_items_behavior: string | null;
+  user_target_verification_error: string | null;
 }
 
 export function createPostgresSendIdentityStore(
@@ -155,7 +161,19 @@ export function createPostgresSendIdentityStore(
             provider_send_identities.enabled,
             lower(connected_accounts.email) AS account_email,
             provider_send_identities.capabilities->>'verificationError'
-              AS verification_error
+              AS verification_error,
+            provider_send_identities.capabilities->>'sendMailTargetMode'
+              AS target_mode,
+            provider_send_identities.capabilities->>'userSendMailEligible'
+              AS user_endpoint_eligible,
+            provider_send_identities.capabilities#>>'{targetMailbox,userId}'
+              AS target_mailbox_user_id,
+            provider_send_identities.capabilities#>>'{targetMailbox,userPrincipalName}'
+              AS target_mailbox_upn,
+            provider_send_identities.capabilities->>'sentItemsBehavior'
+              AS sent_items_behavior,
+            provider_send_identities.capabilities->>'userTargetVerificationError'
+              AS user_target_verification_error
           FROM provider_send_identities
           JOIN connected_accounts
             ON connected_accounts.id = provider_send_identities.account_id
@@ -253,7 +271,14 @@ export function createPostgresSendIdentityStore(
               identity_type,
               verification_state,
               enabled,
-              capabilities->>'verificationError' AS verification_error
+              capabilities->>'verificationError' AS verification_error,
+              capabilities->>'sendMailTargetMode' AS target_mode,
+              capabilities->>'userSendMailEligible' AS user_endpoint_eligible,
+              capabilities#>>'{targetMailbox,userId}' AS target_mailbox_user_id,
+              capabilities#>>'{targetMailbox,userPrincipalName}' AS target_mailbox_upn,
+              capabilities->>'sentItemsBehavior' AS sent_items_behavior,
+              capabilities->>'userTargetVerificationError'
+                AS user_target_verification_error
           )
           SELECT
             upserted.*,
@@ -294,7 +319,19 @@ export function createPostgresSendIdentityStore(
             provider_send_identities.enabled,
             lower(connected_accounts.email) AS account_email,
             provider_send_identities.capabilities->>'verificationError'
-              AS verification_error
+              AS verification_error,
+            provider_send_identities.capabilities->>'sendMailTargetMode'
+              AS target_mode,
+            provider_send_identities.capabilities->>'userSendMailEligible'
+              AS user_endpoint_eligible,
+            provider_send_identities.capabilities#>>'{targetMailbox,userId}'
+              AS target_mailbox_user_id,
+            provider_send_identities.capabilities#>>'{targetMailbox,userPrincipalName}'
+              AS target_mailbox_upn,
+            provider_send_identities.capabilities->>'sentItemsBehavior'
+              AS sent_items_behavior,
+            provider_send_identities.capabilities->>'userTargetVerificationError'
+              AS user_target_verification_error
           FROM provider_send_identities
           JOIN connected_accounts
             ON connected_accounts.id = provider_send_identities.account_id
@@ -358,7 +395,14 @@ export function createPostgresSendIdentityStore(
               identity_type,
               verification_state,
               enabled,
-              capabilities->>'verificationError' AS verification_error
+              capabilities->>'verificationError' AS verification_error,
+              capabilities->>'sendMailTargetMode' AS target_mode,
+              capabilities->>'userSendMailEligible' AS user_endpoint_eligible,
+              capabilities#>>'{targetMailbox,userId}' AS target_mailbox_user_id,
+              capabilities#>>'{targetMailbox,userPrincipalName}' AS target_mailbox_upn,
+              capabilities->>'sentItemsBehavior' AS sent_items_behavior,
+              capabilities->>'userTargetVerificationError'
+                AS user_target_verification_error
           )
           SELECT
             updated.*,
@@ -372,6 +416,108 @@ export function createPostgresSendIdentityStore(
           input.candidateId,
           input.verificationState,
           input.enabled,
+          input.verificationError ?? null,
+          input.now,
+        ],
+      );
+
+      return result.rows[0] ? rowToCandidate(result.rows[0]) : undefined;
+    },
+
+    async markProviderSendIdentityCandidateUserTargetVerification(input) {
+      const result = await client.query<SendIdentityCandidateRow>(
+        `
+          WITH updated AS (
+            UPDATE provider_send_identities
+            SET verification_state = 'verified',
+                enabled = TRUE,
+                capabilities = CASE
+                  WHEN $4::boolean THEN
+                    (
+                      capabilities -
+                      'verificationError' -
+                      'userTargetVerificationError'
+                    ) ||
+                    jsonb_build_object(
+                      'userTargetVerifiedAt', $6::text,
+                      'verificationMethod', 'graph_user_send_mail',
+                      'verifiedEndpoint', 'users',
+                      'sendMailTargetMode', 'users',
+                      'userSendMailEligible', TRUE,
+                      'targetMailbox',
+                        jsonb_build_object(
+                          CASE
+                            WHEN position('@' in $3::text) > 0
+                              THEN 'userPrincipalName'
+                            ELSE 'userId'
+                          END,
+                          $3::text
+                        ),
+                      'requiresFullAccessForUserEndpoint', TRUE,
+                      'sentItemsBehavior', 'from_mailbox'
+                    )
+                  ELSE
+                    (capabilities - 'verificationError') ||
+                    jsonb_build_object(
+                      'sendMailTargetMode', 'me',
+                      'userSendMailEligible', FALSE,
+                      'targetMailbox',
+                        jsonb_build_object(
+                          CASE
+                            WHEN position('@' in $3::text) > 0
+                              THEN 'userPrincipalName'
+                            ELSE 'userId'
+                          END,
+                          $3::text
+                        ),
+                      'requiresFullAccessForUserEndpoint', TRUE,
+                      'sentItemsBehavior', 'signed_in_user',
+                      'userTargetVerificationError', $5::text,
+                      'userTargetFailedAt', $6::text
+                    )
+                END,
+                last_seen_at = $6::timestamptz,
+                updated_at = $6::timestamptz
+            WHERE account_id = $1
+              AND provider = 'graph'
+              AND capabilities->>'explicitCandidate' = 'true'
+              AND verification_state = 'verified'
+              AND enabled = TRUE
+              AND (
+                'provider:' || id::text = $2
+                OR id::text = $2
+              )
+            RETURNING
+              'provider:' || id::text AS id,
+              account_id,
+              lower(email) AS address,
+              display_name AS name,
+              provider,
+              provider_identity_id,
+              identity_type,
+              verification_state,
+              enabled,
+              capabilities->>'verificationError' AS verification_error,
+              capabilities->>'sendMailTargetMode' AS target_mode,
+              capabilities->>'userSendMailEligible' AS user_endpoint_eligible,
+              capabilities#>>'{targetMailbox,userId}' AS target_mailbox_user_id,
+              capabilities#>>'{targetMailbox,userPrincipalName}' AS target_mailbox_upn,
+              capabilities->>'sentItemsBehavior' AS sent_items_behavior,
+              capabilities->>'userTargetVerificationError'
+                AS user_target_verification_error
+          )
+          SELECT
+            updated.*,
+            lower(connected_accounts.email) AS account_email
+          FROM updated
+          JOIN connected_accounts
+            ON connected_accounts.id = updated.account_id
+        `,
+        [
+          input.accountId,
+          input.candidateId,
+          input.targetMailbox,
+          input.verified,
           input.verificationError ?? null,
           input.now,
         ],
@@ -419,6 +565,30 @@ function rowToCandidate(row: SendIdentityCandidateRow): MailSendIdentityCandidat
     enabled: row.enabled,
     verificationRecipient: { address: row.account_email },
     ...(row.verification_error ? { verificationError: row.verification_error } : {}),
+    ...(targetMode(row.target_mode)
+      ? { sendMailTargetMode: targetMode(row.target_mode) }
+      : {}),
+    ...(row.user_endpoint_eligible
+      ? { userSendMailEligible: row.user_endpoint_eligible === "true" }
+      : {}),
+    ...(row.target_mailbox_user_id || row.target_mailbox_upn
+      ? {
+          targetMailbox: {
+            ...(row.target_mailbox_user_id
+              ? { userId: row.target_mailbox_user_id }
+              : {}),
+            ...(row.target_mailbox_upn
+              ? { userPrincipalName: row.target_mailbox_upn }
+              : {}),
+          },
+        }
+      : {}),
+    ...(sentItemsBehavior(row.sent_items_behavior)
+      ? { sentItemsBehavior: sentItemsBehavior(row.sent_items_behavior) }
+      : {}),
+    ...(row.user_target_verification_error
+      ? { userTargetVerificationError: row.user_target_verification_error }
+      : {}),
   };
 }
 
@@ -455,4 +625,24 @@ function verificationState(value: string): MailSendIdentityCandidate["verificati
   }
 
   return "unverified";
+}
+
+function targetMode(
+  value: string | null,
+): MailSendIdentityCandidate["sendMailTargetMode"] | undefined {
+  if (value === "me" || value === "users") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function sentItemsBehavior(
+  value: string | null,
+): MailSendIdentityCandidate["sentItemsBehavior"] | undefined {
+  if (value === "signed_in_user" || value === "from_mailbox") {
+    return value;
+  }
+
+  return undefined;
 }

@@ -89,21 +89,28 @@ with more than smoke-level tests.
   accepts it; `ErrorSendAsDenied` and other Graph failures mark the candidate
   failed/disabled. Graph verification records whether the identity was proven
   through `/me/sendMail` or is explicitly eligible for
-  `/users/{id | userPrincipalName}/sendMail`; API immediate native sends and
-  worker scheduled native sends both re-resolve the current verified provider
-  identity at submit time. They only target `/users/{shared}/sendMail` when the
-  identity capabilities explicitly state `sendMailTargetMode=users`,
-  `userSendMailEligible=true`, and provide a target mailbox id or UPN. Otherwise
-  they keep the safer `/me/sendMail` plus Graph `from` behavior that was
-  actually verified. Draft creation, draft updates, scheduling, API immediate
-  send, API send-now, and the worker scheduled-send path re-check the selected
-  From address against the current verified identity set before provider
-  submission. EmailEngine, native Gmail, native Graph, native SMTP, and
-  scheduled-send worker paths all carry the selected From identity; SMTP keeps
-  the authenticated account as the envelope sender while allowing the verified
-  alias in the visible From header. Gmail authorization now explicitly includes
-  `gmail.settings.basic`, and Outlook authorization plus refresh flows include
-  `Mail.Send.Shared` for shared-mailbox submissions when Exchange grants exist.
+  `/users/{id | userPrincipalName}/sendMail`. The compose panel now lets a
+  base-verified Outlook shared sender run a second target-mailbox verification
+  for Full Access/Sent Items behavior. That verification sends through the
+  requested `/users/{target}/sendMail` endpoint with `saveToSentItems=true` and
+  only then writes `sendMailTargetMode=users`, `userSendMailEligible=true`, and
+  `targetMailbox` capabilities. If the target verification fails, the From
+  identity remains usable through `/me/sendMail + from`, but the `/users` target
+  is not enabled. API immediate native sends and worker scheduled native sends
+  both re-resolve the current verified provider identity at submit time. They
+  only target `/users/{shared}/sendMail` when the identity capabilities
+  explicitly state `sendMailTargetMode=users`, `userSendMailEligible=true`, and
+  provide a target mailbox id or UPN. Otherwise they keep the safer
+  `/me/sendMail` plus Graph `from` behavior that was actually verified. Draft
+  creation, draft updates, scheduling, API immediate send, API send-now, and the
+  worker scheduled-send path re-check the selected From address against the
+  current verified identity set before provider submission. EmailEngine, native
+  Gmail, native Graph, native SMTP, and scheduled-send worker paths all carry the
+  selected From identity; SMTP keeps the authenticated account as the envelope
+  sender while allowing the verified alias in the visible From header. Gmail
+  authorization now explicitly includes `gmail.settings.basic`, and Outlook
+  authorization plus refresh flows include `Mail.Send.Shared` for
+  shared-mailbox submissions when Exchange grants exist.
 - Current threading status: reply and reply-all drafts now persist provider
   threading metadata on `email_drafts` before send. EmailEngine sends use its
   native `reference` object, Gmail native sends include both RFC 2822
@@ -115,13 +122,12 @@ with more than smoke-level tests.
   and IMAP envelope/header data. The same metadata is hydrated by worker
   scheduled-send claims, so delayed replies keep threading after retries or
   process restarts.
-- Remaining gap: chunked/object-storage uploads for larger attachments, Graph
-  `/users/{shared}/sendMail` verification UI/admin workflow for Full Access
-  Sent Items placement, deeper command semantics, and live high-volume
-  IMAP/SMTP provider smoke tests still need focused backend slices before
-  Native Engine can be promoted from parallel track to default path. Native
-  provider APIs do not provide the same idempotency guarantee as EmailEngine's
-  submit endpoint yet.
+- Remaining gap: chunked/object-storage uploads for larger attachments,
+  admin-grade Graph shared-mailbox permission diagnostics/discovery, deeper
+  command semantics, and live high-volume IMAP/SMTP provider smoke tests still
+  need focused backend slices before Native Engine can be promoted from parallel
+  track to default path. Native provider APIs do not provide the same
+  idempotency guarantee as EmailEngine's submit endpoint yet.
 
 ### 3. Hermes Single AI Entry
 
@@ -250,9 +256,9 @@ with more than smoke-level tests.
   receives only an EmailEngine provider reference it fails loudly instead of
   silently dropping the file.
 - Remaining gap: the current compose panel is intentionally compact; rich
-  editor, chunked/object-storage uploads for larger files, provider-native
-  permission discovery for shared mailbox send-as, draft-list editing outside
-  the outbox, and Sent-folder provider parity are still separate slices.
+  editor, chunked/object-storage uploads for larger files, admin diagnostics for
+  provider-native shared mailbox permissions, draft-list editing outside the
+  outbox, and deeper Sent-folder parity checks are still separate slices.
 
 ## Product References
 
@@ -267,7 +273,7 @@ with more than smoke-level tests.
 ## Immediate Delivery Order
 
 1. Expand Compose into a full production editor: rich editor, chunked/object
-   storage uploads, Graph shared-mailbox Sent Items strategy, and
+   storage uploads, admin diagnostics for Graph shared-mailbox permissions, and
    writing-style feedback for rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
    GreenMail/high-volume SMTP smoke, and tests around QQ/163/custom-domain

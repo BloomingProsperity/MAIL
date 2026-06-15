@@ -1959,6 +1959,15 @@ describe("Email Hub first UI baseline", () => {
       verificationState: "verified" as const,
       enabled: true,
     };
+    const targetVerifiedCandidate = {
+      ...verifiedCandidate,
+      sendMailTargetMode: "users" as const,
+      userSendMailEligible: true,
+      targetMailbox: {
+        userPrincipalName: "shared-mailbox@example.com",
+      },
+      sentItemsBehavior: "from_mailbox" as const,
+    };
     const verifiedIdentity = {
       id: "provider:identity_candidate",
       accountId: "account_1",
@@ -1981,6 +1990,11 @@ describe("Email Hub first UI baseline", () => {
         accountId: "account_1",
         items: [accountIdentity, verifiedIdentity],
         candidates: [verifiedCandidate],
+      })
+      .mockResolvedValueOnce({
+        accountId: "account_1",
+        items: [accountIdentity, verifiedIdentity],
+        candidates: [targetVerifiedCandidate],
       });
     vi.mocked(api.addProviderSendIdentityCandidate).mockResolvedValue(
       pendingCandidate,
@@ -1989,6 +2003,11 @@ describe("Email Hub first UI baseline", () => {
       accountId: "account_1",
       verified: true,
       candidate: verifiedCandidate,
+    });
+    vi.mocked(api.verifyProviderSendIdentityUserTarget).mockResolvedValue({
+      accountId: "account_1",
+      verified: true,
+      candidate: targetVerifiedCandidate,
     });
 
     render(<App api={api} defaultAccountId="account_1" />);
@@ -2035,6 +2054,30 @@ describe("Email Hub first UI baseline", () => {
         name: /Shared <shared@example.com> · Outlook共享邮箱/,
       }),
     ).toBeTruthy();
+
+    fireEvent.change(
+      screen.getByLabelText("Outlook shared mailbox target shared@example.com"),
+      {
+        target: { value: "shared-mailbox@example.com" },
+      },
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Verify Outlook shared mailbox target shared@example.com",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.verifyProviderSendIdentityUserTarget).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "provider:identity_candidate",
+        targetMailbox: "shared-mailbox@example.com",
+      });
+    });
+    expect(
+      await screen.findByText(/共享发件箱 Sent Items 已启用：shared-mailbox@example.com/),
+    ).toBeTruthy();
+    expect(await screen.findByText("共享发件箱已启用")).toBeTruthy();
   });
 
   it("updates the saved composed draft instead of creating duplicates", async () => {
@@ -3525,6 +3568,29 @@ function createApiFixture(): EmailHubApi {
         identityType: "shared_mailbox" as const,
         verificationState: "verified" as const,
         enabled: true,
+      },
+    })),
+    verifyProviderSendIdentityUserTarget: vi.fn(async (input) => ({
+      accountId: input.accountId,
+      verified: true,
+      candidate: {
+        id: input.candidateId,
+        accountId: input.accountId,
+        from: { address: "shared@example.com", name: "Shared" },
+        source: "provider_native" as const,
+        isDefault: false,
+        verified: true,
+        provider: "graph",
+        providerIdentityId: "shared@example.com",
+        identityType: "shared_mailbox" as const,
+        verificationState: "verified" as const,
+        enabled: true,
+        sendMailTargetMode: "users" as const,
+        userSendMailEligible: true,
+        targetMailbox: {
+          userPrincipalName: input.targetMailbox,
+        },
+        sentItemsBehavior: "from_mailbox" as const,
       },
     })),
     createComposeSeed: vi.fn(async (input) => ({

@@ -67,6 +67,14 @@ export interface MailSendIdentityCandidate extends MailSendIdentity {
   enabled: boolean;
   verificationRecipient: MailAddress;
   verificationError?: string;
+  sendMailTargetMode?: "me" | "users";
+  userSendMailEligible?: boolean;
+  targetMailbox?: {
+    userId?: string;
+    userPrincipalName?: string;
+  };
+  sentItemsBehavior?: "signed_in_user" | "from_mailbox";
+  userTargetVerificationError?: string;
 }
 
 export type MailDraftStatus =
@@ -481,6 +489,14 @@ export interface MailSendIdentityStore {
     verificationError?: string;
     now: string;
   }): Promise<MailSendIdentityCandidate | undefined>;
+  markProviderSendIdentityCandidateUserTargetVerification?(input: {
+    accountId: string;
+    candidateId: string;
+    targetMailbox: string;
+    verified: boolean;
+    verificationError?: string;
+    now: string;
+  }): Promise<MailSendIdentityCandidate | undefined>;
 }
 
 export interface MailThreadingMetadataStore {
@@ -530,6 +546,13 @@ export interface GraphSendIdentityVerifier {
     to: MailAddress;
     now: string;
   }): Promise<void>;
+  sendUserTargetVerification?(input: {
+    accountId: string;
+    from: MailAddress;
+    to: MailAddress;
+    targetMailbox: string;
+    now: string;
+  }): Promise<void>;
 }
 
 export interface MailComposeService {
@@ -549,6 +572,16 @@ export interface MailComposeService {
   verifyProviderSendIdentityCandidate(input: {
     accountId: string;
     candidateId: string;
+  }): Promise<{
+    accountId: string;
+    candidate: MailSendIdentityCandidate;
+    verified: boolean;
+    errorCode?: string;
+  }>;
+  verifyProviderSendIdentityUserTarget(input: {
+    accountId: string;
+    candidateId: string;
+    targetMailbox: string;
   }): Promise<{
     accountId: string;
     candidate: MailSendIdentityCandidate;
@@ -728,6 +761,105 @@ export function createMailComposeService(options: {
           enabled: true,
           now,
         });
+      if (!verified) {
+        throw new InvalidMailComposeRequestError("send identity candidate not found");
+      }
+
+      return {
+        accountId: input.accountId,
+        candidate: verified,
+        verified: true,
+      };
+    },
+
+    async verifyProviderSendIdentityUserTarget(input) {
+      assertNonEmpty(input.accountId);
+      assertNonEmpty(input.candidateId);
+      const targetMailbox = normalizeGraphTargetMailbox(input.targetMailbox);
+      if (
+        !options.sendIdentityStore?.getProviderSendIdentityCandidate ||
+        !options.sendIdentityStore
+          .markProviderSendIdentityCandidateUserTargetVerification
+      ) {
+        throw new InvalidMailComposeRequestError(
+          "provider send identity candidates are unavailable",
+        );
+      }
+      if (!options.graphSendIdentityVerifier?.sendUserTargetVerification) {
+        throw new InvalidMailComposeRequestError(
+          "Graph shared mailbox target verification is unavailable",
+        );
+      }
+
+      const candidate =
+        await options.sendIdentityStore.getProviderSendIdentityCandidate({
+          accountId: input.accountId,
+          candidateId: input.candidateId,
+        });
+      if (!candidate || candidate.provider !== "graph") {
+        throw new InvalidMailComposeRequestError("send identity candidate not found");
+      }
+      if (candidate.verificationState !== "verified" || !candidate.enabled) {
+        throw new InvalidMailComposeRequestError(
+          "send identity candidate must be verified first",
+        );
+      }
+      if (
+        candidate.userSendMailEligible &&
+        candidate.sendMailTargetMode === "users" &&
+        graphTargetMailboxMatches(candidate, targetMailbox)
+      ) {
+        return {
+          accountId: input.accountId,
+          candidate,
+          verified: true,
+        };
+      }
+
+      const now = isoNow(options.now);
+      try {
+        await options.graphSendIdentityVerifier.sendUserTargetVerification({
+          accountId: input.accountId,
+          from: candidate.from,
+          to: candidate.verificationRecipient,
+          targetMailbox,
+          now,
+        });
+      } catch (error) {
+        const failed =
+          await options.sendIdentityStore
+            .markProviderSendIdentityCandidateUserTargetVerification({
+              accountId: input.accountId,
+              candidateId: input.candidateId,
+              targetMailbox,
+              verified: false,
+              verificationError: providerVerificationErrorCode(error),
+              now,
+            });
+        if (!failed) {
+          throw new InvalidMailComposeRequestError(
+            "send identity candidate not found",
+          );
+        }
+        return {
+          accountId: input.accountId,
+          candidate: failed,
+          verified: false,
+          ...(failed.userTargetVerificationError
+            ? { errorCode: failed.userTargetVerificationError }
+            : {}),
+        };
+      }
+
+      const verified =
+        await options.sendIdentityStore
+          .markProviderSendIdentityCandidateUserTargetVerification({
+            accountId: input.accountId,
+            candidateId: input.candidateId,
+            targetMailbox,
+            verified: true,
+            now,
+          });
       if (!verified) {
         throw new InvalidMailComposeRequestError("send identity candidate not found");
       }
@@ -2057,6 +2189,33 @@ function normalizeGraphCandidateIdentityType(
   }
 
   throw new InvalidMailComposeRequestError("send identity type is invalid");
+}
+
+function normalizeGraphTargetMailbox(value: string): string {
+  if (typeof value !== "string") {
+    throw new InvalidMailComposeRequestError("Graph target mailbox is required");
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || /[\r\n]/.test(trimmed)) {
+    throw new InvalidMailComposeRequestError("Graph target mailbox is required");
+  }
+
+  return trimmed.includes("@") ? trimmed.toLowerCase() : trimmed;
+}
+
+function graphTargetMailboxMatches(
+  candidate: MailSendIdentityCandidate,
+  targetMailbox: string,
+): boolean {
+  const existing =
+    candidate.targetMailbox?.userId ??
+    candidate.targetMailbox?.userPrincipalName;
+  if (!existing) {
+    return false;
+  }
+
+  return existing.toLowerCase() === targetMailbox.toLowerCase();
 }
 
 function isoNow(now: (() => Date) | undefined): string {

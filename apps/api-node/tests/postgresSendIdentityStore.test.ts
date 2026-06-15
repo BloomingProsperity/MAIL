@@ -241,4 +241,70 @@ describe("Postgres send identity store", () => {
       verificationError: "ErrorSendAsDenied",
     });
   });
+
+  it("marks Graph candidates eligible for user sendMail targets only after target verification", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresSendIdentityStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "provider:identity_1",
+              account_id: "acc_1",
+              address: "team@example.com",
+              name: "Team Inbox",
+              provider: "graph",
+              provider_identity_id: "team@example.com",
+              identity_type: "shared_mailbox",
+              verification_state: "verified",
+              enabled: true,
+              account_email: "me@example.com",
+              verification_error: null,
+              target_mode: "users",
+              user_endpoint_eligible: "true",
+              target_mailbox_user_id: null,
+              target_mailbox_upn: values?.[2],
+              sent_items_behavior: "from_mailbox",
+              user_target_verification_error: null,
+            },
+          ],
+        };
+      },
+    });
+
+    const verified =
+      await store.markProviderSendIdentityCandidateUserTargetVerification?.({
+        accountId: "acc_1",
+        candidateId: "provider:identity_1",
+        targetMailbox: "team@example.com",
+        verified: true,
+        now: "2026-06-15T20:15:00.000Z",
+      });
+
+    expect(queries[0].text).toMatch(/sendMailTargetMode/i);
+    expect(queries[0].text).toMatch(/userSendMailEligible/i);
+    expect(queries[0].text).toMatch(/graph_user_send_mail/i);
+    expect(queries[0].text).toMatch(/verification_state = 'verified'/i);
+    expect(queries[0].text).toMatch(/enabled = TRUE/i);
+    expect(queries[0].values).toEqual([
+      "acc_1",
+      "provider:identity_1",
+      "team@example.com",
+      true,
+      null,
+      "2026-06-15T20:15:00.000Z",
+    ]);
+    expect(verified).toMatchObject({
+      verificationState: "verified",
+      enabled: true,
+      verified: true,
+      sendMailTargetMode: "users",
+      userSendMailEligible: true,
+      targetMailbox: {
+        userPrincipalName: "team@example.com",
+      },
+      sentItemsBehavior: "from_mailbox",
+    });
+  });
 });

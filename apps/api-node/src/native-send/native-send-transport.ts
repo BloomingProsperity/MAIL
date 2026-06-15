@@ -265,6 +265,32 @@ export function createGraphSendIdentityVerifier(input: {
         saveToSentItems: false,
       });
     },
+
+    async sendUserTargetVerification(message) {
+      await input.graph.sendMail({
+        accountId: message.accountId,
+        targetMailbox: message.targetMailbox,
+        message: {
+          subject: "Email Hub shared mailbox target verification",
+          from: { emailAddress: graphEmailAddress(message.from) },
+          body: {
+            contentType: "Text",
+            content: [
+              "Email Hub is verifying Outlook shared mailbox Sent Items routing.",
+              `From: ${message.from.address}`,
+              `Graph target mailbox: ${message.targetMailbox}`,
+              `Requested at: ${message.now}`,
+            ].join("\n"),
+          },
+          toRecipients: [
+            {
+              emailAddress: graphEmailAddress(message.to),
+            },
+          ],
+        },
+        saveToSentItems: true,
+      });
+    },
   };
 }
 

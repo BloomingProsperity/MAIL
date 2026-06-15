@@ -1708,6 +1708,52 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("verifies Graph provider send identity user targets", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        accountId: "account_1",
+        verified: true,
+        candidate: {
+          id: "provider:identity_1",
+          accountId: "account_1",
+          from: { address: "team@example.com", name: "Team Inbox" },
+          source: "provider_native",
+          isDefault: false,
+          verified: true,
+          provider: "graph",
+          providerIdentityId: "team@example.com",
+          identityType: "shared_mailbox",
+          verificationState: "verified",
+          enabled: true,
+          sendMailTargetMode: "users",
+          userSendMailEligible: true,
+          targetMailbox: {
+            userPrincipalName: "team@example.com",
+          },
+          sentItemsBehavior: "from_mailbox",
+        },
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.verifyProviderSendIdentityUserTarget({
+      accountId: "account_1",
+      candidateId: "provider:identity_1",
+      targetMailbox: "team@example.com",
+    });
+
+    expect(result.candidate.sendMailTargetMode).toBe("users");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/send-identities/provider-candidates/provider%3Aidentity_1/verify-user-target",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          targetMailbox: "team@example.com",
+        }),
+      }),
+    );
+  });
+
   it("downloads message attachments as blobs with server filenames", async () => {
     const attachmentBlob = new Blob(["hello attachment"], { type: "text/plain" });
     const fetchMock = vi.fn(async () =>

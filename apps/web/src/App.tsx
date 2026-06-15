@@ -1162,6 +1162,9 @@ function MailWorkspace(props: {
   const [graphCandidateType, setGraphCandidateType] = useState<
     "shared_mailbox" | "send_on_behalf" | "unknown"
   >("shared_mailbox");
+  const [graphTargetMailboxes, setGraphTargetMailboxes] = useState<
+    Record<string, string>
+  >({});
   const [composeTo, setComposeTo] = useState("");
   const [composeCc, setComposeCc] = useState("");
   const [composeBcc, setComposeBcc] = useState("");
@@ -1213,6 +1216,7 @@ function MailWorkspace(props: {
   useEffect(() => {
     setComposeDraftId(undefined);
     setComposeScheduledId(undefined);
+    setGraphTargetMailboxes({});
   }, [props.accountId]);
 
   useEffect(() => {
@@ -1220,6 +1224,7 @@ function MailWorkspace(props: {
       const identities = previewSendIdentities(props.accountId);
       setSendIdentities(identities);
       setSendIdentityCandidates([]);
+      setGraphTargetMailboxes({});
       setComposeFrom(identities[0]?.id ?? "");
       return;
     }
@@ -1233,6 +1238,9 @@ function MailWorkspace(props: {
         }
         setSendIdentities(page.items);
         setSendIdentityCandidates(page.candidates ?? []);
+        setGraphTargetMailboxes((current) =>
+          mergeGraphTargetMailboxValues(current, page.candidates ?? []),
+        );
         setComposeFrom((current) =>
           page.items.some((identity) => identity.id === current)
             ? current
@@ -1245,6 +1253,7 @@ function MailWorkspace(props: {
         if (alive) {
           setSendIdentities([]);
           setSendIdentityCandidates([]);
+          setGraphTargetMailboxes({});
           setComposeFrom("");
         }
       });
@@ -1286,6 +1295,9 @@ function MailWorkspace(props: {
     const page = await props.api.listSendIdentities({ accountId: props.accountId });
     setSendIdentities(page.items);
     setSendIdentityCandidates(page.candidates ?? []);
+    setGraphTargetMailboxes((current) =>
+      mergeGraphTargetMailboxValues(current, page.candidates ?? []),
+    );
     setComposeFrom((current) =>
       page.items.some((identity) => identity.id === preferredId)
         ? preferredId!
@@ -1335,6 +1347,10 @@ function MailWorkspace(props: {
       setSendIdentityCandidates((current) =>
         upsertSendIdentityCandidate(current, candidate),
       );
+      setGraphTargetMailboxes((current) => ({
+        ...current,
+        [candidate.id]: candidateTargetMailboxValue(candidate),
+      }));
       setComposeNotice(`共享发件人待验证：${candidate.from.address}`);
     } catch {
       setComposeNotice("共享发件人添加失败。");
@@ -1370,6 +1386,55 @@ function MailWorkspace(props: {
       }
     } catch {
       setComposeNotice("共享发件人验证失败。");
+    } finally {
+      setComposeBusy(false);
+    }
+  }
+
+  async function verifyGraphSendIdentityUserTarget(
+    candidate: MailSendIdentityCandidateDto,
+  ) {
+    if (!props.api) {
+      setComposeNotice("发件身份服务暂时不可用。");
+      return;
+    }
+    if (candidate.verificationState !== "verified" || !candidate.enabled) {
+      setComposeNotice("请先完成 Outlook 共享 From 验证。");
+      return;
+    }
+
+    const targetMailbox =
+      graphTargetMailboxes[candidate.id]?.trim() ??
+      candidateTargetMailboxValue(candidate).trim();
+    if (!targetMailbox) {
+      setComposeNotice("请填写 Outlook 共享邮箱目标。");
+      return;
+    }
+
+    setComposeBusy(true);
+    try {
+      const result = await props.api.verifyProviderSendIdentityUserTarget({
+        accountId: props.accountId,
+        candidateId: candidate.id,
+        targetMailbox,
+      });
+      setSendIdentityCandidates((current) =>
+        upsertSendIdentityCandidate(current, result.candidate),
+      );
+      setGraphTargetMailboxes((current) => ({
+        ...current,
+        [result.candidate.id]: candidateTargetMailboxValue(result.candidate),
+      }));
+      if (result.verified) {
+        await refreshSendIdentityState(result.candidate.id);
+        setComposeNotice(`共享发件箱 Sent Items 已启用：${targetMailbox}`);
+      } else {
+        setComposeNotice(
+          `共享发件箱目标验证失败：${result.errorCode ?? "权限不足"}`,
+        );
+      }
+    } catch {
+      setComposeNotice("共享发件箱目标验证失败。");
     } finally {
       setComposeBusy(false);
     }
@@ -2087,25 +2152,67 @@ function MailWorkspace(props: {
               <div className="provider-candidate-list">
                 {sendIdentityCandidates.map((candidate) => (
                   <div className="provider-candidate-row" key={candidate.id}>
-                    <span>
-                      {candidate.from.name
-                        ? `${candidate.from.name} <${candidate.from.address}>`
-                        : candidate.from.address}
-                    </span>
-                    <strong>{formatSendIdentityCandidateState(candidate)}</strong>
-                    <button
-                      className="tiny-button"
-                      type="button"
-                      aria-label={`Verify Outlook shared sender ${candidate.from.address}`}
-                      disabled={
-                        composeBusy ||
-                        (candidate.verificationState === "verified" &&
-                          candidate.enabled)
-                      }
-                      onClick={() => void verifyGraphSendIdentityCandidate(candidate)}
-                    >
-                      验证
-                    </button>
+                    <div className="provider-candidate-main">
+                      <span>
+                        {candidate.from.name
+                          ? `${candidate.from.name} <${candidate.from.address}>`
+                          : candidate.from.address}
+                      </span>
+                      <strong>{formatSendIdentityCandidateState(candidate)}</strong>
+                    </div>
+                    <label className="provider-target-field">
+                      <span>目标邮箱</span>
+                      <input
+                        aria-label={`Outlook shared mailbox target ${candidate.from.address}`}
+                        value={
+                          graphTargetMailboxes[candidate.id] ??
+                          candidateTargetMailboxValue(candidate)
+                        }
+                        disabled={
+                          composeBusy ||
+                          candidate.verificationState !== "verified" ||
+                          !candidate.enabled
+                        }
+                        onChange={(event) =>
+                          setGraphTargetMailboxes((current) => ({
+                            ...current,
+                            [candidate.id]: event.target.value,
+                          }))
+                        }
+                        placeholder={candidate.from.address}
+                      />
+                    </label>
+                    <strong>{formatSendIdentityTargetState(candidate)}</strong>
+                    <div className="provider-candidate-actions">
+                      <button
+                        className="tiny-button"
+                        type="button"
+                        aria-label={`Verify Outlook shared sender ${candidate.from.address}`}
+                        disabled={
+                          composeBusy ||
+                          (candidate.verificationState === "verified" &&
+                            candidate.enabled)
+                        }
+                        onClick={() => void verifyGraphSendIdentityCandidate(candidate)}
+                      >
+                        验证 From
+                      </button>
+                      <button
+                        className="tiny-button"
+                        type="button"
+                        aria-label={`Verify Outlook shared mailbox target ${candidate.from.address}`}
+                        disabled={
+                          composeBusy ||
+                          candidate.verificationState !== "verified" ||
+                          !candidate.enabled
+                        }
+                        onClick={() =>
+                          void verifyGraphSendIdentityUserTarget(candidate)
+                        }
+                      >
+                        验证共享箱
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2757,6 +2864,47 @@ function formatSendIdentityCandidateState(
     return "待验证";
   }
   return "未验证";
+}
+
+function formatSendIdentityTargetState(
+  candidate: MailSendIdentityCandidateDto,
+): string {
+  if (
+    candidate.sendMailTargetMode === "users" &&
+    candidate.userSendMailEligible
+  ) {
+    return "共享发件箱已启用";
+  }
+  if (candidate.userTargetVerificationError) {
+    return `目标失败 ${candidate.userTargetVerificationError}`;
+  }
+  if (candidate.verificationState === "verified" && candidate.enabled) {
+    return "可选目标邮箱";
+  }
+  return "先验证 From";
+}
+
+function candidateTargetMailboxValue(
+  candidate: MailSendIdentityCandidateDto,
+): string {
+  return (
+    candidate.targetMailbox?.userPrincipalName ??
+    candidate.targetMailbox?.userId ??
+    candidate.from.address
+  );
+}
+
+function mergeGraphTargetMailboxValues(
+  current: Record<string, string>,
+  candidates: MailSendIdentityCandidateDto[],
+): Record<string, string> {
+  const next = { ...current };
+  for (const candidate of candidates) {
+    if (!next[candidate.id]) {
+      next[candidate.id] = candidateTargetMailboxValue(candidate);
+    }
+  }
+  return next;
 }
 
 function providerNativeIdentityLabel(identity: MailSendIdentityDto): string {

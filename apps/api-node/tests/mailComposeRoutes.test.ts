@@ -262,6 +262,81 @@ describe("mail compose routes", () => {
     );
   });
 
+  it("verifies a Graph provider send identity user target through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async listSendIdentities() {
+        throw new Error("not used");
+      },
+      async verifyProviderSendIdentityUserTarget(input: unknown) {
+        calls.push(input);
+        return {
+          accountId: "acc_1",
+          verified: true,
+          candidate: {
+            id: "provider:identity_1",
+            accountId: "acc_1",
+            from: { address: "team@example.com", name: "Team Inbox" },
+            source: "provider_native",
+            isDefault: false,
+            verified: true,
+            provider: "graph",
+            providerIdentityId: "team@example.com",
+            identityType: "shared_mailbox",
+            verificationState: "verified",
+            enabled: true,
+            sendMailTargetMode: "users",
+            userSendMailEligible: true,
+            targetMailbox: {
+              userPrincipalName: "team@example.com",
+            },
+            sentItemsBehavior: "from_mailbox",
+          },
+        };
+      },
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/send-identities/provider-candidates/${encodeURIComponent("provider:identity_1")}/verify-user-target`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              targetMailbox: "team@example.com",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          accountId: "acc_1",
+          verified: true,
+          candidate: {
+            id: "provider:identity_1",
+            sendMailTargetMode: "users",
+            userSendMailEligible: true,
+          },
+        });
+        expect(calls).toEqual([
+          {
+            accountId: "acc_1",
+            candidateId: "provider:identity_1",
+            targetMailbox: "team@example.com",
+          },
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
   it("creates a draft through the compose service", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {

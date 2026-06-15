@@ -585,7 +585,7 @@ h2 {
 
 .provider-candidate-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(128px, 0.8fr) auto auto;
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -595,7 +595,13 @@ h2 {
   background: var(--bg-soft);
 }
 
-.provider-candidate-row span {
+.provider-candidate-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.provider-candidate-main span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -611,6 +617,26 @@ h2 {
   white-space: nowrap;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.provider-target-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.provider-target-field span {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.provider-candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
 }
 
 .compose-schedule-row {
@@ -2050,12 +2076,11 @@ h2 {
   }
 
   .provider-candidate-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .provider-candidate-row .tiny-button {
-    grid-column: 1 / -1;
-    justify-self: flex-start;
+  .provider-candidate-actions {
+    justify-content: flex-start;
   }
 
   .outbox-actions {
