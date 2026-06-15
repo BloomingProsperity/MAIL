@@ -280,6 +280,62 @@ describe("mail compose service", () => {
     ]);
   });
 
+  it("records Hermes rewrite polish feedback when saving a manual draft", async () => {
+    const feedbackCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async createDraft(input) {
+          return {
+            id: input.id,
+            accountId: input.accountId,
+            to: input.to,
+            cc: input.cc,
+            bcc: input.bcc,
+            subject: input.subject,
+            bodyText: input.bodyText,
+            status: "draft",
+            source: input.source,
+            hermesSkillRunId: input.hermesSkillRunId,
+            hermesDraftText: input.hermesDraftText,
+            createdAt: input.now,
+            updatedAt: input.now,
+          };
+        },
+      }),
+      createId: () => "draft_1",
+      transports: {},
+      now: () => new Date("2026-06-13T08:30:00.000Z"),
+      hermesDraftFeedbackStore: {
+        async recordDraftFeedback(input) {
+          feedbackCalls.push(input);
+          return { feedbackId: "feedback_1", learned: true };
+        },
+      },
+    });
+
+    await service.createDraft({
+      accountId: "acc_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Launch plan",
+      bodyText: "Hi Lina,\n\nPlease review the launch plan today.",
+      source: "manual",
+      hermesSkillRunId: "run_rewrite_1",
+      hermesDraftText:
+        "Hi Lina,\n\nPlease review the launch plan today and let me know if anything is missing.",
+    });
+
+    expect(feedbackCalls).toEqual([
+      {
+        skillRunId: "run_rewrite_1",
+        draftText:
+          "Hi Lina,\n\nPlease review the launch plan today and let me know if anything is missing.",
+        finalText: "Hi Lina,\n\nPlease review the launch plan today.",
+        subject: "Launch plan",
+        recipientEmail: "lina@example.com",
+      },
+    ]);
+  });
+
   it("resolves forwarded attachment refs before storing a draft", async () => {
     const contentBase64 = Buffer.from("forwarded bytes").toString("base64");
     const storeCalls: unknown[] = [];

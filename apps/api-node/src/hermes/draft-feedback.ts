@@ -28,9 +28,14 @@ interface CreatePostgresHermesDraftFeedbackStoreOptions {
 interface HermesSkillRunRow extends Record<string, unknown> {
   id: string;
   skill_id: string;
+  input?: unknown;
+  output?: unknown;
 }
 
-type HermesDraftFeedbackSkillId = "reply_draft" | "quick_reply";
+type HermesDraftFeedbackSkillId =
+  | "reply_draft"
+  | "quick_reply"
+  | "rewrite_polish";
 
 interface DraftRevisionAnalysis {
   draftWordCount: number;
@@ -46,13 +51,18 @@ export function createPostgresHermesDraftFeedbackStore(
   return {
     async recordDraftFeedback(input) {
       return withTransaction(client, async (tx) => {
-        const skillRun = await loadEditableReplyRun(tx, input.skillRunId);
+        const skillRun = await loadEditableFeedbackRun(tx, input.skillRunId);
         if (!skillRun) {
           return undefined;
         }
 
         const normalizedInput = normalizeFeedbackInput(input);
-        const analysis = analyzeDraftRevision(input.draftText, input.finalText);
+        const acceptedRewritePolish =
+          skillRun.skill_id === "rewrite_polish" &&
+          textsEqual(normalizedInput.draftText, normalizedInput.finalText);
+        const analysis = acceptedRewritePolish
+          ? analyzeAcceptedRewritePolish(skillRun, normalizedInput)
+          : analyzeDraftRevision(input.draftText, input.finalText);
         const feedbackId = options.createId();
         await insertDraftFeedback(tx, {
           id: feedbackId,
@@ -61,7 +71,7 @@ export function createPostgresHermesDraftFeedbackStore(
           analysis,
         });
 
-        if (textsEqual(input.draftText, input.finalText)) {
+        if (textsEqual(input.draftText, input.finalText) && !acceptedRewritePolish) {
           return {
             feedbackId,
             skillRunId: input.skillRunId,
@@ -73,6 +83,7 @@ export function createPostgresHermesDraftFeedbackStore(
         await insertWritingStyleMemory(tx, {
           id: memoryId,
           skillId: skillRun.skill_id,
+          skillRun,
           feedbackId,
           input: normalizedInput,
           analysis,
@@ -89,13 +100,15 @@ export function createPostgresHermesDraftFeedbackStore(
   };
 }
 
-async function loadEditableReplyRun(
+async function loadEditableFeedbackRun(
   client: Queryable,
   skillRunId: string,
 ): Promise<(HermesSkillRunRow & { skill_id: HermesDraftFeedbackSkillId }) | undefined> {
   const result = await client.query<HermesSkillRunRow>(
     `
       SELECT id, skill_id
+           , input
+           , output
       FROM hermes_skill_runs
       WHERE id = $1
       LIMIT 1
@@ -103,7 +116,9 @@ async function loadEditableReplyRun(
     [skillRunId],
   );
   const row = result.rows[0];
-  return row?.skill_id === "reply_draft" || row?.skill_id === "quick_reply"
+  return row?.skill_id === "reply_draft" ||
+    row?.skill_id === "quick_reply" ||
+    row?.skill_id === "rewrite_polish"
     ? (row as HermesSkillRunRow & { skill_id: HermesDraftFeedbackSkillId })
     : undefined;
 }
@@ -148,6 +163,7 @@ async function insertWritingStyleMemory(
   input: {
     id: string;
     skillId: HermesDraftFeedbackSkillId;
+    skillRun: HermesSkillRunRow & { skill_id: HermesDraftFeedbackSkillId };
     feedbackId: string;
     input: HermesDraftFeedbackInput;
     analysis: DraftRevisionAnalysis;
@@ -175,10 +191,16 @@ async function insertWritingStyleMemory(
         scope: memoryScopeForFeedback(input.input),
         subject: input.input.subject,
         recipientEmail: input.input.recipientEmail,
+        ...(input.skillId === "rewrite_polish"
+          ? {
+              action: rewritePolishAction(input.skillRun),
+              originalText: rewritePolishOriginalText(input.skillRun),
+            }
+          : {}),
         preference: input.analysis.preference,
         changes: input.analysis.changes,
         example: {
-          before: input.input.draftText,
+          before: memoryExampleBefore(input.input, input.skillRun),
           after: input.input.finalText,
         },
       }),
@@ -214,6 +236,23 @@ export function analyzeDraftRevision(
     finalWordCount,
     changes,
     preference: preferenceFromChanges(changes),
+  };
+}
+
+function analyzeAcceptedRewritePolish(
+  skillRun: HermesSkillRunRow,
+  input: HermesDraftFeedbackInput,
+): DraftRevisionAnalysis {
+  const before = rewritePolishOriginalText(skillRun) ?? input.draftText;
+  const action = rewritePolishAction(skillRun);
+  return {
+    draftWordCount: countWords(before),
+    finalWordCount: countWords(input.finalText),
+    changes: ["accepted_rewrite_polish"],
+    preference:
+      action === "polish"
+        ? "The user accepted Hermes polished wording; prefer similarly clear, polished phrasing for future drafts."
+        : "The user accepted Hermes rewritten wording; prefer similar wording for future drafts.",
   };
 }
 
@@ -256,6 +295,9 @@ function preferenceFromChanges(changes: string[]): string {
 }
 
 function memoryConfidence(analysis: DraftRevisionAnalysis): number {
+  if (analysis.changes.includes("accepted_rewrite_polish")) {
+    return 0.7;
+  }
   return analysis.changes.includes("shortened_reply") ||
     analysis.changes.includes("expanded_reply")
     ? 0.8
@@ -276,9 +318,38 @@ function memoryScopeForFeedback(input: HermesDraftFeedbackInput): string {
   return input.recipientEmail ? `recipient:${input.recipientEmail}` : "global";
 }
 
+function memoryExampleBefore(
+  input: HermesDraftFeedbackInput,
+  skillRun: HermesSkillRunRow,
+): string {
+  return skillRun.skill_id === "rewrite_polish"
+    ? rewritePolishOriginalText(skillRun) ?? input.draftText
+    : input.draftText;
+}
+
+function rewritePolishOriginalText(
+  skillRun: HermesSkillRunRow,
+): string | undefined {
+  const input = recordFromUnknown(skillRun.input);
+  const text = input?.text;
+  return typeof text === "string" && text.trim() ? text : undefined;
+}
+
+function rewritePolishAction(skillRun: HermesSkillRunRow): string | undefined {
+  const input = recordFromUnknown(skillRun.input);
+  const action = input?.action;
+  return typeof action === "string" && action.trim() ? action : undefined;
+}
+
 function normalizeRecipientEmail(value: string | undefined): string | undefined {
   const trimmed = value?.trim().toLowerCase();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function compactObject<T extends Record<string, unknown>>(value: T): T {

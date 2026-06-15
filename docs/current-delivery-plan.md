@@ -109,6 +109,13 @@ with more than smoke-level tests.
   prompt output parse failure.
 - Tests: provider catalog/probe, runtime config, audit log, memory context,
   each skill with preview-only assertions.
+- Current writing-style status: Hermes reply drafts, quick replies, and
+  rewrite/polish results now feed the same explicit final-edit feedback path.
+  Saving, sending, scheduling, or updating a Hermes-polished compose draft
+  carries the `skillRunId` and Hermes draft text into compose persistence; the
+  feedback store writes `writing_style_profile` memories when the user edits
+  the result and records accepted rewrite/polish output as positive style
+  preference without exposing draft body outside Hermes memory/audit tables.
 
 ### 4. Mail Organization
 
@@ -179,7 +186,8 @@ with more than smoke-level tests.
   reschedule. API client route tests and App behavior tests cover the full
   create/send/schedule/list/edit/reschedule/send-now/cancel flow plus send-as,
   Cc/Bcc draft payloads, editable Hermes quick
-  replies, editable Hermes polishing, backend-generated reply/reply-all/forward
+  replies, editable Hermes polishing with writing-style feedback,
+  backend-generated reply/reply-all/forward
   seeds, and backend compose preview.
 - Current backend status: outbox listing now returns active queue items only
   (`scheduled`, `queued`, `sending`, `failed`) instead of mixing terminal sent,

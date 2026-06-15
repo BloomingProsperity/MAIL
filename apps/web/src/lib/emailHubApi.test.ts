@@ -1478,6 +1478,8 @@ describe("emailHubApi", () => {
       source: "reply",
       replyToMessageId: "message_1",
       sourceMessageId: "message_1",
+      hermesSkillRunId: "run_rewrite_1",
+      hermesDraftText: "Thanks, I will check this today.",
       attachments: [
         {
           id: "upload_1",
@@ -1506,6 +1508,8 @@ describe("emailHubApi", () => {
           source: "reply",
           replyToMessageId: "message_1",
           sourceMessageId: "message_1",
+          hermesSkillRunId: "run_rewrite_1",
+          hermesDraftText: "Thanks, I will check this today.",
           attachments: [
             {
               id: "upload_1",
@@ -1556,6 +1560,8 @@ describe("emailHubApi", () => {
       bodyText: "Updated body",
       source: "reply",
       replyToMessageId: "message_1",
+      hermesSkillRunId: "run_rewrite_1",
+      hermesDraftText: "Hermes polished body",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -1568,6 +1574,8 @@ describe("emailHubApi", () => {
           bodyText: "Updated body",
           source: "reply",
           replyToMessageId: "message_1",
+          hermesSkillRunId: "run_rewrite_1",
+          hermesDraftText: "Hermes polished body",
         }),
       }),
     );
@@ -1888,6 +1896,8 @@ describe("emailHubApi", () => {
       to: [{ address: "lina@example.com" }],
       subject: "Updated scheduled subject",
       bodyText: "Updated scheduled body",
+      hermesSkillRunId: "run_rewrite_1",
+      hermesDraftText: "Hermes scheduled body",
       attachments: [
         {
           id: "upload_1",
@@ -1915,6 +1925,8 @@ describe("emailHubApi", () => {
           to: [{ address: "lina@example.com" }],
           subject: "Updated scheduled subject",
           bodyText: "Updated scheduled body",
+          hermesSkillRunId: "run_rewrite_1",
+          hermesDraftText: "Hermes scheduled body",
           attachments: [
             {
               id: "upload_1",

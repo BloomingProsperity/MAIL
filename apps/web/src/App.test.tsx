@@ -2316,6 +2316,95 @@ describe("Email Hub first UI baseline", () => {
         subject: "Launch plan",
         bodyText: "Hi Lina,\n\nPlease review the launch plan today.",
         source: "manual",
+        hermesSkillRunId: "run_rewrite_1",
+        hermesDraftText: "Hi Lina,\n\nPlease review the launch plan today.",
+      });
+    });
+  });
+
+  it("keeps the Hermes polished text when the user edits before saving", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "please review launch plan" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Polish composed draft with Hermes",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.rewritePolishDraft).toHaveBeenCalled();
+    });
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Hi Lina,\n\nPlease review the launch plan today. Thanks." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "Hi Lina,\n\nPlease review the launch plan today. Thanks.",
+        source: "manual",
+        hermesSkillRunId: "run_rewrite_1",
+        hermesDraftText: "Hi Lina,\n\nPlease review the launch plan today.",
+      });
+    });
+  });
+
+  it("sends Hermes-polished composed drafts with rewrite metadata", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "please review launch plan" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Polish composed draft with Hermes",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.rewritePolishDraft).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "Hi Lina,\n\nPlease review the launch plan today.",
+        source: "manual",
+        hermesSkillRunId: "run_rewrite_1",
+        hermesDraftText: "Hi Lina,\n\nPlease review the launch plan today.",
+      });
+    });
+    await waitFor(() => {
+      expect(api.sendMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_1",
       });
     });
   });

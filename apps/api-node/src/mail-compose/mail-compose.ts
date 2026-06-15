@@ -1818,7 +1818,6 @@ async function recordHermesDraftFeedback(
 ): Promise<void> {
   if (
     !store ||
-    draft.source !== "hermes_reply" ||
     !draft.hermesSkillRunId ||
     !draft.hermesDraftText ||
     !draft.bodyText

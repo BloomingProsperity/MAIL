@@ -1731,6 +1731,9 @@ function MailWorkspace(props: {
         tone: "clear professional",
       });
       setComposeBody(result.rewrittenText);
+      setComposeHermesSkillRunId(result.skillRunId);
+      setComposeHermesDraftText(result.rewrittenText);
+      setComposePreview(undefined);
       setComposeNotice(`Hermes 已润色：${result.skillRunId}`);
     } catch {
       setComposeNotice("Hermes 润色暂时不可用。");

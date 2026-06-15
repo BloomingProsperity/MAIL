@@ -141,6 +141,136 @@ describe("postgres Hermes draft feedback store", () => {
     });
   });
 
+  it("records edited rewrite polish drafts as writing style feedback", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const ids = ["feedback_1", "memory_1"];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("FROM hermes_skill_runs")) {
+          return { rows: [{ id: "run_rewrite_1", skill_id: "rewrite_polish" }] };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresHermesDraftFeedbackStore(client, {
+      createId: () => ids.shift() ?? "unexpected",
+    });
+
+    const result = await store.recordDraftFeedback({
+      skillRunId: "run_rewrite_1",
+      draftText:
+        "Hi Lina,\n\nPlease review the launch plan today and let me know if anything is missing.\n\nBest,\nHua",
+      finalText: "Hi Lina,\n\nPlease review the launch plan today.\n\nHua",
+      subject: "Launch plan",
+      recipientEmail: "lina@example.com",
+    });
+
+    const feedbackQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO hermes_feedback"),
+    );
+    expect(feedbackQuery?.values).toMatchObject([
+      "feedback_1",
+      "run_rewrite_1",
+      "rewrite_polish.final_edit",
+      {
+        source: "rewrite_polish_feedback",
+        subject: "Launch plan",
+        recipientEmail: "lina@example.com",
+      },
+    ]);
+    const memoryQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO hermes_memories"),
+    );
+    expect(memoryQuery?.values?.[3]).toMatchObject({
+      source: "rewrite_polish_feedback",
+      feedbackId: "feedback_1",
+      skillRunId: "run_rewrite_1",
+      scope: "recipient:lina@example.com",
+      preference:
+        "Prefer shorter reply drafts with less extra phrasing. Avoid adding a formal sign-off unless the user wrote one.",
+    });
+    expect(result).toEqual({
+      feedbackId: "feedback_1",
+      skillRunId: "run_rewrite_1",
+      learned: true,
+      memoryId: "memory_1",
+    });
+  });
+
+  it("records accepted rewrite polish output as writing style memory", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const ids = ["feedback_1", "memory_1"];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("FROM hermes_skill_runs")) {
+          return {
+            rows: [
+              {
+                id: "run_rewrite_1",
+                skill_id: "rewrite_polish",
+                input: {
+                  text: "please review launch plan",
+                  action: "polish",
+                },
+                output: {
+                  rewrittenText:
+                    "Hi Lina,\n\nPlease review the launch plan today.",
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresHermesDraftFeedbackStore(client, {
+      createId: () => ids.shift() ?? "unexpected",
+    });
+
+    const result = await store.recordDraftFeedback({
+      skillRunId: "run_rewrite_1",
+      draftText: "Hi Lina,\n\nPlease review the launch plan today.",
+      finalText: "Hi Lina,\n\nPlease review the launch plan today.",
+      subject: "Launch plan",
+      recipientEmail: "lina@example.com",
+    });
+
+    const memoryQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO hermes_memories"),
+    );
+    expect(memoryQuery?.values).toEqual([
+      "memory_1",
+      "writing_style_profile",
+      "recipient:lina@example.com",
+      {
+        source: "rewrite_polish_feedback",
+        feedbackId: "feedback_1",
+        skillRunId: "run_rewrite_1",
+        scope: "recipient:lina@example.com",
+        subject: "Launch plan",
+        recipientEmail: "lina@example.com",
+        action: "polish",
+        originalText: "please review launch plan",
+        preference:
+          "The user accepted Hermes polished wording; prefer similarly clear, polished phrasing for future drafts.",
+        changes: ["accepted_rewrite_polish"],
+        example: {
+          before: "please review launch plan",
+          after: "Hi Lina,\n\nPlease review the launch plan today.",
+        },
+      },
+      0.7,
+    ]);
+    expect(result).toEqual({
+      feedbackId: "feedback_1",
+      skillRunId: "run_rewrite_1",
+      learned: true,
+      memoryId: "memory_1",
+    });
+  });
+
   it("scopes learned writing style to the recipient when feedback includes a recipient email", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const ids = ["feedback_1", "memory_1"];
