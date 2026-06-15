@@ -42,6 +42,75 @@ afterEach(async () => {
 });
 
 describe("mail compose routes", () => {
+  it("lists account send identities through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async listSendIdentities(input: unknown) {
+        calls.push(input);
+        return {
+          accountId: "acc_1",
+          items: [
+            {
+              id: "account:acc_1",
+              accountId: "acc_1",
+              from: { address: "me@example.com", name: "Me" },
+              source: "account",
+              isDefault: true,
+              verified: true,
+            },
+            {
+              id: "alias:alias_1",
+              accountId: "acc_1",
+              from: { address: "support@demo.site" },
+              source: "domain_alias",
+              isDefault: false,
+              verified: true,
+            },
+          ],
+        };
+      },
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/send-identities`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+          accountId: "acc_1",
+          items: [
+            {
+              id: "account:acc_1",
+              accountId: "acc_1",
+              from: { address: "me@example.com", name: "Me" },
+              source: "account",
+              isDefault: true,
+              verified: true,
+            },
+            {
+              id: "alias:alias_1",
+              accountId: "acc_1",
+              from: { address: "support@demo.site" },
+              source: "domain_alias",
+              isDefault: false,
+              verified: true,
+            },
+          ],
+        });
+        expect(calls).toEqual([{ accountId: "acc_1" }]);
+      },
+      { mailComposeService },
+    );
+  });
+
   it("creates a draft through the compose service", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {
@@ -74,6 +143,7 @@ describe("mail compose routes", () => {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
+              from: { address: "support@demo.site", name: "Support" },
               to: [{ address: "lina@example.com", name: "Lina" }],
               subject: "Launch confirmation",
               bodyText: "Looks good.",
@@ -91,6 +161,7 @@ describe("mail compose routes", () => {
         expect(calls).toEqual([
           {
             accountId: "acc_1",
+            from: { address: "support@demo.site", name: "Support" },
             to: [{ address: "lina@example.com", name: "Lina" }],
             cc: [],
             bcc: [],

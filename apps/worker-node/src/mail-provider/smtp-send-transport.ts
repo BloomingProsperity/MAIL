@@ -266,11 +266,12 @@ function mailOptions(
   settings: SmtpAccountSendSettings,
   message: Parameters<ScheduledSendTransport["submitMessage"]>[0],
 ): SendMailOptions {
+  const headerFrom = message.from ?? {
+    address: settings.fromAddress,
+    ...(settings.fromName ? { name: settings.fromName } : {}),
+  };
   return {
-    from: addressValue({
-      address: settings.fromAddress,
-      ...(settings.fromName ? { name: settings.fromName } : {}),
-    }),
+    from: addressValue(headerFrom),
     to: addressList(message.to),
     ...(message.cc.length > 0 ? { cc: addressList(message.cc) } : {}),
     ...(message.bcc.length > 0 ? { bcc: addressList(message.bcc) } : {}),

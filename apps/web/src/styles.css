@@ -523,6 +523,7 @@ h2 {
 }
 
 .compose-panel input,
+.compose-panel select,
 .compose-panel textarea,
 .outbox-row input {
   width: 100%;
@@ -535,6 +536,7 @@ h2 {
 }
 
 .compose-panel input,
+.compose-panel select,
 .outbox-row input {
   height: 34px;
   padding: 0 9px;
@@ -547,6 +549,7 @@ h2 {
 }
 
 .compose-panel input:focus,
+.compose-panel select:focus,
 .compose-panel textarea:focus,
 .outbox-row input:focus {
   border-color: var(--primary-border);

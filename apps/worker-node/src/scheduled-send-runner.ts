@@ -14,6 +14,7 @@ export interface ScheduledSendJob {
   draftId: string;
   engineProvider: ScheduledSendEngineProvider;
   nativeProvider?: NativeProvider;
+  from?: MailAddress;
   to: MailAddress[];
   cc: MailAddress[];
   bcc: MailAddress[];
@@ -52,6 +53,7 @@ export interface ScheduledSendTransport {
     accountId: string;
     draftId: string;
     idempotencyKey: string;
+    from?: MailAddress;
     to: MailAddress[];
     cc: MailAddress[];
     bcc: MailAddress[];
@@ -135,6 +137,7 @@ async function processScheduledSend(
       accountId: job.accountId,
       draftId: job.draftId,
       idempotencyKey: `compose:${job.draftId}:schedule:${job.id}:send`,
+      ...(job.from ? { from: job.from } : {}),
       to: job.to,
       cc: job.cc,
       bcc: job.bcc,

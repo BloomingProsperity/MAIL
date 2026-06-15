@@ -23,6 +23,7 @@ describe("native send transports", () => {
       accountId: "acc_1",
       draftId: "draft_1",
       idempotencyKey: "compose:draft_1:send",
+      from: { address: "support@demo.site", name: "Support" },
       to: [{ address: "lina@example.com", name: "Lina" }],
       cc: [{ address: "team@example.com" }],
       bcc: [{ address: "audit@example.com" }],
@@ -38,6 +39,7 @@ describe("native send transports", () => {
     expect(raw).not.toContain("/");
     expect(raw).not.toContain("=");
     const decoded = Buffer.from(toBase64(raw), "base64").toString("utf8");
+    expect(decoded).toContain('From: "Support" <support@demo.site>');
     expect(decoded).toContain('To: "Lina" <lina@example.com>');
     expect(decoded).toContain("Cc: team@example.com");
     expect(decoded).toContain("Bcc: audit@example.com");
@@ -64,6 +66,7 @@ describe("native send transports", () => {
       accountId: "acc_1",
       draftId: "draft_1",
       idempotencyKey: "compose:draft_1:send",
+      from: { address: "support@demo.site", name: "Support" },
       to: [{ address: "lina@example.com", name: "Lina" }],
       cc: [{ address: "team@example.com" }],
       bcc: [{ address: "audit@example.com" }],
@@ -76,6 +79,9 @@ describe("native send transports", () => {
         accountId: "acc_1",
         message: {
           subject: "Launch confirmation",
+          from: {
+            emailAddress: { address: "support@demo.site", name: "Support" },
+          },
           body: { contentType: "HTML", content: "<p>Looks good.</p>" },
           toRecipients: [
             { emailAddress: { address: "lina@example.com", name: "Lina" } },

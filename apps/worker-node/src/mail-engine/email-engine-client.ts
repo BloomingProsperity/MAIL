@@ -45,13 +45,19 @@ export interface DeleteMessageInput {
   force: boolean;
 }
 
+export interface SubmitAddress {
+  address: string;
+  name?: string;
+}
+
 export interface SubmitMessageInput {
   accountId: string;
   draftId: string;
   idempotencyKey: string;
-  to: Array<{ address: string; name?: string }>;
-  cc: Array<{ address: string; name?: string }>;
-  bcc: Array<{ address: string; name?: string }>;
+  from?: SubmitAddress;
+  to: SubmitAddress[];
+  cc: SubmitAddress[];
+  bcc: SubmitAddress[];
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
@@ -261,6 +267,7 @@ export function createEmailEngineClient(
           "Idempotency-Key": input.idempotencyKey,
         },
         body: compactObject({
+          from: input.from,
           to: input.to,
           cc: input.cc,
           bcc: input.bcc,

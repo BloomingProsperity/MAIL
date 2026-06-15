@@ -1470,6 +1470,7 @@ describe("emailHubApi", () => {
 
     await api.createMailDraft({
       accountId: "account_1",
+      from: { address: "support@demo.site", name: "Support" },
       to: [{ address: "client@example.com", name: "Client" }],
       subject: "Re: Live subject",
       bodyText: "Thanks, I will check this today.",
@@ -1484,6 +1485,7 @@ describe("emailHubApi", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
+          from: { address: "support@demo.site", name: "Support" },
           to: [{ address: "client@example.com", name: "Client" }],
           subject: "Re: Live subject",
           bodyText: "Thanks, I will check this today.",
@@ -1496,6 +1498,41 @@ describe("emailHubApi", () => {
       2,
       "/api/accounts/account_1/compose/drafts/draft_1/send",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("loads account send identities through the compose route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        accountId: "account_1",
+        items: [
+          {
+            id: "account:account_1",
+            accountId: "account_1",
+            from: { address: "me@example.com", name: "Me" },
+            source: "account",
+            isDefault: true,
+            verified: true,
+          },
+          {
+            id: "alias:alias_1",
+            accountId: "account_1",
+            from: { address: "support@demo.site" },
+            source: "domain_alias",
+            isDefault: false,
+            verified: true,
+          },
+        ],
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const page = await api.listSendIdentities({ accountId: "account_1" });
+
+    expect(page.items[1].from.address).toBe("support@demo.site");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/send-identities",
+      expect.objectContaining({ method: "GET" }),
     );
   });
 

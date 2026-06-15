@@ -1729,6 +1729,39 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("sends selected send-as identity from the compose panel", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText(/support@demo\.site/);
+
+    fireEvent.change(screen.getByLabelText("Compose from identity"), {
+      target: { value: "alias:alias_1" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Please review the launch plan." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        from: { address: "support@demo.site", name: "Support" },
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "Please review the launch plan.",
+        source: "manual",
+      });
+    });
+  });
+
   it("polishes a composed draft through Hermes before saving it", async () => {
     const api = createApiFixture();
 
@@ -2466,6 +2499,27 @@ function createApiFixture(): EmailHubApi {
         cancelledAt: "2026-06-13T10:00:00.000Z",
       }),
     ),
+    listSendIdentities: vi.fn(async () => ({
+      accountId: "account_1",
+      items: [
+        {
+          id: "account:account_1",
+          accountId: "account_1",
+          from: { address: "work@demo.site", name: "Work" },
+          source: "account" as const,
+          isDefault: true,
+          verified: true,
+        },
+        {
+          id: "alias:alias_1",
+          accountId: "account_1",
+          from: { address: "support@demo.site", name: "Support" },
+          source: "domain_alias" as const,
+          isDefault: false,
+          verified: true,
+        },
+      ],
+    })),
     createMailDraft: vi.fn(async () => mailDraftFixture()),
     sendMailDraft: vi.fn(async () => ({
       accountId: "account_1",

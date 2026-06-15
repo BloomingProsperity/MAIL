@@ -44,6 +44,7 @@ import type {
   MailActionResult,
   MailProviderCapabilityDto,
   MailSearchScope,
+  MailSendIdentityDto,
   MailboxDto,
   MessageDetailDto,
   MessageListItemDto,
@@ -1141,6 +1142,8 @@ function MailWorkspace(props: {
   const [replyHermesDraftText, setReplyHermesDraftText] = useState<
     string | undefined
   >();
+  const [composeFrom, setComposeFrom] = useState("");
+  const [sendIdentities, setSendIdentities] = useState<MailSendIdentityDto[]>([]);
   const [composeTo, setComposeTo] = useState("");
   const [composeCc, setComposeCc] = useState("");
   const [composeBcc, setComposeBcc] = useState("");
@@ -1167,10 +1170,35 @@ function MailWorkspace(props: {
 
   useEffect(() => {
     if (!props.api) {
+      const identities = previewSendIdentities(props.accountId);
+      setSendIdentities(identities);
+      setComposeFrom(identities[0]?.id ?? "");
       return;
     }
 
     let alive = true;
+    void props.api
+      .listSendIdentities({ accountId: props.accountId })
+      .then((page) => {
+        if (!alive) {
+          return;
+        }
+        setSendIdentities(page.items);
+        setComposeFrom((current) =>
+          page.items.some((identity) => identity.id === current)
+            ? current
+            : page.items.find((identity) => identity.isDefault)?.id ??
+              page.items[0]?.id ??
+              "",
+        );
+      })
+      .catch(() => {
+        if (alive) {
+          setSendIdentities([]);
+          setComposeFrom("");
+        }
+      });
+
     void props.api
       .listOutbox({ accountId: props.accountId, limit: 20 })
       .then((page) => {
@@ -1190,6 +1218,10 @@ function MailWorkspace(props: {
       alive = false;
     };
   }, [props.accountId, props.api]);
+
+  const selectedComposeIdentity = sendIdentities.find(
+    (identity) => identity.id === composeFrom,
+  );
 
   async function refreshOutbox() {
     if (!props.api) {
@@ -1374,6 +1406,9 @@ function MailWorkspace(props: {
     try {
       const draft = await props.api.createMailDraft({
         accountId: props.accountId,
+        ...(selectedComposeIdentity && !selectedComposeIdentity.isDefault
+          ? { from: selectedComposeIdentity.from }
+          : {}),
         to,
         ...(cc.length > 0 ? { cc } : {}),
         ...(bcc.length > 0 ? { bcc } : {}),
@@ -1574,6 +1609,25 @@ function MailWorkspace(props: {
               {composeNotice}
             </div>
           ) : null}
+          <label className="compose-from-field">
+            <span>From</span>
+            <select
+              aria-label="Compose from identity"
+              value={composeFrom}
+              disabled={sendIdentities.length === 0}
+              onChange={(event) => setComposeFrom(event.target.value)}
+            >
+              {sendIdentities.length === 0 ? (
+                <option value="">当前账号</option>
+              ) : (
+                sendIdentities.map((identity) => (
+                  <option key={identity.id} value={identity.id}>
+                    {formatSendIdentity(identity)}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
           <div className="compose-recipient-grid">
             <label>
               <span>收件人</span>
@@ -2059,6 +2113,26 @@ function MailWorkspace(props: {
 function replySubject(subject: string): string {
   const trimmed = subject.trim();
   return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
+}
+
+function previewSendIdentities(accountId: string): MailSendIdentityDto[] {
+  return [
+    {
+      id: "account:preview",
+      accountId,
+      from: { address: "work@demo.site", name: "Work" },
+      source: "account",
+      isDefault: true,
+      verified: true,
+    },
+  ];
+}
+
+function formatSendIdentity(identity: MailSendIdentityDto): string {
+  const label = identity.from.name
+    ? `${identity.from.name} <${identity.from.address}>`
+    : identity.from.address;
+  return identity.isDefault ? `${label} · 默认` : label;
 }
 
 function providerCapabilityToOption(

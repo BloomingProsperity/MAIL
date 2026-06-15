@@ -104,6 +104,9 @@ export function createNativeSendTransport(input: {
               accountId: message.accountId,
               message: {
                 subject: message.subject,
+                ...(message.from
+                  ? { from: { emailAddress: graphEmailAddress(message.from) } }
+                  : {}),
                 body: {
                   contentType: message.bodyHtml ? "HTML" : "Text",
                   content: message.bodyHtml ?? message.bodyText ?? "",
@@ -220,6 +223,7 @@ async function submitWithReauthorizationMarking<T>(
 }
 
 function buildMimeMessage(input: {
+  from?: MailAddress;
   to: MailAddress[];
   cc: MailAddress[];
   bcc: MailAddress[];
@@ -229,6 +233,7 @@ function buildMimeMessage(input: {
   boundary: string;
 }): string {
   const headers = [
+    input.from ? ["From", addressHeader([input.from])] : undefined,
     ["To", addressHeader(input.to)],
     input.cc.length > 0 ? ["Cc", addressHeader(input.cc)] : undefined,
     input.bcc.length > 0 ? ["Bcc", addressHeader(input.bcc)] : undefined,
@@ -287,11 +292,15 @@ function mimeBody(input: {
 
 function graphRecipients(addresses: MailAddress[]): unknown[] {
   return addresses.map((address) => ({
-    emailAddress: {
-      address: address.address,
-      ...(address.name ? { name: address.name } : {}),
-    },
+    emailAddress: graphEmailAddress(address),
   }));
+}
+
+function graphEmailAddress(address: MailAddress): { address: string; name?: string } {
+  return {
+    address: address.address,
+    ...(address.name ? { name: address.name } : {}),
+  };
 }
 
 function addressHeader(addresses: MailAddress[]): string {

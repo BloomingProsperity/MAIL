@@ -99,6 +99,7 @@ describe("worker native SMTP send transport", () => {
       accountId: "acc_imap",
       draftId: "draft_1",
       idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+      from: { address: "alias@proton.me", name: "Alias" },
       to: [{ address: "client@example.com", name: "Client" }],
       cc: [{ address: "team@example.com" }],
       bcc: [{ address: "audit@example.com" }],
@@ -111,7 +112,7 @@ describe("worker native SMTP send transport", () => {
       expect.objectContaining({
         secret: "bridge-password",
         mail: expect.objectContaining({
-          from: "me@proton.me",
+          from: '"Alias" <alias@proton.me>',
           to: '"Client" <client@example.com>',
           cc: "team@example.com",
           bcc: "audit@example.com",

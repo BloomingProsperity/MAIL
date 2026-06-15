@@ -23,6 +23,7 @@ describe("EmailEngine submit client", () => {
       accountId: "acc_1",
       draftId: "draft_1",
       idempotencyKey: "compose:draft_1:send",
+      from: { address: "support@demo.site", name: "Support" },
       to: [{ address: "lina@example.com", name: "Lina" }],
       cc: [{ address: "ops@example.com" }],
       bcc: [],
@@ -41,6 +42,7 @@ describe("EmailEngine submit client", () => {
       "Idempotency-Key": "compose:draft_1:send",
     });
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      from: { address: "support@demo.site", name: "Support" },
       to: [{ address: "lina@example.com", name: "Lina" }],
       cc: [{ address: "ops@example.com" }],
       subject: "Launch confirmation",

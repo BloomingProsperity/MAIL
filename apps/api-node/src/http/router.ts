@@ -752,6 +752,20 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (
+          mailComposeRoute.action === "list_send_identities" &&
+          request.method === "GET"
+        ) {
+          writeJson(
+            response,
+            200,
+            await config.mailComposeService.listSendIdentities({
+              accountId: mailComposeRoute.accountId,
+            }),
+          );
+          return;
+        }
+
+        if (
           mailComposeRoute.action === "create_draft" &&
           request.method === "POST"
         ) {
@@ -3091,6 +3105,7 @@ function parseSyncDiagnosticsRoute(
 function parseMailComposeRoute(
   requestUrl: string | undefined,
 ):
+  | { action: "list_send_identities"; accountId: string }
   | { action: "create_draft"; accountId: string }
   | { action: "send_draft"; accountId: string; draftId: string }
   | { action: "schedule_draft"; accountId: string; draftId: string }
@@ -3106,6 +3121,16 @@ function parseMailComposeRoute(
   }
 
   const url = new URL(requestUrl, "http://localhost");
+  const sendIdentitiesMatch = /^\/api\/accounts\/([^/]+)\/send-identities$/.exec(
+    url.pathname,
+  );
+  if (sendIdentitiesMatch) {
+    return {
+      action: "list_send_identities",
+      accountId: decodeURIComponent(sendIdentitiesMatch[1]),
+    };
+  }
+
   const outboxMatch = /^\/api\/accounts\/([^/]+)\/outbox$/.exec(url.pathname);
   if (outboxMatch) {
     return {
@@ -5043,6 +5068,9 @@ function parseMailComposeDraftInput(
   body: string,
 ): CreateMailDraftInput {
   const payload = JSON.parse(body) as {
+    from?: unknown;
+    fromAddress?: unknown;
+    fromName?: unknown;
     to?: unknown;
     cc?: unknown;
     bcc?: unknown;
@@ -5056,8 +5084,10 @@ function parseMailComposeDraftInput(
   };
 
   const to = parseMailComposeAddresses(payload.to, true);
+  const from = parseMailComposeFrom(payload);
   return {
     accountId,
+    ...(from ? { from } : {}),
     to,
     cc: parseMailComposeAddresses(payload.cc, false),
     bcc: parseMailComposeAddresses(payload.bcc, false),
@@ -5076,6 +5106,31 @@ function parseMailComposeDraftInput(
     ...(isNonEmptyString(payload.hermesDraftText)
       ? { hermesDraftText: payload.hermesDraftText }
       : {}),
+  };
+}
+
+function parseMailComposeFrom(payload: {
+  from?: unknown;
+  fromAddress?: unknown;
+  fromName?: unknown;
+}): MailAddress | undefined {
+  if (payload.from && typeof payload.from === "object" && !Array.isArray(payload.from)) {
+    const record = payload.from as Record<string, unknown>;
+    if (isNonEmptyString(record.address)) {
+      return {
+        address: record.address,
+        ...(isNonEmptyString(record.name) ? { name: record.name } : {}),
+      };
+    }
+  }
+
+  if (!isNonEmptyString(payload.fromAddress)) {
+    return undefined;
+  }
+
+  return {
+    address: payload.fromAddress,
+    ...(isNonEmptyString(payload.fromName) ? { name: payload.fromName } : {}),
   };
 }
 

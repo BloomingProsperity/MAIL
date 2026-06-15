@@ -24,6 +24,8 @@ interface Queryable {
 interface DraftRow extends Record<string, unknown> {
   id: string;
   account_id: string;
+  from_address: string | null;
+  from_name: string | null;
   subject: string;
   to_emails: unknown;
   cc_emails: unknown;
@@ -96,6 +98,8 @@ export function createPostgresMailComposeStore(
           INSERT INTO email_drafts (
             id,
             account_id,
+            from_address,
+            from_name,
             subject,
             to_emails,
             cc_emails,
@@ -109,12 +113,14 @@ export function createPostgresMailComposeStore(
             created_at,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::timestamptz, $13::timestamptz)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::timestamptz, $15::timestamptz)
           RETURNING ${draftColumns()}
         `,
         [
           input.id,
           input.accountId,
+          input.from?.address ?? null,
+          input.from?.name ?? null,
           input.subject,
           input.to,
           input.cc,
@@ -538,6 +544,8 @@ function draftColumns(prefix?: string): string {
   return [
     "id",
     "account_id",
+    "from_address",
+    "from_name",
     "subject",
     "to_emails",
     "cc_emails",
@@ -659,6 +667,14 @@ function rowToDraft(row: DraftRow): MailDraft {
   return {
     id: String(row.id),
     accountId: String(row.account_id),
+    ...(row.from_address
+      ? {
+          from: {
+            address: row.from_address,
+            ...(row.from_name ? { name: row.from_name } : {}),
+          },
+        }
+      : {}),
     to: addresses(row.to_emails),
     cc: addresses(row.cc_emails),
     bcc: addresses(row.bcc_emails),

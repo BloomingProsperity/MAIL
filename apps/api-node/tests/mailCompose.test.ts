@@ -138,6 +138,103 @@ describe("mail compose service", () => {
     ]);
   });
 
+  it("creates drafts with allowed send-as identities", async () => {
+    const calls: unknown[] = [];
+    const store = createStore({
+      async createDraft(input) {
+        calls.push(input);
+        return {
+          id: input.id,
+          accountId: input.accountId,
+          from: input.from,
+          subject: input.subject,
+          to: input.to,
+          cc: input.cc,
+          bcc: input.bcc,
+          bodyText: input.bodyText,
+          status: "draft",
+          source: input.source,
+          createdAt: input.now,
+          updatedAt: input.now,
+        };
+      },
+    });
+    const service = createMailComposeService({
+      store,
+      createId: () => "draft_1",
+      transports: {},
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [
+            {
+              id: "alias_1",
+              accountId: "acc_1",
+              from: { address: "support@demo.site" },
+              source: "domain_alias",
+              isDefault: false,
+              verified: true,
+            },
+          ];
+        },
+      },
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+    });
+
+    const draft = await service.createDraft({
+      accountId: "acc_1",
+      from: { address: "Support@Demo.Site", name: "Support" },
+      to: [{ address: "lina@example.com" }],
+      subject: "Launch confirmation",
+      bodyText: "Looks good.",
+    });
+
+    expect(calls[0]).toMatchObject({
+      from: { address: "support@demo.site", name: "Support" },
+    });
+    expect(draft).toMatchObject({
+      from: { address: "support@demo.site", name: "Support" },
+    });
+  });
+
+  it("rejects unverified send-as identities before creating drafts", async () => {
+    const storeCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async createDraft(input) {
+          storeCalls.push(input);
+          throw new Error("not expected");
+        },
+      }),
+      createId: () => "draft_1",
+      transports: {},
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [
+            {
+              id: "account_1",
+              accountId: "acc_1",
+              from: { address: "me@example.com" },
+              source: "account",
+              isDefault: true,
+              verified: true,
+            },
+          ];
+        },
+      },
+    });
+
+    await expect(
+      service.createDraft({
+        accountId: "acc_1",
+        from: { address: "spoof@example.net" },
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch confirmation",
+        bodyText: "Looks good.",
+      }),
+    ).rejects.toThrow("from address is not allowed");
+    expect(storeCalls).toEqual([]);
+  });
+
   it("claims a draft, submits it through the account engine, and marks it sent", async () => {
     const calls: unknown[] = [];
     const store = createStore({
@@ -162,7 +259,11 @@ describe("mail compose service", () => {
             syncState: "syncing",
             engineProvider: "emailengine",
           },
-          draft: { ...draft(), status: "sending" },
+          draft: {
+            ...draft(),
+            from: { address: "support@demo.site", name: "Support" },
+            status: "sending",
+          },
         };
       },
       async markDraftSent(input) {
@@ -205,6 +306,7 @@ describe("mail compose service", () => {
         accountId: "acc_1",
         draftId: "draft_1",
         idempotencyKey: "compose:draft_1:send",
+        from: { address: "support@demo.site", name: "Support" },
         to: [{ address: "lina@example.com", name: "Lina" }],
         cc: [],
         bcc: [],
@@ -365,7 +467,11 @@ describe("mail compose service", () => {
             syncState: "syncing",
             engineProvider: "emailengine",
           },
-          draft: { ...draft(), status: "sending" },
+          draft: {
+            ...draft(),
+            from: { address: "support@demo.site" },
+            status: "sending",
+          },
         };
       },
       async markScheduledSendSent(input) {
@@ -407,6 +513,7 @@ describe("mail compose service", () => {
         accountId: "acc_1",
         draftId: "draft_1",
         idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+        from: { address: "support@demo.site" },
         to: [{ address: "lina@example.com", name: "Lina" }],
         cc: [],
         bcc: [],

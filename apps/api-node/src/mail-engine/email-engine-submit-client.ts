@@ -13,6 +13,7 @@ export interface SubmitMessageInput {
   accountId: string;
   draftId: string;
   idempotencyKey: string;
+  from?: SubmitAddress;
   to: SubmitAddress[];
   cc: SubmitAddress[];
   bcc: SubmitAddress[];
@@ -81,6 +82,7 @@ export function createEmailEngineSubmitClient(
 
 function toSubmitBody(input: SubmitMessageInput): Record<string, unknown> {
   return {
+    ...(input.from ? { from: input.from } : {}),
     to: input.to,
     ...(input.cc.length > 0 ? { cc: input.cc } : {}),
     ...(input.bcc.length > 0 ? { bcc: input.bcc } : {}),

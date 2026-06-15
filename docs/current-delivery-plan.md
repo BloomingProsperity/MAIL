@@ -64,11 +64,21 @@ with more than smoke-level tests.
   account mail through SMTP using stored provider settings and stored secrets.
   Sync Center exposes native-send reauthorization tasks and starts the existing
   OAuth or IMAP/SMTP recovery flows from the frontend.
-- Remaining gap: send identities, aliases-as-from, rich attachments, IMAP Sent
-  folder append, and deeper command semantics still need focused backend slices
-  and tests before Native Engine can be promoted from parallel track to default
-  path. Native provider APIs do not provide the same idempotency guarantee as
-  EmailEngine's submit endpoint yet.
+- Current send identity status: compose now exposes account send identities
+  through `/api/accounts/:accountId/send-identities`. The default account
+  address is always available, and domain aliases are available only when the
+  domain is verified, the alias is enabled, and the alias routes to a verified
+  destination matching the current account email. Draft creation rejects
+  unverified From addresses before provider submission. EmailEngine, native
+  Gmail, native Graph, native SMTP, and scheduled-send worker paths all carry
+  the selected From identity; SMTP keeps the authenticated account as the
+  envelope sender while allowing the verified alias in the visible From header.
+- Remaining gap: rich attachments, reply-all/forward modes, preview, IMAP Sent
+  folder append, provider-native send-as permission discovery, and deeper
+  command semantics still need focused backend slices and tests before Native
+  Engine can be promoted from parallel track to default path. Native provider
+  APIs do not provide the same idempotency guarantee as EmailEngine's submit
+  endpoint yet.
 
 ### 3. Hermes Single AI Entry
 
@@ -143,20 +153,21 @@ with more than smoke-level tests.
   provider-aware scheduled runner, scheduled-store routing, OAuth send scopes,
   frontend outbox contract tests.
 - Current frontend status: Mail now exposes a backend-wired compose panel for
-  To/Cc/Bcc, save draft, send now, send later, Hermes quick reply through
-  `/api/hermes/skills/quick_reply/run`, and Hermes rewrite/polish through
-  `/api/hermes/skills/rewrite_polish/run`. The outbox panel loads
+  From identity, To/Cc/Bcc, save draft, send now, send later, Hermes quick
+  reply through `/api/hermes/skills/quick_reply/run`, and Hermes rewrite/polish
+  through `/api/hermes/skills/rewrite_polish/run`. The outbox panel loads
   `/api/accounts/:accountId/outbox`, and each row routes reschedule, send now,
   and cancel to the matching backend contract. API client route tests and App
   behavior tests cover the full create/send/schedule/list/reschedule/send-now/
-  cancel flow plus Cc/Bcc draft payloads, editable Hermes quick replies, and
-  editable Hermes polishing.
+  cancel flow plus send-as, Cc/Bcc draft payloads, editable Hermes quick
+  replies, and editable Hermes polishing.
 - Current backend status: outbox listing now returns active queue items only
   (`scheduled`, `queued`, `sending`, `failed`) instead of mixing terminal sent,
   cancelled, or dead-lettered rows into the user-facing queue.
 - Remaining gap: the current compose panel is intentionally compact; rich
-  editor, attachments, reply-all/forward modes, preview, send-as, and
-  Sent-folder provider parity are still separate slices.
+  editor, attachments, reply-all/forward modes, preview, provider-native
+  permission discovery for shared mailbox send-as, and Sent-folder provider
+  parity are still separate slices.
 
 ## Product References
 
@@ -171,8 +182,8 @@ with more than smoke-level tests.
 ## Immediate Delivery Order
 
 1. Expand Compose into a full production editor: rich editor, attachments,
-   reply-all, forward, preview, send-as, and writing-style feedback for
-   rewrite/polish through the single AI entry.
+   reply-all, forward, preview, provider-native send-as permission discovery,
+   and writing-style feedback for rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
    GreenMail/high-volume SMTP smoke, Sent-folder append, and tests around
    QQ/163/custom-domain recovery behavior.

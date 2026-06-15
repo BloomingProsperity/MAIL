@@ -21,6 +21,17 @@ export interface MailAddress {
   name?: string;
 }
 
+export type MailSendIdentitySource = "account" | "domain_alias";
+
+export interface MailSendIdentity {
+  id: string;
+  accountId: string;
+  from: MailAddress;
+  source: MailSendIdentitySource;
+  isDefault: boolean;
+  verified: boolean;
+}
+
 export type MailDraftStatus =
   | "draft"
   | "scheduled"
@@ -42,6 +53,7 @@ export type ScheduledSendStatus =
 export interface MailDraft {
   id: string;
   accountId: string;
+  from?: MailAddress;
   to: MailAddress[];
   cc: MailAddress[];
   bcc: MailAddress[];
@@ -103,6 +115,7 @@ export interface ScheduledSendWithDraft {
 
 export interface CreateMailDraftInput {
   accountId: string;
+  from?: MailAddress;
   to: MailAddress[];
   cc?: MailAddress[];
   bcc?: MailAddress[];
@@ -119,6 +132,7 @@ export interface MailComposeStore {
   createDraft(
     input: Required<Pick<CreateMailDraftInput, "accountId" | "to">> & {
       id: string;
+      from?: MailAddress;
       cc: MailAddress[];
       bcc: MailAddress[];
       subject: string;
@@ -203,11 +217,16 @@ export interface MailComposeStore {
   }): Promise<ScheduledSend | undefined>;
 }
 
+export interface MailSendIdentityStore {
+  listSendIdentities(input: { accountId: string }): Promise<MailSendIdentity[]>;
+}
+
 export interface MailSendTransport {
   submitMessage(input: {
     accountId: string;
     draftId: string;
     idempotencyKey: string;
+    from?: MailAddress;
     to: MailAddress[];
     cc: MailAddress[];
     bcc: MailAddress[];
@@ -222,6 +241,9 @@ export interface MailSendTransport {
 }
 
 export interface MailComposeService {
+  listSendIdentities(input: {
+    accountId: string;
+  }): Promise<{ accountId: string; items: MailSendIdentity[] }>;
   createDraft(input: CreateMailDraftInput): Promise<MailDraft>;
   sendDraft(input: { accountId: string; draftId: string }): Promise<{
     accountId: string;
@@ -257,12 +279,26 @@ export function createMailComposeService(options: {
   store: MailComposeStore;
   transports: Partial<Record<MailEngineProvider, MailSendTransport>>;
   createId: () => string;
+  sendIdentityStore?: MailSendIdentityStore;
   hermesDraftFeedbackStore?: HermesDraftFeedbackStore;
   now?: () => Date;
 }): MailComposeService {
   return {
+    async listSendIdentities(input) {
+      assertNonEmpty(input.accountId);
+      return {
+        accountId: input.accountId,
+        items: await listSendIdentities(options.sendIdentityStore, input.accountId),
+      };
+    },
+
     async createDraft(input) {
       const normalized = normalizeDraftInput(input);
+      await ensureAllowedSender(
+        options.sendIdentityStore,
+        normalized.accountId,
+        normalized.from,
+      );
       const draft = await options.store.createDraft({
         ...normalized,
         id: options.createId(),
@@ -312,6 +348,7 @@ export function createMailComposeService(options: {
           accountId: claimed.account.accountId,
           draftId: claimed.draft.id,
           idempotencyKey: `compose:${claimed.draft.id}:send`,
+          ...(claimed.draft.from ? { from: claimed.draft.from } : {}),
           to: claimed.draft.to,
           cc: claimed.draft.cc,
           bcc: claimed.draft.bcc,
@@ -454,6 +491,7 @@ export function createMailComposeService(options: {
           accountId: claimed.account.accountId,
           draftId: claimed.draft.id,
           idempotencyKey: `compose:${claimed.draft.id}:schedule:${claimed.scheduledSend.id}:send`,
+          ...(claimed.draft.from ? { from: claimed.draft.from } : {}),
           to: claimed.draft.to,
           cc: claimed.draft.cc,
           bcc: claimed.draft.bcc,
@@ -486,6 +524,7 @@ export function createMailComposeService(options: {
 
 function normalizeDraftInput(input: CreateMailDraftInput): {
   accountId: string;
+  from?: MailAddress;
   to: MailAddress[];
   cc: MailAddress[];
   bcc: MailAddress[];
@@ -498,6 +537,7 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
   hermesDraftText?: string;
 } {
   assertNonEmpty(input.accountId);
+  const from = normalizeOptionalSender(input.from);
   const to = normalizeAddresses(input.to);
   const cc = normalizeAddresses(input.cc ?? []);
   const bcc = normalizeAddresses(input.bcc ?? []);
@@ -513,6 +553,7 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
 
   return {
     accountId: input.accountId.trim(),
+    ...(from ? { from } : {}),
     to,
     cc,
     bcc,
@@ -530,6 +571,42 @@ function normalizeDraftInput(input: CreateMailDraftInput): {
       ? { hermesDraftText: optionalTrimmed(input.hermesDraftText) }
       : {}),
   };
+}
+
+async function listSendIdentities(
+  store: MailSendIdentityStore | undefined,
+  accountId: string,
+): Promise<MailSendIdentity[]> {
+  if (!store) {
+    return [];
+  }
+
+  return store.listSendIdentities({ accountId });
+}
+
+async function ensureAllowedSender(
+  store: MailSendIdentityStore | undefined,
+  accountId: string,
+  from: MailAddress | undefined,
+): Promise<void> {
+  if (!from) {
+    return;
+  }
+  if (!store) {
+    throw new InvalidMailComposeRequestError(
+      "send identity verification is unavailable",
+    );
+  }
+
+  const identities = await store.listSendIdentities({ accountId });
+  const normalized = from.address.toLowerCase();
+  const allowed = identities.some(
+    (identity) =>
+      identity.verified && identity.from.address.toLowerCase() === normalized,
+  );
+  if (!allowed) {
+    throw new InvalidMailComposeRequestError("from address is not allowed");
+  }
 }
 
 async function recordHermesDraftFeedback(
@@ -582,14 +659,22 @@ function normalizeAddresses(addresses: MailAddress[]): MailAddress[] {
   return addresses.map(normalizeAddress).filter((address) => address.address);
 }
 
+function normalizeOptionalSender(address: MailAddress | undefined): MailAddress | undefined {
+  return address ? normalizeAddress(address) : undefined;
+}
+
 function normalizeAddress(address: MailAddress): MailAddress {
   const normalized = address.address.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) {
     throw new InvalidMailComposeRequestError("recipient email is invalid");
   }
+  const name = optionalTrimmed(address.name);
+  if (name && /[\r\n]/.test(name)) {
+    throw new InvalidMailComposeRequestError("address name is invalid");
+  }
   return {
     address: normalized,
-    ...(optionalTrimmed(address.name) ? { name: optionalTrimmed(address.name) } : {}),
+    ...(name ? { name } : {}),
   };
 }
 

@@ -698,6 +698,7 @@ export interface MailAddressDto {
 export interface MailDraftDto {
   id: string;
   accountId: string;
+  from?: MailAddressDto;
   to: MailAddressDto[];
   cc: MailAddressDto[];
   bcc: MailAddressDto[];
@@ -715,6 +716,22 @@ export interface MailDraftDto {
   createdAt: string;
   updatedAt: string;
   sentAt?: string;
+}
+
+export type MailSendIdentitySource = "account" | "domain_alias";
+
+export interface MailSendIdentityDto {
+  id: string;
+  accountId: string;
+  from: MailAddressDto;
+  source: MailSendIdentitySource;
+  isDefault: boolean;
+  verified: boolean;
+}
+
+export interface MailSendIdentityPage {
+  accountId: string;
+  items: MailSendIdentityDto[];
 }
 
 export interface SendMailDraftResult {
@@ -1042,6 +1059,7 @@ export interface EmailHubApi {
   cancelFollowUp(input: { id: string }): Promise<FollowUpDto>;
   createMailDraft(input: {
     accountId: string;
+    from?: MailAddressDto;
     to: MailAddressDto[];
     cc?: MailAddressDto[];
     bcc?: MailAddressDto[];
@@ -1053,6 +1071,7 @@ export interface EmailHubApi {
     hermesSkillRunId?: string;
     hermesDraftText?: string;
   }): Promise<MailDraftDto>;
+  listSendIdentities(input: { accountId: string }): Promise<MailSendIdentityPage>;
   sendMailDraft(input: {
     accountId: string;
     draftId: string;
@@ -1584,6 +1603,14 @@ export function createEmailHubApi(
           method: "POST",
           body: JSON.stringify(cleanObject(body)),
         },
+      );
+    },
+
+    listSendIdentities(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/send-identities`,
       );
     },
 

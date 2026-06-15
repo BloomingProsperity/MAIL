@@ -34,6 +34,7 @@ describe("API native send transport", () => {
       accountId: "acc_gmail",
       draftId: "draft_1",
       idempotencyKey: "compose:draft_1:send",
+      from: { address: "support@demo.site", name: "Support" },
       to: [{ address: "lina@example.com", name: "Lina" }],
       cc: [{ address: "team@example.com" }],
       bcc: [],
@@ -45,6 +46,7 @@ describe("API native send transport", () => {
     const raw = sendMessage.mock.calls[0][0].raw;
     const decoded = decodeBase64Url(raw);
     expect(result).toEqual({ messageId: "gmail_msg_1" });
+    expect(decoded).toContain('From: "Support" <support@demo.site>');
     expect(decoded).toContain('To: "Lina" <lina@example.com>');
     expect(decoded).toContain("Cc: team@example.com");
     expect(decoded).toContain("Subject: Launch plan");
@@ -72,6 +74,7 @@ describe("API native send transport", () => {
       accountId: "acc_graph",
       draftId: "draft_1",
       idempotencyKey: "compose:draft_1:send",
+      from: { address: "support@demo.site", name: "Support" },
       to: [{ address: "lina@example.com", name: "Lina" }],
       cc: [],
       bcc: [{ address: "audit@example.com" }],
@@ -83,6 +86,9 @@ describe("API native send transport", () => {
       accountId: "acc_graph",
       message: {
         subject: "Launch plan",
+        from: {
+          emailAddress: { address: "support@demo.site", name: "Support" },
+        },
         body: {
           contentType: "Text",
           content: "Plain body",
@@ -324,6 +330,7 @@ describe("API native send transport", () => {
         accountId: "acc_imap",
         draftId: "draft_1",
         idempotencyKey: "compose:draft_1:send",
+        from: { address: "sales@qq.com", name: "Sales" },
         to: [{ address: "client@example.com", name: "Client" }],
         cc: [{ address: "team@example.com" }],
         bcc: [{ address: "audit@example.com" }],
@@ -342,7 +349,7 @@ describe("API native send transport", () => {
           secure: true,
         }),
         mail: expect.objectContaining({
-          from: '"Support" <support@qq.com>',
+          from: '"Sales" <sales@qq.com>',
           to: '"Client" <client@example.com>',
           cc: "team@example.com",
           bcc: "audit@example.com",

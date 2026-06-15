@@ -13,6 +13,8 @@ interface ScheduledSendJobRow extends Record<string, unknown> {
   native_provider?: string | null;
   scheduled_at: string | Date;
   attempts: number;
+  from_address: string | null;
+  from_name: string | null;
   subject: string;
   to_emails: unknown;
   cc_emails: unknown;
@@ -76,6 +78,8 @@ export function createPostgresScheduledSendStore(
             account_provider_settings.native_provider,
             claimed.scheduled_at,
             claimed.attempts,
+            claimed_draft.from_address,
+            claimed_draft.from_name,
             claimed_draft.subject,
             claimed_draft.to_emails,
             claimed_draft.cc_emails,
@@ -198,6 +202,14 @@ function rowToJob(row: ScheduledSendJobRow): ScheduledSendJob {
       row.engine_provider === "native" ? "native" : "emailengine",
     ...(nativeProvider(row.native_provider)
       ? { nativeProvider: nativeProvider(row.native_provider) }
+      : {}),
+    ...(row.from_address
+      ? {
+          from: {
+            address: row.from_address,
+            ...(row.from_name ? { name: row.from_name } : {}),
+          },
+        }
       : {}),
     to: addresses(row.to_emails),
     cc: addresses(row.cc_emails),

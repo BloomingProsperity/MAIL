@@ -9,7 +9,9 @@ import {
 
 describe("scheduled send runner", () => {
   it("submits a claimed scheduled draft and marks it sent", async () => {
-    const store = createStore([job()]);
+    const store = createStore([
+      { ...job(), from: { address: "support@demo.site", name: "Support" } },
+    ]);
     const submitCalls: unknown[] = [];
 
     const result = await runScheduledSendOnce({
@@ -38,6 +40,7 @@ describe("scheduled send runner", () => {
         accountId: "acc_1",
         draftId: "draft_1",
         idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+        from: { address: "support@demo.site", name: "Support" },
         to: [{ address: "lina@example.com", name: "Lina" }],
         cc: [],
         bcc: [],

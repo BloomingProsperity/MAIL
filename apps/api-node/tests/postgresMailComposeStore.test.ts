@@ -13,6 +13,8 @@ describe("Postgres mail compose store", () => {
             {
               id: "draft_1",
               account_id: "acc_1",
+              from_address: null,
+              from_name: null,
               subject: "Launch confirmation",
               to_emails: [{ address: "lina@example.com", name: "Lina" }],
               cc_emails: [],
@@ -52,6 +54,8 @@ describe("Postgres mail compose store", () => {
     expect(queries[0].values).toEqual([
       "draft_1",
       "acc_1",
+      null,
+      null,
       "Launch confirmation",
       [{ address: "lina@example.com", name: "Lina" }],
       [],
@@ -81,6 +85,8 @@ describe("Postgres mail compose store", () => {
             {
               id: "draft_1",
               account_id: "acc_1",
+              from_address: "support@demo.site",
+              from_name: "Support",
               subject: "Re: Launch confirmation",
               to_emails: [{ address: "lina@example.com", name: "Lina" }],
               cc_emails: [],
@@ -108,6 +114,7 @@ describe("Postgres mail compose store", () => {
     const draft = await store.createDraft({
       id: "draft_1",
       accountId: "acc_1",
+      from: { address: "support@demo.site", name: "Support" },
       to: [{ address: "lina@example.com", name: "Lina" }],
       cc: [],
       bcc: [],
@@ -122,12 +129,15 @@ describe("Postgres mail compose store", () => {
     });
 
     expect(queries[0].text).toMatch(/hermes_draft_text/i);
+    expect(queries[0].values).toContain("support@demo.site");
+    expect(queries[0].values).toContain("Support");
     expect(queries[0].values).toContain(
       "Hi Lina,\n\nThanks for the update. I can confirm Thursday works well for us.\n\nBest,\nHua",
     );
     expect(draft).toMatchObject({
       id: "draft_1",
       source: "hermes_reply",
+      from: { address: "support@demo.site", name: "Support" },
       hermesSkillRunId: "run_reply_1",
       hermesDraftText:
         "Hi Lina,\n\nThanks for the update. I can confirm Thursday works well for us.\n\nBest,\nHua",
