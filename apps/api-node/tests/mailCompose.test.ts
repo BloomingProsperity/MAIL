@@ -141,6 +141,145 @@ describe("mail compose service", () => {
     ]);
   });
 
+  it("updates an existing draft without creating a replacement", async () => {
+    const calls: unknown[] = [];
+    const store = createStore({
+      async updateDraft(input) {
+        calls.push(input);
+        return {
+          id: input.draftId,
+          accountId: input.accountId,
+          from: input.from,
+          subject: input.subject,
+          to: input.to,
+          cc: input.cc,
+          bcc: input.bcc,
+          bodyText: input.bodyText,
+          status: "draft",
+          source: input.source,
+          replyToMessageId: input.replyToMessageId,
+          sourceMessageId: input.sourceMessageId,
+          createdAt: "2026-06-13T07:00:00.000Z",
+          updatedAt: input.now,
+        };
+      },
+    });
+    const service = createMailComposeService({
+      store,
+      createId: () => "unused_new_draft_id",
+      now: () => new Date("2026-06-13T08:30:00.000Z"),
+      transports: {},
+    });
+
+    const draft = await service.updateDraft({
+      accountId: "acc_1",
+      draftId: "draft_existing",
+      to: [{ address: "Lina@Example.com", name: "Lina" }],
+      subject: " Re: Launch confirmation ",
+      bodyText: "Updated body",
+      source: "reply",
+      replyToMessageId: "message_1",
+    });
+
+    expect(calls).toEqual([
+      {
+        accountId: "acc_1",
+        draftId: "draft_existing",
+        to: [{ address: "lina@example.com", name: "Lina" }],
+        cc: [],
+        bcc: [],
+        subject: "Re: Launch confirmation",
+        bodyText: "Updated body",
+        source: "reply",
+        replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
+        now: "2026-06-13T08:30:00.000Z",
+      },
+    ]);
+    expect(draft).toMatchObject({
+      id: "draft_existing",
+      bodyText: "Updated body",
+      sourceMessageId: "message_1",
+    });
+  });
+
+  it("rejects updating missing or non-draft rows", async () => {
+    const service = createMailComposeService({
+      store: createStore({
+        async updateDraft() {
+          return undefined;
+        },
+      }),
+      createId: () => "unused",
+      transports: {},
+    });
+
+    await expect(
+      service.updateDraft({
+        accountId: "acc_1",
+        draftId: "sent_draft",
+        to: [{ address: "lina@example.com" }],
+        subject: "Cannot edit",
+        bodyText: "This should not overwrite sent mail.",
+      }),
+    ).rejects.toThrow("draft was not found");
+  });
+
+  it("records Hermes feedback when updating an edited draft", async () => {
+    const feedbackCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async updateDraft(input) {
+          return {
+            id: input.draftId,
+            accountId: input.accountId,
+            to: input.to,
+            cc: input.cc,
+            bcc: input.bcc,
+            subject: input.subject,
+            bodyText: input.bodyText,
+            status: "draft",
+            source: input.source,
+            hermesSkillRunId: input.hermesSkillRunId,
+            hermesDraftText: input.hermesDraftText,
+            createdAt: "2026-06-13T07:00:00.000Z",
+            updatedAt: input.now,
+          };
+        },
+      }),
+      createId: () => "unused",
+      transports: {},
+      now: () => new Date("2026-06-13T08:30:00.000Z"),
+      hermesDraftFeedbackStore: {
+        async recordDraftFeedback(input) {
+          feedbackCalls.push(input);
+          return { feedbackId: "feedback_1" };
+        },
+      },
+    });
+
+    await service.updateDraft({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Re: Launch",
+      bodyText: "Edited final reply.",
+      source: "hermes_reply",
+      hermesSkillRunId: "run_reply_1",
+      hermesDraftText: "Original Hermes reply.",
+    });
+
+    expect(feedbackCalls).toEqual([
+      {
+        skillRunId: "run_reply_1",
+        draftText: "Original Hermes reply.",
+        finalText: "Edited final reply.",
+        subject: "Re: Launch",
+        recipientEmail: "lina@example.com",
+      },
+    ]);
+  });
+
   it("resolves forwarded attachment refs before storing a draft", async () => {
     const contentBase64 = Buffer.from("forwarded bytes").toString("base64");
     const storeCalls: unknown[] = [];
@@ -1242,6 +1381,9 @@ describe("mail compose service", () => {
 function createStore(overrides: Partial<MailComposeStore>): MailComposeStore {
   return {
     async createDraft() {
+      throw new Error("not used");
+    },
+    async updateDraft() {
       throw new Error("not used");
     },
     async getDraftWithAccount() {

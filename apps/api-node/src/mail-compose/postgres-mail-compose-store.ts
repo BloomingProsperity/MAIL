@@ -191,6 +191,67 @@ export function createPostgresMailComposeStore(
       return rowToDraft(result.rows[0]);
     },
 
+    async updateDraft(input) {
+      const result = await client.query<DraftRow>(
+        `
+          UPDATE email_drafts
+          SET from_address = $3,
+              from_name = $4,
+              subject = $5,
+              to_emails = $6,
+              cc_emails = $7,
+              bcc_emails = $8,
+              body_text = $9,
+              body_html = $10,
+              source = $11,
+              reply_to_message_id = $12,
+              source_message_id = $13,
+              thread_action = $14,
+              thread_in_reply_to = $15,
+              thread_references = $16,
+              thread_emailengine_message_id = $17,
+              thread_gmail_thread_id = $18,
+              thread_graph_message_id = $19,
+              attachment_manifest = $20,
+              hermes_skill_run_id = $21,
+              hermes_draft_text = $22,
+              error_message = NULL,
+              updated_at = $23::timestamptz
+          WHERE account_id = $1
+            AND id = $2
+            AND status = 'draft'
+          RETURNING ${draftColumns()}
+        `,
+        [
+          input.accountId,
+          input.draftId,
+          input.from?.address ?? null,
+          input.from?.name ?? null,
+          input.subject,
+          input.to,
+          input.cc,
+          input.bcc,
+          input.bodyText ?? null,
+          input.bodyHtml ?? null,
+          input.source,
+          input.replyToMessageId ?? null,
+          input.sourceMessageId ?? null,
+          input.threading?.action ?? null,
+          input.threading?.inReplyTo ?? null,
+          input.threading?.references ?? [],
+          input.threading?.emailEngineMessageId ?? null,
+          input.threading?.gmailThreadId ?? null,
+          input.threading?.graphMessageId ?? null,
+          input.attachments ?? [],
+          input.hermesSkillRunId ?? null,
+          input.hermesDraftText ?? null,
+          input.now,
+        ],
+      );
+
+      return result.rows[0] ? rowToDraft(result.rows[0]) : undefined;
+    },
+
     async getDraftWithAccount(input) {
       const result = await client.query<DraftRow>(
         `

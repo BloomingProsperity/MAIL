@@ -111,6 +111,7 @@ import {
   type MailComposeSeedMode,
   type MailComposeService,
   type MailDraftSource,
+  type UpdateMailDraftInput,
 } from "../mail-compose/mail-compose.js";
 import {
   InvalidMailActionRequestError,
@@ -785,6 +786,21 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
             ),
           );
           writeJson(response, 201, result);
+          return;
+        }
+
+        if (
+          mailComposeRoute.action === "update_draft" &&
+          request.method === "PATCH"
+        ) {
+          const result = await config.mailComposeService.updateDraft(
+            parseMailComposeDraftInput(
+              mailComposeRoute.accountId,
+              await readComposeRequestBody(),
+              mailComposeRoute.draftId,
+            ),
+          );
+          writeJson(response, 200, result);
           return;
         }
 
@@ -3146,6 +3162,7 @@ function parseMailComposeRoute(
 ):
   | { action: "list_send_identities"; accountId: string }
   | { action: "create_draft"; accountId: string }
+  | { action: "update_draft"; accountId: string; draftId: string }
   | { action: "preview_draft"; accountId: string }
   | {
       action: "create_seed";
@@ -3243,6 +3260,16 @@ function parseMailComposeRoute(
       action: "schedule_draft",
       accountId: decodeURIComponent(scheduleMatch[1]),
       draftId: decodeURIComponent(scheduleMatch[2]),
+    };
+  }
+
+  const draftItemMatch =
+    /^\/api\/accounts\/([^/]+)\/compose\/drafts\/([^/]+)$/.exec(url.pathname);
+  if (draftItemMatch) {
+    return {
+      action: "update_draft",
+      accountId: decodeURIComponent(draftItemMatch[1]),
+      draftId: decodeURIComponent(draftItemMatch[2]),
     };
   }
 
@@ -5138,7 +5165,17 @@ function parseImapSmtpAccountInput(
 function parseMailComposeDraftInput(
   accountId: string,
   body: string,
-): CreateMailDraftInput {
+): CreateMailDraftInput;
+function parseMailComposeDraftInput(
+  accountId: string,
+  body: string,
+  draftId: string,
+): UpdateMailDraftInput;
+function parseMailComposeDraftInput(
+  accountId: string,
+  body: string,
+  draftId?: string,
+): CreateMailDraftInput | UpdateMailDraftInput {
   const payload = JSON.parse(body) as {
     from?: unknown;
     fromAddress?: unknown;
@@ -5161,6 +5198,7 @@ function parseMailComposeDraftInput(
   const from = parseMailComposeFrom(payload);
   return {
     accountId,
+    ...(draftId ? { draftId } : {}),
     ...(from ? { from } : {}),
     to,
     cc: parseMailComposeAddresses(payload.cc, false),

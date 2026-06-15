@@ -1155,6 +1155,23 @@ export interface EmailHubApi {
     hermesSkillRunId?: string;
     hermesDraftText?: string;
   }): Promise<MailDraftDto>;
+  updateMailDraft(input: {
+    accountId: string;
+    draftId: string;
+    from?: MailAddressDto;
+    to: MailAddressDto[];
+    cc?: MailAddressDto[];
+    bcc?: MailAddressDto[];
+    subject?: string;
+    bodyText?: string;
+    bodyHtml?: string;
+    source?: MailDraftSource;
+    replyToMessageId?: string;
+    sourceMessageId?: string;
+    attachments?: MailDraftAttachmentDto[];
+    hermesSkillRunId?: string;
+    hermesDraftText?: string;
+  }): Promise<MailDraftDto>;
   createComposeSeed(input: {
     accountId: string;
     messageId: string;
@@ -1713,6 +1730,19 @@ export function createEmailHubApi(
         `/api/accounts/${encodePath(accountId)}/compose/drafts`,
         {
           method: "POST",
+          body: JSON.stringify(cleanObject(body)),
+        },
+      );
+    },
+
+    updateMailDraft(input) {
+      const { accountId, draftId, ...body } = input;
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(accountId)}/compose/drafts/${encodePath(draftId)}`,
+        {
+          method: "PATCH",
           body: JSON.stringify(cleanObject(body)),
         },
       );

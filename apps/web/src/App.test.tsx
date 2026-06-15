@@ -1897,6 +1897,128 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText(/邮件已进入发送队列：draft_1/)).toBeTruthy();
   });
 
+  it("updates the saved composed draft instead of creating duplicates", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Initial draft body." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+    expect(await screen.findByText(/草稿已保存：draft_1/)).toBeTruthy();
+    expect(await screen.findByText(/草稿：draft_1/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Updated draft body." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.updateMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "Updated draft body.",
+        source: "manual",
+      });
+    });
+    expect(api.createMailDraft).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/草稿已更新：draft_1/)).toBeTruthy();
+  });
+
+  it("sends a saved composed draft after updating the same draft id", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Initial draft body." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+    await screen.findByText(/草稿已保存：draft_1/);
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Ready to send body." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await waitFor(() => {
+      expect(api.updateMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "Ready to send body.",
+        source: "manual",
+      });
+    });
+    await waitFor(() => {
+      expect(api.sendMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_1",
+      });
+    });
+    expect(api.createMailDraft).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.updateMailDraft).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(api.sendMailDraft).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("does not send or recreate a saved draft when updating it fails", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Initial draft body." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+    await screen.findByText(/草稿已保存：draft_1/);
+
+    vi.mocked(api.updateMailDraft).mockRejectedValueOnce(new Error("conflict"));
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "This update will fail." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await waitFor(() => {
+      expect(api.updateMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "This update will fail.",
+        source: "manual",
+      });
+    });
+    expect(api.createMailDraft).toHaveBeenCalledTimes(1);
+    expect(api.sendMailDraft).not.toHaveBeenCalled();
+    expect(await screen.findByText("写信操作失败，请稍后再试。")).toBeTruthy();
+  });
+
   it("sends Cc and Bcc from the compose panel through the draft payload", async () => {
     const api = createApiFixture();
 
@@ -2235,6 +2357,55 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText(/邮件已定时/)).toBeTruthy();
+  });
+
+  it("schedules a saved composed draft after updating the same draft id", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Tomorrow review" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Initial scheduled body." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+    await screen.findByText(/草稿已保存：draft_1/);
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Updated scheduled body." },
+    });
+    fireEvent.change(screen.getByLabelText("Compose scheduled time"), {
+      target: { value: "2026-06-14T09:30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Schedule composed draft" }));
+
+    await waitFor(() => {
+      expect(api.updateMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Tomorrow review",
+        bodyText: "Updated scheduled body.",
+        source: "manual",
+      });
+    });
+    await waitFor(() => {
+      expect(api.scheduleMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_1",
+        scheduledAt: "2026-06-14T09:30:00.000Z",
+      });
+    });
+    expect(api.createMailDraft).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(api.updateMailDraft).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(api.scheduleMailDraft).mock.invocationCallOrder[0]);
   });
 
   it("manages scheduled outbox items through backend routes", async () => {
@@ -2959,6 +3130,29 @@ function createApiFixture(): EmailHubApi {
       generatedAt: "2026-06-13T10:01:00.000Z",
     })),
     createMailDraft: vi.fn(async () => mailDraftFixture()),
+    updateMailDraft: vi.fn(async (input) =>
+      mailDraftFixture({
+        id: input.draftId,
+        accountId: input.accountId,
+        ...(input.from ? { from: input.from } : {}),
+        to: input.to,
+        cc: input.cc ?? [],
+        bcc: input.bcc ?? [],
+        subject: input.subject ?? "",
+        ...(input.bodyText ? { bodyText: input.bodyText } : {}),
+        ...(input.bodyHtml ? { bodyHtml: input.bodyHtml } : {}),
+        source: input.source ?? "manual",
+        ...(input.replyToMessageId
+          ? { replyToMessageId: input.replyToMessageId }
+          : {}),
+        ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
+        ...(input.attachments ? { attachments: input.attachments } : {}),
+        ...(input.hermesSkillRunId
+          ? { hermesSkillRunId: input.hermesSkillRunId }
+          : {}),
+        ...(input.hermesDraftText ? { hermesDraftText: input.hermesDraftText } : {}),
+      }),
+    ),
     sendMailDraft: vi.fn(async () => ({
       accountId: "account_1",
       draftId: "draft_1",

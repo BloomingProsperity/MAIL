@@ -1528,6 +1528,51 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("updates existing mail drafts through the compose route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "draft_1",
+        accountId: "account_1",
+        to: [{ address: "client@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Updated subject",
+        bodyText: "Updated body",
+        status: "draft",
+        source: "reply",
+        replyToMessageId: "message_1",
+        sourceMessageId: "message_1",
+        createdAt: "2026-06-13T10:00:00.000Z",
+        updatedAt: "2026-06-13T10:05:00.000Z",
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    await api.updateMailDraft({
+      accountId: "account 1",
+      draftId: "draft/1",
+      to: [{ address: "client@example.com" }],
+      subject: "Updated subject",
+      bodyText: "Updated body",
+      source: "reply",
+      replyToMessageId: "message_1",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account%201/compose/drafts/draft%2F1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          to: [{ address: "client@example.com" }],
+          subject: "Updated subject",
+          bodyText: "Updated body",
+          source: "reply",
+          replyToMessageId: "message_1",
+        }),
+      }),
+    );
+  });
+
   it("loads account send identities through the compose route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

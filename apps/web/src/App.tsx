@@ -1175,6 +1175,7 @@ function MailWorkspace(props: {
   >();
   const [composePreview, setComposePreview] =
     useState<MailComposePreviewDto | undefined>();
+  const [composeDraftId, setComposeDraftId] = useState<string | undefined>();
   const [composeScheduledAt, setComposeScheduledAt] = useState(
     defaultScheduleDateTimeLocal(),
   );
@@ -1195,6 +1196,10 @@ function MailWorkspace(props: {
     setAttachmentDownloadBusyId(undefined);
     setAttachmentDownloadNotice("");
   }, [props.selectedMail.id]);
+
+  useEffect(() => {
+    setComposeDraftId(undefined);
+  }, [props.accountId]);
 
   useEffect(() => {
     if (!props.api) {
@@ -1289,6 +1294,7 @@ function MailWorkspace(props: {
     setComposeSourceMessageId(seed.sourceMessageId);
     setComposeHermesSkillRunId(options.hermesSkillRunId);
     setComposeHermesDraftText(options.hermesDraftText);
+    setComposeDraftId(undefined);
     setComposePreview(undefined);
     setComposeNotice(
       options.notice ??
@@ -1473,30 +1479,11 @@ function MailWorkspace(props: {
 
     setComposeBusy(true);
     try {
-      const draft = await props.api.createMailDraft({
-        accountId: props.accountId,
-        ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+      const draft = await saveOrUpdateComposeDraft({
         to,
-        ...(cc.length > 0 ? { cc } : {}),
-        ...(bcc.length > 0 ? { bcc } : {}),
-        subject: composeSubject.trim(),
+        cc,
+        bcc,
         bodyText,
-        source: composeSource,
-        ...(composeAttachments.length > 0
-          ? { attachments: composeAttachments }
-          : {}),
-        ...(composeReplyToMessageId
-          ? { replyToMessageId: composeReplyToMessageId }
-          : {}),
-        ...(composeSourceMessageId
-          ? { sourceMessageId: composeSourceMessageId }
-          : {}),
-        ...(composeHermesSkillRunId
-          ? { hermesSkillRunId: composeHermesSkillRunId }
-          : {}),
-        ...(composeHermesSkillRunId && composeHermesDraftText
-          ? { hermesDraftText: composeHermesDraftText }
-          : {}),
       });
 
       if (action === "send") {
@@ -1521,12 +1508,65 @@ function MailWorkspace(props: {
         return;
       }
 
-      setComposeNotice(`草稿已保存：${draft.id}`);
+      setComposeDraftId(draft.id);
+      setComposeNotice(
+        composeDraftId ? `草稿已更新：${draft.id}` : `草稿已保存：${draft.id}`,
+      );
     } catch {
       setComposeNotice("写信操作失败，请稍后再试。");
     } finally {
       setComposeBusy(false);
     }
+  }
+
+  function composeDraftPayload(input: {
+    to: ReturnType<typeof parseComposeRecipients>;
+    cc: ReturnType<typeof parseComposeRecipients>;
+    bcc: ReturnType<typeof parseComposeRecipients>;
+    bodyText: string;
+  }) {
+    return {
+      accountId: props.accountId,
+      ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+      to: input.to,
+      ...(input.cc.length > 0 ? { cc: input.cc } : {}),
+      ...(input.bcc.length > 0 ? { bcc: input.bcc } : {}),
+      subject: composeSubject.trim(),
+      bodyText: input.bodyText,
+      source: composeSource,
+      ...(composeAttachments.length > 0
+        ? { attachments: composeAttachments }
+        : {}),
+      ...(composeReplyToMessageId
+        ? { replyToMessageId: composeReplyToMessageId }
+        : {}),
+      ...(composeSourceMessageId
+        ? { sourceMessageId: composeSourceMessageId }
+        : {}),
+      ...(composeHermesSkillRunId
+        ? { hermesSkillRunId: composeHermesSkillRunId }
+        : {}),
+      ...(composeHermesSkillRunId && composeHermesDraftText
+        ? { hermesDraftText: composeHermesDraftText }
+        : {}),
+    };
+  }
+
+  function saveOrUpdateComposeDraft(input: {
+    to: ReturnType<typeof parseComposeRecipients>;
+    cc: ReturnType<typeof parseComposeRecipients>;
+    bcc: ReturnType<typeof parseComposeRecipients>;
+    bodyText: string;
+  }) {
+    const payload = composeDraftPayload(input);
+    if (composeDraftId) {
+      return props.api!.updateMailDraft({
+        ...payload,
+        draftId: composeDraftId,
+      });
+    }
+
+    return props.api!.createMailDraft(payload);
   }
 
   async function addComposeAttachments(files: FileList | null) {
@@ -1577,6 +1617,7 @@ function MailWorkspace(props: {
     setComposeSourceMessageId(undefined);
     setComposeHermesSkillRunId(undefined);
     setComposeHermesDraftText(undefined);
+    setComposeDraftId(undefined);
     setComposePreview(undefined);
     setComposeScheduledAt(defaultScheduleDateTimeLocal());
   }
@@ -1747,7 +1788,10 @@ function MailWorkspace(props: {
           <div className="compose-panel-head">
             <div>
               <strong>写邮件</strong>
-              <span>当前账号：{props.accountId}</span>
+              <span>
+                当前账号：{props.accountId}
+                {composeDraftId ? ` · 草稿：${composeDraftId}` : ""}
+              </span>
             </div>
             <Send size={18} />
           </div>

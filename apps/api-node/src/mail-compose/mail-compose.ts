@@ -192,6 +192,10 @@ export interface CreateMailDraftInput {
   hermesDraftText?: string;
 }
 
+export interface UpdateMailDraftInput extends CreateMailDraftInput {
+  draftId: string;
+}
+
 export interface MailComposeSeedAttachment {
   id: string;
   filename: string;
@@ -295,6 +299,24 @@ export interface MailComposeStore {
       now: string;
     },
   ): Promise<MailDraft>;
+  updateDraft(
+    input: Required<Pick<UpdateMailDraftInput, "accountId" | "draftId" | "to">> & {
+      from?: MailAddress;
+      cc: MailAddress[];
+      bcc: MailAddress[];
+      subject: string;
+      bodyText?: string;
+      bodyHtml?: string;
+      source: MailDraftSource;
+      replyToMessageId?: string;
+      sourceMessageId?: string;
+      attachments?: MailDraftTransportAttachment[];
+      threading?: MailThreading;
+      hermesSkillRunId?: string;
+      hermesDraftText?: string;
+      now: string;
+    },
+  ): Promise<MailDraft | undefined>;
   getDraftWithAccount(input: {
     accountId: string;
     draftId: string;
@@ -418,6 +440,7 @@ export interface MailComposeService {
   createComposeSeed(input: MailComposeSeedInput): Promise<MailComposeSeed>;
   previewDraft(input: MailComposePreviewInput): Promise<MailComposePreview>;
   createDraft(input: CreateMailDraftInput): Promise<MailDraft>;
+  updateDraft(input: UpdateMailDraftInput): Promise<MailDraft>;
   sendDraft(input: { accountId: string; draftId: string }): Promise<{
     accountId: string;
     draftId: string;
@@ -536,6 +559,41 @@ export function createMailComposeService(options: {
         id: options.createId(),
         now: currentIso(options.now),
       });
+
+      await recordHermesDraftFeedback(options.hermesDraftFeedbackStore, draft);
+
+      return draft;
+    },
+
+    async updateDraft(input) {
+      assertNonEmpty(input.draftId);
+      const normalized = normalizeDraftInput(input);
+      await ensureAllowedSender(
+        options.sendIdentityStore,
+        normalized.accountId,
+        normalized.from,
+      );
+      const attachments = await resolveDraftAttachments(
+        options.mailReadStore,
+        options.attachmentContentStore,
+        normalized.accountId,
+        normalized.attachments,
+      );
+      const threading = await resolveThreading(
+        options.threadingStore,
+        normalized,
+      );
+      const { attachments: _attachmentInputs, ...draftInput } = normalized;
+      const draft = await options.store.updateDraft({
+        ...draftInput,
+        draftId: input.draftId.trim(),
+        ...(attachments.length > 0 ? { attachments } : {}),
+        ...(threading ? { threading } : {}),
+        now: currentIso(options.now),
+      });
+      if (!draft) {
+        throw new InvalidMailComposeRequestError("draft was not found");
+      }
 
       await recordHermesDraftFeedback(options.hermesDraftFeedbackStore, draft);
 

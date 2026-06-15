@@ -156,6 +156,96 @@ describe("Postgres mail compose store", () => {
     });
   });
 
+  it("updates only editable draft rows", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresMailComposeStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "draft_1",
+              account_id: "acc_1",
+              from_address: null,
+              from_name: null,
+              subject: "Updated subject",
+              to_emails: [{ address: "lina@example.com" }],
+              cc_emails: [],
+              bcc_emails: [],
+              body_text: "Updated body",
+              body_html: null,
+              status: "draft",
+              source: "reply",
+              reply_to_message_id: "message_1",
+              source_message_id: "message_1",
+              hermes_skill_run_id: "run_1",
+              hermes_draft_text: "Original Hermes body",
+              provider_queue_id: null,
+              provider_message_id: null,
+              error_message: null,
+              created_at: "2026-06-13T08:00:00.000Z",
+              updated_at: "2026-06-13T08:30:00.000Z",
+              sent_at: null,
+            },
+          ],
+        };
+      },
+    });
+
+    const draft = await store.updateDraft({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Updated subject",
+      bodyText: "Updated body",
+      source: "reply",
+      replyToMessageId: "message_1",
+      sourceMessageId: "message_1",
+      hermesSkillRunId: "run_1",
+      hermesDraftText: "Original Hermes body",
+      now: "2026-06-13T08:30:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/UPDATE email_drafts/i);
+    expect(queries[0].text).toMatch(/AND status = 'draft'/i);
+    expect(queries[0].text).toMatch(/error_message = NULL/i);
+    expect(queries[0].values).toEqual([
+      "acc_1",
+      "draft_1",
+      null,
+      null,
+      "Updated subject",
+      [{ address: "lina@example.com" }],
+      [],
+      [],
+      "Updated body",
+      null,
+      "reply",
+      "message_1",
+      "message_1",
+      null,
+      null,
+      [],
+      null,
+      null,
+      null,
+      [],
+      "run_1",
+      "Original Hermes body",
+      "2026-06-13T08:30:00.000Z",
+    ]);
+    expect(draft).toMatchObject({
+      id: "draft_1",
+      subject: "Updated subject",
+      bodyText: "Updated body",
+      source: "reply",
+      replyToMessageId: "message_1",
+      hermesSkillRunId: "run_1",
+    });
+  });
+
   it("stores draft attachment manifests without exposing provider ids in the DTO", async () => {
     const manifest = [
       {
