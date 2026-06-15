@@ -209,19 +209,21 @@ with more than smoke-level tests.
   provider-aware scheduled runner, scheduled-store routing, OAuth send scopes,
   frontend outbox contract tests.
 - Current frontend status: Mail now exposes a backend-wired compose panel for
-  From identity, To/Cc/Bcc, save draft, send now, send later, Hermes quick
-  reply through `/api/hermes/skills/quick_reply/run`, and Hermes rewrite/polish
-  through `/api/hermes/skills/rewrite_polish/run`. The outbox panel loads
+  From identity, To/Cc/Bcc, ordinary draft auto-save, manual save draft, send
+  now, send later, Hermes quick reply through
+  `/api/hermes/skills/quick_reply/run`, and Hermes rewrite/polish through
+  `/api/hermes/skills/rewrite_polish/run`. The outbox panel loads
   `/api/accounts/:accountId/outbox`, and each row routes reschedule, send now,
   cancel, and edit-draft to the matching backend contract. Scheduled outbox
   edits load the app-owned draft detail, preserve the existing `draftId` and
   `scheduledId`, and update the same outbox row before save, send-now, or
-  reschedule. A saved-drafts panel loads
+  reschedule; they are intentionally excluded from background auto-save to avoid
+  racing the scheduled-send state machine. A saved-drafts panel loads
   `/api/accounts/:accountId/compose/drafts`, lists ordinary `status=draft`
   rows outside the scheduled outbox, and loads a selected draft into the same
   compose editor so save/send/schedule continue updating the existing
   `draftId`. API client route tests and App behavior tests cover the full
-  create/list/update/send/schedule/list-outbox/edit/reschedule/send-now/cancel
+  create/list/auto-save/update/send/schedule/list-outbox/edit/reschedule/send-now/cancel
   flow plus send-as, Cc/Bcc draft payloads, editable Hermes quick replies,
   provider-native send-as identities, editable Hermes polishing with
   writing-style feedback, backend-generated reply/reply-all/forward seeds, and
@@ -236,7 +238,9 @@ with more than smoke-level tests.
   `/reply-all`, `/forward`, and `/api/accounts/:accountId/compose/preview`.
   Seeds are generated from the app-owned mail read model, exclude verified
   self identities on reply-all, preserve `source_message_id`, and do not call
-  provider transports or persist drafts until the user explicitly saves/sends.
+  provider transports. They become persisted ordinary drafts only after the user
+  edits enough valid content for compose auto-save, explicitly saves, sends, or
+  schedules.
 - Current threaded reply status: saving a reply/reply-all draft resolves the
   source message's RFC Message-ID, historical `References` chain, and provider
   refs from the app-owned read model, stores them on the draft, and sends them

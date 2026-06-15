@@ -2688,6 +2688,163 @@ describe("Email Hub first UI baseline", () => {
     ).toBeLessThan(vi.mocked(api.scheduleMailDraft).mock.invocationCallOrder[0]);
   });
 
+  it("auto-saves new composed drafts after the user pauses", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    vi.useFakeTimers();
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Auto saved subject" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Auto save this draft after a pause." },
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(1_999);
+    });
+    expect(api.createMailDraft).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(api.createMailDraft).toHaveBeenCalledWith({
+      accountId: "account_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Auto saved subject",
+      bodyText: "Auto save this draft after a pause.",
+      source: "manual",
+    });
+    expect(screen.getByText(/已自动保存/)).toBeTruthy();
+    expect(api.listMailDrafts).toHaveBeenCalledTimes(2);
+  });
+
+  it("auto-saves edits to a loaded saved draft without creating a replacement", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMailDrafts).mockResolvedValue({
+      accountId: "account_1",
+      items: [
+        mailDraftFixture({
+          id: "draft_saved",
+          subject: "Saved subject",
+          bodyText: "Saved body.",
+        }),
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("Saved subject");
+    vi.useFakeTimers();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit saved draft draft_saved" }),
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(api.updateMailDraft).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Autosaved edited body." },
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(api.updateMailDraft).toHaveBeenCalledWith({
+      accountId: "account_1",
+      draftId: "draft_saved",
+      to: [{ address: "client@example.com", name: "Client" }],
+      subject: "Saved subject",
+      bodyText: "Autosaved edited body.",
+      source: "manual",
+      replyToMessageId: "message_1",
+    });
+    expect(api.createMailDraft).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-save scheduled outbox draft edits", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("draft_1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+    );
+    await screen.findByText(/待发草稿已载入：schedule_1/);
+    vi.useFakeTimers();
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Scheduled body should not auto-save." },
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(api.updateScheduledDraft).not.toHaveBeenCalled();
+    expect(api.updateMailDraft).not.toHaveBeenCalled();
+    expect(api.createMailDraft).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-save again after sending clears the compose form", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    vi.useFakeTimers();
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Send without trailing autosave" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Send this body now." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.createMailDraft).toHaveBeenCalledTimes(1);
+    expect(api.sendMailDraft).toHaveBeenCalledWith({
+      accountId: "account_1",
+      draftId: "draft_1",
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+      await Promise.resolve();
+    });
+    expect(api.createMailDraft).toHaveBeenCalledTimes(1);
+    expect(api.updateMailDraft).not.toHaveBeenCalled();
+  });
+
   it("loads saved compose drafts into the compose panel for editing", async () => {
     const api = createApiFixture();
     vi.mocked(api.listMailDrafts).mockResolvedValue({

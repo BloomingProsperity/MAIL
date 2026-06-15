@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Archive,
@@ -84,10 +84,29 @@ type QuickReplyAction = {
 
 const MAX_COMPOSE_ATTACHMENTS = 20;
 const MAX_COMPOSE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const COMPOSE_AUTOSAVE_DELAY_MS = 2_000;
 const PREVIEW_ATTACHMENT_ROWS = [
   { name: "Q2_合作方案_最终版.pdf", size: "1.2 MB" },
   { name: "报价明细表.xlsx", size: "320 KB" },
 ];
+
+type ComposeAutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
+
+interface ComposeDraftSignatureInput {
+  accountId: string;
+  from?: { address: string; name?: string };
+  to: Array<{ address: string; name?: string }>;
+  cc: Array<{ address: string; name?: string }>;
+  bcc: Array<{ address: string; name?: string }>;
+  subject: string;
+  bodyText: string;
+  source: MailDraftSource;
+  attachments?: MailDraftAttachmentDto[];
+  replyToMessageId?: string;
+  sourceMessageId?: string;
+  hermesSkillRunId?: string;
+  hermesDraftText?: string;
+}
 
 type AddMailProviderGroupId =
   | "gmail"
@@ -1197,6 +1216,8 @@ function MailWorkspace(props: {
   );
   const [composeNotice, setComposeNotice] = useState("");
   const [composeBusy, setComposeBusy] = useState(false);
+  const [composeAutosaveStatus, setComposeAutosaveStatus] =
+    useState<ComposeAutosaveStatus>("idle");
   const [mailDrafts, setMailDrafts] = useState<MailDraftDto[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [draftsNotice, setDraftsNotice] = useState("");
@@ -1210,6 +1231,51 @@ function MailWorkspace(props: {
   const [rescheduleTimes, setRescheduleTimes] = useState<Record<string, string>>(
     {},
   );
+  const composeAutosaveTimerRef = useRef<number | undefined>(undefined);
+  const composeAutosaveGenerationRef = useRef(0);
+  const lastSavedComposeSignatureRef = useRef("");
+
+  function cancelComposeAutosave(status: ComposeAutosaveStatus = "idle") {
+    if (composeAutosaveTimerRef.current !== undefined) {
+      window.clearTimeout(composeAutosaveTimerRef.current);
+      composeAutosaveTimerRef.current = undefined;
+    }
+    composeAutosaveGenerationRef.current += 1;
+    setComposeAutosaveStatus(status);
+  }
+
+  function currentComposeSignature(input: {
+    to: ReturnType<typeof parseComposeRecipients>;
+    cc: ReturnType<typeof parseComposeRecipients>;
+    bcc: ReturnType<typeof parseComposeRecipients>;
+    bodyText: string;
+  }) {
+    return composeDraftSignature({
+      accountId: props.accountId,
+      ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+      to: input.to,
+      cc: input.cc,
+      bcc: input.bcc,
+      subject: composeSubject.trim(),
+      bodyText: input.bodyText,
+      source: composeSource,
+      attachments: composeAttachments,
+      replyToMessageId: composeReplyToMessageId,
+      sourceMessageId: composeSourceMessageId,
+      hermesSkillRunId: composeHermesSkillRunId,
+      hermesDraftText: composeHermesDraftText,
+    });
+  }
+
+  function rememberSavedComposeSignature(input: {
+    to: ReturnType<typeof parseComposeRecipients>;
+    cc: ReturnType<typeof parseComposeRecipients>;
+    bcc: ReturnType<typeof parseComposeRecipients>;
+    bodyText: string;
+  }) {
+    lastSavedComposeSignatureRef.current = currentComposeSignature(input);
+    setComposeAutosaveStatus("saved");
+  }
 
   useEffect(() => {
     setAttachmentDownloadBusyId(undefined);
@@ -1217,6 +1283,8 @@ function MailWorkspace(props: {
   }, [props.selectedMail.id]);
 
   useEffect(() => {
+    cancelComposeAutosave();
+    lastSavedComposeSignatureRef.current = "";
     setComposeDraftId(undefined);
     setComposeScheduledId(undefined);
     setGraphTargetMailboxes({});
@@ -1314,6 +1382,93 @@ function MailWorkspace(props: {
       ? selectedComposeIdentity.from
       : undefined;
   const detailAttachments = props.selectedDetail?.attachments;
+
+  useEffect(() => {
+    if (composeAutosaveTimerRef.current !== undefined) {
+      window.clearTimeout(composeAutosaveTimerRef.current);
+      composeAutosaveTimerRef.current = undefined;
+    }
+    composeAutosaveGenerationRef.current += 1;
+
+    if (!props.api || composeBusy || composeScheduledId) {
+      return;
+    }
+
+    const to = parseComposeRecipients(composeTo);
+    const cc = parseComposeRecipients(composeCc);
+    const bcc = parseComposeRecipients(composeBcc);
+    const bodyText = composeBody.trim();
+    if (to.length === 0 || !bodyText) {
+      setComposeAutosaveStatus("idle");
+      return;
+    }
+
+    const signatureInput = { to, cc, bcc, bodyText };
+    const signature = currentComposeSignature(signatureInput);
+    if (signature === lastSavedComposeSignatureRef.current) {
+      setComposeAutosaveStatus(composeDraftId ? "saved" : "idle");
+      return;
+    }
+
+    const generation = composeAutosaveGenerationRef.current;
+    setComposeAutosaveStatus("pending");
+    composeAutosaveTimerRef.current = window.setTimeout(() => {
+      setComposeAutosaveStatus("saving");
+      const request = composeDraftId
+        ? props.api!.updateMailDraft({
+            ...composeDraftPayload(signatureInput),
+            draftId: composeDraftId,
+          })
+        : props.api!.createMailDraft(composeDraftPayload(signatureInput));
+
+      void request
+        .then((draft) => {
+          if (generation !== composeAutosaveGenerationRef.current) {
+            return;
+          }
+          setComposeDraftId(draft.id);
+          lastSavedComposeSignatureRef.current = signature;
+          setComposeAutosaveStatus("saved");
+          void refreshMailDrafts().catch(() => {
+            if (generation === composeAutosaveGenerationRef.current) {
+              setDraftsNotice("草稿列表暂时不可用。");
+            }
+          });
+        })
+        .catch(() => {
+          if (generation === composeAutosaveGenerationRef.current) {
+            setComposeAutosaveStatus("error");
+          }
+        });
+    }, COMPOSE_AUTOSAVE_DELAY_MS);
+
+    return () => {
+      if (composeAutosaveTimerRef.current !== undefined) {
+        window.clearTimeout(composeAutosaveTimerRef.current);
+        composeAutosaveTimerRef.current = undefined;
+      }
+    };
+  }, [
+    composeAttachments,
+    composeBcc,
+    composeBody,
+    composeBusy,
+    composeCc,
+    composeDraftId,
+    composeFrom,
+    composeHermesDraftText,
+    composeHermesSkillRunId,
+    composeReplyToMessageId,
+    composeScheduledId,
+    composeSource,
+    composeSourceMessageId,
+    composeSubject,
+    composeTo,
+    props.accountId,
+    props.api,
+    selectedComposeFrom?.address,
+    selectedComposeFrom?.name,
+  ]);
 
   async function refreshSendIdentityState(preferredId?: string) {
     if (!props.api) {
@@ -1506,6 +1661,8 @@ function MailWorkspace(props: {
     setComposeHermesDraftText(options.hermesDraftText);
     setComposeDraftId(undefined);
     setComposeScheduledId(undefined);
+    lastSavedComposeSignatureRef.current = "";
+    setComposeAutosaveStatus("idle");
     setComposePreview(undefined);
     setComposeNotice(
       options.notice ??
@@ -1529,6 +1686,8 @@ function MailWorkspace(props: {
     setComposeHermesDraftText(draft.hermesDraftText);
     setComposeDraftId(draft.id);
     setComposeScheduledId(scheduled?.id);
+    lastSavedComposeSignatureRef.current = composeDraftSignatureFromDraft(draft);
+    setComposeAutosaveStatus(scheduled ? "idle" : "saved");
     if (scheduled) {
       setComposeScheduledAt(isoToDateTimeLocal(scheduled.scheduledAt));
     }
@@ -1732,6 +1891,7 @@ function MailWorkspace(props: {
       return;
     }
 
+    cancelComposeAutosave("idle");
     setComposeBusy(true);
     try {
       const draft = await saveOrUpdateComposeDraft({
@@ -1740,6 +1900,7 @@ function MailWorkspace(props: {
         bcc,
         bodyText,
       });
+      rememberSavedComposeSignature({ to, cc, bcc, bodyText });
 
       if (action === "send") {
         if (composeScheduledId) {
@@ -1910,6 +2071,8 @@ function MailWorkspace(props: {
   }
 
   function clearComposeForm() {
+    cancelComposeAutosave();
+    lastSavedComposeSignatureRef.current = "";
     setComposeTo("");
     setComposeCc("");
     setComposeBcc("");
@@ -2127,6 +2290,9 @@ function MailWorkspace(props: {
                 当前账号：{props.accountId}
                 {composeDraftId ? ` · 草稿：${composeDraftId}` : ""}
                 {composeScheduledId ? ` · 待发：${composeScheduledId}` : ""}
+                {composeAutosaveStatus !== "idle"
+                  ? ` · ${formatComposeAutosaveStatus(composeAutosaveStatus)}`
+                  : ""}
               </span>
             </div>
             <Send size={18} />
@@ -3057,6 +3223,75 @@ function formatComposeAddressList(addresses: Array<{ address: string; name?: str
       address.name ? `${address.name} <${address.address}>` : address.address,
     )
     .join(", ");
+}
+
+function composeDraftSignature(input: ComposeDraftSignatureInput): string {
+  return JSON.stringify({
+    accountId: input.accountId,
+    from: input.from ? normalizedComposeAddress(input.from) : null,
+    to: input.to.map(normalizedComposeAddress),
+    cc: input.cc.map(normalizedComposeAddress),
+    bcc: input.bcc.map(normalizedComposeAddress),
+    subject: input.subject.trim(),
+    bodyText: input.bodyText.trim(),
+    source: input.source,
+    attachments: (input.attachments ?? []).map((attachment) => ({
+      id: attachment.id,
+      source: attachment.source,
+      attachmentId: attachment.attachmentId,
+      storageKey: attachment.storageKey ?? null,
+      filename: attachment.filename,
+      contentType: attachment.contentType,
+      byteSize: attachment.byteSize,
+      inline: attachment.inline,
+      contentId: attachment.contentId ?? null,
+    })),
+    replyToMessageId: input.replyToMessageId ?? null,
+    sourceMessageId: input.sourceMessageId ?? null,
+    hermesSkillRunId: input.hermesSkillRunId ?? null,
+    hermesDraftText: input.hermesDraftText ?? null,
+  });
+}
+
+function composeDraftSignatureFromDraft(draft: MailDraftDto): string {
+  return composeDraftSignature({
+    accountId: draft.accountId,
+    from: draft.from,
+    to: draft.to,
+    cc: draft.cc,
+    bcc: draft.bcc,
+    subject: draft.subject,
+    bodyText: draft.bodyText ?? "",
+    source: draft.source,
+    attachments: draft.attachments,
+    replyToMessageId: draft.replyToMessageId,
+    sourceMessageId: draft.sourceMessageId,
+    hermesSkillRunId: draft.hermesSkillRunId,
+    hermesDraftText: draft.hermesDraftText,
+  });
+}
+
+function normalizedComposeAddress(address: { address: string; name?: string }) {
+  const name = address.name?.trim();
+  return {
+    address: address.address.trim().toLowerCase(),
+    ...(name ? { name } : {}),
+  };
+}
+
+function formatComposeAutosaveStatus(status: ComposeAutosaveStatus): string {
+  switch (status) {
+    case "pending":
+      return "自动保存待处理";
+    case "saving":
+      return "自动保存中";
+    case "saved":
+      return "已自动保存";
+    case "error":
+      return "自动保存失败";
+    case "idle":
+      return "";
+  }
 }
 
 function formatComposeWarnings(

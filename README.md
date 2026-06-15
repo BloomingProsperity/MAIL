@@ -153,13 +153,15 @@ DELETE /api/accounts/:accountId/outbox/:scheduledId
 
 The draft list route returns app-owned ordinary drafts only. The draft create
 route stores local recipients, subject, body, source, optional reply target, and
-optional Hermes skill run id. It does not call a provider. The send route claims
-an existing draft, submits it through the account engine, and records provider
-queue/message ids only after submission. The schedule route moves a valid draft
-into a durable `scheduled_sends` outbox row. The worker claims due scheduled
-sends with a lease, submits through the same account transport, and marks the
-row sent, failed, or dead-lettered. The web app must never call EmailEngine
-submit directly.
+optional Hermes skill run id. It does not call a provider. The web app can
+auto-save ordinary drafts after the user pauses with valid recipients and body;
+scheduled outbox drafts still require an explicit save/send/reschedule action.
+The send route claims an existing draft, submits it through the account engine,
+and records provider queue/message ids only after submission. The schedule
+route moves a valid draft into a durable `scheduled_sends` outbox row. The
+worker claims due scheduled sends with a lease, submits through the same account
+transport, and marks the row sent, failed, or dead-lettered. The web app must
+never call EmailEngine submit directly.
 
 CSV account import is available at:
 
