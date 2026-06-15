@@ -108,6 +108,11 @@ interface ComposeDraftSignatureInput {
   hermesDraftText?: string;
 }
 
+interface SearchLaunch {
+  query: string;
+  requestId: number;
+}
+
 type AddMailProviderGroupId =
   | "gmail"
   | "outlook"
@@ -492,6 +497,7 @@ export function App(props: AppProps = {}) {
   const [selectedDetail, setSelectedDetail] = useState<MessageDetailDto | undefined>();
   const [undoToast, setUndoToast] = useState<UndoToastState | undefined>();
   const [backendNotice, setBackendNotice] = useState<string | undefined>();
+  const [searchLaunch, setSearchLaunch] = useState<SearchLaunch | undefined>();
   const [navigationProviderGroups, setNavigationProviderGroups] =
     useState<ProviderGroup[]>(providerGroups);
   const [navigationQuickCategories, setNavigationQuickCategories] =
@@ -564,6 +570,19 @@ export function App(props: AppProps = {}) {
     }
 
     await refreshNavigationSummary();
+  }
+
+  function launchGlobalSearch(query: string) {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      return;
+    }
+
+    setSearchLaunch((current) => ({
+      query: trimmedQuery,
+      requestId: (current?.requestId ?? 0) + 1,
+    }));
+    setActiveView("search");
   }
 
   useEffect(() => {
@@ -913,6 +932,7 @@ export function App(props: AppProps = {}) {
             followUpNotice={followUpNotice}
             density={mailDensity}
             onAddMail={() => setActiveView("add-mail")}
+            onGlobalSearch={launchGlobalSearch}
             onDensityChange={setMailDensity}
             onFolderChange={(id) => void loadMailbox(id)}
             onSavedViewChange={(id) => void loadSavedView(id)}
@@ -954,7 +974,11 @@ export function App(props: AppProps = {}) {
           />
         ) : null}
         {activeView === "search" ? (
-          <SearchPage api={props.api} accountId={accountId} />
+          <SearchPage
+            api={props.api}
+            accountId={accountId}
+            launch={searchLaunch}
+          />
         ) : null}
         {activeView === "settings" ? (
           <SettingsPage api={props.api} accountId={accountId} />
@@ -1162,6 +1186,7 @@ function MailWorkspace(props: {
   followUpNotice?: string;
   density: MailDensity;
   onAddMail: () => void;
+  onGlobalSearch: (query: string) => void;
   onDensityChange: (density: MailDensity) => void;
   onFolderChange: (id: string) => void;
   onSavedViewChange: (id: string) => void;
@@ -1171,6 +1196,7 @@ function MailWorkspace(props: {
   onTrackFollowUp: () => void;
   onConfirmHermesFollowUp: () => void;
 }) {
+  const [topSearchQuery, setTopSearchQuery] = useState("");
   const [composeFrom, setComposeFrom] = useState("");
   const [sendIdentities, setSendIdentities] = useState<MailSendIdentityDto[]>([]);
   const [sendIdentityCandidates, setSendIdentityCandidates] = useState<
@@ -2218,6 +2244,16 @@ function MailWorkspace(props: {
     }
   }
 
+  function submitTopSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedQuery = topSearchQuery.trim();
+    if (!trimmedQuery) {
+      return;
+    }
+
+    props.onGlobalSearch(trimmedQuery);
+  }
+
   async function downloadMessageAttachment(attachment: AttachmentDto) {
     if (!props.api) {
       setAttachmentDownloadNotice("附件下载服务暂时不可用。");
@@ -2247,11 +2283,21 @@ function MailWorkspace(props: {
           <h1>邮箱</h1>
           <p>邮箱目录放在第二栏，左侧只保留全局功能。</p>
         </div>
-        <label className="top-search">
+        <form
+          className="top-search"
+          role="search"
+          aria-label="全局邮件搜索"
+          onSubmit={submitTopSearch}
+        >
           <Search size={18} />
-          <input placeholder="搜索邮件、联系人或主题" />
+          <input
+            aria-label="全局搜索邮件"
+            placeholder="搜索邮件、联系人或主题"
+            value={topSearchQuery}
+            onChange={(event) => setTopSearchQuery(event.target.value)}
+          />
           <kbd>Ctrl /</kbd>
-        </label>
+        </form>
         <div className="top-actions">
           <button className="ghost-button" type="button" onClick={props.onAddMail}>
             <MailPlus size={17} />
@@ -4473,14 +4519,20 @@ function SyncCenterPage(props: {
   );
 }
 
-function SearchPage(props: { api?: EmailHubApi; accountId: string }) {
+function SearchPage(props: {
+  api?: EmailHubApi;
+  accountId: string;
+  launch?: SearchLaunch;
+}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MailItem[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [notice, setNotice] = useState("输入关键词后搜索所有已同步邮件。");
   const [searchAllAccounts, setSearchAllAccounts] = useState(true);
   const [quickFilters, setQuickFilters] = useState<MailQuickFilter[]>([]);
   const [qScopes, setQScopes] = useState<MailSearchScope[]>([
     "sender",
+    "recipients",
     "subject",
     "body",
   ]);
@@ -4501,12 +4553,11 @@ function SearchPage(props: { api?: EmailHubApi; accountId: string }) {
     );
   }
 
-  async function runSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmedQuery = query.trim();
-
+  async function executeSearch(rawQuery: string) {
+    const trimmedQuery = rawQuery.trim();
     if (!trimmedQuery) {
       setResults([]);
+      setHasSearched(false);
       setNotice("请输入要查找的关键词。");
       return;
     }
@@ -4519,6 +4570,7 @@ function SearchPage(props: { api?: EmailHubApi; accountId: string }) {
           preview: "命中：合同、附件、客户标签",
         },
       ]);
+      setHasSearched(true);
       setNotice("本地预览结果。连接后会搜索已同步邮件。");
       return;
     }
@@ -4535,6 +4587,7 @@ function SearchPage(props: { api?: EmailHubApi; accountId: string }) {
       });
       const mappedResults = page.items.map(mapMessageDtoToMailItem);
       setResults(mappedResults);
+      setHasSearched(true);
       setNotice(
         mappedResults.length > 0
           ? searchAllAccounts
@@ -4544,9 +4597,24 @@ function SearchPage(props: { api?: EmailHubApi; accountId: string }) {
       );
     } catch {
       setResults([]);
+      setHasSearched(true);
       setNotice("搜索暂时不可用，请稍后重试。");
     }
   }
+
+  async function runSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await executeSearch(query);
+  }
+
+  useEffect(() => {
+    if (!props.launch?.query) {
+      return;
+    }
+
+    setQuery(props.launch.query);
+    void executeSearch(props.launch.query);
+  }, [props.launch?.requestId]);
 
   return (
     <section className="workspace-page page-scroll narrow">
@@ -4558,18 +4626,18 @@ function SearchPage(props: { api?: EmailHubApi; accountId: string }) {
       </header>
       <section className="page-panel search-panel">
         <form className="search-form" onSubmit={runSearch}>
-        <label className="large-search">
-          <Search size={21} />
-          <input
-            aria-label="搜索邮件"
-            placeholder="搜索邮件、联系人、主题或附件"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
-        <button className="primary-button" type="submit">
-          执行搜索
-        </button>
+          <label className="large-search">
+            <Search size={21} />
+            <input
+              aria-label="搜索邮件"
+              placeholder="搜索邮件、联系人、主题或附件"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          <button className="primary-button" type="submit">
+            执行搜索
+          </button>
         </form>
         <div className="filter-row">
           <button
@@ -4620,16 +4688,30 @@ function SearchPage(props: { api?: EmailHubApi; accountId: string }) {
           >
             发件人
           </button>
+          <button
+            className={qScopes.includes("recipients") ? "active" : ""}
+            type="button"
+            aria-label="Search recipients scope"
+            onClick={() => toggleSearchScope("recipients")}
+          >
+            收件人
+          </button>
         </div>
         <div className="backend-notice" role="status">{notice}</div>
-        {(results.length > 0 ? results : mailItems.slice(0, 1)).map((mail) => (
-          <div className="search-result" key={mail.id}>
-            <strong>{mail.subject}</strong>
-            <span>
-              {mail.searchPreview ?? mail.preview} · {mail.sender} · {mail.date} {mail.time}
-            </span>
-          </div>
-        ))}
+        {results.length > 0
+          ? results.map((mail) => (
+              <div className="search-result" key={mail.id}>
+                <strong>{mail.subject}</strong>
+                <span>
+                  {mail.searchPreview ?? mail.preview} · {mail.sender} · {mail.date}{" "}
+                  {mail.time}
+                </span>
+              </div>
+            ))
+          : null}
+        {hasSearched && results.length === 0 ? (
+          <div className="empty-search">没有匹配邮件。</div>
+        ) : null}
       </section>
     </section>
   );

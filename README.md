@@ -312,6 +312,8 @@ The API applies a 1 MiB default request body limit before route parsing. Oversiz
 ## Product Boundaries
 
 - The left sidebar is only for global features: Mail, Add Mailbox, Sync Center, Search, and Settings.
+- The Mail top search and Search workspace both use Email Hub message search
+  contracts; they do not call provider search APIs directly.
 - Tasks and Hermes configuration live inside Settings; the compact Hermes input remains a global bottom dock.
 - Mail folders live only in the second column.
 - The frontend and business code must use Email Hub contracts, not raw EmailEngine payloads.

@@ -514,7 +514,8 @@ h2 {
 .draft-row span,
 .outbox-row span,
 .empty-drafts,
-.empty-outbox {
+.empty-outbox,
+.empty-search {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.35;

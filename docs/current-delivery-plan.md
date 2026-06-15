@@ -165,6 +165,12 @@ with more than smoke-level tests.
   missing indexed body.
 - Tests: global search, quick filter scope, feedback memory trail, Gatekeeper
   mode restrictions, bulk action visibility.
+- Current search status: the Mail top-bar search now launches the global Search
+  workspace with the submitted query and immediately calls the same
+  `/api/messages?q=...&sort=smart` contract used by the Search page. The Search
+  workspace keeps Thunderbird-style scope controls for sender, recipients,
+  subject, and body/indexed attachment text plus quick filters such as unread
+  and attachments.
 
 ### 5. Accounts, Domains, And Migration
 
@@ -184,7 +190,8 @@ with more than smoke-level tests.
 
 - Trigger: user navigates Mail, Add Mailbox, Sync Center, Search, Settings.
 - State: React local state mirrors API DTOs only; preview data is a fallback.
-- API: consume provider capabilities, global search, CSV import, transfer,
+- API: consume provider capabilities, top-bar global search, Search workspace
+  filters, CSV import, transfer,
   Gatekeeper senders, Sync Center diagnostics and reauthorization tasks, Hermes
   settings, domains.
 - Failure: backend unavailable keeps preview state with visible status.

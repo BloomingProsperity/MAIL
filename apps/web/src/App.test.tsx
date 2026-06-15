@@ -534,6 +534,12 @@ describe("Email Hub first UI baseline", () => {
           starred: false,
           mailboxIds: ["mailbox_inbox"],
           attachmentCount: 0,
+          searchPreview: input.q
+            ? {
+                source: "indexed_text",
+                text: "Indexed body hit: signed contract.",
+              }
+            : undefined,
           classification: {
             bucket: "P1 Urgent",
             priorityScore: input.q ? 91 : 96,
@@ -561,10 +567,130 @@ describe("Email Hub first UI baseline", () => {
         q: "signed contract",
         sort: "smart",
         quickFilters: ["attachments"],
-        qScopes: ["sender", "subject", "body"],
+        qScopes: ["sender", "recipients", "subject", "body"],
       });
     });
     expect(await screen.findByText("Signed contract found")).toBeTruthy();
+    expect(await screen.findByText(/Indexed body hit: signed contract/)).toBeTruthy();
+  });
+
+  it("lets search page remove recipients from the backend query scope", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
+    );
+    fireEvent.change(screen.getByLabelText("搜索邮件"), {
+      target: { value: "billing contact" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search recipients scope" }));
+    fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        limit: 50,
+        q: "billing contact",
+        qScopes: ["sender", "subject", "body"],
+        sort: "smart",
+      });
+    });
+  });
+
+  it("shows a real empty state when backend search returns no messages", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items: input.q
+        ? []
+        : [
+            {
+              id: "message_1",
+              accountId: "account_1",
+              subject: "Live subject",
+              from: { email: "client@example.com", name: "Live Client" },
+              receivedAt: "2026-06-13T10:00:00.000Z",
+              snippet: "Live snippet",
+              unread: true,
+              starred: false,
+              mailboxIds: ["mailbox_inbox"],
+              attachmentCount: 0,
+              classification: {
+                bucket: "P1 Urgent",
+                priorityScore: 96,
+                reasons: ["Direct to you"],
+              },
+            },
+          ],
+    }));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
+    );
+    fireEvent.change(screen.getByLabelText("搜索邮件"), {
+      target: { value: "missing invoice" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        limit: 50,
+        q: "missing invoice",
+        qScopes: ["sender", "recipients", "subject", "body"],
+        sort: "smart",
+      });
+    });
+    expect(await screen.findAllByText("没有匹配邮件。")).toHaveLength(1);
+    expect(screen.getByRole("status").textContent).toBe("没有找到匹配邮件。");
+    expect(screen.queryByText("关于 Q2 合作方案的确认")).toBeNull();
+  });
+
+  it("launches global search from the mail top bar", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items: [
+        {
+          id: input.q ? "message_top_search" : "message_1",
+          accountId: "account_1",
+          subject: input.q ? "Top search result" : "Live subject",
+          from: { email: "client@example.com", name: "Live Client" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: input.q ? "Matched from the top search box" : "Live snippet",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: input.q ? 89 : 96,
+            reasons: input.q ? ["Matched top search"] : ["Direct to you"],
+          },
+        },
+      ],
+    }));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("全局搜索邮件"), {
+      target: { value: "signed contract" },
+    });
+    fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
+
+    expect(await screen.findByRole("heading", { name: "搜索" })).toBeTruthy();
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        limit: 50,
+        q: "signed contract",
+        qScopes: ["sender", "recipients", "subject", "body"],
+        sort: "smart",
+      });
+    });
+    expect(await screen.findByText("Top search result")).toBeTruthy();
   });
 
   it("loads and saves new-sender handling from Settings", async () => {
@@ -1451,7 +1577,7 @@ describe("Email Hub first UI baseline", () => {
         accountId: "account_outlook",
         limit: 50,
         q: "contract",
-        qScopes: ["sender", "subject", "body"],
+        qScopes: ["sender", "recipients", "subject", "body"],
         sort: "smart",
       });
     });
