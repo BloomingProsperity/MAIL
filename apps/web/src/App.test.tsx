@@ -1711,6 +1711,111 @@ describe("Email Hub first UI baseline", () => {
     );
   });
 
+  it("completes password reauthorization from Sync Center", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listSyncCenterReauthorizations).mockResolvedValueOnce({
+      items: [
+        reauthorizationTaskFixture({
+          taskId: "task_password_1",
+          email: "password-reauth@qq.com",
+          provider: "qq",
+          authMethod: "password",
+          source: "account_transfer_import",
+          username: "password-reauth@qq.com",
+        }),
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    expect(await screen.findByText("password-reauth@qq.com")).toBeTruthy();
+
+    fireEvent.change(
+      screen.getByLabelText("Reauthorization secret for password-reauth@qq.com"),
+      { target: { value: "new-auth-code" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Complete reauthorization for password-reauth@qq.com",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.completeSyncCenterImapSmtpReauthorization).toHaveBeenCalledWith({
+        taskId: "task_password_1",
+        username: "password-reauth@qq.com",
+        secret: "new-auth-code",
+      });
+    });
+    expect(await screen.findByText("password-reauth@qq.com 已恢复同步。")).toBeTruthy();
+    expect(screen.queryByDisplayValue("new-auth-code")).toBeNull();
+  });
+
+  it("submits custom IMAP and SMTP settings for password reauthorization", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listSyncCenterReauthorizations).mockResolvedValueOnce({
+      items: [
+        reauthorizationTaskFixture({
+          taskId: "task_custom_1",
+          email: "custom@example.com",
+          provider: "custom",
+          authMethod: "password",
+          source: "csv_import",
+          username: "custom@example.com",
+        }),
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    expect(await screen.findByText("custom@example.com")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByLabelText("Use custom IMAP SMTP settings for custom@example.com"),
+    );
+    fireEvent.change(
+      screen.getByLabelText("Reauthorization secret for custom@example.com"),
+      { target: { value: "domain-app-password" } },
+    );
+    fireEvent.change(screen.getByLabelText("IMAP host for custom@example.com"), {
+      target: { value: "imap.example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("SMTP host for custom@example.com"), {
+      target: { value: "smtp.example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("SMTP port for custom@example.com"), {
+      target: { value: "587" },
+    });
+    fireEvent.click(screen.getByLabelText("SMTP secure for custom@example.com"));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Complete reauthorization for custom@example.com",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.completeSyncCenterImapSmtpReauthorization).toHaveBeenCalledWith({
+        taskId: "task_custom_1",
+        username: "custom@example.com",
+        secret: "domain-app-password",
+        imap: {
+          host: "imap.example.com",
+          port: 993,
+          secure: true,
+          username: "custom@example.com",
+          secret: "domain-app-password",
+        },
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "custom@example.com",
+          secret: "domain-app-password",
+        },
+      });
+    });
+  });
+
   it("wires Sync Center account controls to backend actions", async () => {
     const api = createApiFixture();
 
@@ -4089,6 +4194,23 @@ function createApiFixture(): EmailHubApi {
       items: [reauthorizationTaskFixture()],
     })),
     startSyncCenterOAuthReauthorization: vi.fn(async () => oauthStartFixture()),
+    completeSyncCenterImapSmtpReauthorization: vi.fn(async (input) => ({
+      task: {
+        id: input.taskId,
+        email: "password-reauth@qq.com",
+        provider: "qq",
+        authMethod: "password",
+        status: "completed",
+      },
+      account: {
+        id: "account_password_reauth",
+        email: "password-reauth@qq.com",
+        provider: "qq",
+        authMethod: "password",
+        syncState: "syncing",
+        engineProvider: "emailengine",
+      },
+    })),
     listSyncCenterAccountDiagnostics: vi.fn(async () => ({
       items: [
         {

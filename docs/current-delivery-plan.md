@@ -212,11 +212,13 @@ with more than smoke-level tests.
   select export accounts from Sync Center, export a transfer-safe JSON package,
   import a JSON file back into the textarea, show imported reauthorization task
   details, and offer a direct Sync Center handoff when CSV OAuth rows or
-  transfer imports require authorization.
-- Remaining migration gap: Sync Center still needs a first-class IMAP/SMTP
-  password reauthorization form for transfer/password tasks instead of routing
-  those users back through generic Add Mail copy. CSV template download and
-  row-specific OAuth start actions remain useful follow-up polish.
+  transfer imports require authorization. Sync Center now lets password-based
+  reauthorization tasks submit a fresh authorization code or dedicated password
+  directly against the task, with optional custom IMAP/SMTP endpoint overrides
+  for personal domains and bridge deployments.
+- Remaining migration gap: CSV template download, row-specific OAuth start
+  actions, and richer sanitized provider diagnostics in the reauthorization UI
+  remain useful follow-up polish.
 
 ### 6. Frontend Wiring
 

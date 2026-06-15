@@ -72,7 +72,8 @@ import type {
   OperationalEventDto,
   ReauthorizationTaskDto,
   ScheduledSendDto,
-  SyncCenterAccountDto
+  SyncCenterAccountDto,
+  SyncCenterImapSmtpReauthorizationInput
 } from "./lib/emailHubApi";
 
 type ViewId = "mail" | "add-mail" | "sync" | "search" | "settings";
@@ -100,6 +101,18 @@ const PREVIEW_ATTACHMENT_ROWS = [
 ];
 
 type ComposeAutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
+
+type PasswordReauthorizationFormState = {
+  username: string;
+  secret: string;
+  useCustomServers: boolean;
+  imapHost: string;
+  imapPort: string;
+  imapSecure: boolean;
+  smtpHost: string;
+  smtpPort: string;
+  smtpSecure: boolean;
+};
 
 interface ComposeDraftSignatureInput {
   accountId: string;
@@ -4672,10 +4685,34 @@ function formatSyncStateLabel(state: string) {
 function formatReauthorizationSource(source: string) {
   const labels: Record<string, string> = {
     native_send: "发信权限",
+    native_smtp_send: "发信权限",
     account_transfer_import: "账号迁移",
     csv_import: "批量导入",
   };
   return labels[source] ?? source;
+}
+
+function createPasswordReauthorizationForm(
+  task: ReauthorizationTaskDto,
+): PasswordReauthorizationFormState {
+  return {
+    username: task.username ?? task.email,
+    secret: "",
+    useCustomServers: false,
+    imapHost: "",
+    imapPort: "993",
+    imapSecure: true,
+    smtpHost: "",
+    smtpPort: "465",
+    smtpSecure: true,
+  };
+}
+
+function parseReauthorizationPort(value: string) {
+  const parsed = Number.parseInt(value.trim(), 10);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535
+    ? parsed
+    : undefined;
 }
 
 function formatDomainStatus(status: string) {
@@ -4710,6 +4747,8 @@ function SyncCenterPage(props: {
   const [reauthorizations, setReauthorizations] = useState<
     ReauthorizationTaskDto[]
   >([]);
+  const [passwordReauthorizationForms, setPasswordReauthorizationForms] =
+    useState<Record<string, PasswordReauthorizationFormState>>({});
   const [busyAction, setBusyAction] = useState("");
   const [busyReauthorizationTaskId, setBusyReauthorizationTaskId] = useState("");
   const [diagnosticAccount, setDiagnosticAccount] =
@@ -4827,6 +4866,122 @@ function SyncCenterPage(props: {
       props.oauthRedirect(result.authorizationUrl);
     } catch {
       setNotice("重新登录暂时无法开始，请稍后再试。");
+    } finally {
+      setBusyReauthorizationTaskId("");
+    }
+  }
+
+  function passwordReauthorizationForm(task: ReauthorizationTaskDto) {
+    return (
+      passwordReauthorizationForms[task.taskId] ??
+      createPasswordReauthorizationForm(task)
+    );
+  }
+
+  function updatePasswordReauthorizationForm(
+    task: ReauthorizationTaskDto,
+    patch: Partial<PasswordReauthorizationFormState>,
+  ) {
+    setPasswordReauthorizationForms((current) => ({
+      ...current,
+      [task.taskId]: {
+        ...createPasswordReauthorizationForm(task),
+        ...current[task.taskId],
+        ...patch,
+      },
+    }));
+  }
+
+  function clearPasswordReauthorizationSecret(task: ReauthorizationTaskDto) {
+    setPasswordReauthorizationForms((current) => {
+      const existing = current[task.taskId];
+      if (!existing) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [task.taskId]: { ...existing, secret: "" },
+      };
+    });
+  }
+
+  function removePasswordReauthorizationForm(task: ReauthorizationTaskDto) {
+    setPasswordReauthorizationForms((current) => {
+      const remaining = { ...current };
+      delete remaining[task.taskId];
+      return remaining;
+    });
+  }
+
+  async function completePasswordReauthorization(
+    event: FormEvent<HTMLFormElement>,
+    task: ReauthorizationTaskDto,
+  ) {
+    event.preventDefault();
+    if (!props.api || task.authMethod !== "password") {
+      setNotice("这个账号需要在添加邮箱里重新提交授权信息。");
+      return;
+    }
+
+    const form = passwordReauthorizationForm(task);
+    const username = form.username.trim();
+    const secret = form.secret.trim();
+    if (!secret) {
+      setNotice("请输入新的授权码或专用密码。");
+      return;
+    }
+
+    const payload: SyncCenterImapSmtpReauthorizationInput = {
+      taskId: task.taskId,
+      ...(username ? { username } : {}),
+      secret,
+    };
+
+    if (form.useCustomServers) {
+      const imapHost = form.imapHost.trim();
+      const smtpHost = form.smtpHost.trim();
+      const imapPort = parseReauthorizationPort(form.imapPort);
+      const smtpPort = parseReauthorizationPort(form.smtpPort);
+      const endpointUsername = username || task.email;
+      if (!imapHost || !smtpHost || !imapPort || !smtpPort) {
+        setNotice("请填写有效的 IMAP/SMTP 主机和端口。");
+        return;
+      }
+
+      payload.imap = {
+        host: imapHost,
+        port: imapPort,
+        secure: form.imapSecure,
+        username: endpointUsername,
+        secret,
+      };
+      payload.smtp = {
+        host: smtpHost,
+        port: smtpPort,
+        secure: form.smtpSecure,
+        username: endpointUsername,
+        secret,
+      };
+    }
+
+    setBusyReauthorizationTaskId(task.taskId);
+    try {
+      const result = await props.api.completeSyncCenterImapSmtpReauthorization(
+        payload,
+      );
+      setReauthorizations((current) =>
+        current.filter((item) => item.taskId !== task.taskId),
+      );
+      removePasswordReauthorizationForm(task);
+      setNotice(`${result.account?.email ?? task.email} 已恢复同步。`);
+      props.api
+        .listSyncCenterAccounts()
+        .then((page) => setAccounts(page.items))
+        .catch(() => undefined);
+    } catch {
+      clearPasswordReauthorizationSecret(task);
+      setNotice(`${task.email} 重新授权失败，请检查授权码和服务器设置。`);
     } finally {
       setBusyReauthorizationTaskId("");
     }
@@ -4959,32 +5114,179 @@ function SyncCenterPage(props: {
               <p>这些账号的登录或发信权限已失效，重新授权后会恢复同步和发送。</p>
             </div>
           </div>
-          {reauthorizations.map((task) => (
-            <div className="task-row" key={task.taskId}>
-              <ShieldCheck size={19} />
-              <div>
-                <strong>{task.email}</strong>
-                <span>
-                  {formatProviderLabel(task.provider)} · {task.authMethod === "oauth" ? "重新登录" : "重新提交授权码"}
-                  {task.source ? ` · ${formatReauthorizationSource(task.source)}` : ""}
-                </span>
-                {task.errorMessage ? <p>{task.errorMessage}</p> : null}
+          {reauthorizations.map((task) => {
+            const passwordForm = passwordReauthorizationForm(task);
+            return (
+              <div
+                className={`task-row ${task.authMethod === "password" ? "reauthorization-task-row" : ""}`}
+                key={task.taskId}
+              >
+                <ShieldCheck size={19} />
+                <div>
+                  <strong>{task.email}</strong>
+                  <span>
+                    {formatProviderLabel(task.provider)} ·{" "}
+                    {task.authMethod === "oauth" ? "重新登录" : "重新提交授权码"}
+                    {task.source ? ` · ${formatReauthorizationSource(task.source)}` : ""}
+                  </span>
+                  {task.errorMessage ? <p>{task.errorMessage}</p> : null}
+                </div>
+                {task.authMethod === "oauth" ? (
+                  <div className="task-actions">
+                    <button
+                      type="button"
+                      aria-label={`Start reauthorization for ${task.email}`}
+                      disabled={busyReauthorizationTaskId === task.taskId}
+                      onClick={() => void startOAuthReauthorization(task)}
+                    >
+                      重新登录
+                    </button>
+                  </div>
+                ) : (
+                  <form
+                    aria-label={`IMAP SMTP reauthorization for ${task.email}`}
+                    className="reauthorization-form"
+                    onSubmit={(event) =>
+                      void completePasswordReauthorization(event, task)
+                    }
+                  >
+                    <label>
+                      <span>登录用户名</span>
+                      <input
+                        aria-label={`Reauthorization username for ${task.email}`}
+                        autoComplete="username"
+                        type="text"
+                        value={passwordForm.username}
+                        onChange={(event) =>
+                          updatePasswordReauthorizationForm(task, {
+                            username: event.currentTarget.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>授权码或专用密码</span>
+                      <input
+                        aria-label={`Reauthorization secret for ${task.email}`}
+                        autoComplete="new-password"
+                        type="password"
+                        value={passwordForm.secret}
+                        onChange={(event) =>
+                          updatePasswordReauthorizationForm(task, {
+                            secret: event.currentTarget.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="reauthorization-toggle">
+                      <input
+                        aria-label={`Use custom IMAP SMTP settings for ${task.email}`}
+                        checked={passwordForm.useCustomServers}
+                        type="checkbox"
+                        onChange={(event) =>
+                          updatePasswordReauthorizationForm(task, {
+                            useCustomServers: event.currentTarget.checked,
+                          })
+                        }
+                      />
+                      <span>使用自定义 IMAP/SMTP</span>
+                    </label>
+                    {passwordForm.useCustomServers ? (
+                      <div className="reauthorization-endpoints">
+                        <label>
+                          <span>IMAP 主机</span>
+                          <input
+                            aria-label={`IMAP host for ${task.email}`}
+                            type="text"
+                            value={passwordForm.imapHost}
+                            onChange={(event) =>
+                              updatePasswordReauthorizationForm(task, {
+                                imapHost: event.currentTarget.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span>IMAP 端口</span>
+                          <input
+                            aria-label={`IMAP port for ${task.email}`}
+                            inputMode="numeric"
+                            type="text"
+                            value={passwordForm.imapPort}
+                            onChange={(event) =>
+                              updatePasswordReauthorizationForm(task, {
+                                imapPort: event.currentTarget.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="reauthorization-toggle">
+                          <input
+                            aria-label={`IMAP secure for ${task.email}`}
+                            checked={passwordForm.imapSecure}
+                            type="checkbox"
+                            onChange={(event) =>
+                              updatePasswordReauthorizationForm(task, {
+                                imapSecure: event.currentTarget.checked,
+                              })
+                            }
+                          />
+                          <span>IMAP TLS</span>
+                        </label>
+                        <label>
+                          <span>SMTP 主机</span>
+                          <input
+                            aria-label={`SMTP host for ${task.email}`}
+                            type="text"
+                            value={passwordForm.smtpHost}
+                            onChange={(event) =>
+                              updatePasswordReauthorizationForm(task, {
+                                smtpHost: event.currentTarget.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span>SMTP 端口</span>
+                          <input
+                            aria-label={`SMTP port for ${task.email}`}
+                            inputMode="numeric"
+                            type="text"
+                            value={passwordForm.smtpPort}
+                            onChange={(event) =>
+                              updatePasswordReauthorizationForm(task, {
+                                smtpPort: event.currentTarget.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="reauthorization-toggle">
+                          <input
+                            aria-label={`SMTP secure for ${task.email}`}
+                            checked={passwordForm.smtpSecure}
+                            type="checkbox"
+                            onChange={(event) =>
+                              updatePasswordReauthorizationForm(task, {
+                                smtpSecure: event.currentTarget.checked,
+                              })
+                            }
+                          />
+                          <span>SMTP TLS</span>
+                        </label>
+                      </div>
+                    ) : null}
+                    <button
+                      type="submit"
+                      aria-label={`Complete reauthorization for ${task.email}`}
+                      disabled={busyReauthorizationTaskId === task.taskId}
+                    >
+                      提交重新授权
+                    </button>
+                  </form>
+                )}
               </div>
-              <div className="task-actions">
-                <button
-                  type="button"
-                  aria-label={`Start reauthorization for ${task.email}`}
-                  disabled={
-                    task.authMethod !== "oauth" ||
-                    busyReauthorizationTaskId === task.taskId
-                  }
-                  onClick={() => void startOAuthReauthorization(task)}
-                >
-                  {task.authMethod === "oauth" ? "重新登录" : "去添加邮箱处理"}
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
       ) : null}
       {diagnosticAccount ? (

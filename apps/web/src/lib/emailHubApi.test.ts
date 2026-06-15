@@ -1081,7 +1081,7 @@ describe("emailHubApi", () => {
     });
   });
 
-  it("lists and starts Sync Center reauthorization tasks", async () => {
+  it("lists and completes Sync Center reauthorization tasks", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url === "/api/sync-center/reauthorizations") {
         return jsonResponse({
@@ -1124,6 +1124,30 @@ describe("emailHubApi", () => {
       taskId: "task_reauth_1",
       redirectUri: "https://app.example/oauth/callback",
     });
+    await api.completeSyncCenterImapSmtpReauthorization({
+      taskId: "task_password_1",
+      username: "support@qq.com",
+      secret: "qq-auth-code",
+    });
+    await api.completeSyncCenterImapSmtpReauthorization({
+      taskId: "task_custom_1",
+      username: "custom@example.com",
+      secret: "domain-app-password",
+      imap: {
+        host: "imap.example.com",
+        port: 993,
+        secure: true,
+        username: "custom@example.com",
+        secret: "domain-app-password",
+      },
+      smtp: {
+        host: "smtp.example.com",
+        port: 587,
+        secure: false,
+        username: "custom@example.com",
+        secret: "domain-app-password",
+      },
+    });
 
     expect(page.items[0]).toMatchObject({
       taskId: "task_reauth_1",
@@ -1142,6 +1166,42 @@ describe("emailHubApi", () => {
         method: "POST",
         body: JSON.stringify({
           redirectUri: "https://app.example/oauth/callback",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/sync-center/reauthorizations/task_password_1/imap-smtp",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          username: "support@qq.com",
+          secret: "qq-auth-code",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/sync-center/reauthorizations/task_custom_1/imap-smtp",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          username: "custom@example.com",
+          secret: "domain-app-password",
+          imap: {
+            host: "imap.example.com",
+            port: 993,
+            secure: true,
+            username: "custom@example.com",
+            secret: "domain-app-password",
+          },
+          smtp: {
+            host: "smtp.example.com",
+            port: 587,
+            secure: false,
+            username: "custom@example.com",
+            secret: "domain-app-password",
+          },
         }),
       }),
     );

@@ -380,6 +380,7 @@ export interface SyncCenterAccountDto {
   provider: string;
   syncState: string;
   nextAction?: string;
+  latestSyncJob?: unknown;
   latestJob?: unknown;
 }
 
@@ -608,6 +609,26 @@ export interface ImapSmtpOnboardingInput {
     secure: boolean;
     username?: string;
     secret?: string;
+  };
+}
+
+export interface SyncCenterImapSmtpReauthorizationInput {
+  taskId: string;
+  username?: string;
+  secret: string;
+  imap?: {
+    host: string;
+    port: number;
+    secure: boolean;
+    username: string;
+    secret: string;
+  };
+  smtp?: {
+    host: string;
+    port: number;
+    secure: boolean;
+    username: string;
+    secret: string;
   };
 }
 
@@ -1210,6 +1231,9 @@ export interface EmailHubApi {
     taskId: string;
     redirectUri: string;
   }): Promise<OAuthStartResult>;
+  completeSyncCenterImapSmtpReauthorization(
+    input: SyncCenterImapSmtpReauthorizationInput,
+  ): Promise<ImapSmtpOnboardingResult>;
   requestSyncCenterResync(input: {
     accountId: string;
   }): Promise<SyncManualResyncResult>;
@@ -1828,6 +1852,24 @@ export function createEmailHubApi(
         {
           method: "POST",
           body: JSON.stringify({ redirectUri: input.redirectUri }),
+        },
+      );
+    },
+
+    completeSyncCenterImapSmtpReauthorization(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/sync-center/reauthorizations/${encodePath(input.taskId)}/imap-smtp`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...(input.username ? { username: input.username } : {}),
+            secret: input.secret,
+            ...(input.imap && input.smtp
+              ? { imap: input.imap, smtp: input.smtp }
+              : {}),
+          }),
         },
       );
     },
