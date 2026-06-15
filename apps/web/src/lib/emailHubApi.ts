@@ -743,7 +743,17 @@ export interface MailDraftDto {
   sentAt?: string;
 }
 
-export type MailSendIdentitySource = "account" | "domain_alias";
+export type MailSendIdentitySource =
+  | "account"
+  | "domain_alias"
+  | "provider_native";
+export type MailSendIdentityType =
+  | "account"
+  | "alias"
+  | "shared_mailbox"
+  | "send_on_behalf"
+  | "group"
+  | "unknown";
 
 export interface MailSendIdentityDto {
   id: string;
@@ -752,6 +762,9 @@ export interface MailSendIdentityDto {
   source: MailSendIdentitySource;
   isDefault: boolean;
   verified: boolean;
+  provider?: string;
+  providerIdentityId?: string;
+  identityType?: MailSendIdentityType;
 }
 
 export interface MailSendIdentityPage {

@@ -91,6 +91,13 @@ export interface ScheduledSendTransport {
   }>;
 }
 
+export interface ScheduledSendIdentityVerifier {
+  ensureAllowedSender(input: {
+    accountId: string;
+    from?: MailAddress;
+  }): Promise<void>;
+}
+
 export type ScheduledSendRunResult =
   | { status: "idle" }
   | { status: "processed"; scheduledId: string }
@@ -103,6 +110,7 @@ export interface RunScheduledSendOnceInput {
   leaseSeconds: number;
   transport?: ScheduledSendTransport;
   transports?: Partial<Record<ScheduledSendTransportKey, ScheduledSendTransport>>;
+  sendIdentityVerifier?: ScheduledSendIdentityVerifier;
 }
 
 export interface RunScheduledSendBatchInput
@@ -156,6 +164,10 @@ async function processScheduledSend(
   job: ScheduledSendJob,
 ): Promise<ScheduledSendRunResult> {
   try {
+    await input.sendIdentityVerifier?.ensureAllowedSender({
+      accountId: job.accountId,
+      ...(job.from ? { from: job.from } : {}),
+    });
     const transport = transportForJob(input, job);
     const result = await transport.submitMessage({
       accountId: job.accountId,

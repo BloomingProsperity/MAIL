@@ -196,6 +196,58 @@ describe("scheduled send runner", () => {
     ]);
   });
 
+  it("marks a scheduled send failed when the send-as identity was revoked", async () => {
+    const store = createStore([
+      {
+        ...job(),
+        from: { address: "support@demo.site", name: "Support" },
+      },
+    ]);
+    const submitCalls: unknown[] = [];
+    const verifierCalls: unknown[] = [];
+
+    const result = await runScheduledSendOnce({
+      store,
+      workerId: "worker-a",
+      now: new Date("2026-06-13T12:30:00.000Z"),
+      leaseSeconds: 30,
+      sendIdentityVerifier: {
+        async ensureAllowedSender(input) {
+          verifierCalls.push(input);
+          throw new Error("from address is not allowed");
+        },
+      },
+      transport: {
+        async submitMessage(input) {
+          submitCalls.push(input);
+          throw new Error("not expected");
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      scheduledId: "schedule_1",
+      errorMessage: "from address is not allowed",
+    });
+    expect(verifierCalls).toEqual([
+      {
+        accountId: "acc_1",
+        from: { address: "support@demo.site", name: "Support" },
+      },
+    ]);
+    expect(submitCalls).toEqual([]);
+    expect(store.failed).toEqual([
+      {
+        accountId: "acc_1",
+        scheduledId: "schedule_1",
+        draftId: "draft_1",
+        errorMessage: "from address is not allowed",
+        now: new Date("2026-06-13T12:30:00.000Z"),
+      },
+    ]);
+  });
+
   it("claims up to concurrency due scheduled sends", async () => {
     const store = createStore([job("schedule_1"), job("schedule_2")]);
     const sentDraftIds: string[] = [];

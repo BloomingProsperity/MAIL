@@ -1602,6 +1602,17 @@ describe("emailHubApi", () => {
             isDefault: false,
             verified: true,
           },
+          {
+            id: "provider:identity_1",
+            accountId: "account_1",
+            from: { address: "team@example.com", name: "Team Inbox" },
+            source: "provider_native",
+            isDefault: false,
+            verified: true,
+            provider: "graph",
+            providerIdentityId: "shared-mailbox/team",
+            identityType: "shared_mailbox",
+          },
         ],
       }),
     );
@@ -1610,6 +1621,12 @@ describe("emailHubApi", () => {
     const page = await api.listSendIdentities({ accountId: "account_1" });
 
     expect(page.items[1].from.address).toBe("support@demo.site");
+    expect(page.items[2]).toMatchObject({
+      from: { address: "team@example.com", name: "Team Inbox" },
+      source: "provider_native",
+      provider: "graph",
+      identityType: "shared_mailbox",
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/accounts/account_1/send-identities",
       expect.objectContaining({ method: "GET" }),

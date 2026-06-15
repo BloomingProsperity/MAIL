@@ -2546,7 +2546,43 @@ function formatSendIdentity(identity: MailSendIdentityDto): string {
   const label = identity.from.name
     ? `${identity.from.name} <${identity.from.address}>`
     : identity.from.address;
-  return identity.isDefault ? `${label} · 默认` : label;
+  const markers = [
+    ...(identity.isDefault ? ["默认"] : []),
+    ...(identity.source === "domain_alias" ? ["域名别名"] : []),
+    ...(identity.source === "provider_native"
+      ? [providerNativeIdentityLabel(identity)]
+      : []),
+  ];
+  return markers.length > 0 ? `${label} · ${markers.join(" · ")}` : label;
+}
+
+function providerNativeIdentityLabel(identity: MailSendIdentityDto): string {
+  const provider = identity.provider ? providerLabel(identity.provider) : "服务商";
+  const typeLabel: Partial<Record<NonNullable<MailSendIdentityDto["identityType"]>, string>> = {
+    alias: "授权别名",
+    shared_mailbox: "共享邮箱",
+    send_on_behalf: "代表发送",
+    group: "群组身份",
+  };
+  const suffix = identity.identityType
+    ? typeLabel[identity.identityType]
+    : undefined;
+  return suffix ? `${provider}${suffix}` : `${provider}授权`;
+}
+
+function providerLabel(provider: string): string {
+  const normalized = provider.trim().toLowerCase();
+  if (normalized === "gmail" || normalized === "google") {
+    return "Gmail";
+  }
+  if (
+    normalized === "graph" ||
+    normalized === "outlook" ||
+    normalized === "microsoft"
+  ) {
+    return "Outlook";
+  }
+  return provider.trim() || "服务商";
 }
 
 function formatComposeAddressList(addresses: Array<{ address: string; name?: string }>): string {

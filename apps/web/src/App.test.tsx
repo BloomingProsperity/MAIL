@@ -1183,6 +1183,39 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("saves manual drafts with provider-native send-as identities", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText(/Team Inbox <team@example\.com> · Outlook共享邮箱/);
+
+    fireEvent.change(screen.getByLabelText("Compose from identity"), {
+      target: { value: "provider:identity_1" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch confirmation" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Please review the launch plan." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        from: { address: "team@example.com", name: "Team Inbox" },
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch confirmation",
+        bodyText: "Please review the launch plan.",
+        source: "manual",
+      });
+    });
+  });
+
   it("previews Hermes replies through compose preview without learning fields", async () => {
     const api = createApiFixture();
 
@@ -3340,6 +3373,17 @@ function createApiFixture(): EmailHubApi {
           source: "domain_alias" as const,
           isDefault: false,
           verified: true,
+        },
+        {
+          id: "provider:identity_1",
+          accountId: "account_1",
+          from: { address: "team@example.com", name: "Team Inbox" },
+          source: "provider_native" as const,
+          isDefault: false,
+          verified: true,
+          provider: "graph",
+          providerIdentityId: "shared-mailbox/team",
+          identityType: "shared_mailbox" as const,
         },
       ],
     })),

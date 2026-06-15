@@ -59,7 +59,9 @@ describe("worker main wiring", () => {
     const main = await readFile(mainPath, "utf8");
 
     expect(main).toContain("createConfiguredNativeSendTransports");
+    expect(main).toContain("createPostgresSendIdentityVerifier");
     expect(main).toContain("nativeSendTransports");
+    expect(main).toContain("sendIdentityVerifier");
     expect(main).toContain("transports: {");
     expect(main).toContain("emailengine: emailEngine");
     expect(main).toContain("...nativeSendTransports");

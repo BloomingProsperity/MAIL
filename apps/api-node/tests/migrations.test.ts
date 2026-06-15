@@ -407,4 +407,18 @@ describe("mail engine runtime migration", () => {
     );
     expect(sql).toMatch(/USING GIN \(attachment_manifest\)/i);
   });
+
+  it("adds provider-native send identity discovery cache", async () => {
+    const sql = await readMigrationFile("0038_provider_send_identities.sql");
+
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS provider_send_identities/i);
+    expect(sql).toMatch(/account_id UUID NOT NULL REFERENCES connected_accounts/i);
+    expect(sql).toMatch(/provider_identity_id TEXT NOT NULL/i);
+    expect(sql).toMatch(/verification_state TEXT NOT NULL DEFAULT 'unverified'/i);
+    expect(sql).toMatch(/enabled BOOLEAN NOT NULL DEFAULT TRUE/i);
+    expect(sql).toMatch(/capabilities JSONB NOT NULL DEFAULT '\{\}'/i);
+    expect(sql).toMatch(/UNIQUE \(account_id, provider, provider_identity_id\)/i);
+    expect(sql).toMatch(/provider_send_identities_account_verified_idx/i);
+    expect(sql).toMatch(/provider_send_identities_account_email_idx/i);
+  });
 });

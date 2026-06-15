@@ -73,10 +73,15 @@ with more than smoke-level tests.
   through `/api/accounts/:accountId/send-identities`. The default account
   address is always available, and domain aliases are available only when the
   domain is verified, the alias is enabled, and the alias routes to a verified
-  destination matching the current account email. Draft creation rejects
-  unverified From addresses before provider submission. EmailEngine, native
-  Gmail, native Graph, native SMTP, and scheduled-send worker paths all carry
-  the selected From identity; SMTP keeps the authenticated account as the
+  destination matching the current account email. Provider-native send-as
+  identities discovered from Gmail, Outlook/Graph, enterprise shared mailboxes,
+  or other adapters now have a durable `provider_send_identities` cache and
+  enter the same compose identity DTO only when enabled and verified. Draft
+  creation, draft updates, scheduling, API immediate send, API send-now, and
+  the worker scheduled-send path re-check the selected From address against
+  the current verified identity set before provider submission. EmailEngine,
+  native Gmail, native Graph, native SMTP, and scheduled-send worker paths all
+  carry the selected From identity; SMTP keeps the authenticated account as the
   envelope sender while allowing the verified alias in the visible From header.
 - Current threading status: reply and reply-all drafts now persist provider
   threading metadata on `email_drafts` before send. EmailEngine sends use its
@@ -89,12 +94,12 @@ with more than smoke-level tests.
   and IMAP envelope/header data. The same metadata is hydrated by worker
   scheduled-send claims, so delayed replies keep threading after retries or
   process restarts.
-- Remaining gap: chunked/object-storage uploads for larger attachments,
-  provider-native send-as permission discovery, deeper command semantics, and
-  live high-volume IMAP/SMTP provider smoke tests still need focused backend
-  slices before Native Engine can be promoted from parallel track to default
-  path. Native provider APIs do not provide the same idempotency guarantee as
-  EmailEngine's submit endpoint yet.
+- Remaining gap: chunked/object-storage uploads for larger attachments, live
+  Gmail/Graph provider discovery writers for provider-native send-as cache
+  hydration, deeper command semantics, and live high-volume IMAP/SMTP provider
+  smoke tests still need focused backend slices before Native Engine can be
+  promoted from parallel track to default path. Native provider APIs do not
+  provide the same idempotency guarantee as EmailEngine's submit endpoint yet.
 
 ### 3. Hermes Single AI Entry
 
@@ -186,7 +191,8 @@ with more than smoke-level tests.
   reschedule. API client route tests and App behavior tests cover the full
   create/send/schedule/list/edit/reschedule/send-now/cancel flow plus send-as,
   Cc/Bcc draft payloads, editable Hermes quick
-  replies, editable Hermes polishing with writing-style feedback,
+  replies, provider-native send-as identities, editable Hermes polishing with
+  writing-style feedback,
   backend-generated reply/reply-all/forward
   seeds, and backend compose preview.
 - Current backend status: outbox listing now returns active queue items only

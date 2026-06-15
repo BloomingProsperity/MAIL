@@ -785,6 +785,66 @@ describe("mail compose service", () => {
     });
   });
 
+  it("creates drafts with provider-native send-as identities", async () => {
+    const calls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async createDraft(input) {
+          calls.push(input);
+          return {
+            id: input.id,
+            accountId: input.accountId,
+            from: input.from,
+            subject: input.subject,
+            to: input.to,
+            cc: input.cc,
+            bcc: input.bcc,
+            bodyText: input.bodyText,
+            status: "draft",
+            source: input.source,
+            createdAt: input.now,
+            updatedAt: input.now,
+          };
+        },
+      }),
+      createId: () => "draft_1",
+      transports: {},
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [
+            {
+              id: "provider:identity_1",
+              accountId: "acc_1",
+              from: { address: "team@example.com", name: "Team Inbox" },
+              source: "provider_native",
+              isDefault: false,
+              verified: true,
+              provider: "graph",
+              providerIdentityId: "shared-mailbox/team",
+              identityType: "shared_mailbox",
+            },
+          ];
+        },
+      },
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+    });
+
+    const draft = await service.createDraft({
+      accountId: "acc_1",
+      from: { address: "Team@Example.com", name: "Team Inbox" },
+      to: [{ address: "lina@example.com" }],
+      subject: "Launch confirmation",
+      bodyText: "Looks good.",
+    });
+
+    expect(calls[0]).toMatchObject({
+      from: { address: "team@example.com", name: "Team Inbox" },
+    });
+    expect(draft).toMatchObject({
+      from: { address: "team@example.com", name: "Team Inbox" },
+    });
+  });
+
   it("rejects unverified send-as identities before creating drafts", async () => {
     const storeCalls: unknown[] = [];
     const service = createMailComposeService({
@@ -1105,6 +1165,10 @@ describe("mail compose service", () => {
       store,
       createId: () => "unused",
       now: () => new Date("2026-06-13T08:00:00.000Z"),
+      sendIdentityStore: sendIdentityStoreFor({
+        address: "support@demo.site",
+        name: "Support",
+      }),
       transports: {
         emailengine: {
           async submitMessage(input) {
@@ -1193,6 +1257,85 @@ describe("mail compose service", () => {
         providerMessageId: "<message@example.com>",
       },
     });
+  });
+
+  it("marks claimed drafts failed when send-as permission was revoked before send", async () => {
+    const calls: unknown[] = [];
+    const providerCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async getDraftWithAccount() {
+          return {
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+            draft: draft(),
+          };
+        },
+        async claimDraftForSend(input) {
+          calls.push(["claim", input]);
+          return {
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+            draft: {
+              ...draft(),
+              from: { address: "support@demo.site", name: "Support" },
+              status: "sending",
+            },
+          };
+        },
+        async markDraftFailed(input) {
+          calls.push(["failed", input]);
+          return {
+            ...draft(),
+            status: "failed",
+            errorMessage: input.errorMessage,
+          };
+        },
+      }),
+      createId: () => "unused",
+      sendIdentityStore: sendIdentityStoreFor({
+        address: "me@example.com",
+        name: "Me",
+      }),
+      transports: {
+        emailengine: {
+          async submitMessage(input) {
+            providerCalls.push(input);
+            throw new Error("not expected");
+          },
+        },
+      },
+    });
+
+    await expect(
+      service.sendDraft({ accountId: "acc_1", draftId: "draft_1" }),
+    ).rejects.toThrow("from address is not allowed");
+    expect(providerCalls).toEqual([]);
+    expect(calls).toEqual([
+      [
+        "claim",
+        expect.objectContaining({
+          accountId: "acc_1",
+          draftId: "draft_1",
+        }),
+      ],
+      [
+        "failed",
+        {
+          accountId: "acc_1",
+          draftId: "draft_1",
+          errorMessage: "from address is not allowed",
+        },
+      ],
+    ]);
   });
 
   it("rejects sending paused or already sent drafts before provider calls", async () => {
@@ -1298,6 +1441,48 @@ describe("mail compose service", () => {
       status: "scheduled",
       canSendNow: true,
     });
+  });
+
+  it("rejects scheduling drafts when the saved send-as identity was revoked", async () => {
+    const calls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async getDraftWithAccount(input) {
+          calls.push(["get", input]);
+          return {
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+            draft: {
+              ...draft(),
+              from: { address: "support@demo.site", name: "Support" },
+            },
+          };
+        },
+        async createScheduledSend(input) {
+          calls.push(["schedule", input]);
+          throw new Error("not expected");
+        },
+      }),
+      createId: () => "schedule_1",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      sendIdentityStore: sendIdentityStoreFor({ address: "me@example.com" }),
+      transports: {},
+    });
+
+    await expect(
+      service.scheduleDraft({
+        accountId: "acc_1",
+        draftId: "draft_1",
+        scheduledAt: "2026-06-13T12:30:00.000Z",
+      }),
+    ).rejects.toThrow("from address is not allowed");
+    expect(calls).toEqual([
+      ["get", { accountId: "acc_1", draftId: "draft_1" }],
+    ]);
   });
 
   it("loads an editable scheduled draft with its current content", async () => {
@@ -1686,6 +1871,9 @@ describe("mail compose service", () => {
       store,
       createId: () => "unused",
       now: () => new Date("2026-06-13T08:00:00.000Z"),
+      sendIdentityStore: sendIdentityStoreFor({
+        address: "support@demo.site",
+      }),
       transports: {
         emailengine: {
           async submitMessage(input) {
@@ -1763,6 +1951,80 @@ describe("mail compose service", () => {
       providerQueueId: "queue_1",
       providerMessageId: "<message@example.com>",
     });
+  });
+
+  it("marks scheduled send-now failed when send-as permission was revoked", async () => {
+    const calls: unknown[] = [];
+    const providerCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async claimScheduledSendForSubmit(input) {
+          calls.push(["claim", input]);
+          return {
+            scheduledSend: scheduledSend(),
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+            draft: {
+              ...draft(),
+              from: { address: "support@demo.site" },
+              status: "sending",
+            },
+          };
+        },
+        async markScheduledSendFailed(input) {
+          calls.push(["failed", input]);
+          return scheduledSend({
+            status: "failed",
+            lastError: input.errorMessage,
+          });
+        },
+      }),
+      createId: () => "unused",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      sendIdentityStore: sendIdentityStoreFor({ address: "me@example.com" }),
+      transports: {
+        emailengine: {
+          async submitMessage(input) {
+            providerCalls.push(input);
+            throw new Error("not expected");
+          },
+        },
+      },
+    });
+
+    const result = await service.sendScheduledNow({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+    });
+
+    expect(result).toMatchObject({
+      status: "failed",
+      lastError: "from address is not allowed",
+    });
+    expect(providerCalls).toEqual([]);
+    expect(calls).toEqual([
+      [
+        "claim",
+        expect.objectContaining({
+          accountId: "acc_1",
+          scheduledId: "schedule_1",
+        }),
+      ],
+      [
+        "failed",
+        {
+          accountId: "acc_1",
+          scheduledId: "schedule_1",
+          draftId: "draft_1",
+          errorMessage: "from address is not allowed",
+          now: "2026-06-13T08:00:00.000Z",
+        },
+      ],
+    ]);
   });
 });
 
@@ -1849,6 +2111,29 @@ function scheduledSend(overrides = {}) {
     createdAt: "2026-06-13T08:00:00.000Z",
     updatedAt: "2026-06-13T08:00:00.000Z",
     ...overrides,
+  };
+}
+
+function sendIdentityStoreFor(input: { address: string; name?: string }) {
+  return {
+    async listSendIdentities() {
+      return [
+        {
+          id: `identity:${input.address}`,
+          accountId: "acc_1",
+          from: {
+            address: input.address,
+            ...(input.name ? { name: input.name } : {}),
+          },
+          source: "provider_native" as const,
+          isDefault: false,
+          verified: true,
+          provider: "graph",
+          providerIdentityId: input.address,
+          identityType: "shared_mailbox" as const,
+        },
+      ];
+    },
   };
 }
 

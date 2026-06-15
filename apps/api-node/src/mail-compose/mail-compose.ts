@@ -29,7 +29,17 @@ export interface MailAddress {
   name?: string;
 }
 
-export type MailSendIdentitySource = "account" | "domain_alias";
+export type MailSendIdentitySource =
+  | "account"
+  | "domain_alias"
+  | "provider_native";
+export type MailSendIdentityType =
+  | "account"
+  | "alias"
+  | "shared_mailbox"
+  | "send_on_behalf"
+  | "group"
+  | "unknown";
 
 export interface MailSendIdentity {
   id: string;
@@ -38,6 +48,9 @@ export interface MailSendIdentity {
   source: MailSendIdentitySource;
   isDefault: boolean;
   verified: boolean;
+  provider?: string;
+  providerIdentityId?: string;
+  identityType?: MailSendIdentityType;
 }
 
 export type MailDraftStatus =
@@ -664,6 +677,21 @@ export function createMailComposeService(options: {
         throw new InvalidMailComposeRequestError("draft is not sendable");
       }
 
+      try {
+        ensureAccountCanSend(claimed.account);
+        await ensureAllowedSender(
+          options.sendIdentityStore,
+          claimed.account.accountId,
+          claimed.draft.from,
+        );
+      } catch (error) {
+        await options.store.markDraftFailed({
+          ...input,
+          errorMessage: error instanceof Error ? error.message : "send failed",
+        });
+        throw error;
+      }
+
       const transport = options.transports[claimed.account.engineProvider];
       if (!transport) {
         await options.store.markDraftFailed({
@@ -727,6 +755,11 @@ export function createMailComposeService(options: {
         throw new InvalidMailComposeRequestError("draft was not found");
       }
       ensureDraftCanSchedule(loaded);
+      await ensureAllowedSender(
+        options.sendIdentityStore,
+        loaded.account.accountId,
+        loaded.draft.from,
+      );
 
       const now = currentIso(options.now);
       const scheduledSend = await options.store.createScheduledSend({
@@ -881,7 +914,27 @@ export function createMailComposeService(options: {
       if (!claimed) {
         throw new InvalidMailComposeRequestError("scheduled send is not sendable");
       }
-      ensureAccountCanSend(claimed.account);
+
+      try {
+        ensureAccountCanSend(claimed.account);
+        await ensureAllowedSender(
+          options.sendIdentityStore,
+          claimed.account.accountId,
+          claimed.draft.from,
+        );
+      } catch (error) {
+        const failed = await options.store.markScheduledSendFailed({
+          accountId: input.accountId,
+          scheduledId: input.scheduledId,
+          draftId: claimed.draft.id,
+          errorMessage: error instanceof Error ? error.message : "send failed",
+          now,
+        });
+        if (failed) {
+          return failed;
+        }
+        throw error;
+      }
 
       const transport = options.transports[claimed.account.engineProvider];
       if (!transport) {
