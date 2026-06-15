@@ -977,6 +977,25 @@ export interface HermesFollowupTrackerResult {
   sourceQuote?: string;
 }
 
+export interface HermesTranslateTextResult {
+  skillRunId: string;
+  auditEventId?: string;
+  skillId: "translate_text";
+  sourceLanguage: string;
+  targetLanguage: string;
+  translatedText: string;
+}
+
+export type HermesThreadSummaryMode = "short" | "detailed" | "action_points";
+
+export interface HermesThreadSummaryResult {
+  skillRunId: string;
+  auditEventId?: string;
+  skillId: "thread_summarize";
+  mode: HermesThreadSummaryMode;
+  summaryText: string;
+}
+
 export interface HermesReplyDraftResult {
   skillRunId: string;
   auditEventId?: string;
@@ -1180,6 +1199,27 @@ export interface EmailHubApi {
     memoryScope?: string;
     memoryLayers?: string[];
   }): Promise<HermesFollowupTrackerResult>;
+  translateText(input: {
+    text: string;
+    targetLanguage: string;
+    sourceLanguage?: string;
+    tone?: string;
+    readMessageIds?: string[];
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+  }): Promise<HermesTranslateTextResult>;
+  summarizeThread(input: {
+    subject?: string;
+    threadText: string;
+    mode?: HermesThreadSummaryMode;
+    focus?: string;
+    language?: string;
+    readMessageIds?: string[];
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+  }): Promise<HermesThreadSummaryResult>;
   draftReply(input: {
     subject?: string;
     threadText: string;
@@ -1829,6 +1869,20 @@ export function createEmailHubApi(
 
     trackFollowup(input) {
       return request(fetchImpl, baseUrl, "/api/hermes/skills/followup_tracker/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    translateText(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills/translate_text/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    summarizeThread(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills/thread_summarize/run", {
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });

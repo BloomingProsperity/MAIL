@@ -1406,6 +1406,85 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs Hermes translation and thread summary through backend skill routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            skillRunId: "run_translate_1",
+            skillId: "translate_text",
+            sourceLanguage: "English",
+            targetLanguage: "Chinese",
+            translatedText: "你好，请确认发布时间。",
+          },
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            skillRunId: "run_summary_1",
+            skillId: "thread_summarize",
+            mode: "action_points",
+            summaryText: "Action: confirm the launch schedule today.",
+          },
+          202,
+        ),
+      );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const translation = await api.translateText({
+      text: "Please confirm the launch schedule.",
+      targetLanguage: "Chinese",
+      tone: "preserve original meaning",
+      readMessageIds: ["message_1"],
+      memoryScope: "global",
+    });
+    const summary = await api.summarizeThread({
+      subject: "Launch schedule",
+      threadText: "Please confirm the launch schedule.",
+      mode: "action_points",
+      focus: "reply needs",
+      language: "English",
+      readMessageIds: ["message_1"],
+      memoryScope: "global",
+    });
+
+    expect(translation.translatedText).toBe("你好，请确认发布时间。");
+    expect(summary.summaryText).toBe("Action: confirm the launch schedule today.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/hermes/skills/translate_text/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          text: "Please confirm the launch schedule.",
+          targetLanguage: "Chinese",
+          tone: "preserve original meaning",
+          readMessageIds: ["message_1"],
+          memoryScope: "global",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/hermes/skills/thread_summarize/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          subject: "Launch schedule",
+          threadText: "Please confirm the launch schedule.",
+          mode: "action_points",
+          focus: "reply needs",
+          language: "English",
+          readMessageIds: ["message_1"],
+          memoryScope: "global",
+        }),
+      }),
+    );
+  });
+
   it("runs Hermes quick reply through the backend skills route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(

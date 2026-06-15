@@ -201,4 +201,22 @@ describe("Hermes thread summary service", () => {
       service.summarizeThread({ threadText: " ", subject: "Re: hello" }),
     ).rejects.toThrow("thread text is required");
   });
+
+  it("rejects an invalid summary mode before calling Hermes", async () => {
+    const service = createHermesThreadSummaryService({
+      createId: () => "run_1",
+      textProvider: {
+        async complete() {
+          throw new Error("should not call Hermes with an invalid mode");
+        },
+      },
+    });
+
+    await expect(
+      service.summarizeThread({
+        threadText: "Please confirm the launch schedule.",
+        mode: "verbose" as never,
+      }),
+    ).rejects.toThrow("invalid thread summary mode");
+  });
 });

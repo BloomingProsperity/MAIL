@@ -21,6 +21,12 @@ export function getHermesSkills(): HermesSkill[] {
       mode: "read"
     },
     {
+      id: "translate_text",
+      title: "邮件翻译",
+      description: "忠实翻译正文，保留段落、名单、日期和语气。",
+      mode: "read"
+    },
+    {
       id: "reply_draft",
       title: "生成回复草稿",
       description: "基于当前邮件、身份和历史语气写可编辑草稿。",

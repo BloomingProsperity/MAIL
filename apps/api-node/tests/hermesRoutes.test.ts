@@ -206,6 +206,53 @@ describe("Hermes routes", () => {
     );
   });
 
+  it("rejects invalid translate_text requests before hitting Hermes", async () => {
+    const calls: unknown[] = [];
+    const hermesService = {
+      async translate(input: unknown) {
+        calls.push(input);
+        return {};
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const invalidBodies = [
+          {
+            text: "Hello",
+          },
+          {
+            text: " ",
+            targetLanguage: "Chinese",
+          },
+          {
+            text: "Hello",
+            targetLanguage: "Chinese",
+            memoryLayers: ["contact_memory", " "],
+          },
+        ];
+
+        for (const body of invalidBodies) {
+          const response = await fetch(
+            `${baseUrl}/api/hermes/skills/translate_text/run`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(body),
+            },
+          );
+
+          expect(response.status).toBe(400);
+          expect(await response.json()).toEqual({
+            error: "invalid_translation_request",
+          });
+        }
+        expect(calls).toEqual([]);
+      },
+      { hermesService },
+    );
+  });
+
   it("confirms an explicit Hermes translation preference", async () => {
     const calls: unknown[] = [];
     const hermesTranslationPreferenceService = {
@@ -1549,22 +1596,36 @@ describe("Hermes routes", () => {
 
     await withApi(
       async (baseUrl) => {
-        const response = await fetch(
-          `${baseUrl}/api/hermes/skills/thread_summarize/run`,
+        const invalidBodies = [
           {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              subject: "Re: launch schedule",
-              threadText: " ",
-            }),
+            subject: "Re: launch schedule",
+            threadText: " ",
           },
-        );
+          {
+            threadText: "Can you confirm the launch schedule today?",
+            mode: "verbose",
+          },
+          {
+            threadText: "Can you confirm the launch schedule today?",
+            readMessageIds: ["00000000-0000-0000-0000-000000000001", ""],
+          },
+        ];
 
-        expect(response.status).toBe(400);
-        expect(await response.json()).toEqual({
-          error: "invalid_thread_summary_request",
-        });
+        for (const body of invalidBodies) {
+          const response = await fetch(
+            `${baseUrl}/api/hermes/skills/thread_summarize/run`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(body),
+            },
+          );
+
+          expect(response.status).toBe(400);
+          expect(await response.json()).toEqual({
+            error: "invalid_thread_summary_request",
+          });
+        }
         expect(calls).toEqual([]);
       },
       { hermesService },

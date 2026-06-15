@@ -157,6 +157,11 @@ with more than smoke-level tests.
   `searchQuery` to the Search workspace for deterministic filtering. Hermes
   search remains read-only: it answers and cites, but does not move, delete, or
   send mail.
+- Current reader-assist status: the message reader now exposes Hermes summary
+  and translation actions wired to `/api/hermes/skills/thread_summarize/run`
+  and `/api/hermes/skills/translate_text/run`. Both actions use the app-owned
+  message body, selected message id, and global memory scope, then render
+  read-only preview blocks above the original message body.
 
 ### 4. Mail Organization
 
@@ -199,7 +204,8 @@ with more than smoke-level tests.
 - Trigger: user navigates Mail, Add Mailbox, Sync Center, Search, Settings.
 - State: React local state mirrors API DTOs only; preview data is a fallback.
 - API: consume provider capabilities, top-bar global search, Hermes dock
-  search QA, Search workspace filters, CSV import, transfer,
+  search QA, reader summary/translation, Search workspace filters, CSV import,
+  transfer,
   Gatekeeper senders, Sync Center diagnostics and reauthorization tasks, Hermes
   settings, domains.
 - Failure: backend unavailable keeps preview state with visible status.

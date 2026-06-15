@@ -54,6 +54,21 @@ describe("Hermes translation service", () => {
     ).rejects.toThrow("translation text is required");
   });
 
+  it("rejects a missing target language before calling Hermes", async () => {
+    const service = createHermesTranslationService({
+      createId: () => "run_1",
+      textProvider: {
+        async complete() {
+          throw new Error("should not call Hermes without a target language");
+        },
+      },
+    });
+
+    await expect(
+      service.translate({ text: "Hello", targetLanguage: " " }),
+    ).rejects.toThrow("target language is required");
+  });
+
   it("persists the translation run and audit event when a run store is configured", async () => {
     const persisted: unknown[] = [];
     const ids = ["run_1", "audit_1"];

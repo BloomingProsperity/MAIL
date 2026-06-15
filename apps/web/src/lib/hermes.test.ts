@@ -7,6 +7,7 @@ describe("Hermes registry", () => {
 
     expect(skills).toEqual([
       "thread_summarize",
+      "translate_text",
       "reply_draft",
       "rewrite_polish",
       "quick_reply",

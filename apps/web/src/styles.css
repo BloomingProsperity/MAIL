@@ -1224,6 +1224,10 @@ h2 {
   color: var(--mint-text);
 }
 
+.hermes-reader-result p {
+  white-space: pre-wrap;
+}
+
 .message-body {
   display: grid;
   gap: 7px;

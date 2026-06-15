@@ -41,6 +41,8 @@ import type {
   HermesRuntimeUpdateChannel,
   HermesRuntimeUpdatePolicy,
   HermesRuntimeVersionStatus,
+  HermesThreadSummaryResult,
+  HermesTranslateTextResult,
   ImapSmtpConnectionTestResult,
   ImapSmtpOnboardingInput,
   AccountTransferPackage,
@@ -1311,12 +1313,21 @@ function MailWorkspace(props: {
     string | undefined
   >();
   const [attachmentDownloadNotice, setAttachmentDownloadNotice] = useState("");
+  const [readerHermesNotice, setReaderHermesNotice] = useState("");
+  const [readerHermesBusy, setReaderHermesBusy] = useState<
+    "summary" | "translation" | undefined
+  >();
+  const [readerHermesSummary, setReaderHermesSummary] =
+    useState<HermesThreadSummaryResult | undefined>();
+  const [readerHermesTranslation, setReaderHermesTranslation] =
+    useState<HermesTranslateTextResult | undefined>();
   const [rescheduleTimes, setRescheduleTimes] = useState<Record<string, string>>(
     {},
   );
   const composeAutosaveTimerRef = useRef<number | undefined>(undefined);
   const composeAutosaveGenerationRef = useRef(0);
   const lastSavedComposeSignatureRef = useRef("");
+  const readerHermesRequestRef = useRef(0);
 
   function cancelComposeAutosave(status: ComposeAutosaveStatus = "idle") {
     if (composeAutosaveTimerRef.current !== undefined) {
@@ -1361,8 +1372,13 @@ function MailWorkspace(props: {
   }
 
   useEffect(() => {
+    readerHermesRequestRef.current += 1;
     setAttachmentDownloadBusyId(undefined);
     setAttachmentDownloadNotice("");
+    setReaderHermesNotice("");
+    setReaderHermesSummary(undefined);
+    setReaderHermesTranslation(undefined);
+    setReaderHermesBusy(undefined);
   }, [props.selectedMail.id]);
 
   useEffect(() => {
@@ -1861,6 +1877,96 @@ function MailWorkspace(props: {
       setComposeNotice("预览生成失败，请检查收件人和发件身份。");
     } finally {
       setComposeBusy(false);
+    }
+  }
+
+  function currentReaderText(): string {
+    return (props.selectedDetail?.bodyText ?? props.selectedMail.preview).trim();
+  }
+
+  async function askHermesForReaderSummary() {
+    if (!props.api) {
+      setReaderHermesNotice("Hermes 暂时不可用。");
+      return;
+    }
+
+    const threadText = currentReaderText();
+    if (!threadText) {
+      setReaderHermesNotice("这封邮件还没有可用于总结的正文。");
+      return;
+    }
+
+    const requestId = readerHermesRequestRef.current + 1;
+    readerHermesRequestRef.current = requestId;
+    setReaderHermesBusy("summary");
+    setReaderHermesNotice("Hermes 正在总结当前邮件...");
+    try {
+      const result = await props.api.summarizeThread({
+        subject: props.selectedMail.subject,
+        threadText,
+        mode: "action_points",
+        focus: "decisions, deadlines, blockers, and reply needs",
+        language: "zh-CN",
+        readMessageIds: [props.selectedMail.id],
+        memoryScope: "global",
+      });
+      if (readerHermesRequestRef.current !== requestId) {
+        return;
+      }
+      setReaderHermesSummary(result);
+      setReaderHermesNotice(`Hermes 已总结：${result.skillRunId}`);
+    } catch {
+      if (readerHermesRequestRef.current !== requestId) {
+        return;
+      }
+      setReaderHermesSummary(undefined);
+      setReaderHermesNotice("Hermes 总结暂时不可用。");
+    } finally {
+      if (readerHermesRequestRef.current === requestId) {
+        setReaderHermesBusy(undefined);
+      }
+    }
+  }
+
+  async function askHermesForReaderTranslation() {
+    if (!props.api) {
+      setReaderHermesNotice("Hermes 暂时不可用。");
+      return;
+    }
+
+    const text = currentReaderText();
+    if (!text) {
+      setReaderHermesNotice("这封邮件还没有可用于翻译的正文。");
+      return;
+    }
+
+    const requestId = readerHermesRequestRef.current + 1;
+    readerHermesRequestRef.current = requestId;
+    setReaderHermesBusy("translation");
+    setReaderHermesNotice("Hermes 正在翻译当前邮件...");
+    try {
+      const result = await props.api.translateText({
+        text,
+        targetLanguage: "Chinese",
+        tone: "preserve original meaning and formatting",
+        readMessageIds: [props.selectedMail.id],
+        memoryScope: "global",
+      });
+      if (readerHermesRequestRef.current !== requestId) {
+        return;
+      }
+      setReaderHermesTranslation(result);
+      setReaderHermesNotice(`Hermes 已翻译：${result.skillRunId}`);
+    } catch {
+      if (readerHermesRequestRef.current !== requestId) {
+        return;
+      }
+      setReaderHermesTranslation(undefined);
+      setReaderHermesNotice("Hermes 翻译暂时不可用。");
+    } finally {
+      if (readerHermesRequestRef.current === requestId) {
+        setReaderHermesBusy(undefined);
+      }
     }
   }
 
@@ -3043,6 +3149,24 @@ function MailWorkspace(props: {
             >
               Hermes 跟进
             </button>
+            <button
+              className="toolbar-button"
+              type="button"
+              aria-label="Ask Hermes to summarize selected message"
+              disabled={Boolean(readerHermesBusy)}
+              onClick={() => void askHermesForReaderSummary()}
+            >
+              Hermes 总结
+            </button>
+            <button
+              className="toolbar-button"
+              type="button"
+              aria-label="Ask Hermes to translate selected message"
+              disabled={Boolean(readerHermesBusy)}
+              onClick={() => void askHermesForReaderTranslation()}
+            >
+              翻译中文
+            </button>
             <button className="toolbar-button" type="button">归档</button>
             <button className="toolbar-button danger" type="button">删除</button>
           </div>
@@ -3100,6 +3224,32 @@ function MailWorkspace(props: {
                 >
                   确认创建提醒
                 </button>
+              </div>
+            ) : null}
+
+            {readerHermesNotice ? (
+              <div className="backend-notice" role="status">
+                {readerHermesNotice}
+              </div>
+            ) : null}
+
+            {readerHermesSummary ? (
+              <div className="reason-box hermes-reader-result" role="status">
+                <div>
+                  <Sparkles size={18} />
+                  <strong>Hermes 摘要</strong>
+                </div>
+                <p>{readerHermesSummary.summaryText}</p>
+              </div>
+            ) : null}
+
+            {readerHermesTranslation ? (
+              <div className="reason-box hermes-reader-result" role="status">
+                <div>
+                  <Sparkles size={18} />
+                  <strong>Hermes 翻译</strong>
+                </div>
+                <p>{readerHermesTranslation.translatedText}</p>
               </div>
             ) : null}
 

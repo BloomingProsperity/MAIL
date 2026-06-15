@@ -10,6 +10,8 @@ import type {
   HermesQuickReplyResult,
   HermesReplyDraftResult,
   HermesRewritePolishResult,
+  HermesThreadSummaryResult,
+  HermesTranslateTextResult,
   MailNavigationSummaryDto,
   MailProviderCapabilityDto,
   OAuthStartResult,
@@ -180,6 +182,185 @@ describe("Email Hub first UI baseline", () => {
 
     expect(await screen.findByText("Hermes 搜索暂时不可用。")).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
+  });
+
+  it("runs Hermes summary and translation from the message reader", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to summarize selected message",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.summarizeThread).toHaveBeenCalledWith({
+        subject: "Live subject",
+        threadText: "Live body from backend",
+        mode: "action_points",
+        focus: "decisions, deadlines, blockers, and reply needs",
+        language: "zh-CN",
+        readMessageIds: ["message_1"],
+        memoryScope: "global",
+      });
+    });
+    expect(await screen.findByText("需要确认发布时间，并在今天回复 Lina。")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to translate selected message",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.translateText).toHaveBeenCalledWith({
+        text: "Live body from backend",
+        targetLanguage: "Chinese",
+        tone: "preserve original meaning and formatting",
+        readMessageIds: ["message_1"],
+        memoryScope: "global",
+      });
+    });
+    expect(await screen.findByText("你好，请确认发布计划。")).toBeTruthy();
+  });
+
+  it("shows a reader-level Hermes error without replacing the message body", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.summarizeThread).mockRejectedValueOnce(new Error("offline"));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to summarize selected message",
+      }),
+    );
+
+    expect(await screen.findByText("Hermes 总结暂时不可用。")).toBeTruthy();
+    expect(screen.getByText("Live body from backend")).toBeTruthy();
+    expect(screen.queryByText("需要确认发布时间，并在今天回复 Lina。")).toBeNull();
+  });
+
+  it("ignores a stale Hermes reader summary after switching messages", async () => {
+    const api = createApiFixture();
+    let resolveSummary: (value: HermesThreadSummaryResult) => void = () => {};
+    vi.mocked(api.listMessages).mockResolvedValue({
+      items: [
+        {
+          id: "message_1",
+          accountId: "account_1",
+          subject: "First subject",
+          from: { email: "first@example.com", name: "First Sender" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "First snippet",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 96,
+            reasons: ["Direct to you"],
+          },
+        },
+        {
+          id: "message_2",
+          accountId: "account_1",
+          subject: "Second subject",
+          from: { email: "second@example.com", name: "Second Sender" },
+          receivedAt: "2026-06-13T10:05:00.000Z",
+          snippet: "Second snippet",
+          unread: false,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P2 Important",
+            priorityScore: 88,
+            reasons: ["Important sender"],
+          },
+        },
+      ],
+    });
+    vi.mocked(api.getMessage).mockImplementation(async (input) => ({
+      id: input.messageId,
+      accountId: "account_1",
+      subject: input.messageId === "message_2" ? "Second subject" : "First subject",
+      from:
+        input.messageId === "message_2"
+          ? { email: "second@example.com", name: "Second Sender" }
+          : { email: "first@example.com", name: "First Sender" },
+      receivedAt: "2026-06-13T10:00:00.000Z",
+      snippet: input.messageId === "message_2" ? "Second snippet" : "First snippet",
+      unread: false,
+      starred: false,
+      mailboxIds: ["mailbox_inbox"],
+      attachmentCount: 0,
+      classification: {
+        bucket: input.messageId === "message_2" ? "P2 Important" : "P1 Urgent",
+        priorityScore: input.messageId === "message_2" ? 88 : 96,
+        reasons: ["Loaded detail"],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText:
+        input.messageId === "message_2"
+          ? "Second backend body"
+          : "First backend body",
+      attachments: [],
+    }));
+    vi.mocked(api.summarizeThread).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSummary = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "First subject" });
+    await screen.findByText("First backend body");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to summarize selected message",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.summarizeThread).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: "First subject",
+          threadText: "First backend body",
+          readMessageIds: ["message_1"],
+        }),
+      );
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "邮件列表" })).getByRole(
+        "button",
+        { name: /Second subject/ },
+      ),
+    );
+    await screen.findByRole("heading", { name: "Second subject" });
+    await screen.findByText("Second backend body");
+
+    await act(async () => {
+      resolveSummary({
+        skillRunId: "run_stale_summary",
+        skillId: "thread_summarize",
+        mode: "action_points",
+        summaryText: "Stale summary should not render.",
+      });
+    });
+
+    expect(screen.queryByText("Stale summary should not render.")).toBeNull();
+    expect(screen.getByText("Second backend body")).toBeTruthy();
   });
 
   it("offers Outlook-style density modes for the mail list", () => {
@@ -3981,6 +4162,19 @@ function createApiFixture(): EmailHubApi {
         },
       ],
     } satisfies HermesEmailSearchQaResult)),
+    translateText: vi.fn(async () => ({
+      skillRunId: "run_translate_1",
+      skillId: "translate_text",
+      sourceLanguage: "auto",
+      targetLanguage: "Chinese",
+      translatedText: "你好，请确认发布计划。",
+    } satisfies HermesTranslateTextResult)),
+    summarizeThread: vi.fn(async () => ({
+      skillRunId: "run_summary_1",
+      skillId: "thread_summarize",
+      mode: "action_points",
+      summaryText: "需要确认发布时间，并在今天回复 Lina。",
+    } satisfies HermesThreadSummaryResult)),
     confirmHermesFollowUp: vi.fn(async () => followUpFixture()),
     createFollowUp: vi.fn(async () => followUpFixture()),
     updateFollowUp: vi.fn(async () =>

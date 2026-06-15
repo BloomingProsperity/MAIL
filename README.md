@@ -132,6 +132,9 @@ The web app routes the compact bottom Hermes dock through this same
 show cited app-owned messages and can pass the resolved `searchQuery` into the
 Search workspace; Hermes does not execute provider mutations from this path.
 `thread_summarize` summarizes a mail thread with optional focus, language, read message ids, and memory scope. It returns `summaryText` only and records the memory ids used in the audit trail.
+The message reader calls `thread_summarize` for action-point summaries and
+`translate_text` for Chinese translations, rendering both as read-only Hermes
+preview blocks above the original message body.
 `action_item_extract` returns structured action items with title, owner, due date text, priority, status, and source quote. It does not create tasks or mutate mail state; task persistence is a later API.
 `label_suggest` returns suggested labels and preview-only organization actions such as apply label, keep in inbox, archive, snooze, move to feed, or mark important. It does not mutate mail state.
 `priority_triage` returns preview-only priority, Smart Inbox bucket, score, reasons, and optional explanation. It does not update `message_classification`; stored sorting remains a separate explicit write path.
