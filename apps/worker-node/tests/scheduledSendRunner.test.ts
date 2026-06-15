@@ -26,6 +26,7 @@ describe("scheduled send runner", () => {
             byteSize: 2048,
             inline: false,
             providerAttachmentId: "ee_attachment_1",
+            contentBase64: "Zm9yd2FyZA==",
           },
         ],
       },
@@ -71,6 +72,7 @@ describe("scheduled send runner", () => {
             byteSize: 2048,
             inline: false,
             providerAttachmentId: "ee_attachment_1",
+            contentBase64: "Zm9yd2FyZA==",
           },
         ],
         threading: {

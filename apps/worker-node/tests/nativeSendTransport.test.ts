@@ -89,6 +89,7 @@ describe("native send transports", () => {
           contentType: "application/pdf",
           byteSize: 16,
           inline: false,
+          providerAttachmentId: "ee_attachment_1",
           contentBase64: Buffer.from("hello attachment").toString("base64"),
         },
       ],

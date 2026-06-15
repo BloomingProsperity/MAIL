@@ -322,13 +322,13 @@ function toSubmitAttachment(
     ...(attachment.inline ? { disposition: "inline" } : {}),
     ...(attachment.contentId ? { cid: sanitizeCid(attachment.contentId) } : {}),
   };
+  if (attachment.providerAttachmentId) {
+    payload.reference = attachment.providerAttachmentId;
+    return payload;
+  }
   if (attachment.contentBase64) {
     payload.content = attachment.contentBase64;
     payload.encoding = "base64";
-    return payload;
-  }
-  if (attachment.providerAttachmentId) {
-    payload.reference = attachment.providerAttachmentId;
     return payload;
   }
 

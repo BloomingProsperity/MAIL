@@ -289,10 +289,19 @@ describe("EmailEngine client", () => {
           byteSize: 2048,
           inline: false,
           providerAttachmentId: "ee_attachment_1",
+          contentBase64: "aGVsbG8=",
         },
       ],
     });
 
+    const attachment = JSON.parse(String(calls[0].init?.body)).attachments[0];
+    expect(attachment).toMatchObject({
+      filename: "proposal.pdf",
+      contentType: "application/pdf",
+      reference: "ee_attachment_1",
+    });
+    expect(attachment).not.toHaveProperty("content");
+    expect(attachment).not.toHaveProperty("encoding");
     expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
       attachments: [
         {

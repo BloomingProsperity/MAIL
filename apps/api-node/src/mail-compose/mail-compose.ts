@@ -66,7 +66,7 @@ export type ScheduledSendStatus =
   | "dead_letter";
 
 const MAX_DRAFT_ATTACHMENTS = 20;
-const MAX_DRAFT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+export const MAX_DRAFT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 export type MailDraftAttachmentSource = "message_attachment" | "uploaded_file";
 
@@ -379,6 +379,17 @@ export interface MailThreadingMetadataStore {
   }): Promise<MailThreading | undefined>;
 }
 
+export interface MailAttachmentContentStore {
+  downloadAttachment(input: {
+    accountId: string;
+    providerAttachmentId: string;
+    maxBytes: number;
+  }): Promise<{
+    bytes: Uint8Array;
+    contentType?: string;
+  }>;
+}
+
 export interface MailSendTransport {
   submitMessage(input: {
     accountId: string;
@@ -445,6 +456,7 @@ export function createMailComposeService(options: {
   threadingStore?: MailThreadingMetadataStore;
   mailReadStore?: Pick<MailReadStore, "getMessage"> &
     Partial<Pick<MailReadStore, "getAttachmentDownload">>;
+  attachmentContentStore?: MailAttachmentContentStore;
   hermesDraftFeedbackStore?: HermesDraftFeedbackStore;
   now?: () => Date;
 }): MailComposeService {
@@ -508,6 +520,7 @@ export function createMailComposeService(options: {
       );
       const attachments = await resolveDraftAttachments(
         options.mailReadStore,
+        options.attachmentContentStore,
         normalized.accountId,
         normalized.attachments,
       );
@@ -1059,6 +1072,7 @@ async function resolveThreading(
 
 async function resolveDraftAttachments(
   store: Partial<Pick<MailReadStore, "getAttachmentDownload">> | undefined,
+  contentStore: MailAttachmentContentStore | undefined,
   accountId: string,
   attachments: CreateMailDraftAttachmentInput[] | undefined,
 ): Promise<MailDraftTransportAttachment[]> {
@@ -1091,6 +1105,23 @@ async function resolveDraftAttachments(
     if (!download) {
       throw new InvalidMailComposeRequestError("attachment was not found");
     }
+    if (!contentStore) {
+      throw new InvalidMailComposeRequestError(
+        "attachment download is unavailable",
+      );
+    }
+    if (!optionalTrimmed(download.providerAttachmentId)) {
+      throw new InvalidMailComposeRequestError("attachment download failed");
+    }
+    if (download.byteSize > MAX_DRAFT_ATTACHMENT_BYTES) {
+      throw new InvalidMailComposeRequestError("attachments are too large");
+    }
+
+    const content = await downloadMessageAttachmentContent({
+      contentStore,
+      accountId,
+      providerAttachmentId: download.providerAttachmentId,
+    });
 
     const contentId = optionalTrimmed(attachment.contentId);
     resolved.push({
@@ -1099,14 +1130,43 @@ async function resolveDraftAttachments(
       attachmentId: download.id,
       filename: sanitizeFilename(download.filename),
       contentType: sanitizeContentType(download.contentType),
-      byteSize: download.byteSize,
+      byteSize: content.byteSize,
       inline: Boolean(attachment.inline),
       ...(contentId ? { contentId: sanitizeContentId(contentId) } : {}),
       providerAttachmentId: download.providerAttachmentId,
+      contentBase64: content.contentBase64,
     });
+    enforceAttachmentLimits(resolved);
   }
 
   return enforceAttachmentLimits(resolved);
+}
+
+async function downloadMessageAttachmentContent(input: {
+  contentStore: MailAttachmentContentStore;
+  accountId: string;
+  providerAttachmentId: string;
+}): Promise<{ contentBase64: string; byteSize: number }> {
+  try {
+    const download = await input.contentStore.downloadAttachment({
+      accountId: input.accountId,
+      providerAttachmentId: input.providerAttachmentId,
+      maxBytes: MAX_DRAFT_ATTACHMENT_BYTES,
+    });
+    const bytes = Buffer.from(download.bytes);
+    if (bytes.byteLength > MAX_DRAFT_ATTACHMENT_BYTES) {
+      throw new InvalidMailComposeRequestError("attachments are too large");
+    }
+    return normalizeAttachmentContentBase64(bytes.toString("base64"));
+  } catch (error) {
+    if (error instanceof InvalidMailComposeRequestError) {
+      throw error;
+    }
+    if (error instanceof Error && error.message === "attachments are too large") {
+      throw new InvalidMailComposeRequestError("attachments are too large");
+    }
+    throw new InvalidMailComposeRequestError("attachment download failed");
+  }
 }
 
 function uploadedDraftAttachment(

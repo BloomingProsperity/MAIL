@@ -167,6 +167,7 @@ describe("Postgres mail compose store", () => {
         byteSize: 2048,
         inline: false,
         providerAttachmentId: "ee_attachment_1",
+        contentBase64: "Zm9yd2FyZA==",
       },
       {
         id: "upload_1",
@@ -239,6 +240,7 @@ describe("Postgres mail compose store", () => {
     expect(queries[0].values).toContainEqual(manifest);
     expect(JSON.stringify(draft)).not.toContain("ee_attachment_1");
     expect(JSON.stringify(draft)).not.toContain("aGVsbG8=");
+    expect(JSON.stringify(draft)).not.toContain("Zm9yd2FyZA==");
     expect(draft.attachments).toEqual([
       {
         id: "attachment_1",
@@ -261,8 +263,19 @@ describe("Postgres mail compose store", () => {
     ]);
   });
 
-  it("hydrates uploaded attachment content for transport without exposing it", async () => {
+  it("hydrates private attachment content for transport without exposing it", async () => {
     const manifest = [
+      {
+        id: "attachment_1",
+        source: "message_attachment",
+        attachmentId: "attachment_1",
+        filename: "proposal.pdf",
+        contentType: "application/pdf",
+        byteSize: 7,
+        inline: false,
+        providerAttachmentId: "ee_attachment_1",
+        contentBase64: "Zm9yd2FyZA==",
+      },
       {
         id: "upload_1",
         source: "uploaded_file",
@@ -323,7 +336,18 @@ describe("Postgres mail compose store", () => {
     });
 
     expect(JSON.stringify(result?.draft)).not.toContain("aGVsbG8=");
+    expect(JSON.stringify(result?.draft)).not.toContain("ee_attachment_1");
+    expect(JSON.stringify(result?.draft)).not.toContain("Zm9yd2FyZA==");
     expect(result?.draft.attachments).toEqual([
+      {
+        id: "attachment_1",
+        source: "message_attachment",
+        attachmentId: "attachment_1",
+        filename: "proposal.pdf",
+        contentType: "application/pdf",
+        byteSize: 7,
+        inline: false,
+      },
       {
         id: "upload_1",
         source: "uploaded_file",
@@ -335,6 +359,17 @@ describe("Postgres mail compose store", () => {
       },
     ]);
     expect(result?.transportAttachments).toEqual([
+      {
+        id: "attachment_1",
+        source: "message_attachment",
+        attachmentId: "attachment_1",
+        filename: "proposal.pdf",
+        contentType: "application/pdf",
+        byteSize: 7,
+        inline: false,
+        providerAttachmentId: "ee_attachment_1",
+        contentBase64: "Zm9yd2FyZA==",
+      },
       {
         id: "upload_1",
         source: "uploaded_file",
@@ -476,7 +511,28 @@ describe("Postgres mail compose store", () => {
               status: "draft",
               source: "manual",
               reply_to_message_id: null,
+              source_message_id: null,
+              thread_action: null,
+              thread_in_reply_to: null,
+              thread_references: [],
+              thread_emailengine_message_id: null,
+              thread_gmail_thread_id: null,
+              thread_graph_message_id: null,
+              attachment_manifest: [
+                {
+                  id: "attachment_1",
+                  source: "message_attachment",
+                  attachmentId: "attachment_1",
+                  filename: "proposal.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 7,
+                  inline: false,
+                  providerAttachmentId: "ee_attachment_1",
+                  contentBase64: "Zm9yd2FyZA==",
+                },
+              ],
               hermes_skill_run_id: null,
+              hermes_draft_text: null,
               provider_queue_id: null,
               provider_message_id: null,
               error_message: null,
@@ -733,7 +789,28 @@ describe("Postgres mail compose store", () => {
               status: "sending",
               source: "manual",
               reply_to_message_id: null,
+              source_message_id: null,
+              thread_action: null,
+              thread_in_reply_to: null,
+              thread_references: [],
+              thread_emailengine_message_id: null,
+              thread_gmail_thread_id: null,
+              thread_graph_message_id: null,
+              attachment_manifest: [
+                {
+                  id: "attachment_1",
+                  source: "message_attachment",
+                  attachmentId: "attachment_1",
+                  filename: "proposal.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 7,
+                  inline: false,
+                  providerAttachmentId: "ee_attachment_1",
+                  contentBase64: "Zm9yd2FyZA==",
+                },
+              ],
               hermes_skill_run_id: null,
+              hermes_draft_text: null,
               provider_queue_id: null,
               provider_message_id: null,
               error_message: null,
@@ -781,6 +858,21 @@ describe("Postgres mail compose store", () => {
         engineProvider: "emailengine",
       },
     });
+    expect(JSON.stringify(result?.draft)).not.toContain("ee_attachment_1");
+    expect(JSON.stringify(result?.draft)).not.toContain("Zm9yd2FyZA==");
+    expect(result?.transportAttachments).toEqual([
+      {
+        id: "attachment_1",
+        source: "message_attachment",
+        attachmentId: "attachment_1",
+        filename: "proposal.pdf",
+        contentType: "application/pdf",
+        byteSize: 7,
+        inline: false,
+        providerAttachmentId: "ee_attachment_1",
+        contentBase64: "Zm9yd2FyZA==",
+      },
+    ]);
   });
 
   it("reclaims expired sending scheduled sends for send-now", async () => {

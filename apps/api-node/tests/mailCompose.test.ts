@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   createMailComposeService,
   InvalidMailComposeRequestError,
+  MAX_DRAFT_ATTACHMENT_BYTES,
   type MailComposeStore,
 } from "../src/mail-compose/mail-compose";
 
@@ -141,6 +142,7 @@ describe("mail compose service", () => {
   });
 
   it("resolves forwarded attachment refs before storing a draft", async () => {
+    const contentBase64 = Buffer.from("forwarded bytes").toString("base64");
     const storeCalls: unknown[] = [];
     const service = createMailComposeService({
       store: createStore({
@@ -192,6 +194,19 @@ describe("mail compose service", () => {
           };
         },
       },
+      attachmentContentStore: {
+        async downloadAttachment(input) {
+          expect(input).toEqual({
+            accountId: "acc_1",
+            providerAttachmentId: "ee_attachment_1",
+            maxBytes: MAX_DRAFT_ATTACHMENT_BYTES,
+          });
+          return {
+            bytes: Buffer.from("forwarded bytes"),
+            contentType: "application/pdf",
+          };
+        },
+      },
     });
 
     const draft = await service.createDraft({
@@ -221,18 +236,127 @@ describe("mail compose service", () => {
             attachmentId: "attachment_1",
             filename: "proposal.pdf",
             contentType: "application/pdf",
-            byteSize: 2048,
+            byteSize: Buffer.byteLength("forwarded bytes"),
             inline: false,
             providerAttachmentId: "ee_attachment_1",
+            contentBase64,
           },
         ],
       }),
     ]);
     expect(JSON.stringify(draft)).not.toContain("ee_attachment_1");
+    expect(JSON.stringify(draft)).not.toContain(contentBase64);
     expect(draft.attachments?.[0]).toMatchObject({
       attachmentId: "attachment_1",
       filename: "proposal.pdf",
+      byteSize: Buffer.byteLength("forwarded bytes"),
     });
+  });
+
+  it("rejects forwarded attachments when content download fails", async () => {
+    let createDraftCalled = false;
+    const service = createMailComposeService({
+      store: createStore({
+        async createDraft() {
+          createDraftCalled = true;
+          throw new Error("not expected");
+        },
+      }),
+      createId: () => "draft_1",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      transports: {},
+      mailReadStore: {
+        async getMessage() {
+          throw new Error("not used");
+        },
+        async getAttachmentDownload() {
+          return {
+            id: "attachment_1",
+            accountId: "acc_1",
+            providerAttachmentId: "ee_attachment_1",
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+          };
+        },
+      },
+      attachmentContentStore: {
+        async downloadAttachment() {
+          throw new Error("EmailEngine is unavailable");
+        },
+      },
+    });
+
+    await expect(
+      service.createDraft({
+        accountId: "acc_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Fwd: Launch confirmation",
+        bodyText: "Forwarding the proposal.",
+        source: "forward",
+        sourceMessageId: "message_1",
+        attachments: [
+          {
+            source: "message_attachment",
+            attachmentId: "attachment_1",
+          },
+        ],
+      }),
+    ).rejects.toThrow("attachment download failed");
+    expect(createDraftCalled).toBe(false);
+  });
+
+  it("rejects forwarded attachments when the content snapshot is too large", async () => {
+    let createDraftCalled = false;
+    const service = createMailComposeService({
+      store: createStore({
+        async createDraft() {
+          createDraftCalled = true;
+          throw new Error("not expected");
+        },
+      }),
+      createId: () => "draft_1",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      transports: {},
+      mailReadStore: {
+        async getMessage() {
+          throw new Error("not used");
+        },
+        async getAttachmentDownload() {
+          return {
+            id: "attachment_1",
+            accountId: "acc_1",
+            providerAttachmentId: "ee_attachment_1",
+            filename: "proposal.pdf",
+            contentType: "application/pdf",
+            byteSize: 2048,
+          };
+        },
+      },
+      attachmentContentStore: {
+        async downloadAttachment() {
+          throw new Error("attachments are too large");
+        },
+      },
+    });
+
+    await expect(
+      service.createDraft({
+        accountId: "acc_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Fwd: Launch confirmation",
+        bodyText: "Forwarding the proposal.",
+        source: "forward",
+        sourceMessageId: "message_1",
+        attachments: [
+          {
+            source: "message_attachment",
+            attachmentId: "attachment_1",
+          },
+        ],
+      }),
+    ).rejects.toThrow("attachments are too large");
+    expect(createDraftCalled).toBe(false);
   });
 
   it("stores uploaded attachment content snapshots without exposing base64", async () => {
@@ -755,6 +879,7 @@ describe("mail compose service", () => {
               byteSize: 2048,
               inline: false,
               providerAttachmentId: "ee_attachment_1",
+              contentBase64: "Zm9yd2FyZA==",
             },
             {
               id: "upload_1",
@@ -822,6 +947,7 @@ describe("mail compose service", () => {
             byteSize: 2048,
             inline: false,
             providerAttachmentId: "ee_attachment_1",
+            contentBase64: "Zm9yd2FyZA==",
           },
           {
             filename: "brief.txt",
@@ -1013,6 +1139,7 @@ describe("mail compose service", () => {
               byteSize: 2048,
               inline: false,
               providerAttachmentId: "ee_attachment_1",
+              contentBase64: "Zm9yd2FyZA==",
             },
           ],
         };
@@ -1069,6 +1196,7 @@ describe("mail compose service", () => {
             byteSize: 2048,
             inline: false,
             providerAttachmentId: "ee_attachment_1",
+            contentBase64: "Zm9yd2FyZA==",
           },
         ],
         threading: {

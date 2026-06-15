@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createEmailEngineAttachmentContentStore } from "../src/mail-engine/email-engine-attachment-content-store";
 import { createEmailEngineAttachmentsClient } from "../src/mail-engine/email-engine-attachments-client";
 
 describe("EmailEngine attachments client", () => {
@@ -56,5 +57,49 @@ describe("EmailEngine attachments client", () => {
     ).rejects.toThrow(
       "EmailEngine attachment download failed: 404 AttachmentNotFound missing",
     );
+  });
+
+  it("adapts EmailEngine attachment downloads into bounded content bytes", async () => {
+    const contentStore = createEmailEngineAttachmentContentStore({
+      async downloadAttachment(input) {
+        expect(input).toEqual({
+          accountId: "acc_1",
+          providerAttachmentId: "att_1",
+        });
+        return {
+          body: new Response("file-bytes"),
+          contentType: "application/pdf",
+          contentLength: "10",
+        };
+      },
+    });
+
+    const download = await contentStore.downloadAttachment({
+      accountId: "acc_1",
+      providerAttachmentId: "att_1",
+      maxBytes: 20,
+    });
+
+    expect(download.contentType).toBe("application/pdf");
+    expect(Buffer.from(download.bytes).toString()).toBe("file-bytes");
+  });
+
+  it("rejects EmailEngine attachment downloads above the content snapshot limit", async () => {
+    const contentStore = createEmailEngineAttachmentContentStore({
+      async downloadAttachment() {
+        return {
+          body: new Response("file-bytes"),
+          contentLength: "10",
+        };
+      },
+    });
+
+    await expect(
+      contentStore.downloadAttachment({
+        accountId: "acc_1",
+        providerAttachmentId: "att_1",
+        maxBytes: 4,
+      }),
+    ).rejects.toThrow("attachments are too large");
   });
 });

@@ -47,6 +47,7 @@ import { createOperationalEventLogService } from "./logging/operational-events.j
 import { createPostgresOperationalEventStore } from "./logging/postgres-operational-event-store.js";
 import { createPostgresMailReadStore } from "./mail-read/postgres-mail-read-store.js";
 import { createEmailEngineAccountsClient } from "./mail-engine/email-engine-accounts-client.js";
+import { createEmailEngineAttachmentContentStore } from "./mail-engine/email-engine-attachment-content-store.js";
 import { createEmailEngineAttachmentsClient } from "./mail-engine/email-engine-attachments-client.js";
 import { createEmailEngineSubmitClient } from "./mail-engine/email-engine-submit-client.js";
 import { createMailNavigationSummaryService } from "./mail-navigation/navigation-summary.js";
@@ -130,7 +131,13 @@ if (pool) {
         async registerImapSmtpAccount() {
           throw new Error("EMAILENGINE_ACCESS_TOKEN is not configured");
         },
-  };
+      };
+  const emailEngineAttachments = config.emailEngineAccessTokenConfigured
+    ? createEmailEngineAttachmentsClient({
+        baseUrl: config.emailEngineUrl,
+        accessToken: emailEngineAccessToken!,
+      })
+    : undefined;
   config.mailEngineIngestStore = createPostgresMailEngineIngestStore(pool);
   config.operationalEventLogService = createOperationalEventLogService({
     store: createPostgresOperationalEventStore(pool),
@@ -184,6 +191,12 @@ if (pool) {
     sendIdentityStore: createPostgresSendIdentityStore(pool),
     threadingStore: createPostgresMailThreadingStore(pool),
     mailReadStore: config.mailReadStore,
+    ...(emailEngineAttachments
+      ? {
+          attachmentContentStore:
+            createEmailEngineAttachmentContentStore(emailEngineAttachments),
+        }
+      : {}),
     transports: {
       ...(config.emailEngineAccessTokenConfigured
         ? {
@@ -246,11 +259,8 @@ if (pool) {
     createId: randomUUID,
   });
 
-  if (config.emailEngineAccessTokenConfigured) {
-    config.attachmentDownloadService = createEmailEngineAttachmentsClient({
-      baseUrl: config.emailEngineUrl,
-      accessToken: emailEngineAccessToken!,
-    });
+  if (emailEngineAttachments) {
+    config.attachmentDownloadService = emailEngineAttachments;
     config.accountOnboardingService = createImapSmtpOnboardingService({
       store: accountOnboardingStore,
       emailEngineAccounts,

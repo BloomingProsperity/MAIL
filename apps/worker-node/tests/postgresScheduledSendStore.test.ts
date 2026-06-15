@@ -42,6 +42,7 @@ describe("Postgres scheduled send store", () => {
                   byteSize: 2048,
                   inline: false,
                   providerAttachmentId: "ee_attachment_1",
+                  contentBase64: "Zm9yd2FyZA==",
                 },
                 {
                   id: "upload_1",
@@ -104,6 +105,7 @@ describe("Postgres scheduled send store", () => {
           byteSize: 2048,
           inline: false,
           providerAttachmentId: "ee_attachment_1",
+          contentBase64: "Zm9yd2FyZA==",
         },
         {
           filename: "brief.txt",
