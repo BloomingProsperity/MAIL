@@ -5,6 +5,7 @@ import type {
   EmailHubApi,
   FollowUpDto,
   FollowUpPage,
+  HermesEmailSearchQaResult,
   HermesFollowupTrackerResult,
   HermesQuickReplyResult,
   HermesReplyDraftResult,
@@ -61,12 +62,14 @@ describe("Email Hub first UI baseline", () => {
     expect(dock.className).toContain("is-blurred");
     expect(dock.className).toContain("is-collapsed");
     expect(within(dock).getByRole("button", { name: "打开 Hermes" })).toBeTruthy();
-    expect(within(dock).queryByDisplayValue("搜索邮件、写回复、整理收件箱...")).toBeNull();
+    expect(within(dock).queryByLabelText("Hermes 指令")).toBeNull();
 
     fireEvent.click(within(dock).getByRole("button", { name: "打开 Hermes" }));
 
     expect(dock.className).toContain("is-open");
-    expect(within(dock).getByDisplayValue("搜索邮件、写回复、整理收件箱...")).toBeTruthy();
+    const commandInput = within(dock).getByLabelText("Hermes 指令") as HTMLInputElement;
+    expect(commandInput.placeholder).toBe("搜索邮件、写回复、整理收件箱...");
+    expect(commandInput.value).toBe("");
     expect(within(dock).queryByRole("button", { name: "搜索邮件" })).toBeNull();
 
     act(() => {
@@ -108,6 +111,75 @@ describe("Email Hub first UI baseline", () => {
       vi.advanceTimersByTime(1_000);
     });
     expect(dock?.className).toContain("is-collapsed");
+  });
+
+  it("runs Hermes mail search QA from the compact dock and can open the Search workspace", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "客户上次提到的合同是什么" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    await waitFor(() => {
+      expect(api.searchMailWithHermes).toHaveBeenCalledWith({
+        accountId: "account_1",
+        question: "客户上次提到的合同是什么",
+        language: "zh-CN",
+        limit: 5,
+        memoryScope: "global",
+      });
+    });
+    expect(
+      await screen.findByText("Lina mentioned the signed contract in the latest thread."),
+    ).toBeTruthy();
+    expect(within(screen.getByLabelText("Hermes 搜索回答")).getByText("Live subject")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "同步到搜索页" }));
+
+    expect(await screen.findByRole("heading", { name: "搜索" })).toBeTruthy();
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        limit: 50,
+        q: "signed contract",
+        qScopes: ["sender", "recipients", "subject", "body"],
+        sort: "smart",
+      });
+    });
+  });
+
+  it("does not call Hermes mail search QA for an empty dock prompt", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    expect(api.searchMailWithHermes).not.toHaveBeenCalled();
+    expect(await screen.findByText("请输入要让 Hermes 查找或回答的问题。")).toBeTruthy();
+  });
+
+  it("shows a clear dock error when Hermes mail search QA is unavailable", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.searchMailWithHermes).mockRejectedValueOnce(new Error("offline"));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "找一下合同" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    expect(await screen.findByText("Hermes 搜索暂时不可用。")).toBeTruthy();
+    expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
   });
 
   it("offers Outlook-style density modes for the mail list", () => {
@@ -3875,6 +3947,40 @@ function createApiFixture(): EmailHubApi {
       editable: true,
       sendsDirectly: false,
     } satisfies HermesRewritePolishResult)),
+    searchMailWithHermes: vi.fn(async () => ({
+      skillRunId: "run_search_1",
+      skillId: "email_search_qa",
+      answerText: "Lina mentioned the signed contract in the latest thread.",
+      searchQuery: "signed contract",
+      matches: [
+        {
+          id: "message_1",
+          accountId: "account_1",
+          subject: "Live subject",
+          from: { email: "client@example.com", name: "Live Client" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "Live snippet",
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 96,
+            reasons: ["Direct to you"],
+          },
+        },
+      ],
+      citations: [
+        {
+          resultIndex: 1,
+          messageId: "message_1",
+          accountId: "account_1",
+          subject: "Live subject",
+          from: { email: "client@example.com", name: "Live Client" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "Live snippet",
+          bucket: "P1 Urgent",
+          reasons: ["Direct to you"],
+        },
+      ],
+    } satisfies HermesEmailSearchQaResult)),
     confirmHermesFollowUp: vi.fn(async () => followUpFixture()),
     createFollowUp: vi.fn(async () => followUpFixture()),
     updateFollowUp: vi.fn(async () =>

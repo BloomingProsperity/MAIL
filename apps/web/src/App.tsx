@@ -32,6 +32,7 @@ import type {
   FollowUpDto,
   GatekeeperMode,
   GatekeeperSenderDto,
+  HermesEmailSearchQaResult,
   HermesFollowupTrackerResult,
   HermesQuickReplyScenario,
   HermesProviderCatalogItem,
@@ -491,7 +492,12 @@ export function App(props: AppProps = {}) {
   >();
   const [activeFolder, setActiveFolder] = useState("inbox");
   const [activeMailId, setActiveMailId] = useState(props.api ? "" : mailItems[0].id);
-  const [hermesPrompt, setHermesPrompt] = useState("搜索邮件、写回复、整理收件箱...");
+  const [hermesPrompt, setHermesPrompt] = useState("");
+  const [hermesDockNotice, setHermesDockNotice] = useState<string | undefined>();
+  const [hermesDockResult, setHermesDockResult] = useState<
+    HermesEmailSearchQaResult | undefined
+  >();
+  const [hermesDockBusy, setHermesDockBusy] = useState(false);
   const [workspaceFolders, setWorkspaceFolders] = useState<FolderItem[]>(folders);
   const [workspaceMail, setWorkspaceMail] = useState<MailItem[]>(mailItems);
   const [selectedDetail, setSelectedDetail] = useState<MessageDetailDto | undefined>();
@@ -583,6 +589,49 @@ export function App(props: AppProps = {}) {
       requestId: (current?.requestId ?? 0) + 1,
     }));
     setActiveView("search");
+  }
+
+  function updateHermesPrompt(value: string) {
+    setHermesPrompt(value);
+    setHermesDockNotice(undefined);
+    setHermesDockResult(undefined);
+  }
+
+  async function submitHermesDockPrompt(rawPrompt: string) {
+    const question = rawPrompt.trim();
+    if (!question) {
+      setHermesDockResult(undefined);
+      setHermesDockNotice("请输入要让 Hermes 查找或回答的问题。");
+      return;
+    }
+
+    setHermesDockResult(undefined);
+    if (!props.api) {
+      setHermesDockNotice("连接后 Hermes 会搜索已同步邮件并给出引用答案。");
+      return;
+    }
+
+    setHermesDockBusy(true);
+    setHermesDockNotice("Hermes 正在搜索已同步邮件...");
+    try {
+      const result = await props.api.searchMailWithHermes({
+        accountId,
+        question,
+        language: "zh-CN",
+        limit: 5,
+        memoryScope: "global",
+      });
+      setHermesDockResult(result);
+      setHermesDockNotice(
+        result.matches.length > 0
+          ? `Hermes 已基于 ${result.matches.length} 封邮件回答。`
+          : "Hermes 没有找到匹配邮件。",
+      );
+    } catch {
+      setHermesDockNotice("Hermes 搜索暂时不可用。");
+    } finally {
+      setHermesDockBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -985,7 +1034,15 @@ export function App(props: AppProps = {}) {
         ) : null}
       </main>
 
-      <HermesDock prompt={hermesPrompt} onPromptChange={setHermesPrompt} />
+      <HermesDock
+        prompt={hermesPrompt}
+        notice={hermesDockNotice}
+        result={hermesDockResult}
+        busy={hermesDockBusy}
+        onPromptChange={updateHermesPrompt}
+        onSubmit={(prompt) => void submitHermesDockPrompt(prompt)}
+        onOpenSearch={launchGlobalSearch}
+      />
     </div>
   );
 }
@@ -5782,7 +5839,15 @@ function TodoPage(props: { api?: EmailHubApi; accountId: string; embedded?: bool
   );
 }
 
-function HermesDock(props: { prompt: string; onPromptChange: (value: string) => void }) {
+function HermesDock(props: {
+  prompt: string;
+  notice?: string;
+  result?: HermesEmailSearchQaResult;
+  busy: boolean;
+  onPromptChange: (value: string) => void;
+  onSubmit: (prompt: string) => void;
+  onOpenSearch: (query: string) => void;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [activityVersion, setActivityVersion] = useState(0);
 
@@ -5805,6 +5870,14 @@ function HermesDock(props: { prompt: string; onPromptChange: (value: string) => 
     setActivityVersion((version) => version + 1);
   }
 
+  function submitPrompt(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    showDock();
+    props.onSubmit(props.prompt);
+  }
+
+  const result = props.result;
+
   return (
     <section
       className={`hermes-dock dock-short is-blurred ${isOpen ? "is-open" : "is-collapsed"}`}
@@ -5819,23 +5892,71 @@ function HermesDock(props: { prompt: string; onPromptChange: (value: string) => 
         </button>
       ) : (
         <>
-          <button className="dock-model" type="button" onClick={showDock}>
-            <Sparkles size={18} />
-            Hermes
-          </button>
-          <input
-            className="dock-command-input"
-            value={props.prompt}
-            placeholder="搜索邮件、写回复、整理收件箱..."
-            onChange={(event) => {
-              props.onPromptChange(event.target.value);
-              showDock();
-            }}
-            onKeyDown={showDock}
-          />
-          <button className="dock-send" type="button" aria-label="发送给 Hermes" onClick={showDock}>
-            <Send size={18} />
-          </button>
+          <form className="dock-command-form" onSubmit={submitPrompt}>
+            <button className="dock-model" type="button" onClick={showDock}>
+              <Sparkles size={18} />
+              Hermes
+            </button>
+            <input
+              className="dock-command-input"
+              aria-label="Hermes 指令"
+              value={props.prompt}
+              placeholder="搜索邮件、写回复、整理收件箱..."
+              onChange={(event) => {
+                props.onPromptChange(event.target.value);
+                showDock();
+              }}
+              onKeyDown={showDock}
+            />
+            <button
+              className="dock-send"
+              type="submit"
+              aria-label="发送给 Hermes"
+              disabled={props.busy}
+            >
+              <Send size={18} />
+            </button>
+          </form>
+          {props.notice ? (
+            <div className="dock-result-status" role="status">
+              {props.notice}
+            </div>
+          ) : null}
+          {result ? (
+            <div className="dock-result" aria-label="Hermes 搜索回答">
+              <div className="dock-result-head">
+                <strong>Hermes 搜索回答</strong>
+                <span>{result.searchQuery}</span>
+              </div>
+              <p>{result.answerText}</p>
+              {result.citations.length > 0 ? (
+                <div className="dock-citations" aria-label="Hermes 引用邮件">
+                  {result.citations.slice(0, 3).map((citation) => (
+                    <button
+                      className="dock-citation"
+                      type="button"
+                      key={`${citation.messageId}-${citation.resultIndex}`}
+                      aria-label={`Hermes citation ${citation.subject}`}
+                      onClick={() => props.onOpenSearch(result.searchQuery)}
+                    >
+                      <span>{citation.subject}</span>
+                      <small>
+                        {citation.from.name ?? citation.from.email} ·{" "}
+                        {formatMailDate(citation.receivedAt)} · {citation.bucket}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <button
+                className="dock-action"
+                type="button"
+                onClick={() => props.onOpenSearch(result.searchQuery)}
+              >
+                同步到搜索页
+              </button>
+            </div>
+          ) : null}
         </>
       )}
     </section>

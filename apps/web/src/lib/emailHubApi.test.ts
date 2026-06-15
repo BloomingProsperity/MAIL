@@ -1337,6 +1337,75 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs Hermes email search QA through the backend skills route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          skillRunId: "run_search_1",
+          skillId: "email_search_qa",
+          answerText: "The signed contract is in Lina's latest message.",
+          searchQuery: "signed contract",
+          matches: [
+            {
+              id: "message_1",
+              accountId: "account_1",
+              subject: "Signed contract",
+              from: { email: "lina@example.com", name: "Lina" },
+              receivedAt: "2026-06-13T10:00:00.000Z",
+              snippet: "Please review the signed contract.",
+              classification: {
+                bucket: "P1 Urgent",
+                priorityScore: 91,
+                reasons: ["Matched search"],
+              },
+            },
+          ],
+          citations: [
+            {
+              resultIndex: 1,
+              messageId: "message_1",
+              accountId: "account_1",
+              subject: "Signed contract",
+              from: { email: "lina@example.com", name: "Lina" },
+              receivedAt: "2026-06-13T10:00:00.000Z",
+              snippet: "Please review the signed contract.",
+              bucket: "P1 Urgent",
+              reasons: ["Matched search"],
+            },
+          ],
+        },
+        202,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.searchMailWithHermes({
+      accountId: "account_1",
+      question: "Where is the signed contract?",
+      searchQuery: "signed contract",
+      language: "en",
+      limit: 5,
+      memoryScope: "global",
+    });
+
+    expect(result.answerText).toBe("The signed contract is in Lina's latest message.");
+    expect(result.citations[0].messageId).toBe("message_1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/skills/email_search_qa/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          accountId: "account_1",
+          question: "Where is the signed contract?",
+          searchQuery: "signed contract",
+          language: "en",
+          limit: 5,
+          memoryScope: "global",
+        }),
+      }),
+    );
+  });
+
   it("runs Hermes quick reply through the backend skills route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(

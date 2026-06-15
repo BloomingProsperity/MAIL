@@ -149,6 +149,14 @@ with more than smoke-level tests.
   feedback store writes `writing_style_profile` memories when the user edits
   the result and records accepted rewrite/polish output as positive style
   preference without exposing draft body outside Hermes memory/audit tables.
+- Current search QA status: the compact Hermes dock now submits natural
+  language mail questions through `/api/hermes/skills/email_search_qa/run`
+  using the selected account, global memory scope, and a five-result limit. The
+  dock renders Hermes' answer plus cited app-owned message ids, subjects,
+  senders, dates, and Smart Inbox buckets, and can hand the resolved
+  `searchQuery` to the Search workspace for deterministic filtering. Hermes
+  search remains read-only: it answers and cites, but does not move, delete, or
+  send mail.
 
 ### 4. Mail Organization
 
@@ -190,8 +198,8 @@ with more than smoke-level tests.
 
 - Trigger: user navigates Mail, Add Mailbox, Sync Center, Search, Settings.
 - State: React local state mirrors API DTOs only; preview data is a fallback.
-- API: consume provider capabilities, top-bar global search, Search workspace
-  filters, CSV import, transfer,
+- API: consume provider capabilities, top-bar global search, Hermes dock
+  search QA, Search workspace filters, CSV import, transfer,
   Gatekeeper senders, Sync Center diagnostics and reauthorization tasks, Hermes
   settings, domains.
 - Failure: backend unavailable keeps preview state with visible status.

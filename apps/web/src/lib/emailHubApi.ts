@@ -321,6 +321,59 @@ export interface HermesRuntimeVersionStatus {
   lastCheckedAt?: string;
 }
 
+export interface HermesEmailSearchQaInput {
+  accountId: string;
+  mailboxId?: string;
+  question: string;
+  searchQuery?: string;
+  language?: string;
+  limit?: number;
+  readMessageIds?: string[];
+  memoryIds?: string[];
+  memoryScope?: string;
+  memoryLayers?: string[];
+}
+
+export interface HermesEmailSearchQaMatch {
+  id: string;
+  accountId: string;
+  subject: string;
+  from: {
+    email: string;
+    name?: string;
+  };
+  receivedAt: string;
+  snippet?: string;
+  searchPreview?: MessageSearchPreviewDto;
+  classification: MessageClassificationDto;
+}
+
+export interface HermesEmailSearchQaCitation {
+  resultIndex: number;
+  messageId: string;
+  accountId: string;
+  subject: string;
+  from: {
+    email: string;
+    name?: string;
+  };
+  receivedAt: string;
+  snippet?: string;
+  searchPreview?: MessageSearchPreviewDto;
+  bucket: string;
+  reasons: string[];
+}
+
+export interface HermesEmailSearchQaResult {
+  skillRunId: string;
+  auditEventId?: string;
+  skillId: "email_search_qa";
+  answerText: string;
+  searchQuery: string;
+  citations: HermesEmailSearchQaCitation[];
+  matches: HermesEmailSearchQaMatch[];
+}
+
 export interface SyncCenterAccountDto {
   accountId: string;
   email: string;
@@ -1050,6 +1103,9 @@ export interface EmailHubApi {
   testHermesRuntimeConnection(): Promise<HermesRuntimeTestResult>;
   getHermesRuntimeVersion(): Promise<HermesRuntimeVersionStatus>;
   checkHermesRuntimeUpdate(): Promise<HermesRuntimeVersionStatus>;
+  searchMailWithHermes(
+    input: HermesEmailSearchQaInput,
+  ): Promise<HermesEmailSearchQaResult>;
   previewAccountCsv(input: { csv: string }): Promise<AccountImportPreview>;
   createAccountCsvImport(input: { csv: string }): Promise<AccountImportPreview>;
   exportAccountTransfer(input?: {
@@ -1551,6 +1607,13 @@ export function createEmailHubApi(
     checkHermesRuntimeUpdate() {
       return request(fetchImpl, baseUrl, "/api/hermes/runtime/update/check", {
         method: "POST",
+      });
+    },
+
+    searchMailWithHermes(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills/email_search_qa/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
       });
     },
 

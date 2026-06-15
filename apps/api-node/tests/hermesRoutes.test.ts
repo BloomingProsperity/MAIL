@@ -48,8 +48,8 @@ describe("Hermes routes", () => {
 
       expect(response.status).toBe(200);
       const skills = await response.json();
-      expect(skills.map((skill: { id: string }) => skill.id)).toContain(
-        "translate_text",
+      expect(skills.map((skill: { id: string }) => skill.id)).toEqual(
+        expect.arrayContaining(["translate_text", "email_search_qa"]),
       );
     });
   });
@@ -670,6 +670,42 @@ describe("Hermes routes", () => {
             memoryLayers: ["contact_memory"],
           },
         ]);
+      },
+      { hermesService },
+    );
+  });
+
+  it("returns a clear error when Hermes email_search_qa is not wired", async () => {
+    const hermesService = {
+      async translate() {
+        throw new Error("not used");
+      },
+      async draftReply() {
+        throw new Error("not used");
+      },
+      async summarizeThread() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/email_search_qa/run`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "00000000-0000-0000-0000-000000000001",
+              question: "Which launch emails need my reply?",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({
+          error: "hermes_search_unavailable",
+        });
       },
       { hermesService },
     );
@@ -1439,6 +1475,49 @@ describe("Hermes routes", () => {
             body: JSON.stringify({
               accountId: "00000000-0000-0000-0000-000000000001",
               question: " ",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_email_search_qa_request",
+        });
+        expect(calls).toEqual([]);
+      },
+      { hermesService },
+    );
+  });
+
+  it("rejects invalid email_search_qa limits before hitting Hermes", async () => {
+    const calls: unknown[] = [];
+    const hermesService = {
+      async translate() {
+        throw new Error("not used");
+      },
+      async draftReply() {
+        throw new Error("not used");
+      },
+      async summarizeThread() {
+        throw new Error("not used");
+      },
+      async searchMail(input: unknown) {
+        calls.push(input);
+        return {};
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/email_search_qa/run`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "00000000-0000-0000-0000-000000000001",
+              question: "Which launch emails need my reply?",
+              limit: 21,
             }),
           },
         );

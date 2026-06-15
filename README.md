@@ -127,6 +127,10 @@ POST /api/hermes/rules/:candidateId/approve
 ```
 
 `email_search_qa` searches app-owned Postgres message DTOs first, then asks Hermes to answer from those matches. It returns `answerText`, `searchQuery`, and match summaries, and records the matched message ids in `hermes_audit_events`.
+The web app routes the compact bottom Hermes dock through this same
+`email_search_qa` contract for natural-language mail questions. Dock answers
+show cited app-owned messages and can pass the resolved `searchQuery` into the
+Search workspace; Hermes does not execute provider mutations from this path.
 `thread_summarize` summarizes a mail thread with optional focus, language, read message ids, and memory scope. It returns `summaryText` only and records the memory ids used in the audit trail.
 `action_item_extract` returns structured action items with title, owner, due date text, priority, status, and source quote. It does not create tasks or mutate mail state; task persistence is a later API.
 `label_suggest` returns suggested labels and preview-only organization actions such as apply label, keep in inbox, archive, snooze, move to feed, or mark important. It does not mutate mail state.
@@ -314,6 +318,9 @@ The API applies a 1 MiB default request body limit before route parsing. Oversiz
 - The left sidebar is only for global features: Mail, Add Mailbox, Sync Center, Search, and Settings.
 - The Mail top search and Search workspace both use Email Hub message search
   contracts; they do not call provider search APIs directly.
+- The compact Hermes dock is the AI entry for natural-language mail search and
+  explains app-owned search results with citations before handing queries to
+  deterministic Search filters.
 - Tasks and Hermes configuration live inside Settings; the compact Hermes input remains a global bottom dock.
 - Mail folders live only in the second column.
 - The frontend and business code must use Email Hub contracts, not raw EmailEngine payloads.
