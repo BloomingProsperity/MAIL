@@ -1040,7 +1040,11 @@ The first native engine slice is now test-backed in `apps/worker-node`:
   enqueues another `sync_account` job with `trigger_event_id = NULL`. The
   durable cursor advances only on the final page.
 
-This slice is intentionally read-only. It does not send, mutate labels, download attachments, or own OAuth yet. A Gmail `HTTP 404` history expiry is treated as `gmail_history_expired` and marks the cursor `reset_required` so the next step can schedule a full sync instead of silently skipping mail.
+This original sync slice is intentionally read-only. It does not mutate labels,
+download attachments, or own OAuth yet. A Gmail `HTTP 404` history expiry is
+treated as `gmail_history_expired` and marks the cursor `reset_required` so the
+next step can schedule a full sync instead of silently skipping mail. Native
+send is now tracked as a separate compose/outbox slice below.
 
 OAuth and provider account identity still need tightening before native sync can run in production:
 
@@ -1101,6 +1105,16 @@ Current completed slice:
   extracted text back into `search_documents`.
 - Migration `0019_message_done_undo.sql` adds `done_at`,
   `last_action_token`, and `undo_expires_at` to `message_state`.
+- Native compose/outbox send now has three native submit boundaries:
+  Gmail `messages.send`, Microsoft Graph `/me/sendMail`, and IMAP-account SMTP
+  submit through Nodemailer. The SMTP path reads `account_provider_settings`
+  for `settings.smtp`, prefers a `smtp_password` credential over
+  `imap_password`, resolves the secret through the shared secret store, keeps
+  Bcc in the SMTP envelope, adds deterministic Message-ID/idempotency headers,
+  and redacts secrets from thrown provider errors. SMTP authentication failures
+  mark password accounts `reauth_required` and create or reuse
+  `source=native_smtp_send` onboarding tasks with sanitized IMAP/SMTP endpoint
+  payloads for Sync Center recovery.
 
 1. Smart Inbox bulk/category loop: visible-card Done, undo toast aggregation,
    skipped ids, search-result bulk rejection, and Postgres-native batch
@@ -1128,8 +1142,9 @@ Current completed slice:
    writing-style memory from draft diffs, and reviewed classification-only
    rules.
 7. Native provider coverage: Gmail and Graph all visible mail folders, then
-   mutation/send parity; IMAP native remains after folder identity and
-   UIDVALIDITY handling are modeled.
+   mutation parity; IMAP native send now exists for stored SMTP settings, while
+   IMAP native sync/commands still depend on folder identity and UIDVALIDITY
+   handling.
 8. Provider onboarding diagnostics: 163, QQ, iCloud, Proton Bridge, and
    personal-domain failures with distinct recovery actions.
 9. Alias/domain depth: destination verification, delivery logs, bounce model,

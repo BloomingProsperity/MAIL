@@ -20,6 +20,20 @@ describe("postgres reauthorization task store", () => {
               payload: {
                 reauthRequired: true,
                 loginHint: "boss@gmail.com",
+                imap: {
+                  host: "imap.gmail.com",
+                  port: 993,
+                  secure: true,
+                  username: "boss@gmail.com",
+                  secret: "must-not-leak",
+                },
+                smtp: {
+                  host: "smtp.gmail.com",
+                  port: "465",
+                  secure: "true",
+                  username: "boss@gmail.com",
+                  password: "must-not-leak",
+                },
                 refreshToken: "must-not-leak",
               },
             },
@@ -44,6 +58,18 @@ describe("postgres reauthorization task store", () => {
       payload: {
         reauthRequired: true,
         loginHint: "boss@gmail.com",
+        imap: {
+          host: "imap.gmail.com",
+          port: 993,
+          secure: true,
+          username: "boss@gmail.com",
+        },
+        smtp: {
+          host: "smtp.gmail.com",
+          port: 465,
+          secure: true,
+          username: "boss@gmail.com",
+        },
       },
     });
     expect(JSON.stringify(task)).not.toContain("must-not-leak");

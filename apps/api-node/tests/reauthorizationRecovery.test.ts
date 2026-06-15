@@ -313,6 +313,114 @@ describe("reauthorization recovery service", () => {
     ]);
   });
 
+  it("uses sanitized endpoint payloads during IMAP/SMTP reauthorization", async () => {
+    const registeredAccounts: unknown[] = [];
+    const completedTasks: unknown[] = [];
+    const service = createReauthorizationRecoveryService({
+      createId: () => "generated_account",
+      providers: createOAuthProviderRegistry({
+        googleClientId: "google-client-id",
+      }),
+      reauthorizationTasks: {
+        async getTask() {
+          return {
+            id: "task_native_smtp",
+            email: "ops@example.com",
+            provider: "custom",
+            authMethod: "password",
+            status: "pending",
+            payload: {
+              source: "native_smtp_send",
+              reauthRequired: true,
+              accountId: "acc_existing",
+              displayName: "Ops",
+              username: "smtp-user",
+              imap: {
+                host: "imap.example.com",
+                port: "993",
+                secure: "true",
+                username: "imap-user",
+                secret: "must-not-leak",
+              },
+              smtp: {
+                host: "smtp.example.com",
+                port: "587",
+                secure: "false",
+                username: "smtp-user",
+                password: "must-not-leak",
+              },
+            },
+          };
+        },
+        async updateOAuthSession() {
+          throw new Error("not used");
+        },
+      },
+      accountStore: {
+        async completeTask(input) {
+          completedTasks.push(input);
+          return {
+            task: {
+              id: "task_native_smtp",
+              email: "ops@example.com",
+              provider: "custom",
+              authMethod: "password",
+              status: "completed",
+            },
+            account: input.account,
+          };
+        },
+        async failTask() {
+          throw new Error("not used");
+        },
+      },
+      emailEngineAccounts: {
+        async registerImapSmtpAccount(input) {
+          registeredAccounts.push(input);
+        },
+      },
+    });
+
+    const result = await service.completeImapSmtp({
+      taskId: "task_native_smtp",
+      secret: "new-app-password",
+    });
+
+    expect(registeredAccounts).toEqual([
+      {
+        accountId: "acc_existing",
+        email: "ops@example.com",
+        displayName: "Ops",
+        imap: {
+          host: "imap.example.com",
+          port: 993,
+          secure: true,
+          username: "imap-user",
+          secret: "new-app-password",
+        },
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "smtp-user",
+          secret: "new-app-password",
+        },
+      },
+    ]);
+    expect(completedTasks).toMatchObject([
+      {
+        taskId: "task_native_smtp",
+        account: {
+          id: "acc_existing",
+          provider: "custom",
+          engineProvider: "emailengine",
+        },
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("new-app-password");
+    expect(JSON.stringify(result)).not.toContain("must-not-leak");
+  });
+
   it("fails IMAP/SMTP reauthorization with provider diagnostics and redacted secrets", async () => {
     const failedTasks: unknown[] = [];
     const service = createReauthorizationRecoveryService({

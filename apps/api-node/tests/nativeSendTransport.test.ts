@@ -8,6 +8,11 @@ import {
 } from "../src/native-send/native-send-transport";
 import { NativeProviderSubmitError } from "../src/native-send/provider-submit-clients";
 import { createPostgresNativeSendReauthorizationMarker } from "../src/native-send/reauthorization-marker";
+import {
+  createPostgresSmtpAccountSendSettingsStore,
+  createPostgresSmtpSendReauthorizationMarker,
+  createSmtpNativeSendTransport,
+} from "../src/native-send/smtp-send-transport";
 
 describe("API native send transport", () => {
   it("routes Gmail native sends through Gmail messages.send with RFC 2822 MIME", async () => {
@@ -21,6 +26,7 @@ describe("API native send transport", () => {
       },
       gmail: { sendMessage },
       graph: { sendMail },
+      smtp: noopSmtpTransport(),
       createBoundary: () => "boundary_1",
     });
 
@@ -59,6 +65,7 @@ describe("API native send transport", () => {
       },
       gmail: { sendMessage },
       graph: { sendMail },
+      smtp: noopSmtpTransport(),
     });
 
     await transport.submitMessage({
@@ -93,7 +100,8 @@ describe("API native send transport", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("fails explicit unsupported native providers instead of falling back", async () => {
+  it("routes IMAP native sends through SMTP transport", async () => {
+    const submitMessage = vi.fn(async () => ({ messageId: "smtp_msg_1" }));
     const transport = createNativeSendTransport({
       settingsStore: {
         async getNativeProvider() {
@@ -102,20 +110,24 @@ describe("API native send transport", () => {
       },
       gmail: { sendMessage: vi.fn(async () => ({})) },
       graph: { sendMail: vi.fn(async () => ({})) },
+      smtp: { submitMessage },
     });
 
-    await expect(
-      transport.submitMessage({
-        accountId: "acc_imap",
-        draftId: "draft_1",
-        idempotencyKey: "compose:draft_1:send",
-        to: [{ address: "lina@example.com" }],
-        cc: [],
-        bcc: [],
-        subject: "Launch plan",
-        bodyText: "Plain body",
-      }),
-    ).rejects.toThrow("native send is unsupported for imap");
+    const message = {
+      accountId: "acc_imap",
+      draftId: "draft_1",
+      idempotencyKey: "compose:draft_1:send",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Launch plan",
+      bodyText: "Plain body",
+    };
+
+    await expect(transport.submitMessage(message)).resolves.toEqual({
+      messageId: "smtp_msg_1",
+    });
+    expect(submitMessage).toHaveBeenCalledWith(message);
   });
 
   it("marks native accounts for reauthorization on provider permission failures", async () => {
@@ -136,6 +148,7 @@ describe("API native send transport", () => {
           );
         }),
       },
+      smtp: noopSmtpTransport(),
       reauthorizationMarker: { markRequired },
     });
 
@@ -172,6 +185,7 @@ describe("API native send transport", () => {
         }),
       },
       graph: { sendMail: vi.fn(async () => ({})) },
+      smtp: noopSmtpTransport(),
       reauthorizationMarker: { markRequired },
     });
 
@@ -202,6 +216,282 @@ describe("API native send transport", () => {
     await expect(store.getNativeProvider("acc_1")).resolves.toBe("gmail");
     expect(queries[0].text).toMatch(/FROM account_provider_settings/i);
     expect(queries[0].values).toEqual(["acc_1"]);
+  });
+
+  it("loads native SMTP settings with SMTP credential preference", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresSmtpAccountSendSettingsStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              account_id: "acc_imap",
+              email: "support@qq.com",
+              display_name: "Support",
+              provider: "qq",
+              settings: {
+                imap: {
+                  host: "imap.qq.com",
+                  port: 993,
+                  secure: true,
+                  username: "support@qq.com",
+                },
+                smtp: {
+                  host: "smtp.qq.com",
+                  port: 465,
+                  secure: true,
+                  username: "support@qq.com",
+                },
+              },
+              secret_ref: "db:smtp_secret",
+            },
+          ],
+        };
+      },
+    });
+
+    await expect(store.getSettings("acc_imap")).resolves.toEqual({
+      accountId: "acc_imap",
+      provider: "qq",
+      fromAddress: "support@qq.com",
+      fromName: "Support",
+      host: "smtp.qq.com",
+      port: 465,
+      secure: true,
+      username: "support@qq.com",
+      secretRef: "db:smtp_secret",
+      imap: {
+        host: "imap.qq.com",
+        port: 993,
+        secure: true,
+        username: "support@qq.com",
+      },
+      smtp: {
+        host: "smtp.qq.com",
+        port: 465,
+        secure: true,
+        username: "support@qq.com",
+      },
+    });
+    expect(queries[0].text).toMatch(/smtp_credential\.credential_kind = \$2/i);
+    expect(queries[0].text).toMatch(/imap_credential\.credential_kind = \$3/i);
+    expect(queries[0].values).toEqual([
+      "acc_imap",
+      "smtp_password",
+      "imap_password",
+    ]);
+  });
+
+  it("sends native IMAP accounts through SMTP with safe envelope and deterministic Message-ID", async () => {
+    const sent: unknown[] = [];
+    const transport = createSmtpNativeSendTransport({
+      settingsStore: {
+        async getSettings() {
+          return {
+            accountId: "acc_imap",
+            provider: "qq",
+            fromAddress: "support@qq.com",
+            fromName: "Support",
+            host: "smtp.qq.com",
+            port: 465,
+            secure: true,
+            username: "support@qq.com",
+            secretRef: "db:smtp_secret",
+            smtp: {
+              host: "smtp.qq.com",
+              port: 465,
+              secure: true,
+              username: "support@qq.com",
+            },
+          };
+        },
+      },
+      secretStore: {
+        async getSecret(secretRef) {
+          expect(secretRef).toBe("db:smtp_secret");
+          return "smtp-auth-code";
+        },
+      },
+      async sendMail(input) {
+        sent.push(input);
+        return { messageId: "smtp_provider_msg_1" };
+      },
+    });
+
+    await expect(
+      transport.submitMessage({
+        accountId: "acc_imap",
+        draftId: "draft_1",
+        idempotencyKey: "compose:draft_1:send",
+        to: [{ address: "client@example.com", name: "Client" }],
+        cc: [{ address: "team@example.com" }],
+        bcc: [{ address: "audit@example.com" }],
+        subject: "上线计划",
+        bodyText: "Plain body",
+        bodyHtml: "<p>HTML body</p>",
+      }),
+    ).resolves.toEqual({ messageId: "smtp_provider_msg_1" });
+
+    expect(sent).toEqual([
+      expect.objectContaining({
+        secret: "smtp-auth-code",
+        settings: expect.objectContaining({
+          host: "smtp.qq.com",
+          port: 465,
+          secure: true,
+        }),
+        mail: expect.objectContaining({
+          from: '"Support" <support@qq.com>',
+          to: '"Client" <client@example.com>',
+          cc: "team@example.com",
+          bcc: "audit@example.com",
+          subject: "上线计划",
+          text: "Plain body",
+          html: "<p>HTML body</p>",
+          messageId: expect.stringMatching(/^<[a-f0-9]{32}@emailhub\.local>$/),
+          envelope: {
+            from: "support@qq.com",
+            to: ["client@example.com", "team@example.com", "audit@example.com"],
+          },
+          headers: {
+            "X-EmailHub-Idempotency-Key": "compose:draft_1:send",
+          },
+          disableFileAccess: true,
+          disableUrlAccess: true,
+        }),
+      }),
+    ]);
+  });
+
+  it("rejects SMTP addresses with header injection characters", async () => {
+    const sendMail = vi.fn(async () => ({ messageId: "smtp_msg_1" }));
+    const transport = createSmtpNativeSendTransport({
+      settingsStore: {
+        async getSettings() {
+          return {
+            accountId: "acc_imap",
+            provider: "custom",
+            fromAddress: "support@example.com",
+            host: "smtp.example.com",
+            port: 587,
+            secure: false,
+            username: "support@example.com",
+            secretRef: "db:smtp_secret",
+            smtp: {
+              host: "smtp.example.com",
+              port: 587,
+              secure: false,
+              username: "support@example.com",
+            },
+          };
+        },
+      },
+      secretStore: {
+        async getSecret() {
+          return "smtp-secret";
+        },
+      },
+      sendMail,
+    });
+
+    await expect(
+      transport.submitMessage({
+        accountId: "acc_imap",
+        draftId: "draft_1",
+        idempotencyKey: "compose:draft_1:send",
+        to: [{ address: "client@example.com\r\nBcc: leak@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Launch plan",
+        bodyText: "Plain body",
+      }),
+    ).rejects.toThrow("SMTP address is invalid");
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+
+  it("marks password SMTP auth failures for reauthorization without leaking secrets", async () => {
+    const markRequired = vi.fn(async () => ({ taskId: "task_reauth_1" }));
+    const transport = createSmtpNativeSendTransport({
+      settingsStore: {
+        async getSettings() {
+          return {
+            accountId: "acc_imap",
+            provider: "qq",
+            fromAddress: "support@qq.com",
+            host: "smtp.qq.com",
+            port: 465,
+            secure: true,
+            username: "support@qq.com",
+            secretRef: "db:smtp_secret",
+            smtp: {
+              host: "smtp.qq.com",
+              port: 465,
+              secure: true,
+              username: "support@qq.com",
+            },
+          };
+        },
+      },
+      secretStore: {
+        async getSecret() {
+          return "smtp-auth-code";
+        },
+      },
+      async sendMail() {
+        throw Object.assign(
+          new Error("535 invalid smtp-auth-code for support@qq.com"),
+          { code: "EAUTH" },
+        );
+      },
+      reauthorizationMarker: { markRequired },
+    });
+
+    await expect(
+      transport.submitMessage({
+        accountId: "acc_imap",
+        draftId: "draft_1",
+        idempotencyKey: "compose:draft_1:send",
+        to: [{ address: "client@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Launch plan",
+        bodyText: "Plain body",
+      }),
+    ).rejects.toThrow("535 invalid [redacted] for support@qq.com");
+    expect(markRequired).toHaveBeenCalledWith({
+      accountId: "acc_imap",
+      reason: "535 invalid [redacted] for support@qq.com",
+    });
+  });
+
+  it("marks password SMTP accounts as reauthorization required in Postgres", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const marker = createPostgresSmtpSendReauthorizationMarker({
+      client: {
+        async query(text, values) {
+          queries.push({ text, values });
+          return { rows: [{ task_id: "task_reauth_1" }] };
+        },
+      },
+      createId: () => "task_reauth_1",
+    });
+
+    await expect(
+      marker.markRequired({
+        accountId: "acc_imap",
+        reason: "535 auth failed",
+      }),
+    ).resolves.toEqual({ taskId: "task_reauth_1" });
+    expect(queries[0].text).toMatch(/auth_method = 'password'/i);
+    expect(queries[0].text).toMatch(/sync_state = 'reauth_required'/i);
+    expect(queries[0].text).toMatch(/'source', 'native_smtp_send'/i);
+    expect(queries[0].text).toMatch(/settings -> 'smtp'/i);
+    expect(queries[0].values).toEqual([
+      "acc_imap",
+      "task_reauth_1",
+      "535 auth failed",
+    ]);
   });
 
   it("marks OAuth native send accounts as reauthorization required in Postgres", async () => {
@@ -402,6 +692,76 @@ describe("API native send transport", () => {
       "missing google_oauth_refresh_token credential for account acc_gmail",
     ]);
   });
+
+  it("configured transport sends native IMAP accounts through SMTP settings and secrets", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const sent: unknown[] = [];
+    const transport = createConfiguredNativeSendTransport({
+      client: {
+        async query(text, values) {
+          queries.push({ text, values });
+          if (text.includes("SELECT native_provider")) {
+            return { rows: [{ native_provider: "imap" }] };
+          }
+          if (text.includes("COALESCE(smtp_credential.secret_ref")) {
+            return {
+              rows: [
+                {
+                  account_id: "acc_imap",
+                  email: "support@qq.com",
+                  display_name: "Support",
+                  provider: "qq",
+                  settings: {
+                    smtp: {
+                      host: "smtp.qq.com",
+                      port: 465,
+                      secure: true,
+                      username: "support@qq.com",
+                    },
+                  },
+                  secret_ref: "db:smtp_secret",
+                },
+              ],
+            };
+          }
+          if (text.includes("stored_secrets")) {
+            return { rows: [{ secret_value: "smtp-auth-code" }] };
+          }
+          throw new Error(`unexpected query: ${text}`);
+        },
+      },
+      createId: () => "task_reauth_1",
+      async smtpSendMail(input) {
+        sent.push(input);
+        return { messageId: "smtp_msg_1" };
+      },
+    });
+
+    await expect(
+      transport.submitMessage({
+        accountId: "acc_imap",
+        draftId: "draft_1",
+        idempotencyKey: "compose:draft_1:send",
+        to: [{ address: "client@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Launch plan",
+        bodyText: "Plain body",
+      }),
+    ).resolves.toEqual({ messageId: "smtp_msg_1" });
+    expect(queries.some((query) => query.text.includes("stored_secrets"))).toBe(
+      true,
+    );
+    expect(sent).toEqual([
+      expect.objectContaining({
+        secret: "smtp-auth-code",
+        mail: expect.objectContaining({
+          from: '"Support" <support@qq.com>',
+          to: "client@example.com",
+        }),
+      }),
+    ]);
+  });
 });
 
 function decodeBase64Url(value: string): string {
@@ -414,4 +774,12 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function noopSmtpTransport() {
+  return {
+    async submitMessage() {
+      return {};
+    },
+  };
 }

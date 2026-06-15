@@ -126,6 +126,14 @@ export function createReauthorizationRecoveryService(
       const payload = task.payload ?? {};
       const accountId = readString(payload.accountId) ?? options.createId();
       const displayName = readString(payload.displayName);
+      const payloadEndpoints = endpointOverridesFromPayload(payload, {
+        username: input.username,
+        secret: input.secret,
+      });
+      const endpointOverrides =
+        input.imap && input.smtp
+          ? { imap: input.imap, smtp: input.smtp }
+          : payloadEndpoints;
       let settings;
       try {
         settings = resolveImapSmtpSettings(
@@ -134,12 +142,7 @@ export function createReauthorizationRecoveryService(
             provider: task.provider,
             username: input.username ?? readString(payload.username),
             secret: input.secret,
-            ...(input.imap && input.smtp
-              ? {
-                  imap: input.imap,
-                  smtp: input.smtp,
-                }
-              : {}),
+            ...(endpointOverrides ? endpointOverrides : {}),
           },
           {
             providerPresetOverrides: options.providerPresetOverrides,
@@ -249,6 +252,76 @@ function publicOAuthTask(
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function endpointOverridesFromPayload(
+  payload: Record<string, unknown>,
+  input: { username?: string; secret: string },
+):
+  | {
+      imap: ImapSmtpEndpointSettings;
+      smtp: ImapSmtpEndpointSettings;
+    }
+  | undefined {
+  const imap = endpointFromPayload(payload.imap, input);
+  const smtp = endpointFromPayload(payload.smtp, input);
+  return imap && smtp ? { imap, smtp } : undefined;
+}
+
+function endpointFromPayload(
+  value: unknown,
+  input: { username?: string; secret: string },
+): ImapSmtpEndpointSettings | undefined {
+  const endpoint = recordValue(value);
+  const host = readString(endpoint.host);
+  const port = readNumber(endpoint.port);
+  const secure = readBoolean(endpoint.secure);
+  const username = input.username ?? readString(endpoint.username);
+  if (!host || !port || secure === undefined || !username) {
+    return undefined;
+  }
+
+  return {
+    host,
+    port,
+    secure,
+    username,
+    secret: input.secret,
+  };
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    if (value.toLowerCase() === "true") {
+      return true;
+    }
+    if (value.toLowerCase() === "false") {
+      return false;
+    }
+  }
+
+  return undefined;
 }
 
 function sanitizedError(error: unknown, secret: string): string {

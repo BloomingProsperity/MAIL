@@ -26,6 +26,13 @@ import {
   createPostgresNativeSendReauthorizationMarker,
   providerForReauthorization,
 } from "./reauthorization-marker.js";
+import {
+  createPostgresSmtpAccountSendSettingsStore,
+  createPostgresSmtpSecretStore,
+  createPostgresSmtpSendReauthorizationMarker,
+  createSmtpNativeSendTransport,
+  type SmtpSendMail,
+} from "./smtp-send-transport.js";
 
 export type NativeSendProvider = "gmail" | "graph" | "imap";
 
@@ -57,6 +64,7 @@ export function createNativeSendTransport(input: {
   settingsStore: NativeAccountSettingsStore;
   gmail: GmailSubmitClient;
   graph: GraphSubmitClient;
+  smtp: MailSendTransport;
   reauthorizationMarker?: NativeSendReauthorizationMarker;
   createBoundary?: () => string;
 }): MailSendTransport {
@@ -111,6 +119,10 @@ export function createNativeSendTransport(input: {
         return {};
       }
 
+      if (provider === "imap") {
+        return input.smtp.submitMessage(message);
+      }
+
       throw new Error(
         provider
           ? `native send is unsupported for ${provider}`
@@ -125,6 +137,7 @@ export function createConfiguredNativeSendTransport(input: {
   createId: () => string;
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
+  smtpSendMail?: SmtpSendMail;
 }): MailSendTransport {
   const env = input.env ?? process.env;
   const fetchImpl = input.fetchImpl ?? fetch;
@@ -173,6 +186,15 @@ export function createConfiguredNativeSendTransport(input: {
           ),
       baseUrl: optionalEnv(env.MICROSOFT_GRAPH_BASE_URL),
       fetchImpl,
+    }),
+    smtp: createSmtpNativeSendTransport({
+      settingsStore: createPostgresSmtpAccountSendSettingsStore(input.client),
+      secretStore: createPostgresSmtpSecretStore(input.client),
+      reauthorizationMarker: createPostgresSmtpSendReauthorizationMarker({
+        client: input.client,
+        createId: input.createId,
+      }),
+      ...(input.smtpSendMail ? { sendMail: input.smtpSendMail } : {}),
     }),
   });
 }

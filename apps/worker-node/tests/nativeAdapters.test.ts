@@ -465,4 +465,76 @@ describe("configured native adapters", () => {
       },
     ]);
   });
+
+  it("wires IMAP native scheduled sends through SMTP settings and secret refs", async () => {
+    const calls: Array<{ query?: string; values?: unknown[] }> = [];
+    const sent: unknown[] = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        calls.push({ query: text, values });
+        if (text.includes("COALESCE(smtp_credential.secret_ref")) {
+          return {
+            rows: [
+              {
+                account_id: "66666666-6666-6666-6666-666666666666",
+                email: "support@qq.com",
+                display_name: "Support",
+                provider: "qq",
+                settings: {
+                  smtp: {
+                    host: "smtp.qq.com",
+                    port: 465,
+                    secure: true,
+                    username: "support@qq.com",
+                  },
+                },
+                secret_ref: "db:smtp_secret",
+              },
+            ],
+          };
+        }
+        if (text.includes("stored_secrets")) {
+          expect(values).toEqual(["db:smtp_secret"]);
+          return { rows: [{ secret_value: "smtp-auth-code" }] };
+        }
+
+        throw new Error(`unexpected query: ${text}`);
+      },
+    };
+    const transports = createConfiguredNativeSendTransports({
+      credentialClient: client,
+      secretClient: client,
+      async smtpSendMail(input) {
+        sent.push(input);
+        return { messageId: "smtp_msg_1" };
+      },
+    });
+
+    await expect(
+      transports.imap?.submitMessage({
+        accountId: "66666666-6666-6666-6666-666666666666",
+        draftId: "draft_1",
+        idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
+        to: [{ address: "client@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Status",
+        bodyText: "Ready",
+      }),
+    ).resolves.toEqual({ messageId: "smtp_msg_1" });
+
+    expect(calls.some((call) => call.query?.includes("account_provider_settings"))).toBe(
+      true,
+    );
+    expect(calls.some((call) => call.query?.includes("stored_secrets"))).toBe(true);
+    expect(sent).toEqual([
+      expect.objectContaining({
+        secret: "smtp-auth-code",
+        mail: expect.objectContaining({
+          from: '"Support" <support@qq.com>',
+          to: "client@example.com",
+        }),
+      }),
+    ]);
+  });
 });

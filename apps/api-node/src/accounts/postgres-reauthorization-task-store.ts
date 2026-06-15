@@ -95,9 +95,26 @@ function safePayload(value: unknown): Record<string, unknown> {
     group: readString(payload.group),
     notes: readString(payload.notes),
     accountId: readString(payload.accountId),
+    imap: endpointPayload(payload.imap),
+    smtp: endpointPayload(payload.smtp),
     state: readString(payload.state),
     redirectUri: readString(payload.redirectUri),
   });
+}
+
+function endpointPayload(value: unknown): Record<string, unknown> | undefined {
+  const endpoint = recordValue(value);
+  const host = readString(endpoint.host);
+  const port = readNumber(endpoint.port);
+  const secure = readBoolean(endpoint.secure);
+  const username = readString(endpoint.username);
+  const result = compactObject({
+    host,
+    port,
+    secure,
+    username,
+  });
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
@@ -111,7 +128,31 @@ function readString(value: unknown): string | undefined {
 }
 
 function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    if (value.toLowerCase() === "true") {
+      return true;
+    }
+    if (value.toLowerCase() === "false") {
+      return false;
+    }
+  }
+
+  return undefined;
 }
 
 function readStringArray(value: unknown): string[] | undefined {

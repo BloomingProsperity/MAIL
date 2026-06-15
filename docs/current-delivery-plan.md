@@ -45,26 +45,30 @@ with more than smoke-level tests.
   Smart Inbox classification, Gatekeeper sender screening, and attachment text
   extraction jobs through the unified read model.
 - Current send status: worker scheduled-send jobs now carry account engine
-  routing, use EmailEngine for EmailEngine accounts, and can use native Gmail
-  or Microsoft Graph send transports for native accounts. Gmail native send uses
-  RFC 2822 MIME encoded for `messages.send`; Graph native send uses
-  `/me/sendMail`. OAuth authorization and Microsoft refresh scopes include the
-  send scopes needed by these transports. API immediate sends and worker
-  scheduled native sends now detect Gmail/Graph auth, permission, missing
-  refresh credential, and rejected OAuth refresh failures, mark the account
-  `reauth_required`, and create or reuse a `source=native_send` Sync Center
-  reauthorization task.
+  routing, use EmailEngine for EmailEngine accounts, and can use native Gmail,
+  Microsoft Graph, or IMAP/SMTP send transports for native accounts. Gmail
+  native send uses RFC 2822 MIME encoded for `messages.send`; Graph native send
+  uses `/me/sendMail`; IMAP native accounts submit through SMTP with
+  `smtp_password` preferred over `imap_password`, deterministic Message-ID, Bcc
+  kept in the SMTP envelope, and sanitized provider errors. OAuth authorization
+  and Microsoft refresh scopes include the send scopes needed by these
+  transports. API immediate sends and worker scheduled native sends now detect
+  Gmail/Graph auth, permission, missing refresh credential, rejected OAuth
+  refresh failures, and SMTP password/auth failures, mark the account
+  `reauth_required`, and create or reuse Sync Center reauthorization tasks.
 - Current API send status: API-process immediate sends now have a native
   transport dispatcher. It reads `account_provider_settings.native_provider`,
   refreshes OAuth access tokens through `account_credentials` and
   `stored_secrets`, sends Gmail mail through `users.messages.send`, and sends
-  Outlook mail through Microsoft Graph `/me/sendMail`. Sync Center exposes
-  native-send reauthorization tasks and starts the existing OAuth recovery flow
-  from the frontend.
-- Remaining gap: Native IMAP send and deeper command semantics still need
-  focused backend slices and tests before Native Engine can be promoted from
-  parallel track to default path. Native provider APIs do not provide the same
-  idempotency guarantee as EmailEngine's submit endpoint yet.
+  Outlook mail through Microsoft Graph `/me/sendMail`, and sends native IMAP
+  account mail through SMTP using stored provider settings and stored secrets.
+  Sync Center exposes native-send reauthorization tasks and starts the existing
+  OAuth or IMAP/SMTP recovery flows from the frontend.
+- Remaining gap: send identities, aliases-as-from, rich attachments, IMAP Sent
+  folder append, and deeper command semantics still need focused backend slices
+  and tests before Native Engine can be promoted from parallel track to default
+  path. Native provider APIs do not provide the same idempotency guarantee as
+  EmailEngine's submit endpoint yet.
 
 ### 3. Hermes Single AI Entry
 
@@ -129,14 +133,15 @@ with more than smoke-level tests.
   OAuth refresh credentials, provider submit result ids.
 - API: compose drafts, send draft, schedule draft, list outbox, reschedule,
   cancel, send scheduled now.
-- Worker: scheduled send runner, EmailEngine submit transport, native Gmail and
-  Graph send transports.
+- Worker: scheduled send runner, EmailEngine submit transport, native Gmail,
+  Graph, and SMTP send transports.
 - Failure: account paused, reauthorization required, missing native provider,
   missing send scope, provider submit rejection, retry/dead-letter after
   exhausted scheduled send attempts.
 - Tests: compose service idempotency, EmailEngine submit contract, Gmail raw
-  MIME send, Graph sendMail payload, provider-aware scheduled runner,
-  scheduled-store routing, OAuth send scopes, frontend outbox contract tests.
+  MIME send, Graph sendMail payload, SMTP envelope/auth failure handling,
+  provider-aware scheduled runner, scheduled-store routing, OAuth send scopes,
+  frontend outbox contract tests.
 - Current frontend status: Mail now exposes a backend-wired compose panel for
   save draft, send now, and send later. The outbox panel loads
   `/api/accounts/:accountId/outbox`, and each row routes reschedule, send now,
@@ -148,7 +153,7 @@ with more than smoke-level tests.
   cancelled, or dead-lettered rows into the user-facing queue.
 - Remaining gap: the current compose panel is intentionally compact; full
   Cc/Bcc, rich editor, attachments, reply-all/forward modes, preview, send-as,
-  and IMAP native send are still separate slices.
+  and Sent-folder provider parity are still separate slices.
 
 ## Product References
 
@@ -165,8 +170,9 @@ with more than smoke-level tests.
 1. Expand Compose into a full production editor: Cc/Bcc, attachments, reply-all,
    forward, preview, send-as, and Hermes rewrite/polish through the single AI
    entry.
-2. Add Native IMAP send as a focused slice with explicit app-password recovery,
-   provider capability gating, and tests around QQ/163/custom-domain SMTP.
+2. Harden Native IMAP/SMTP send with provider capability gating, live
+   GreenMail/high-volume SMTP smoke, Sent-folder append, and tests around
+   QQ/163/custom-domain recovery behavior.
 3. Keep EmailEngine onboarding and sync center as the primary user path while
    Native Engine continues behind adapter boundaries.
 4. Continue running frontend tests/build, backend tests/build, Docker compose

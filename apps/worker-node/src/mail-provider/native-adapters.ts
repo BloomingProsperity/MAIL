@@ -30,6 +30,13 @@ import {
   createReauthorizationAwareNativeSendTransport,
   type NativeSendReauthorizationMarker,
 } from "./native-send-reauthorization.js";
+import {
+  createPostgresSmtpAccountSendSettingsStore,
+  createPostgresSmtpSendReauthorizationMarker,
+  createSmtpNativeSendTransport,
+  type SmtpSendMail,
+  type SmtpSendReauthorizationMarker,
+} from "./smtp-send-transport.js";
 import { createGmailReadOnlyAdapter } from "./gmail-readonly-adapter.js";
 import { createGraphReadOnlyAdapter } from "./graph-readonly-adapter.js";
 import {
@@ -58,6 +65,8 @@ export interface ConfiguredNativeSendTransportsOptions
   extends ConfiguredNativeAdaptersOptions {
   createId?: () => string;
   reauthorizationMarker?: NativeSendReauthorizationMarker;
+  smtpReauthorizationMarker?: SmtpSendReauthorizationMarker;
+  smtpSendMail?: SmtpSendMail;
 }
 
 export function createConfiguredNativeAdapters(
@@ -149,6 +158,16 @@ export function createConfiguredNativeSendTransports(
       client: options.credentialClient,
       createId: options.createId ?? randomUUID,
     });
+  const smtpMarker =
+    options.smtpReauthorizationMarker ??
+    createPostgresSmtpSendReauthorizationMarker({
+      client: options.credentialClient,
+      createId: options.createId ?? randomUUID,
+    });
+  const secretStore = createPrefixedSecretStore({
+    env: createEnvSecretStore(env),
+    db: createPostgresSecretStore(options.secretClient ?? options.credentialClient),
+  });
 
   return {
     gmail: createReauthorizationAwareNativeSendTransport({
@@ -182,6 +201,14 @@ export function createConfiguredNativeSendTransports(
           fetchImpl,
         }),
       }),
+    }),
+    imap: createSmtpNativeSendTransport({
+      settingsStore: createPostgresSmtpAccountSendSettingsStore(
+        options.credentialClient,
+      ),
+      secretStore,
+      reauthorizationMarker: smtpMarker,
+      ...(options.smtpSendMail ? { sendMail: options.smtpSendMail } : {}),
     }),
   };
 }
