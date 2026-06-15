@@ -6,6 +6,7 @@ import type {
   FollowUpDto,
   FollowUpPage,
   HermesFollowupTrackerResult,
+  HermesQuickReplyResult,
   HermesReplyDraftResult,
   HermesRewritePolishResult,
   MailNavigationSummaryDto,
@@ -904,6 +905,48 @@ describe("Email Hub first UI baseline", () => {
       "Hi,\n\nI can confirm this plan.",
     );
     expect(await screen.findByText(/Hermes 已生成回复草稿/)).toBeTruthy();
+  });
+
+  it("uses Hermes quick reply with editable reply learning metadata", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Ask Hermes quick reply thanks" }),
+    );
+
+    await waitFor(() => {
+      expect(api.quickReply).toHaveBeenCalledWith({
+        subject: "Live subject",
+        threadText: "Live body from backend",
+        scenario: "thanks",
+        instruction: "Thank them warmly and keep the reply short.",
+        tone: "warm professional",
+        readMessageIds: ["message_1"],
+      });
+    });
+    expect((screen.getByLabelText("Reply body") as HTMLTextAreaElement).value).toBe(
+      "Thanks, I will take a look.",
+    );
+    expect(await screen.findByText(/Hermes 已生成快速回复/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save reply draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "client@example.com", name: "Live Client" }],
+        subject: "Re: Live subject",
+        bodyText: "Thanks, I will take a look.",
+        source: "hermes_reply",
+        replyToMessageId: "message_1",
+        hermesSkillRunId: "run_quick_1",
+        hermesDraftText: "Thanks, I will take a look.",
+      });
+    });
   });
 
   it("saves Hermes-generated reply drafts with the skill run id for learning", async () => {
@@ -2391,6 +2434,14 @@ function createApiFixture(): EmailHubApi {
       skillId: "reply_draft",
       draftText: "Hi,\n\nI can confirm this plan.",
     } satisfies HermesReplyDraftResult)),
+    quickReply: vi.fn(async () => ({
+      skillRunId: "run_quick_1",
+      skillId: "quick_reply",
+      scenario: "thanks",
+      draftText: "Thanks, I will take a look.",
+      editable: true,
+      sendsDirectly: false,
+    } satisfies HermesQuickReplyResult)),
     rewritePolishDraft: vi.fn(async () => ({
       skillRunId: "run_rewrite_1",
       skillId: "rewrite_polish",

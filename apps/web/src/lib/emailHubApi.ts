@@ -787,6 +787,23 @@ export interface HermesReplyDraftResult {
   draftText: string;
 }
 
+export type HermesQuickReplyScenario =
+  | "confirm"
+  | "decline"
+  | "thanks"
+  | "follow_up"
+  | "custom";
+
+export interface HermesQuickReplyResult {
+  skillRunId: string;
+  auditEventId?: string;
+  skillId: "quick_reply";
+  scenario: HermesQuickReplyScenario;
+  draftText: string;
+  editable: boolean;
+  sendsDirectly: boolean;
+}
+
 export type HermesRewritePolishAction =
   | "rewrite"
   | "polish"
@@ -970,6 +987,18 @@ export interface EmailHubApi {
     memoryScope?: string;
     memoryLayers?: string[];
   }): Promise<HermesReplyDraftResult>;
+  quickReply(input: {
+    subject?: string;
+    threadText: string;
+    scenario: HermesQuickReplyScenario;
+    instruction?: string;
+    tone?: string;
+    language?: string;
+    readMessageIds?: string[];
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+  }): Promise<HermesQuickReplyResult>;
   rewritePolishDraft(input: {
     text: string;
     action: HermesRewritePolishAction;
@@ -1492,6 +1521,13 @@ export function createEmailHubApi(
 
     draftReply(input) {
       return request(fetchImpl, baseUrl, "/api/hermes/skills/reply_draft/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    quickReply(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills/quick_reply/run", {
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });

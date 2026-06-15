@@ -1337,6 +1337,53 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs Hermes quick reply through the backend skills route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          skillRunId: "run_quick_1",
+          skillId: "quick_reply",
+          scenario: "thanks",
+          draftText: "Thanks, I will take a look.",
+          editable: true,
+          sendsDirectly: false,
+        },
+        202,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.quickReply({
+      subject: "Launch schedule confirmation",
+      threadText: "Please confirm the launch schedule.",
+      scenario: "thanks",
+      instruction: "Thank them briefly.",
+      readMessageIds: ["message_1"],
+    });
+
+    expect(result).toEqual({
+      skillRunId: "run_quick_1",
+      skillId: "quick_reply",
+      scenario: "thanks",
+      draftText: "Thanks, I will take a look.",
+      editable: true,
+      sendsDirectly: false,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/skills/quick_reply/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          subject: "Launch schedule confirmation",
+          threadText: "Please confirm the launch schedule.",
+          scenario: "thanks",
+          instruction: "Thank them briefly.",
+          readMessageIds: ["message_1"],
+        }),
+      }),
+    );
+  });
+
   it("runs Hermes rewrite and polish through the backend skills route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(

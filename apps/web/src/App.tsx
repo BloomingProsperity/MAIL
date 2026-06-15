@@ -30,6 +30,7 @@ import type {
   GatekeeperMode,
   GatekeeperSenderDto,
   HermesFollowupTrackerResult,
+  HermesQuickReplyScenario,
   HermesProviderCatalogItem,
   HermesProviderProbeMissing,
   HermesRuntimeMode,
@@ -63,6 +64,11 @@ type SettingsSectionId =
   | "notifications";
 type Tone = "coral" | "blue" | "green" | "yellow" | "purple";
 type MailDensity = "roomy" | "comfortable" | "compact";
+type QuickReplyAction = {
+  scenario: HermesQuickReplyScenario;
+  label: string;
+  instruction: string;
+};
 type AddMailProviderGroupId =
   | "gmail"
   | "outlook"
@@ -115,6 +121,29 @@ interface QuickCategory {
   count: number;
   tone: Tone;
 }
+
+const quickReplyActions: QuickReplyAction[] = [
+  {
+    scenario: "confirm",
+    label: "确认",
+    instruction: "Confirm politely and keep it concise.",
+  },
+  {
+    scenario: "thanks",
+    label: "感谢",
+    instruction: "Thank them warmly and keep the reply short.",
+  },
+  {
+    scenario: "follow_up",
+    label: "推进",
+    instruction: "Follow up with a clear next step.",
+  },
+  {
+    scenario: "decline",
+    label: "婉拒",
+    instruction: "Decline politely without over-explaining.",
+  },
+];
 
 const navItems: Array<{ id: ViewId; label: string; icon: typeof Inbox; count?: number }> = [
   { id: "mail", label: "邮箱", icon: Inbox, count: 128 },
@@ -1130,6 +1159,13 @@ function MailWorkspace(props: {
   );
 
   useEffect(() => {
+    setReplyText("");
+    setReplyDraftNotice("");
+    setReplyHermesSkillRunId(undefined);
+    setReplyHermesDraftText(undefined);
+  }, [props.selectedMail.id]);
+
+  useEffect(() => {
     if (!props.api) {
       return;
     }
@@ -1223,6 +1259,39 @@ function MailWorkspace(props: {
       setReplyDraftNotice(`Hermes 已生成回复草稿：${result.skillRunId}`);
     } catch {
       setReplyDraftNotice("Hermes 写回复暂时不可用。");
+    } finally {
+      setReplyDraftBusy(false);
+    }
+  }
+
+  async function askHermesForQuickReply(action: QuickReplyAction) {
+    if (!props.api) {
+      setReplyDraftNotice("Hermes 暂时不可用。");
+      return;
+    }
+
+    const threadText = (props.selectedDetail?.bodyText ?? props.selectedMail.preview).trim();
+    if (!threadText) {
+      setReplyDraftNotice("这封邮件还没有可用于快速回复的正文。");
+      return;
+    }
+
+    setReplyDraftBusy(true);
+    try {
+      const result = await props.api.quickReply({
+        subject: props.selectedMail.subject,
+        threadText,
+        scenario: action.scenario,
+        instruction: action.instruction,
+        tone: "warm professional",
+        readMessageIds: [props.selectedMail.id],
+      });
+      setReplyText(result.draftText);
+      setReplyHermesSkillRunId(result.skillRunId);
+      setReplyHermesDraftText(result.draftText);
+      setReplyDraftNotice(`Hermes 已生成快速回复：${result.skillRunId}`);
+    } catch {
+      setReplyDraftNotice("Hermes 快速回复暂时不可用。");
     } finally {
       setReplyDraftBusy(false);
     }
@@ -1935,12 +2004,26 @@ function MailWorkspace(props: {
                   Hermes 写回复
                 </button>
               </div>
+              <div className="quick-reply-row" aria-label="Hermes 快速回复">
+                {quickReplyActions.map((action) => (
+                  <button
+                    key={action.scenario}
+                    type="button"
+                    aria-label={`Ask Hermes quick reply ${action.scenario}`}
+                    disabled={replyDraftBusy}
+                    onClick={() => void askHermesForQuickReply(action)}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
               {replyDraftNotice ? (
                 <div className="backend-notice" role="status">
                   {replyDraftNotice}
                 </div>
               ) : null}
               <textarea
+                aria-label="Reply body"
                 value={replyText}
                 onChange={(event) => setReplyText(event.target.value)}
                 placeholder="输入回复，或让 Hermes 根据上下文生成草稿"

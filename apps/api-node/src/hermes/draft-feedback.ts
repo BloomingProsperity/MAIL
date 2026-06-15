@@ -30,6 +30,8 @@ interface HermesSkillRunRow extends Record<string, unknown> {
   skill_id: string;
 }
 
+type HermesDraftFeedbackSkillId = "reply_draft" | "quick_reply";
+
 interface DraftRevisionAnalysis {
   draftWordCount: number;
   finalWordCount: number;
@@ -44,7 +46,7 @@ export function createPostgresHermesDraftFeedbackStore(
   return {
     async recordDraftFeedback(input) {
       return withTransaction(client, async (tx) => {
-        const skillRun = await loadReplyDraftRun(tx, input.skillRunId);
+        const skillRun = await loadEditableReplyRun(tx, input.skillRunId);
         if (!skillRun) {
           return undefined;
         }
@@ -54,6 +56,7 @@ export function createPostgresHermesDraftFeedbackStore(
         const feedbackId = options.createId();
         await insertDraftFeedback(tx, {
           id: feedbackId,
+          skillId: skillRun.skill_id,
           input: normalizedInput,
           analysis,
         });
@@ -69,6 +72,7 @@ export function createPostgresHermesDraftFeedbackStore(
         const memoryId = options.createId();
         await insertWritingStyleMemory(tx, {
           id: memoryId,
+          skillId: skillRun.skill_id,
           feedbackId,
           input: normalizedInput,
           analysis,
@@ -85,10 +89,10 @@ export function createPostgresHermesDraftFeedbackStore(
   };
 }
 
-async function loadReplyDraftRun(
+async function loadEditableReplyRun(
   client: Queryable,
   skillRunId: string,
-): Promise<HermesSkillRunRow | undefined> {
+): Promise<(HermesSkillRunRow & { skill_id: HermesDraftFeedbackSkillId }) | undefined> {
   const result = await client.query<HermesSkillRunRow>(
     `
       SELECT id, skill_id
@@ -99,13 +103,16 @@ async function loadReplyDraftRun(
     [skillRunId],
   );
   const row = result.rows[0];
-  return row?.skill_id === "reply_draft" ? row : undefined;
+  return row?.skill_id === "reply_draft" || row?.skill_id === "quick_reply"
+    ? (row as HermesSkillRunRow & { skill_id: HermesDraftFeedbackSkillId })
+    : undefined;
 }
 
 async function insertDraftFeedback(
   client: Queryable,
   input: {
     id: string;
+    skillId: HermesDraftFeedbackSkillId;
     input: HermesDraftFeedbackInput;
     analysis: DraftRevisionAnalysis;
   },
@@ -123,9 +130,9 @@ async function insertDraftFeedback(
     [
       input.id,
       input.input.skillRunId,
-      "reply_draft.final_edit",
+      `${input.skillId}.final_edit`,
       compactObject({
-        source: "reply_draft_feedback",
+        source: `${input.skillId}_feedback`,
         draftText: input.input.draftText,
         finalText: input.input.finalText,
         subject: input.input.subject,
@@ -140,6 +147,7 @@ async function insertWritingStyleMemory(
   client: Queryable,
   input: {
     id: string;
+    skillId: HermesDraftFeedbackSkillId;
     feedbackId: string;
     input: HermesDraftFeedbackInput;
     analysis: DraftRevisionAnalysis;
@@ -161,7 +169,7 @@ async function insertWritingStyleMemory(
       "writing_style_profile",
       memoryScopeForFeedback(input.input),
       compactObject({
-        source: "reply_draft_feedback",
+        source: `${input.skillId}_feedback`,
         feedbackId: input.feedbackId,
         skillRunId: input.input.skillRunId,
         scope: memoryScopeForFeedback(input.input),

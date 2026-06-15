@@ -143,12 +143,14 @@ with more than smoke-level tests.
   provider-aware scheduled runner, scheduled-store routing, OAuth send scopes,
   frontend outbox contract tests.
 - Current frontend status: Mail now exposes a backend-wired compose panel for
-  To/Cc/Bcc, save draft, send now, send later, and Hermes rewrite/polish
-  through `/api/hermes/skills/rewrite_polish/run`. The outbox panel loads
+  To/Cc/Bcc, save draft, send now, send later, Hermes quick reply through
+  `/api/hermes/skills/quick_reply/run`, and Hermes rewrite/polish through
+  `/api/hermes/skills/rewrite_polish/run`. The outbox panel loads
   `/api/accounts/:accountId/outbox`, and each row routes reschedule, send now,
   and cancel to the matching backend contract. API client route tests and App
   behavior tests cover the full create/send/schedule/list/reschedule/send-now/
-  cancel flow plus Cc/Bcc draft payloads and editable Hermes polishing.
+  cancel flow plus Cc/Bcc draft payloads, editable Hermes quick replies, and
+  editable Hermes polishing.
 - Current backend status: outbox listing now returns active queue items only
   (`scheduled`, `queued`, `sending`, `failed`) instead of mixing terminal sent,
   cancelled, or dead-lettered rows into the user-facing queue.

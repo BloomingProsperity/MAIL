@@ -87,6 +87,60 @@ describe("postgres Hermes draft feedback store", () => {
     });
   });
 
+  it("records edited quick replies as writing style feedback", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const ids = ["feedback_1", "memory_1"];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("FROM hermes_skill_runs")) {
+          return { rows: [{ id: "run_quick_1", skill_id: "quick_reply" }] };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresHermesDraftFeedbackStore(client, {
+      createId: () => ids.shift() ?? "unexpected",
+    });
+
+    const result = await store.recordDraftFeedback({
+      skillRunId: "run_quick_1",
+      draftText: "Thanks for the note. I will review it today.",
+      finalText: "Thanks. I will review it today.",
+      recipientEmail: "lina@example.com",
+    });
+
+    const feedbackQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO hermes_feedback"),
+    );
+    expect(feedbackQuery?.values).toMatchObject([
+      "feedback_1",
+      "run_quick_1",
+      "quick_reply.final_edit",
+      {
+        source: "quick_reply_feedback",
+        draftText: "Thanks for the note. I will review it today.",
+        finalText: "Thanks. I will review it today.",
+        recipientEmail: "lina@example.com",
+      },
+    ]);
+    const memoryQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO hermes_memories"),
+    );
+    expect(memoryQuery?.values?.[3]).toMatchObject({
+      source: "quick_reply_feedback",
+      feedbackId: "feedback_1",
+      skillRunId: "run_quick_1",
+      recipientEmail: "lina@example.com",
+    });
+    expect(result).toEqual({
+      feedbackId: "feedback_1",
+      skillRunId: "run_quick_1",
+      learned: true,
+      memoryId: "memory_1",
+    });
+  });
+
   it("scopes learned writing style to the recipient when feedback includes a recipient email", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const ids = ["feedback_1", "memory_1"];
@@ -158,7 +212,7 @@ describe("postgres Hermes draft feedback store", () => {
     });
   });
 
-  it("does not write feedback when the skill run is missing or not a reply draft", async () => {
+  it("does not write feedback when the skill run is missing or not an editable reply skill", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {
       async query(text: string, values?: unknown[]) {
