@@ -24,6 +24,7 @@ import { createPostgresEngineCommandQueue } from "./postgres-engine-command-queu
 import { createPostgresFollowUpReminderStore } from "./postgres-follow-up-reminder-store.js";
 import { createPostgresScheduledSendStore } from "./postgres-scheduled-send-store.js";
 import { createPostgresSendIdentityVerifier } from "./postgres-send-identity-verifier.js";
+import { createLocalScheduledAttachmentBlobStore } from "./compose-attachment-blob-store.js";
 import { createPostgresSyncJobQueue } from "./postgres-sync-job-queue.js";
 import { runFollowUpReminderBatch } from "./follow-up-reminder-runner.js";
 import { runScheduledSendBatch } from "./scheduled-send-runner.js";
@@ -86,6 +87,11 @@ if (!databaseUrl) {
   const commandQueue = createPostgresEngineCommandQueue(pool);
   const aliasRoutingStore = createPostgresAliasRoutingStore(pool);
   const scheduledSendStore = createPostgresScheduledSendStore(pool);
+  const scheduledAttachmentBlobStore = createLocalScheduledAttachmentBlobStore({
+    rootDir:
+      process.env.COMPOSE_ATTACHMENT_BLOB_DIR ??
+      "/tmp/email-hub-compose-attachments",
+  });
   const sendIdentityVerifier = createPostgresSendIdentityVerifier(pool);
   const followUpReminderStore = createPostgresFollowUpReminderStore(pool);
   const attachmentTextExtractionStore =
@@ -182,6 +188,7 @@ if (!databaseUrl) {
               ...nativeSendTransports,
             },
             sendIdentityVerifier,
+            attachmentBlobStore: scheduledAttachmentBlobStore,
           }),
       },
       {

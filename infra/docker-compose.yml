@@ -101,9 +101,12 @@ services:
       HERMES_API_KEY: ${HERMES_API_KEY:-}
       HERMES_MODEL: ${HERMES_MODEL:-hermes-email}
       HERMES_VERSION_CHECK_URL: ${HERMES_VERSION_CHECK_URL:-}
+      COMPOSE_ATTACHMENT_BLOB_DIR: ${COMPOSE_ATTACHMENT_BLOB_DIR:-/data/email-hub/compose-attachments}
       PROTON_BRIDGE_HOST: ${PROTON_BRIDGE_HOST:-host.docker.internal}
       PROTON_BRIDGE_IMAP_PORT: ${PROTON_BRIDGE_IMAP_PORT:-1143}
       PROTON_BRIDGE_SMTP_PORT: ${PROTON_BRIDGE_SMTP_PORT:-1025}
+    volumes:
+      - emailhub-compose-attachments:/data/email-hub/compose-attachments
     ports:
       - "${API_BIND:-127.0.0.1:8080}:8080"
     healthcheck:
@@ -138,10 +141,13 @@ services:
       PROTON_BRIDGE_HOST: ${PROTON_BRIDGE_HOST:-host.docker.internal}
       PROTON_BRIDGE_IMAP_PORT: ${PROTON_BRIDGE_IMAP_PORT:-1143}
       PROTON_BRIDGE_SMTP_PORT: ${PROTON_BRIDGE_SMTP_PORT:-1025}
+      COMPOSE_ATTACHMENT_BLOB_DIR: ${COMPOSE_ATTACHMENT_BLOB_DIR:-/data/email-hub/compose-attachments}
       WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-60}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       WORKER_POLL_MS: ${WORKER_POLL_MS:-5000}
       WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN: ${WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN:-false}
+    volumes:
+      - emailhub-compose-attachments:/data/email-hub/compose-attachments
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -168,5 +174,6 @@ services:
       retries: 8
 
 volumes:
+  emailhub-compose-attachments:
   emailhub-postgres:
   emailhub-redis:

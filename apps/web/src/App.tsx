@@ -1827,30 +1827,38 @@ function MailWorkspace(props: {
 
     setComposeBusy(true);
     try {
-      const nextAttachments = await Promise.all(
-        Array.from(files).map((file) =>
-          composeAttachmentFromFile(file, props.accountId),
-        ),
-      );
-      const merged = [...composeAttachments, ...nextAttachments];
-      if (merged.length > MAX_COMPOSE_ATTACHMENTS) {
+      const selectedFiles = Array.from(files);
+      if (composeAttachments.length + selectedFiles.length > MAX_COMPOSE_ATTACHMENTS) {
         setComposeNotice(`最多只能添加 ${MAX_COMPOSE_ATTACHMENTS} 个附件。`);
         return;
       }
-      const totalBytes = merged.reduce(
+      const existingBytes = composeAttachments.reduce(
         (sum, attachment) => sum + attachment.byteSize,
         0,
       );
+      const selectedBytes = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+      const totalBytes = existingBytes + selectedBytes;
       if (totalBytes > MAX_COMPOSE_ATTACHMENT_BYTES) {
         setComposeNotice("附件总大小不能超过 25 MB。");
         return;
       }
 
+      const nextAttachments = await Promise.all(
+        selectedFiles.map((file) =>
+          props.api
+            ? props.api.uploadComposeAttachment({
+                accountId: props.accountId,
+                file,
+              })
+            : composeAttachmentFromFile(file, props.accountId),
+        ),
+      );
+      const merged = [...composeAttachments, ...nextAttachments];
       setComposeAttachments(merged);
       setComposeNotice(`已添加 ${nextAttachments.length} 个附件。`);
       setComposePreview(undefined);
     } catch {
-      setComposeNotice("附件读取失败，请重新选择文件。");
+      setComposeNotice("附件上传失败，请重新选择文件。");
     } finally {
       setComposeBusy(false);
     }

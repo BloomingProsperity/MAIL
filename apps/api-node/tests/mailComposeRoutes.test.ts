@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -544,6 +545,84 @@ describe("mail compose routes", () => {
         mailComposeService,
         maxRequestBodyBytes: 64,
         maxComposeRequestBodyBytes: 2048,
+      },
+    );
+  });
+
+  it("stores raw compose attachment uploads through the blob store", async () => {
+    const saveCalls: unknown[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+    const composeAttachmentBlobStore = {
+      async saveUploadedAttachment(input: {
+        accountId: string;
+        bytes: Uint8Array;
+        filename: string;
+        contentType: string;
+      }) {
+        saveCalls.push({
+          accountId: input.accountId,
+          bytes: Buffer.from(input.bytes).toString("utf8"),
+          filename: input.filename,
+          contentType: input.contentType,
+        });
+        return {
+          id: "upload_11111111-1111-4111-8111-111111111111",
+          source: "uploaded_file",
+          attachmentId: "upload_11111111-1111-4111-8111-111111111111",
+          storageKey: "11111111-1111-4111-8111-111111111111",
+          filename: "brief.txt",
+          contentType: "text/plain",
+          byteSize: 5,
+          inline: false,
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/compose/attachments`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "text/plain",
+              "x-emailhub-filename": "brief.txt",
+            },
+            body: "hello",
+          },
+        );
+
+        expect(response.status).toBe(201);
+        expect(await response.json()).toEqual({
+          id: "upload_11111111-1111-4111-8111-111111111111",
+          source: "uploaded_file",
+          attachmentId: "upload_11111111-1111-4111-8111-111111111111",
+          storageKey: "11111111-1111-4111-8111-111111111111",
+          filename: "brief.txt",
+          contentType: "text/plain",
+          byteSize: 5,
+          inline: false,
+        });
+        expect(saveCalls).toEqual([
+          {
+            accountId: "acc_1",
+            bytes: "hello",
+            filename: "brief.txt",
+            contentType: "text/plain",
+          },
+        ]);
+      },
+      {
+        mailComposeService,
+        composeAttachmentBlobStore,
+        maxComposeAttachmentUploadBytes: 16,
       },
     );
   });

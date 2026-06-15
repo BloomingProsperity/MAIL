@@ -1532,6 +1532,44 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("uploads compose attachments as raw file bodies", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "upload_1",
+        source: "uploaded_file",
+        attachmentId: "upload_1",
+        storageKey: "11111111-1111-4111-8111-111111111111",
+        filename: "brief.txt",
+        contentType: "text/plain",
+        byteSize: 5,
+        inline: false,
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+    const file = new File(["hello"], "brief.txt", { type: "text/plain" });
+
+    const attachment = await api.uploadComposeAttachment({
+      accountId: "account_1",
+      file,
+    });
+
+    expect(attachment).toMatchObject({
+      source: "uploaded_file",
+      storageKey: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/compose/attachments",
+      expect.objectContaining({
+        method: "POST",
+        body: file,
+        headers: expect.objectContaining({
+          "content-type": "text/plain",
+          "x-emailhub-filename": "brief.txt",
+        }),
+      }),
+    );
+  });
+
   it("updates existing mail drafts through the compose route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

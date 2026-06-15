@@ -55,6 +55,7 @@ import { createPostgresMailNavigationStore } from "./mail-navigation/postgres-na
 import { createMailActionService } from "./mail-actions/mail-actions.js";
 import { createPostgresMailActionStore } from "./mail-actions/postgres-mail-action-store.js";
 import { createMailComposeService } from "./mail-compose/mail-compose.js";
+import { createLocalComposeAttachmentBlobStore } from "./mail-compose/compose-attachment-blob-store.js";
 import { createPostgresMailComposeStore } from "./mail-compose/postgres-mail-compose-store.js";
 import { createPostgresSendIdentityStore } from "./mail-compose/postgres-send-identity-store.js";
 import { createPostgresMailThreadingStore } from "./mail-compose/postgres-threading-store.js";
@@ -106,6 +107,12 @@ logger.info("api_configuration_loaded", {
 });
 
 if (pool) {
+  const composeAttachmentBlobStore = createLocalComposeAttachmentBlobStore({
+    rootDir:
+      process.env.COMPOSE_ATTACHMENT_BLOB_DIR ??
+      "/tmp/email-hub-compose-attachments",
+    createId: randomUUID,
+  });
   const accountOnboardingStore = createPostgresAccountOnboardingStore(pool, {
     createId: randomUUID,
   });
@@ -203,6 +210,7 @@ if (pool) {
             createEmailEngineAttachmentContentStore(emailEngineAttachments),
         }
       : {}),
+    attachmentBlobStore: composeAttachmentBlobStore,
     transports: {
       ...(config.emailEngineAccessTokenConfigured
         ? {
@@ -220,6 +228,7 @@ if (pool) {
     createId: randomUUID,
     hermesDraftFeedbackStore: config.hermesDraftFeedbackStore,
   });
+  config.composeAttachmentBlobStore = composeAttachmentBlobStore;
   config.mailActionService = createMailActionService({
     store: createPostgresMailActionStore(pool, {
       createId: randomUUID,

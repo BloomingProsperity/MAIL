@@ -710,6 +710,7 @@ export interface MailDraftAttachmentDto {
   id: string;
   source: "message_attachment" | "uploaded_file";
   attachmentId: string;
+  storageKey?: string;
   filename: string;
   contentType: string;
   byteSize: number;
@@ -1215,6 +1216,10 @@ export interface EmailHubApi {
     hermesSkillRunId?: string;
     hermesDraftText?: string;
   }): Promise<MailDraftDto>;
+  uploadComposeAttachment(input: {
+    accountId: string;
+    file: File;
+  }): Promise<MailDraftAttachmentDto>;
   createComposeSeed(input: {
     accountId: string;
     messageId: string;
@@ -1821,6 +1826,24 @@ export function createEmailHubApi(
         {
           method: "POST",
           body: JSON.stringify(cleanObject(body)),
+        },
+      );
+    },
+
+    uploadComposeAttachment(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/compose/attachments`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": input.file.type || "application/octet-stream",
+            "x-emailhub-filename": encodeURIComponent(
+              input.file.name || "attachment",
+            ),
+          },
+          body: input.file,
         },
       );
     },

@@ -954,6 +954,114 @@ describe("mail compose service", () => {
     ]);
   });
 
+  it("stores uploaded attachment object references without embedding content", async () => {
+    const storageKey = "11111111-1111-4111-8111-111111111111";
+    const blobCalls: unknown[] = [];
+    const storeCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async createDraft(input) {
+          storeCalls.push(input);
+          return {
+            id: input.id,
+            accountId: input.accountId,
+            to: input.to,
+            cc: input.cc,
+            bcc: input.bcc,
+            subject: input.subject,
+            bodyText: input.bodyText,
+            source: input.source,
+            attachments: input.attachments?.map((attachment) => ({
+              id: attachment.id,
+              source: attachment.source,
+              attachmentId: attachment.attachmentId,
+              storageKey: attachment.storageKey,
+              filename: attachment.filename,
+              contentType: attachment.contentType,
+              byteSize: attachment.byteSize,
+              inline: attachment.inline,
+            })),
+            status: "draft",
+            createdAt: input.now,
+            updatedAt: input.now,
+          };
+        },
+      }),
+      createId: () => "draft_1",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      transports: {},
+      attachmentBlobStore: {
+        async getUploadedAttachment(input) {
+          blobCalls.push(input);
+          return {
+            id: `upload_${storageKey}`,
+            source: "uploaded_file",
+            attachmentId: `upload_${storageKey}`,
+            storageKey,
+            filename: "large-plan.pdf",
+            contentType: "application/pdf",
+            byteSize: 5242880,
+            inline: false,
+          };
+        },
+        async loadUploadedAttachmentContent() {
+          throw new Error("not used");
+        },
+      },
+    });
+
+    const draft = await service.createDraft({
+      accountId: "acc_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Launch confirmation",
+      bodyText: "Please review the proposal.",
+      attachments: [
+        {
+          source: "uploaded_file",
+          attachmentId: `upload_${storageKey}`,
+          storageKey,
+        },
+      ],
+    });
+
+    expect(blobCalls).toEqual([
+      {
+        accountId: "acc_1",
+        storageKey,
+        attachmentId: `upload_${storageKey}`,
+      },
+    ]);
+    expect(storeCalls).toEqual([
+      expect.objectContaining({
+        attachments: [
+          {
+            id: `upload_${storageKey}`,
+            source: "uploaded_file",
+            attachmentId: `upload_${storageKey}`,
+            storageKey,
+            filename: "large-plan.pdf",
+            contentType: "application/pdf",
+            byteSize: 5242880,
+            inline: false,
+          },
+        ],
+      }),
+    ]);
+    expect(JSON.stringify(storeCalls)).not.toContain("contentBase64");
+    expect(draft.attachments).toEqual([
+      {
+        id: `upload_${storageKey}`,
+        source: "uploaded_file",
+        attachmentId: `upload_${storageKey}`,
+        storageKey,
+        filename: "large-plan.pdf",
+        contentType: "application/pdf",
+        byteSize: 5242880,
+        inline: false,
+      },
+    ]);
+  });
+
   it("resolves provider threading metadata when creating reply drafts", async () => {
     const calls: unknown[] = [];
     const store = createStore({
@@ -1576,6 +1684,121 @@ describe("mail compose service", () => {
     });
   });
 
+  it("hydrates stored uploaded attachment content before submitting a draft", async () => {
+    const storageKey = "11111111-1111-4111-8111-111111111111";
+    const blobCalls: unknown[] = [];
+    const store = createStore({
+      async getDraftWithAccount() {
+        return {
+          account: {
+            accountId: "acc_1",
+            email: "me@example.com",
+            syncState: "syncing",
+            engineProvider: "emailengine",
+          },
+          draft: draft(),
+        };
+      },
+      async claimDraftForSend() {
+        return {
+          account: {
+            accountId: "acc_1",
+            email: "me@example.com",
+            syncState: "syncing",
+            engineProvider: "emailengine",
+          },
+          draft: {
+            ...draft(),
+            from: { address: "support@demo.site", name: "Support" },
+            status: "sending",
+          },
+          transportAttachments: [
+            {
+              id: `upload_${storageKey}`,
+              source: "uploaded_file" as const,
+              attachmentId: `upload_${storageKey}`,
+              storageKey,
+              filename: "brief.txt",
+              contentType: "text/plain",
+              byteSize: 5,
+              inline: false,
+            },
+          ],
+        };
+      },
+      async markDraftSent(input) {
+        return {
+          ...draft(),
+          status: "sent",
+          providerQueueId: input.providerQueueId,
+          providerMessageId: input.providerMessageId,
+          sentAt: input.sentAt,
+        };
+      },
+    });
+    const providerCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store,
+      createId: () => "unused",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      sendIdentityStore: sendIdentityStoreFor({
+        address: "support@demo.site",
+        name: "Support",
+      }),
+      transports: {
+        emailengine: {
+          async submitMessage(input) {
+            providerCalls.push(input);
+            return {
+              queueId: "queue_1",
+              messageId: "<message@example.com>",
+              sendAt: "2026-06-13T08:00:00.000Z",
+            };
+          },
+        },
+      },
+      attachmentBlobStore: {
+        async getUploadedAttachment() {
+          throw new Error("not used");
+        },
+        async loadUploadedAttachmentContent(input) {
+          blobCalls.push(input);
+          return {
+            contentBase64: "aGVsbG8=",
+            byteSize: 5,
+          };
+        },
+      },
+    });
+
+    await service.sendDraft({
+      accountId: "acc_1",
+      draftId: "draft_1",
+    });
+
+    expect(blobCalls).toEqual([
+      {
+        accountId: "acc_1",
+        storageKey,
+        maxBytes: MAX_DRAFT_ATTACHMENT_BYTES,
+      },
+    ]);
+    expect(providerCalls).toEqual([
+      expect.objectContaining({
+        attachments: [
+          {
+            filename: "brief.txt",
+            contentType: "text/plain",
+            byteSize: 5,
+            inline: false,
+            contentBase64: "aGVsbG8=",
+          },
+        ],
+      }),
+    ]);
+    expect(JSON.stringify(providerCalls)).not.toContain(storageKey);
+  });
+
   it("marks claimed drafts failed when send-as permission was revoked before send", async () => {
     const calls: unknown[] = [];
     const providerCalls: unknown[] = [];
@@ -2000,6 +2223,153 @@ describe("mail compose service", () => {
         bodyText: "Edited send-later body.",
       },
     });
+  });
+
+  it("preserves scheduled draft object-storage attachments during edits", async () => {
+    const storageKey = "11111111-1111-4111-8111-111111111111";
+    const calls: unknown[] = [];
+    const blobCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async getScheduledDraft(input) {
+          calls.push(["get", input]);
+          return {
+            scheduledSend: scheduledSend({ id: input.scheduledId }),
+            draft: {
+              ...draft(),
+              status: "scheduled",
+              attachments: [
+                {
+                  id: `upload_${storageKey}`,
+                  source: "uploaded_file" as const,
+                  attachmentId: `upload_${storageKey}`,
+                  storageKey,
+                  filename: "plan.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 5242880,
+                  inline: false,
+                },
+              ],
+            },
+            transportAttachments: [
+              {
+                id: `upload_${storageKey}`,
+                source: "uploaded_file" as const,
+                attachmentId: `upload_${storageKey}`,
+                storageKey,
+                filename: "plan.pdf",
+                contentType: "application/pdf",
+                byteSize: 5242880,
+                inline: false,
+              },
+            ],
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+        async updateScheduledDraft(input) {
+          calls.push(["update", input]);
+          return {
+            scheduledSend: scheduledSend({
+              id: input.scheduledId,
+              status: "scheduled",
+            }),
+            draft: {
+              ...draft(),
+              status: "scheduled",
+              subject: input.subject,
+              to: input.to,
+              cc: input.cc,
+              bcc: input.bcc,
+              bodyText: input.bodyText,
+              attachments: input.attachments?.map((attachment) => ({
+                id: attachment.id,
+                source: attachment.source,
+                attachmentId: attachment.attachmentId,
+                storageKey: attachment.storageKey,
+                filename: attachment.filename,
+                contentType: attachment.contentType,
+                byteSize: attachment.byteSize,
+                inline: attachment.inline,
+              })),
+              updatedAt: input.now,
+            },
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+      }),
+      createId: () => "unused_new_draft_id",
+      now: () => new Date("2026-06-13T08:30:00.000Z"),
+      transports: {},
+      attachmentBlobStore: {
+        async getUploadedAttachment(input) {
+          blobCalls.push(input);
+          return {
+            id: `upload_${storageKey}`,
+            source: "uploaded_file",
+            attachmentId: `upload_${storageKey}`,
+            storageKey,
+            filename: "plan.pdf",
+            contentType: "application/pdf",
+            byteSize: 5242880,
+            inline: false,
+          };
+        },
+        async loadUploadedAttachmentContent() {
+          throw new Error("not used");
+        },
+      },
+    });
+
+    await service.updateScheduledDraft({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Scheduled launch",
+      bodyText: "Edited body.",
+      attachments: [
+        {
+          source: "uploaded_file",
+          attachmentId: `upload_${storageKey}`,
+          filename: "plan.pdf",
+          contentType: "application/pdf",
+        },
+      ],
+    });
+
+    expect(blobCalls).toEqual([
+      {
+        accountId: "acc_1",
+        storageKey,
+        attachmentId: `upload_${storageKey}`,
+      },
+    ]);
+    expect(calls).toEqual([
+      ["get", { accountId: "acc_1", scheduledId: "schedule_1" }],
+      [
+        "update",
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              id: `upload_${storageKey}`,
+              source: "uploaded_file",
+              storageKey,
+              filename: "plan.pdf",
+            }),
+          ],
+        }),
+      ],
+    ]);
+    expect(JSON.stringify(calls)).not.toContain("contentBase64");
   });
 
   it("keeps scheduled draft attachments when body-only edits omit attachments", async () => {

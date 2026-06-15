@@ -473,6 +473,69 @@ describe("Postgres mail compose store", () => {
     ]);
   });
 
+  it("keeps uploaded attachment storage references in the private manifest", async () => {
+    const storageKey = "11111111-1111-4111-8111-111111111111";
+    const manifest = [
+      {
+        id: `upload_${storageKey}`,
+        source: "uploaded_file",
+        attachmentId: `upload_${storageKey}`,
+        storageKey,
+        filename: "brief.txt",
+        contentType: "text/plain",
+        byteSize: 5,
+        inline: false,
+      },
+    ];
+    const store = createPostgresMailComposeStore({
+      async query() {
+        return {
+          rows: [
+            {
+              ...draftRow({
+                attachment_manifest: manifest,
+              }),
+              account_email: "me@example.com",
+              sync_state: "syncing",
+              engine_provider: "emailengine",
+            },
+          ],
+        };
+      },
+    });
+
+    const result = await store.getDraftWithAccount({
+      accountId: "acc_1",
+      draftId: "draft_1",
+    });
+
+    expect(JSON.stringify(result?.draft)).not.toContain("contentBase64");
+    expect(result?.draft.attachments).toEqual([
+      {
+        id: `upload_${storageKey}`,
+        source: "uploaded_file",
+        attachmentId: `upload_${storageKey}`,
+        storageKey,
+        filename: "brief.txt",
+        contentType: "text/plain",
+        byteSize: 5,
+        inline: false,
+      },
+    ]);
+    expect(result?.transportAttachments).toEqual([
+      {
+        id: `upload_${storageKey}`,
+        source: "uploaded_file",
+        attachmentId: `upload_${storageKey}`,
+        storageKey,
+        filename: "brief.txt",
+        contentType: "text/plain",
+        byteSize: 5,
+        inline: false,
+      },
+    ]);
+  });
+
   it("persists reply threading metadata with the draft", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const store = createPostgresMailComposeStore({

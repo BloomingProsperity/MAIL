@@ -111,6 +111,7 @@ export interface MailDraftAttachment {
   id: string;
   source: MailDraftAttachmentSource;
   attachmentId: string;
+  storageKey?: string;
   filename: string;
   contentType: string;
   byteSize: number;
@@ -126,6 +127,7 @@ export interface MailDraftTransportAttachment extends MailDraftAttachment {
 export interface CreateMailDraftAttachmentInput {
   source?: MailDraftAttachmentSource;
   attachmentId: string;
+  storageKey?: string;
   filename?: string;
   contentType?: string;
   byteSize?: number;
@@ -142,6 +144,7 @@ export interface MailSendAttachment {
   contentId?: string;
   providerAttachmentId?: string;
   contentBase64?: string;
+  storageKey?: string;
 }
 
 export interface MailDraft {
@@ -518,6 +521,19 @@ export interface MailAttachmentContentStore {
   }>;
 }
 
+export interface MailAttachmentBlobStore {
+  getUploadedAttachment(input: {
+    accountId: string;
+    storageKey: string;
+    attachmentId?: string;
+  }): Promise<MailDraftTransportAttachment>;
+  loadUploadedAttachmentContent(input: {
+    accountId: string;
+    storageKey: string;
+    maxBytes: number;
+  }): Promise<{ contentBase64: string; byteSize: number }>;
+}
+
 export interface MailSendTransport {
   submitMessage(input: {
     accountId: string;
@@ -639,6 +655,7 @@ export function createMailComposeService(options: {
   mailReadStore?: Pick<MailReadStore, "getMessage"> &
     Partial<Pick<MailReadStore, "getAttachmentDownload">>;
   attachmentContentStore?: MailAttachmentContentStore;
+  attachmentBlobStore?: MailAttachmentBlobStore;
   hermesDraftFeedbackStore?: HermesDraftFeedbackStore;
   now?: () => Date;
 }): MailComposeService {
@@ -923,6 +940,7 @@ export function createMailComposeService(options: {
       const attachments = await resolveDraftAttachments(
         options.mailReadStore,
         options.attachmentContentStore,
+        options.attachmentBlobStore,
         normalized.accountId,
         normalized.attachments,
       );
@@ -955,6 +973,7 @@ export function createMailComposeService(options: {
       const attachments = await resolveDraftAttachments(
         options.mailReadStore,
         options.attachmentContentStore,
+        options.attachmentBlobStore,
         normalized.accountId,
         normalized.attachments,
       );
@@ -1028,6 +1047,11 @@ export function createMailComposeService(options: {
       }
 
       try {
+        const attachments = await hydrateStoredDraftAttachments(
+          options.attachmentBlobStore,
+          claimed.account.accountId,
+          claimed.transportAttachments ?? [],
+        );
         const result = await transport.submitMessage({
           accountId: claimed.account.accountId,
           draftId: claimed.draft.id,
@@ -1039,8 +1063,8 @@ export function createMailComposeService(options: {
           subject: claimed.draft.subject,
           ...(claimed.draft.bodyText ? { bodyText: claimed.draft.bodyText } : {}),
           ...(claimed.draft.bodyHtml ? { bodyHtml: claimed.draft.bodyHtml } : {}),
-          ...((claimed.transportAttachments?.length ?? 0) > 0
-            ? { attachments: sendAttachments(claimed.transportAttachments ?? []) }
+          ...(attachments.length > 0
+            ? { attachments: sendAttachments(attachments) }
             : {}),
           ...(claimed.draft.threading ? { threading: claimed.draft.threading } : {}),
         });
@@ -1163,6 +1187,7 @@ export function createMailComposeService(options: {
       const attachments = await resolveDraftAttachments(
         options.mailReadStore,
         options.attachmentContentStore,
+        options.attachmentBlobStore,
         normalized.accountId,
         normalized.attachments,
       );
@@ -1278,6 +1303,11 @@ export function createMailComposeService(options: {
       }
 
       try {
+        const attachments = await hydrateStoredDraftAttachments(
+          options.attachmentBlobStore,
+          claimed.account.accountId,
+          claimed.transportAttachments ?? [],
+        );
         const result = await transport.submitMessage({
           accountId: claimed.account.accountId,
           draftId: claimed.draft.id,
@@ -1289,8 +1319,8 @@ export function createMailComposeService(options: {
           subject: claimed.draft.subject,
           ...(claimed.draft.bodyText ? { bodyText: claimed.draft.bodyText } : {}),
           ...(claimed.draft.bodyHtml ? { bodyHtml: claimed.draft.bodyHtml } : {}),
-          ...((claimed.transportAttachments?.length ?? 0) > 0
-            ? { attachments: sendAttachments(claimed.transportAttachments ?? []) }
+          ...(attachments.length > 0
+            ? { attachments: sendAttachments(attachments) }
             : {}),
           ...(claimed.draft.threading ? { threading: claimed.draft.threading } : {}),
         });
@@ -1628,6 +1658,7 @@ async function resolveThreading(
 async function resolveDraftAttachments(
   store: Partial<Pick<MailReadStore, "getAttachmentDownload">> | undefined,
   contentStore: MailAttachmentContentStore | undefined,
+  blobStore: MailAttachmentBlobStore | undefined,
   accountId: string,
   attachments: CreateMailDraftAttachmentInput[] | undefined,
 ): Promise<MailDraftTransportAttachment[]> {
@@ -1646,7 +1677,14 @@ async function resolveDraftAttachments(
   const resolved: MailDraftTransportAttachment[] = [];
   for (const attachment of normalized) {
     if (attachment.source === "uploaded_file") {
-      resolved.push(uploadedDraftAttachment(attachment));
+      resolved.push(
+        await uploadedDraftAttachment({
+          attachment,
+          blobStore,
+          accountId,
+        }),
+      );
+      enforceAttachmentLimits(resolved);
       continue;
     }
 
@@ -1715,11 +1753,14 @@ function hydrateExistingDraftAttachmentInputs(
       (item) =>
         item.source === "uploaded_file" &&
         item.attachmentId === attachment.attachmentId &&
-        optionalTrimmed(item.contentBase64),
+        (optionalTrimmed(item.contentBase64) ||
+          optionalTrimmed(item.storageKey)),
     );
     if (!existing) {
       return attachment;
     }
+    const existingContentBase64 = optionalTrimmed(existing.contentBase64);
+    const existingStorageKey = optionalTrimmed(existing.storageKey);
 
     return {
       ...attachment,
@@ -1727,7 +1768,12 @@ function hydrateExistingDraftAttachmentInputs(
       contentType: attachment.contentType ?? existing.contentType,
       byteSize: attachment.byteSize ?? existing.byteSize,
       inline: attachment.inline ?? existing.inline,
-      contentBase64: existing.contentBase64,
+      ...(existingContentBase64
+        ? { contentBase64: existingContentBase64 }
+        : {}),
+      ...(attachment.storageKey || existingStorageKey
+        ? { storageKey: attachment.storageKey ?? existingStorageKey }
+        : {}),
     };
   });
 }
@@ -1759,15 +1805,46 @@ async function downloadMessageAttachmentContent(input: {
   }
 }
 
-function uploadedDraftAttachment(
-  attachment: CreateMailDraftAttachmentInput,
-): MailDraftTransportAttachment {
-  const content = normalizeAttachmentContentBase64(attachment.contentBase64);
+async function uploadedDraftAttachment(input: {
+  attachment: CreateMailDraftAttachmentInput;
+  blobStore: MailAttachmentBlobStore | undefined;
+  accountId: string;
+}): Promise<MailDraftTransportAttachment> {
+  const { attachment } = input;
   const filename = sanitizeFilename(attachment.filename ?? "attachment");
   const contentType = sanitizeContentType(
     attachment.contentType ?? "application/octet-stream",
   );
   const contentId = optionalTrimmed(attachment.contentId);
+  const storageKey = optionalTrimmed(attachment.storageKey);
+  if (storageKey) {
+    if (!input.blobStore) {
+      throw new InvalidMailComposeRequestError(
+        "attachment object storage is unavailable",
+      );
+    }
+    try {
+      const stored = await input.blobStore.getUploadedAttachment({
+        accountId: input.accountId,
+        storageKey,
+        attachmentId: attachment.attachmentId,
+      });
+      return {
+        ...stored,
+        filename: attachment.filename ? filename : stored.filename,
+        contentType: attachment.contentType ? contentType : stored.contentType,
+        inline: Boolean(attachment.inline),
+        ...(contentId ? { contentId: sanitizeContentId(contentId) } : {}),
+      };
+    } catch (error) {
+      if (error instanceof InvalidMailComposeRequestError) {
+        throw error;
+      }
+      throw new InvalidMailComposeRequestError("attachment was not found");
+    }
+  }
+
+  const content = normalizeAttachmentContentBase64(attachment.contentBase64);
   return {
     id: attachment.attachmentId,
     source: "uploaded_file",
@@ -1811,6 +1888,14 @@ function normalizeAttachmentInputs(
       const filename = optionalTrimmed(attachment?.filename);
       const contentType = optionalTrimmed(attachment?.contentType);
       const contentId = optionalTrimmed(attachment?.contentId);
+      const storageKey = optionalTrimmed(attachment?.storageKey);
+      const contentBase64 =
+        source === "uploaded_file"
+          ? optionalTrimmed(attachment.contentBase64)
+          : undefined;
+      if (source === "uploaded_file" && !contentBase64 && !storageKey) {
+        throw new InvalidMailComposeRequestError("attachment content is required");
+      }
       const normalizedAttachment: CreateMailDraftAttachmentInput = {
         source,
         attachmentId,
@@ -1822,10 +1907,11 @@ function normalizeAttachmentInputs(
           : {}),
         inline: Boolean(attachment?.inline),
         ...(contentId ? { contentId: sanitizeContentId(contentId) } : {}),
-        ...(source === "uploaded_file"
+        ...(storageKey ? { storageKey: sanitizeStorageKey(storageKey) } : {}),
+        ...(source === "uploaded_file" && contentBase64
           ? {
               contentBase64: normalizeAttachmentContentBase64(
-                attachment.contentBase64,
+                contentBase64,
               ).contentBase64,
             }
           : {}),
@@ -1852,6 +1938,9 @@ function enforceAttachmentInputLimits(
   }
   const uploadedTotal = attachments.reduce((sum, attachment) => {
     if (attachment.source !== "uploaded_file") {
+      return sum;
+    }
+    if (attachment.storageKey && !attachment.contentBase64) {
       return sum;
     }
     return (
@@ -1884,13 +1973,14 @@ function publicDraftAttachmentFromInput(
   const attachmentId = optionalTrimmed(attachment.attachmentId) ?? "attachment";
   const contentId = optionalTrimmed(attachment.contentId);
   const byteSize =
-    attachment.source === "uploaded_file"
+    attachment.source === "uploaded_file" && attachment.contentBase64
       ? normalizeAttachmentContentBase64(attachment.contentBase64).byteSize
       : (attachment.byteSize ?? 0);
   return {
     id: attachmentId,
     source: attachment.source ?? "message_attachment",
     attachmentId,
+    ...(attachment.storageKey ? { storageKey: attachment.storageKey } : {}),
     filename: sanitizeFilename(attachment.filename ?? "attachment"),
     contentType: sanitizeContentType(
       attachment.contentType ?? "application/octet-stream",
@@ -1919,6 +2009,58 @@ function sendAttachments(
   }));
 }
 
+async function hydrateStoredDraftAttachments(
+  blobStore: MailAttachmentBlobStore | undefined,
+  accountId: string,
+  attachments: MailDraftTransportAttachment[],
+): Promise<MailDraftTransportAttachment[]> {
+  if (attachments.length === 0) {
+    return [];
+  }
+
+  const hydrated: MailDraftTransportAttachment[] = [];
+  for (const attachment of attachments) {
+    if (
+      attachment.source === "uploaded_file" &&
+      attachment.storageKey &&
+      !attachment.contentBase64
+    ) {
+      if (!blobStore) {
+        throw new InvalidMailComposeRequestError(
+          "attachment object storage is unavailable",
+        );
+      }
+      try {
+        const content = await blobStore.loadUploadedAttachmentContent({
+          accountId,
+          storageKey: attachment.storageKey,
+          maxBytes: MAX_DRAFT_ATTACHMENT_BYTES,
+        });
+        hydrated.push({
+          ...attachment,
+          byteSize: content.byteSize,
+          contentBase64: content.contentBase64,
+        });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "attachments are too large"
+        ) {
+          throw new InvalidMailComposeRequestError("attachments are too large");
+        }
+        throw new InvalidMailComposeRequestError("attachment download failed");
+      }
+      enforceAttachmentLimits(hydrated);
+      continue;
+    }
+
+    hydrated.push(attachment);
+    enforceAttachmentLimits(hydrated);
+  }
+
+  return enforceAttachmentLimits(hydrated);
+}
+
 function normalizeAttachmentContentBase64(
   value: string | undefined,
 ): { contentBase64: string; byteSize: number } {
@@ -1943,6 +2085,14 @@ function normalizeAttachmentContentBase64(
     contentBase64: canonical,
     byteSize: buffer.byteLength,
   };
+}
+
+function sanitizeStorageKey(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-f0-9-]{32,64}$/.test(normalized)) {
+    throw new InvalidMailComposeRequestError("attachment storage key is invalid");
+  }
+  return normalized;
 }
 
 function threadingActionForSource(

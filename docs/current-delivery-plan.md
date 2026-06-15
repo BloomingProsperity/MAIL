@@ -243,21 +243,26 @@ with more than smoke-level tests.
   `attachment_manifest` that exposes only local attachment ids to the frontend
   while keeping provider attachment ids internal for transport submission.
   EmailEngine sends reuse existing provider attachments through its submit
-  `attachments[].reference` contract. Direct compose uploads now enter the
-  same manifest as `uploaded_file` content snapshots with decoded-size
-  validation, 20-file / 25 MB limits, a compose-specific API body cap, and an
-  Nginx self-hosting body cap. Forwarded provider attachments are also
-  snapshotted at draft creation through the bounded EmailEngine attachment
-  download adapter, so the private transport manifest keeps both
-  `providerAttachmentId` and `contentBase64` while public draft DTOs expose only
-  local attachment metadata. EmailEngine prefers the provider reference when
-  both values exist; native Gmail, native Graph MIME, native SMTP, and the
-  scheduled-send worker can use the same `contentBase64` bytes. If a native path
-  receives only an EmailEngine provider reference it fails loudly instead of
-  silently dropping the file.
+  `attachments[].reference` contract. Direct compose uploads now POST raw bytes
+  to the API, persist a local object-storage `storageKey` in the same
+  `uploaded_file` manifest, and avoid embedding large base64 payloads in saved
+  draft JSON when the backend is available. The web app keeps the older base64
+  path as a local/demo fallback. API immediate sends and worker scheduled sends
+  hydrate the referenced bytes from the shared Docker compose attachment volume
+  before provider submission, strip internal storage keys from provider payloads,
+  and keep the existing 20-file / 25 MB aggregate send limit. Forwarded provider
+  attachments are still snapshotted at draft creation through the bounded
+  EmailEngine attachment download adapter, so the private transport manifest
+  keeps both `providerAttachmentId` and `contentBase64` while public draft DTOs
+  expose only local attachment metadata. EmailEngine prefers the provider
+  reference when both values exist; native Gmail, native Graph MIME, native
+  SMTP, and the scheduled-send worker can use the same `contentBase64` bytes. If
+  a native path receives only an EmailEngine provider reference it fails loudly
+  instead of silently dropping the file.
 - Remaining gap: the current compose panel is intentionally compact; rich
-  editor, chunked/object-storage uploads for larger files, admin diagnostics for
-  provider-native shared mailbox permissions, draft-list editing outside the
+  editor, chunked/streaming uploads, provider-native large attachment sessions,
+  attachment pruning/retention controls, admin diagnostics for provider-native
+  shared mailbox permissions, draft-list editing outside the
   outbox, and deeper Sent-folder parity checks are still separate slices.
 
 ## Product References

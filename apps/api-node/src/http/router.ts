@@ -104,6 +104,7 @@ import {
 } from "../sync-center/sync-control.js";
 import {
   InvalidMailComposeRequestError,
+  MAX_DRAFT_ATTACHMENT_BYTES,
   type CreateMailDraftAttachmentInput,
   type CreateMailDraftInput,
   type MailAddress,
@@ -114,6 +115,7 @@ import {
   type UpdateScheduledMailDraftInput,
   type UpdateMailDraftInput,
 } from "../mail-compose/mail-compose.js";
+import type { ComposeAttachmentBlobStore } from "../mail-compose/compose-attachment-blob-store.js";
 import {
   InvalidMailActionRequestError,
   type MailAction,
@@ -150,6 +152,7 @@ import {
 
 const DEFAULT_MAX_REQUEST_BODY_BYTES = 1_048_576;
 const DEFAULT_MAX_COMPOSE_REQUEST_BODY_BYTES = 40 * 1024 * 1024;
+const DEFAULT_MAX_COMPOSE_ATTACHMENT_UPLOAD_BYTES = MAX_DRAFT_ATTACHMENT_BYTES;
 
 export interface ImapSmtpEndpointSettings {
   host: string;
@@ -357,9 +360,11 @@ export interface ApiConfig {
   emailEngineAccessTokenConfigured?: boolean;
   maxRequestBodyBytes?: number;
   maxComposeRequestBodyBytes?: number;
+  maxComposeAttachmentUploadBytes?: number;
   mailEngineIngestStore?: MailEngineIngestStore;
   mailReadStore?: MailReadStore;
   attachmentDownloadService?: AttachmentDownloadService;
+  composeAttachmentBlobStore?: ComposeAttachmentBlobStore;
   accountOnboardingService?: AccountOnboardingService;
   accountImportService?: AccountCsvImportService;
   accountTransferService?: AccountTransferService;
@@ -403,6 +408,9 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
     config.maxRequestBodyBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES;
   const maxComposeRequestBodyBytes =
     config.maxComposeRequestBodyBytes ?? DEFAULT_MAX_COMPOSE_REQUEST_BODY_BYTES;
+  const maxComposeAttachmentUploadBytes =
+    config.maxComposeAttachmentUploadBytes ??
+    DEFAULT_MAX_COMPOSE_ATTACHMENT_UPLOAD_BYTES;
 
   return async (request, response) => {
     const requestId =
@@ -431,6 +439,8 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
     const readRequestBody = () => readBody(request, maxRequestBodyBytes);
     const readComposeRequestBody = () =>
       readBody(request, maxComposeRequestBodyBytes);
+    const readComposeAttachmentBody = () =>
+      readBodyBuffer(request, maxComposeAttachmentUploadBytes);
 
     try {
       if (request.method === "GET" && request.url === "/health") {
@@ -817,6 +827,40 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
               ),
             );
           writeJson(response, 200, result);
+          return;
+        }
+
+        if (
+          mailComposeRoute.action === "upload_attachment" &&
+          request.method === "POST"
+        ) {
+          if (!config.composeAttachmentBlobStore) {
+            writeJson(response, 503, {
+              error: "compose_attachment_storage_unavailable",
+            });
+            return;
+          }
+          const bytes = await readComposeAttachmentBody();
+          const attachment =
+            await config.composeAttachmentBlobStore.saveUploadedAttachment({
+              accountId: mailComposeRoute.accountId,
+              bytes,
+              filename: parseComposeAttachmentUploadFilename(request),
+              contentType: parseComposeAttachmentUploadContentType(request),
+            });
+          writeJson(response, 201, {
+            id: attachment.id,
+            source: attachment.source,
+            attachmentId: attachment.attachmentId,
+            ...(attachment.storageKey
+              ? { storageKey: attachment.storageKey }
+              : {}),
+            filename: attachment.filename,
+            contentType: attachment.contentType,
+            byteSize: attachment.byteSize,
+            inline: attachment.inline,
+            ...(attachment.contentId ? { contentId: attachment.contentId } : {}),
+          });
           return;
         }
 
@@ -3244,6 +3288,7 @@ function parseMailComposeRoute(
       accountId: string;
       candidateId: string;
     }
+  | { action: "upload_attachment"; accountId: string }
   | { action: "create_draft"; accountId: string }
   | { action: "update_draft"; accountId: string; draftId: string }
   | { action: "preview_draft"; accountId: string }
@@ -3309,6 +3354,15 @@ function parseMailComposeRoute(
       action: "verify_send_identity_user_target",
       accountId: decodeURIComponent(verifySendIdentityUserTargetMatch[1]),
       candidateId: decodeURIComponent(verifySendIdentityUserTargetMatch[2]),
+    };
+  }
+
+  const composeAttachmentUploadMatch =
+    /^\/api\/accounts\/([^/]+)\/compose\/attachments$/.exec(url.pathname);
+  if (composeAttachmentUploadMatch) {
+    return {
+      action: "upload_attachment",
+      accountId: decodeURIComponent(composeAttachmentUploadMatch[1]),
     };
   }
 
@@ -5529,6 +5583,36 @@ function parseProviderSendIdentityUserTargetInput(
   };
 }
 
+function parseComposeAttachmentUploadFilename(request: IncomingMessage): string {
+  const header = singleHeader(request.headers["x-emailhub-filename"]);
+  if (!header) {
+    return "attachment";
+  }
+
+  try {
+    return decodeURIComponent(header).replace(/[\u0000-\u001f/\\]/g, "_");
+  } catch {
+    return header.replace(/[\u0000-\u001f/\\]/g, "_");
+  }
+}
+
+function parseComposeAttachmentUploadContentType(
+  request: IncomingMessage,
+): string {
+  const header = singleHeader(request.headers["content-type"]);
+  const contentType = header?.split(";")[0]?.trim().toLowerCase();
+  return contentType?.includes("/")
+    ? contentType
+    : "application/octet-stream";
+}
+
+function singleHeader(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
+
 function parseMailComposeFrom(payload: {
   from?: unknown;
   fromAddress?: unknown;
@@ -5844,6 +5928,9 @@ function parseMailComposeAttachments(
       inline: record.inline === true,
       ...(isNonEmptyString(record.contentId)
         ? { contentId: record.contentId }
+        : {}),
+      ...(source === "uploaded_file" && isNonEmptyString(record.storageKey)
+        ? { storageKey: record.storageKey }
         : {}),
       ...(source === "uploaded_file" && isNonEmptyString(record.contentBase64)
         ? { contentBase64: record.contentBase64 }
@@ -6291,6 +6378,13 @@ async function readBody(
   request: IncomingMessage,
   maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES,
 ): Promise<string> {
+  return (await readBodyBuffer(request, maxBytes)).toString("utf8");
+}
+
+async function readBodyBuffer(
+  request: IncomingMessage,
+  maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES,
+): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let totalBytes = 0;
 
@@ -6303,5 +6397,5 @@ async function readBody(
     chunks.push(buffer);
   }
 
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks);
 }

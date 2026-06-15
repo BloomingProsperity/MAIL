@@ -257,6 +257,7 @@ function attachmentManifest(value: unknown): MailSendAttachment[] {
       const contentType = textValue(record.contentType);
       const providerAttachmentId = textValue(record.providerAttachmentId);
       const contentBase64 = textValue(record.contentBase64);
+      const storageKey = textValue(record.storageKey);
       const source =
         record.source === undefined || record.source === "message_attachment"
           ? "message_attachment"
@@ -270,7 +271,7 @@ function attachmentManifest(value: unknown): MailSendAttachment[] {
       ) {
         return undefined;
       }
-      if (source === "uploaded_file" && !contentBase64) {
+      if (source === "uploaded_file" && !contentBase64 && !storageKey) {
         return undefined;
       }
       if (
@@ -292,6 +293,7 @@ function attachmentManifest(value: unknown): MailSendAttachment[] {
           ? { providerAttachmentId: sanitizeText(providerAttachmentId) }
           : {}),
         ...(contentBase64 ? { contentBase64 } : {}),
+        ...(storageKey ? { storageKey: sanitizeText(storageKey) } : {}),
       };
     })
     .filter((item): item is MailSendAttachment => Boolean(item));

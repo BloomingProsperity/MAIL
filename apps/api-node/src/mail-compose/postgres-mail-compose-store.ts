@@ -962,6 +962,7 @@ function publicAttachments(
     id: attachment.id,
     source: attachment.source,
     attachmentId: attachment.attachmentId,
+    ...(attachment.storageKey ? { storageKey: attachment.storageKey } : {}),
     filename: attachment.filename,
     contentType: attachment.contentType,
     byteSize: attachment.byteSize,
@@ -980,6 +981,7 @@ function attachmentManifest(value: unknown): MailDraftTransportAttachment[] {
       const record = recordValue(item);
       const id = textValue(record.id) ?? textValue(record.attachmentId);
       const attachmentId = textValue(record.attachmentId) ?? id;
+      const storageKey = textValue(record.storageKey);
       const providerAttachmentId = textValue(record.providerAttachmentId);
       const contentBase64 = textValue(record.contentBase64);
       const source =
@@ -993,7 +995,7 @@ function attachmentManifest(value: unknown): MailDraftTransportAttachment[] {
       }
 
       const contentId = textValue(record.contentId);
-      if (source === "uploaded_file" && !contentBase64) {
+      if (source === "uploaded_file" && !contentBase64 && !storageKey) {
         return undefined;
       }
       if (
@@ -1018,6 +1020,7 @@ function attachmentManifest(value: unknown): MailDraftTransportAttachment[] {
           ? { providerAttachmentId: sanitizeText(providerAttachmentId) }
           : {}),
         ...(contentBase64 ? { contentBase64 } : {}),
+        ...(storageKey ? { storageKey: sanitizeText(storageKey) } : {}),
       };
     })
     .filter((item): item is MailDraftTransportAttachment => Boolean(item));

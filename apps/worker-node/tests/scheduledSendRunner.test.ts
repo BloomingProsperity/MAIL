@@ -95,6 +95,76 @@ describe("scheduled send runner", () => {
     ]);
   });
 
+  it("hydrates stored uploaded attachments before scheduled transport submission", async () => {
+    const storageKey = "11111111-1111-4111-8111-111111111111";
+    const store = createStore([
+      {
+        ...job(),
+        attachments: [
+          {
+            filename: "brief.txt",
+            contentType: "text/plain",
+            byteSize: 5,
+            inline: false,
+            storageKey,
+          },
+        ],
+      },
+    ]);
+    const blobCalls: unknown[] = [];
+    const submitCalls: unknown[] = [];
+
+    const result = await runScheduledSendOnce({
+      store,
+      workerId: "worker-a",
+      now: new Date("2026-06-13T12:30:00.000Z"),
+      leaseSeconds: 30,
+      attachmentBlobStore: {
+        async loadUploadedAttachmentContent(input) {
+          blobCalls.push(input);
+          return {
+            contentBase64: "aGVsbG8=",
+            byteSize: 5,
+          };
+        },
+      },
+      transport: {
+        async submitMessage(input) {
+          submitCalls.push(input);
+          return {
+            queueId: "queue_1",
+          };
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      status: "processed",
+      scheduledId: "schedule_1",
+    });
+    expect(blobCalls).toEqual([
+      {
+        accountId: "acc_1",
+        storageKey,
+        maxBytes: 25 * 1024 * 1024,
+      },
+    ]);
+    expect(submitCalls).toEqual([
+      expect.objectContaining({
+        attachments: [
+          {
+            filename: "brief.txt",
+            contentType: "text/plain",
+            byteSize: 5,
+            inline: false,
+            contentBase64: "aGVsbG8=",
+          },
+        ],
+      }),
+    ]);
+    expect(JSON.stringify(submitCalls)).not.toContain(storageKey);
+  });
+
   it("routes native scheduled sends through the matching native transport", async () => {
     const store = createStore([
       {

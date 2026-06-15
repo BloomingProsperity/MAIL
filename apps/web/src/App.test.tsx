@@ -2263,6 +2263,14 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
 
     await waitFor(() => {
+      expect(api.uploadComposeAttachment).toHaveBeenCalledWith({
+        accountId: "account_1",
+        file: expect.objectContaining({
+          name: "brief.txt",
+          size: 5,
+          type: "text/plain",
+        }),
+      });
       expect(api.createMailDraft).toHaveBeenCalledWith({
         accountId: "account_1",
         to: [{ address: "lina@example.com" }],
@@ -2276,7 +2284,7 @@ describe("Email Hub first UI baseline", () => {
             contentType: "text/plain",
             byteSize: 5,
             inline: false,
-            contentBase64: "aGVsbG8=",
+            storageKey: "11111111-1111-4111-8111-111111111111",
           }),
         ],
       });
@@ -3505,6 +3513,16 @@ function createApiFixture(): EmailHubApi {
         cancelledAt: "2026-06-13T10:00:00.000Z",
       }),
     ),
+    uploadComposeAttachment: vi.fn(async (input) => ({
+      id: "upload_11111111-1111-4111-8111-111111111111",
+      source: "uploaded_file" as const,
+      attachmentId: "upload_11111111-1111-4111-8111-111111111111",
+      storageKey: "11111111-1111-4111-8111-111111111111",
+      filename: input.file.name || "attachment",
+      contentType: input.file.type || "application/octet-stream",
+      byteSize: input.file.size,
+      inline: false,
+    })),
     listSendIdentities: vi.fn(async () => ({
       accountId: "account_1",
       items: [

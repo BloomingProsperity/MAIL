@@ -26,6 +26,7 @@ export interface MailSendAttachment {
   contentId?: string;
   providerAttachmentId?: string;
   contentBase64?: string;
+  storageKey?: string;
 }
 
 export interface ScheduledSendJob {
@@ -98,6 +99,14 @@ export interface ScheduledSendIdentityVerifier {
   }): Promise<void>;
 }
 
+export interface ScheduledAttachmentBlobStore {
+  loadUploadedAttachmentContent(input: {
+    accountId: string;
+    storageKey: string;
+    maxBytes: number;
+  }): Promise<{ contentBase64: string; byteSize: number }>;
+}
+
 export type ScheduledSendRunResult =
   | { status: "idle" }
   | { status: "processed"; scheduledId: string }
@@ -111,6 +120,7 @@ export interface RunScheduledSendOnceInput {
   transport?: ScheduledSendTransport;
   transports?: Partial<Record<ScheduledSendTransportKey, ScheduledSendTransport>>;
   sendIdentityVerifier?: ScheduledSendIdentityVerifier;
+  attachmentBlobStore?: ScheduledAttachmentBlobStore;
 }
 
 export interface RunScheduledSendBatchInput
@@ -168,6 +178,11 @@ async function processScheduledSend(
       accountId: job.accountId,
       ...(job.from ? { from: job.from } : {}),
     });
+    const attachments = await hydrateStoredAttachments(
+      input.attachmentBlobStore,
+      job.accountId,
+      job.attachments ?? [],
+    );
     const transport = transportForJob(input, job);
     const result = await transport.submitMessage({
       accountId: job.accountId,
@@ -180,8 +195,8 @@ async function processScheduledSend(
       subject: job.subject,
       ...(job.bodyText ? { bodyText: job.bodyText } : {}),
       ...(job.bodyHtml ? { bodyHtml: job.bodyHtml } : {}),
-      ...((job.attachments?.length ?? 0) > 0
-        ? { attachments: job.attachments }
+      ...(attachments.length > 0
+        ? { attachments }
         : {}),
       ...(job.threading ? { threading: job.threading } : {}),
     });
@@ -207,6 +222,54 @@ async function processScheduledSend(
       now: input.now,
     });
     return { status: "failed", scheduledId: job.id, errorMessage };
+  }
+}
+
+async function hydrateStoredAttachments(
+  blobStore: ScheduledAttachmentBlobStore | undefined,
+  accountId: string,
+  attachments: MailSendAttachment[],
+): Promise<MailSendAttachment[]> {
+  const hydrated: MailSendAttachment[] = [];
+  for (const attachment of attachments) {
+    if (attachment.storageKey && !attachment.contentBase64) {
+      if (!blobStore) {
+        throw new Error("attachment object storage is unavailable");
+      }
+      const content = await blobStore.loadUploadedAttachmentContent({
+        accountId,
+        storageKey: attachment.storageKey,
+        maxBytes: 25 * 1024 * 1024,
+      });
+      hydrated.push({
+        ...transportAttachment(attachment),
+        byteSize: content.byteSize,
+        contentBase64: content.contentBase64,
+      });
+      enforceAttachmentBytes(hydrated);
+      continue;
+    }
+
+    hydrated.push(transportAttachment(attachment));
+    enforceAttachmentBytes(hydrated);
+  }
+
+  return hydrated;
+}
+
+function transportAttachment(attachment: MailSendAttachment): MailSendAttachment {
+  const sendable = { ...attachment };
+  delete sendable.storageKey;
+  return sendable;
+}
+
+function enforceAttachmentBytes(attachments: MailSendAttachment[]): void {
+  const total = attachments.reduce(
+    (sum, attachment) => sum + attachment.byteSize,
+    0,
+  );
+  if (total > 25 * 1024 * 1024) {
+    throw new Error("attachments are too large");
   }
 }
 
