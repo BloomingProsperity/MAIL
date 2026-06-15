@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -64,6 +64,50 @@ describe("local compose attachment blob store", () => {
         contentBase64: "aGVsbG8=",
         byteSize: 5,
       });
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects metadata when the stored key does not match the filename", async () => {
+    const rootDir = await mkdtemp(
+      path.join(tmpdir(), "email-hub-compose-attachments-"),
+    );
+    const storageKey = "11111111-1111-4111-8111-111111111111";
+
+    try {
+      const store = createLocalComposeAttachmentBlobStore({
+        rootDir,
+        createId: () => storageKey,
+        now: () => new Date("2026-06-15T00:00:00.000Z"),
+      });
+      await store.saveUploadedAttachment({
+        accountId: "acc_1",
+        bytes: Buffer.from("hello"),
+        filename: "brief.txt",
+        contentType: "text/plain",
+      });
+      await writeFile(
+        path.join(rootDir, `${storageKey}.json`),
+        JSON.stringify({
+          accountId: "acc_1",
+          attachmentId: `upload_${storageKey}`,
+          storageKey: "22222222-2222-4222-8222-222222222222",
+          filename: "brief.txt",
+          contentType: "text/plain",
+          byteSize: 5,
+          inline: false,
+          createdAt: "2026-06-15T00:00:00.000Z",
+        }),
+        "utf8",
+      );
+
+      await expect(
+        store.getUploadedAttachment({
+          accountId: "acc_1",
+          storageKey,
+        }),
+      ).rejects.toThrow("attachment blob metadata is invalid");
     } finally {
       await rm(rootDir, { recursive: true, force: true });
     }

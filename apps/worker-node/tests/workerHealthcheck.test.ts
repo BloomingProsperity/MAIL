@@ -29,11 +29,19 @@ describe("worker healthcheck", () => {
         leaseSeconds: 30,
         concurrency: 8,
         pollMs: 1000,
+        composeAttachmentCleanupIntervalMs: 3600000,
+        composeAttachmentRetentionMs: 604800000,
+        composeAttachmentCleanupLimit: 100,
       },
       warnings: ["EMAILENGINE_ACCESS_TOKEN"],
     });
     expect(health.lanes).toEqual(
-      expect.arrayContaining(["sync", "scheduled_send", "alias_delivery"]),
+      expect.arrayContaining([
+        "sync",
+        "scheduled_send",
+        "alias_delivery",
+        "compose_attachment_cleanup",
+      ]),
     );
     expect(JSON.stringify(health)).not.toContain("secret");
   });

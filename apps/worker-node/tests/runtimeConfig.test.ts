@@ -8,6 +8,9 @@ describe("worker runtime configuration", () => {
       leaseSeconds: 60,
       concurrency: 4,
       pollMs: 5000,
+      composeAttachmentCleanupIntervalMs: 3600000,
+      composeAttachmentRetentionMs: 604800000,
+      composeAttachmentCleanupLimit: 100,
     });
   });
 
@@ -17,11 +20,17 @@ describe("worker runtime configuration", () => {
         WORKER_LEASE_SECONDS: "not-a-number",
         WORKER_CONCURRENCY: "0",
         WORKER_POLL_MS: "-10",
+        COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS: "999",
+        COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS: "0",
+        COMPOSE_ATTACHMENT_CLEANUP_LIMIT: "0",
       }),
     ).toEqual({
       leaseSeconds: 60,
       concurrency: 1,
       pollMs: 100,
+      composeAttachmentCleanupIntervalMs: 60000,
+      composeAttachmentRetentionMs: 3600000,
+      composeAttachmentCleanupLimit: 1,
     });
   });
 
@@ -31,11 +40,17 @@ describe("worker runtime configuration", () => {
         WORKER_LEASE_SECONDS: "999999",
         WORKER_CONCURRENCY: "999",
         WORKER_POLL_MS: "999999999",
+        COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS: "999999999",
+        COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS: "999999",
+        COMPOSE_ATTACHMENT_CLEANUP_LIMIT: "999999",
       }),
     ).toEqual({
       leaseSeconds: 3600,
       concurrency: 64,
       pollMs: 300000,
+      composeAttachmentCleanupIntervalMs: 86400000,
+      composeAttachmentRetentionMs: 7776000000,
+      composeAttachmentCleanupLimit: 10000,
     });
   });
 });

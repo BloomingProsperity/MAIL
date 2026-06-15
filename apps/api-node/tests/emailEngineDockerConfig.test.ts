@@ -95,6 +95,42 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN=false");
   });
 
+  it("shares compose attachment blobs between API and worker with cleanup controls", async () => {
+    const compose = await readProjectFile("infra", "docker-compose.yml");
+    const envExample = await readProjectFile(".env.example");
+    const api = serviceSection(compose, "api");
+    const worker = serviceSection(compose, "worker");
+
+    expect(envExample).toContain(
+      "COMPOSE_ATTACHMENT_BLOB_DIR=/data/email-hub/compose-attachments",
+    );
+    expect(envExample).toContain("COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS=168");
+    expect(envExample).toContain("COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS=3600000");
+    expect(envExample).toContain("COMPOSE_ATTACHMENT_CLEANUP_LIMIT=100");
+    expect(api).toContain(
+      "COMPOSE_ATTACHMENT_BLOB_DIR: ${COMPOSE_ATTACHMENT_BLOB_DIR:-/data/email-hub/compose-attachments}",
+    );
+    expect(worker).toContain(
+      "COMPOSE_ATTACHMENT_BLOB_DIR: ${COMPOSE_ATTACHMENT_BLOB_DIR:-/data/email-hub/compose-attachments}",
+    );
+    expect(worker).toContain(
+      "COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS: ${COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS:-168}",
+    );
+    expect(worker).toContain(
+      "COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS: ${COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS:-3600000}",
+    );
+    expect(worker).toContain(
+      "COMPOSE_ATTACHMENT_CLEANUP_LIMIT: ${COMPOSE_ATTACHMENT_CLEANUP_LIMIT:-100}",
+    );
+    expect(api).toContain(
+      "- emailhub-compose-attachments:/data/email-hub/compose-attachments",
+    );
+    expect(worker).toContain(
+      "- emailhub-compose-attachments:/data/email-hub/compose-attachments",
+    );
+    expect(compose).toContain("emailhub-compose-attachments:");
+  });
+
   it("injects Hermes runtime environment into the API container", async () => {
     const envExample = await readProjectFile(".env.example");
     const compose = await readProjectFile("infra", "docker-compose.yml");

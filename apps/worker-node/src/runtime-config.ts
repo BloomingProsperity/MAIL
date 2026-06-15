@@ -2,11 +2,17 @@ export interface WorkerRuntimeConfig {
   leaseSeconds: number;
   concurrency: number;
   pollMs: number;
+  composeAttachmentCleanupIntervalMs: number;
+  composeAttachmentRetentionMs: number;
+  composeAttachmentCleanupLimit: number;
 }
 
 const DEFAULT_LEASE_SECONDS = 60;
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_POLL_MS = 5000;
+const DEFAULT_COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const DEFAULT_COMPOSE_ATTACHMENT_RETENTION_HOURS = 24 * 7;
+const DEFAULT_COMPOSE_ATTACHMENT_CLEANUP_LIMIT = 100;
 
 export function readWorkerRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -29,6 +35,28 @@ export function readWorkerRuntimeConfig(
       fallback: DEFAULT_POLL_MS,
       min: 100,
       max: 300000,
+    }),
+    composeAttachmentCleanupIntervalMs: readBoundedInteger({
+      value: env.COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS,
+      fallback: DEFAULT_COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS,
+      min: 60000,
+      max: 24 * 60 * 60 * 1000,
+    }),
+    composeAttachmentRetentionMs:
+      readBoundedInteger({
+        value: env.COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS,
+        fallback: DEFAULT_COMPOSE_ATTACHMENT_RETENTION_HOURS,
+        min: 1,
+        max: 24 * 90,
+      }) *
+      60 *
+      60 *
+      1000,
+    composeAttachmentCleanupLimit: readBoundedInteger({
+      value: env.COMPOSE_ATTACHMENT_CLEANUP_LIMIT,
+      fallback: DEFAULT_COMPOSE_ATTACHMENT_CLEANUP_LIMIT,
+      min: 1,
+      max: 10000,
     }),
   };
 }

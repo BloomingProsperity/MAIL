@@ -25,6 +25,8 @@ import { createPostgresFollowUpReminderStore } from "./postgres-follow-up-remind
 import { createPostgresScheduledSendStore } from "./postgres-scheduled-send-store.js";
 import { createPostgresSendIdentityVerifier } from "./postgres-send-identity-verifier.js";
 import { createLocalScheduledAttachmentBlobStore } from "./compose-attachment-blob-store.js";
+import { createComposeAttachmentCleanupLane } from "./compose-attachment-cleanup-runner.js";
+import { createPostgresComposeAttachmentReferenceStore } from "./postgres-compose-attachment-reference-store.js";
 import { createPostgresSyncJobQueue } from "./postgres-sync-job-queue.js";
 import { runFollowUpReminderBatch } from "./follow-up-reminder-runner.js";
 import { runScheduledSendBatch } from "./scheduled-send-runner.js";
@@ -54,7 +56,14 @@ const logger = createJsonLogger({
   level: process.env.LOG_LEVEL,
 });
 const runtimeConfig = readWorkerRuntimeConfig(process.env);
-const { leaseSeconds, concurrency, pollMs } = runtimeConfig;
+const {
+  leaseSeconds,
+  concurrency,
+  pollMs,
+  composeAttachmentCleanupIntervalMs,
+  composeAttachmentRetentionMs,
+  composeAttachmentCleanupLimit,
+} = runtimeConfig;
 const databaseUrl = process.env.DATABASE_URL;
 const emailEngineUrl = process.env.EMAILENGINE_URL ?? "http://emailengine:3000";
 const emailEngineAccessToken = process.env.EMAILENGINE_ACCESS_TOKEN;
@@ -87,6 +96,8 @@ if (!databaseUrl) {
   const commandQueue = createPostgresEngineCommandQueue(pool);
   const aliasRoutingStore = createPostgresAliasRoutingStore(pool);
   const scheduledSendStore = createPostgresScheduledSendStore(pool);
+  const composeAttachmentReferenceStore =
+    createPostgresComposeAttachmentReferenceStore(pool);
   const scheduledAttachmentBlobStore = createLocalScheduledAttachmentBlobStore({
     rootDir:
       process.env.COMPOSE_ATTACHMENT_BLOB_DIR ??
@@ -148,6 +159,14 @@ if (!databaseUrl) {
       targetResolver,
       env: process.env,
     }),
+  });
+  const runComposeAttachmentCleanup = createComposeAttachmentCleanupLane({
+    referenceStore: composeAttachmentReferenceStore,
+    blobStore: scheduledAttachmentBlobStore,
+    clock: () => new Date(),
+    intervalMs: composeAttachmentCleanupIntervalMs,
+    minAgeMs: composeAttachmentRetentionMs,
+    limit: composeAttachmentCleanupLimit,
   });
 
   const tick = createWorkerTickRunner({
@@ -238,6 +257,10 @@ if (!databaseUrl) {
             extractor: attachmentTextExtractor,
           }),
       },
+      {
+        name: "compose_attachment_cleanup",
+        run: runComposeAttachmentCleanup,
+      },
     ],
   });
 
@@ -304,6 +327,9 @@ function logWorkerReady() {
     leaseSeconds,
     concurrency,
     pollMs,
+    composeAttachmentCleanupIntervalMs,
+    composeAttachmentRetentionMs,
+    composeAttachmentCleanupLimit,
     databaseConfigured: Boolean(databaseUrl),
     emailEngineAccessTokenConfigured: Boolean(emailEngineAccessToken),
   });

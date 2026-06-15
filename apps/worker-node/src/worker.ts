@@ -10,6 +10,7 @@ export interface WorkerDescription {
     | "scheduled_send"
     | "follow_up_reminder"
     | "attachment_text_extraction"
+    | "compose_attachment_cleanup"
   >;
   ready: boolean;
 }
@@ -27,6 +28,7 @@ export function describeWorker(): WorkerDescription {
       "scheduled_send",
       "follow_up_reminder",
       "attachment_text_extraction",
+      "compose_attachment_cleanup",
     ],
     ready: true,
   };

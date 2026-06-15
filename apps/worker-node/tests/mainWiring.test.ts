@@ -53,6 +53,7 @@ describe("worker main wiring", () => {
     expect(main).toContain("runFollowUpReminderBatch");
     expect(main).toContain("runAliasDeliveryBatch");
     expect(main).toContain("runAttachmentTextExtractionBatch");
+    expect(main).toContain("createComposeAttachmentCleanupLane");
   });
 
   it("routes scheduled sends through EmailEngine and native transports", async () => {
@@ -83,6 +84,17 @@ describe("worker main wiring", () => {
     expect(main).toContain('name: "follow_up_reminders"');
     expect(main).toContain('name: "alias_delivery"');
     expect(main).toContain('name: "attachment_text_extraction"');
+    expect(main).toContain('name: "compose_attachment_cleanup"');
+  });
+
+  it("runs compose attachment cleanup with bounded self-hosted retention settings", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createPostgresComposeAttachmentReferenceStore");
+    expect(main).toContain("createLocalScheduledAttachmentBlobStore");
+    expect(main).toContain("composeAttachmentCleanupIntervalMs");
+    expect(main).toContain("composeAttachmentRetentionMs");
+    expect(main).toContain("composeAttachmentCleanupLimit");
   });
 
   it("registers graceful shutdown for the poller timer and Postgres pool", async () => {

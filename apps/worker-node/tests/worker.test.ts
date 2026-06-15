@@ -16,6 +16,7 @@ describe("worker contract", () => {
         "scheduled_send",
         "follow_up_reminder",
         "attachment_text_extraction",
+        "compose_attachment_cleanup",
       ],
       ready: true,
     });

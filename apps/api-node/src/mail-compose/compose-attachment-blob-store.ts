@@ -132,11 +132,15 @@ async function readMetadata(
   ) {
     throw new Error("attachment blob metadata is invalid");
   }
+  const metadataStorageKey = safeStorageKey(metadata.storageKey);
+  if (metadataStorageKey !== key) {
+    throw new Error("attachment blob metadata is invalid");
+  }
 
   return {
     accountId: metadata.accountId,
     attachmentId: metadata.attachmentId,
-    storageKey: safeStorageKey(metadata.storageKey),
+    storageKey: metadataStorageKey,
     filename: sanitizeFilename(metadata.filename),
     contentType: sanitizeContentType(metadata.contentType),
     byteSize: Math.max(0, Math.floor(metadata.byteSize)),

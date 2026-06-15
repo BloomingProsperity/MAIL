@@ -250,20 +250,25 @@ with more than smoke-level tests.
   path as a local/demo fallback. API immediate sends and worker scheduled sends
   hydrate the referenced bytes from the shared Docker compose attachment volume
   before provider submission, strip internal storage keys from provider payloads,
-  and keep the existing 20-file / 25 MB aggregate send limit. Forwarded provider
-  attachments are still snapshotted at draft creation through the bounded
-  EmailEngine attachment download adapter, so the private transport manifest
-  keeps both `providerAttachmentId` and `contentBase64` while public draft DTOs
-  expose only local attachment metadata. EmailEngine prefers the provider
-  reference when both values exist; native Gmail, native Graph MIME, native
-  SMTP, and the scheduled-send worker can use the same `contentBase64` bytes. If
-  a native path receives only an EmailEngine provider reference it fails loudly
-  instead of silently dropping the file.
+  and keep the existing 20-file / 25 MB aggregate send limit. The worker now
+  has a compose attachment cleanup lane that periodically queries active
+  draft/outbox manifests, protects referenced `storageKey` values, and prunes
+  only stale unreferenced blob files from the shared volume using bounded
+  retention and per-run limits. Forwarded provider attachments are still
+  snapshotted at draft creation through the bounded EmailEngine attachment
+  download adapter, so the private transport manifest keeps both
+  `providerAttachmentId` and `contentBase64` while public draft DTOs expose only
+  local attachment metadata. EmailEngine prefers the provider reference when
+  both values exist; native Gmail, native Graph MIME, native SMTP, and the
+  scheduled-send worker can use the same `contentBase64` bytes. If a native path
+  receives only an EmailEngine provider reference it fails loudly instead of
+  silently dropping the file.
 - Remaining gap: the current compose panel is intentionally compact; rich
   editor, chunked/streaming uploads, provider-native large attachment sessions,
-  attachment pruning/retention controls, admin diagnostics for provider-native
-  shared mailbox permissions, draft-list editing outside the
-  outbox, and deeper Sent-folder parity checks are still separate slices.
+  admin-visible attachment cleanup diagnostics/manual purge controls, admin
+  diagnostics for provider-native shared mailbox permissions, draft-list editing
+  outside the outbox, and deeper Sent-folder parity checks are still separate
+  slices.
 
 ## Product References
 
@@ -277,9 +282,10 @@ with more than smoke-level tests.
 
 ## Immediate Delivery Order
 
-1. Expand Compose into a full production editor: rich editor, chunked/object
-   storage uploads, admin diagnostics for Graph shared-mailbox permissions, and
-   writing-style feedback for rewrite/polish through the single AI entry.
+1. Expand Compose into a full production editor: rich editor,
+   chunked/streaming uploads, provider-native large attachment sessions, admin
+   diagnostics for Graph shared-mailbox permissions, and writing-style feedback
+   for rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
    GreenMail/high-volume SMTP smoke, and tests around QQ/163/custom-domain
    recovery behavior.
