@@ -1717,6 +1717,49 @@ h2 {
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
+.domain-command {
+  align-content: start;
+  gap: 12px;
+}
+
+.alias-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.dns-record-list,
+.domain-item-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dns-record-list p,
+.domain-item-list p {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dns-record-list span,
+.domain-item-list span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.dns-record-list code {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: var(--bg-soft);
+  color: var(--text-main);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .field-toggle {
   display: flex !important;
   grid-template-columns: none !important;
@@ -2180,6 +2223,7 @@ h2 {
 
   .settings-layout,
   .settings-card-grid,
+  .alias-form-grid,
   .mode-grid {
     grid-template-columns: 1fr;
   }

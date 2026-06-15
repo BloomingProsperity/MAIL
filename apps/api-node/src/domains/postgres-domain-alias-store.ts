@@ -255,6 +255,20 @@ export function createPostgresDomainAliasStore(
       return rowToCatchAll(result.rows[0]);
     },
 
+    async getCatchAll(input) {
+      const result = await client.query<CatchAllRow>(
+        `
+          SELECT id, domain_id, rule_type, config, enabled, created_at
+          FROM routing_rules
+          WHERE domain_id = $1 AND rule_type = 'catch_all'
+          LIMIT 1
+        `,
+        [input.domainId],
+      );
+
+      return result.rows[0] ? rowToCatchAll(result.rows[0]) : undefined;
+    },
+
     async listDeliveryLogs(input) {
       const result = await client.query<DeliveryLogRow>(
         `

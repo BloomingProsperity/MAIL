@@ -128,6 +128,34 @@ describe("Postgres domain alias store", () => {
       { mode: "forward", destinationIds: ["dest_1"] },
     ]);
   });
+
+  it("reads current catch-all routing rules without writing defaults", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresDomainAliasStore(queryable(queries, [
+      [
+        {
+          id: "rule_1",
+          domain_id: "domain_1",
+          rule_type: "catch_all",
+          config: { mode: "discard" },
+          enabled: true,
+          created_at: "2026-06-13T08:00:00.000Z",
+        },
+      ],
+    ]));
+
+    const rule = await store.getCatchAll({ domainId: "domain_1" });
+
+    expect(queries[0].text).toMatch(/SELECT id, domain_id, rule_type, config/i);
+    expect(queries[0].text).toMatch(/FROM routing_rules/i);
+    expect(queries[0].text).toMatch(/rule_type = 'catch_all'/i);
+    expect(queries[0].values).toEqual(["domain_1"]);
+    expect(rule).toMatchObject({
+      id: "rule_1",
+      domainId: "domain_1",
+      config: { mode: "discard" },
+    });
+  });
 });
 
 function queryable(

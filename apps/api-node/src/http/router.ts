@@ -1212,6 +1212,17 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
 
         if (
           domainAliasRoute.action === "set_catch_all" &&
+          request.method === "GET"
+        ) {
+          const result = await config.domainAliasService.getCatchAll({
+            domainId: domainAliasRoute.domainId,
+          });
+          writeJson(response, 200, result);
+          return;
+        }
+
+        if (
+          domainAliasRoute.action === "set_catch_all" &&
           request.method === "PUT"
         ) {
           const result = await config.domainAliasService.setCatchAll(

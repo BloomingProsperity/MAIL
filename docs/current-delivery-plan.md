@@ -198,6 +198,17 @@ with more than smoke-level tests.
   requiring fresh secrets, missing destination, duplicate catch-all.
 - Tests: CSV validation, transfer secret redaction, domain route tests, alias
   router and delivery queue tests.
+- Current domain control-plane status: Settings now exposes a backend-wired
+  domain and alias console. The frontend can create domains, read generated DNS
+  guidance, switch the active domain, add forwarding destinations, create
+  aliases, read and update catch-all routing, and review recent delivery logs.
+  The API now has a read contract for the current catch-all rule
+  (`GET /api/domains/:domainId/catch-all`) in addition to the existing write
+  path, and the Postgres store reads the durable `routing_rules` row without
+  writing a default rule.
+- Remaining migration gap: CSV import still needs row-level preview tables and
+  OAuth follow-up actions, and account transfer still needs file import/export,
+  account selection, and a stronger reauthorization handoff.
 
 ### 6. Frontend Wiring
 

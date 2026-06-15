@@ -538,6 +538,24 @@ export interface DomainDeliveryLogDto {
   createdAt: string;
 }
 
+export type DomainCatchAllMode = "reject" | "forward" | "auto_create" | "discard";
+
+export interface DomainCatchAllRuleDto {
+  id: string;
+  domainId: string;
+  ruleType: "catch_all";
+  enabled: boolean;
+  config: {
+    mode: DomainCatchAllMode;
+    destinationIds?: string[];
+  };
+  createdAt: string;
+}
+
+export interface DomainCatchAllRuleResponse {
+  item: DomainCatchAllRuleDto | null;
+}
+
 export type OAuthProvider = "gmail" | "outlook";
 
 export interface OAuthStartResult {
@@ -1171,13 +1189,31 @@ export interface EmailHubApi {
   }): Promise<SyncRetryFailedResult>;
   getMailNavigationSummary(): Promise<MailNavigationSummaryDto>;
   getMailProviderCapabilities(): Promise<MailProviderCapabilitiesResponse>;
+  createDomain(input: { domain: string }): Promise<DomainDto>;
   listDomains(): Promise<Page<DomainDto>>;
+  createDomainDestination(input: {
+    domainId: string;
+    email: string;
+  }): Promise<DomainDestinationDto>;
   listDomainDestinations(input: {
     domainId: string;
   }): Promise<Page<DomainDestinationDto>>;
+  createDomainAlias(input: {
+    domainId: string;
+    localPart: string;
+    destinationIds: string[];
+  }): Promise<DomainAliasDto>;
   listDomainAliases(input: {
     domainId: string;
   }): Promise<Page<DomainAliasDto>>;
+  setDomainCatchAll(input: {
+    domainId: string;
+    mode: DomainCatchAllMode;
+    destinationIds?: string[];
+  }): Promise<DomainCatchAllRuleDto>;
+  getDomainCatchAll(input: {
+    domainId: string;
+  }): Promise<DomainCatchAllRuleResponse>;
   listDomainDeliveryLogs(input: {
     domainId: string;
     limit?: number;
@@ -1824,8 +1860,27 @@ export function createEmailHubApi(
       return request(fetchImpl, baseUrl, "/api/mail-providers/capabilities");
     },
 
+    createDomain(input) {
+      return request(fetchImpl, baseUrl, "/api/domains", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+
     listDomains() {
       return request(fetchImpl, baseUrl, "/api/domains");
+    },
+
+    createDomainDestination(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/domains/${encodePath(input.domainId)}/destinations`,
+        {
+          method: "POST",
+          body: JSON.stringify({ email: input.email }),
+        },
+      );
     },
 
     listDomainDestinations(input) {
@@ -1836,11 +1891,51 @@ export function createEmailHubApi(
       );
     },
 
+    createDomainAlias(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/domains/${encodePath(input.domainId)}/aliases`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            localPart: input.localPart,
+            destinationIds: input.destinationIds,
+          }),
+        },
+      );
+    },
+
     listDomainAliases(input) {
       return request(
         fetchImpl,
         baseUrl,
         `/api/domains/${encodePath(input.domainId)}/aliases`,
+      );
+    },
+
+    setDomainCatchAll(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/domains/${encodePath(input.domainId)}/catch-all`,
+        {
+          method: "PUT",
+          body: JSON.stringify(
+            cleanObject({
+              mode: input.mode,
+              destinationIds: input.destinationIds,
+            }),
+          ),
+        },
+      );
+    },
+
+    getDomainCatchAll(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/domains/${encodePath(input.domainId)}/catch-all`,
       );
     },
 

@@ -108,6 +108,9 @@ export interface DomainAliasStore {
     config: CatchAllRuleRecord["config"];
     createdAt?: string;
   }): Promise<CatchAllRuleRecord>;
+  getCatchAll(input: {
+    domainId: string;
+  }): Promise<CatchAllRuleRecord | undefined>;
   listDeliveryLogs(input: {
     domainId: string;
     limit: number;
@@ -139,6 +142,9 @@ export interface DomainAliasService {
     mode: CatchAllMode;
     destinationIds?: string[];
   }): Promise<CatchAllRuleRecord>;
+  getCatchAll(input: {
+    domainId: string;
+  }): Promise<{ item: CatchAllRuleRecord | null }>;
   listDeliveryLogs(input: {
     domainId: string;
     limit?: number;
@@ -238,6 +244,13 @@ export function createDomainAliasService(
         config: destinationIds ? { mode, destinationIds } : { mode },
         createdAt: now(),
       });
+    },
+
+    async getCatchAll(input) {
+      await requireDomain(options.store, input.domainId);
+      return {
+        item: (await options.store.getCatchAll(input)) ?? null,
+      };
     },
 
     async listDeliveryLogs(input) {
@@ -372,6 +385,13 @@ export function createInMemoryDomainAliasStore(): InMemoryDomainAliasStore {
       };
       catchAllRules.set(input.domainId, record);
       return { ...record, config: cloneCatchAllConfig(record.config) };
+    },
+
+    async getCatchAll(input) {
+      const record = catchAllRules.get(input.domainId);
+      return record
+        ? { ...record, config: cloneCatchAllConfig(record.config) }
+        : undefined;
     },
 
     async listDeliveryLogs(input) {

@@ -122,6 +122,9 @@ describe("domain alias service", () => {
       },
       createdAt: "2026-06-13T08:00:00.000Z",
     });
+    expect(await service.getCatchAll({ domainId: "domain_1" })).toEqual({
+      item: rule,
+    });
   });
 
   it("does not allow an alias to route to a destination from another domain", async () => {

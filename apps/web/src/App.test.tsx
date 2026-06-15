@@ -2216,8 +2216,8 @@ describe("Email Hub first UI baseline", () => {
       }),
     );
 
-    expect(await screen.findByText("demo.site")).toBeTruthy();
-    expect(await screen.findByText("owner@example.net")).toBeTruthy();
+    expect((await screen.findAllByText(/demo\.site/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("owner@example.net")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("support@demo.site")).length).toBeGreaterThan(0);
     expect(await screen.findByText(/已送达/)).toBeTruthy();
     expect(api.listDomains).toHaveBeenCalled();
@@ -2227,10 +2227,81 @@ describe("Email Hub first UI baseline", () => {
     expect(api.listDomainAliases).toHaveBeenCalledWith({
       domainId: "domain_1",
     });
+    expect(api.getDomainCatchAll).toHaveBeenCalledWith({
+      domainId: "domain_1",
+    });
     expect(api.listDomainDeliveryLogs).toHaveBeenCalledWith({
       domainId: "domain_1",
       limit: 20,
     });
+  });
+
+  it("configures domains, forwarding targets, aliases, and catch-all from Settings", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    fireEvent.click(
+      within(screen.getByLabelText("设置目录")).getByRole("button", {
+        name: "域名管理",
+      }),
+    );
+
+    await screen.findByText("emailhub-domain-verification=domain_1");
+
+    fireEvent.change(screen.getByLabelText("Domain name"), {
+      target: { value: "demo.site" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加域名" }));
+
+    await waitFor(() => {
+      expect(api.createDomain).toHaveBeenCalledWith({ domain: "demo.site" });
+    });
+
+    fireEvent.change(screen.getByLabelText("Domain destination email"), {
+      target: { value: "ops@example.net" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加目标邮箱" }));
+
+    await waitFor(() => {
+      expect(api.createDomainDestination).toHaveBeenCalledWith({
+        domainId: "domain_1",
+        email: "ops@example.net",
+      });
+    });
+
+    fireEvent.change(screen.getByLabelText("Domain alias local part"), {
+      target: { value: "ops" },
+    });
+    fireEvent.change(screen.getByLabelText("Domain alias destination"), {
+      target: { value: "dest_1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "创建别名" }));
+
+    await waitFor(() => {
+      expect(api.createDomainAlias).toHaveBeenCalledWith({
+        domainId: "domain_1",
+        localPart: "ops",
+        destinationIds: ["dest_1"],
+      });
+    });
+
+    fireEvent.change(screen.getByLabelText("Domain catch-all mode"), {
+      target: { value: "forward" },
+    });
+    fireEvent.change(screen.getByLabelText("Domain catch-all destination"), {
+      target: { value: "dest_1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存 Catch-all" }));
+
+    await waitFor(() => {
+      expect(api.setDomainCatchAll).toHaveBeenCalledWith({
+        domainId: "domain_1",
+        mode: "forward",
+        destinationIds: ["dest_1"],
+      });
+    });
+    expect(await screen.findByText(/Catch-all 已设置为转发/)).toBeTruthy();
   });
 
   it("uses Hermes to suggest and confirm a follow-up reminder from the reader", async () => {
@@ -4045,16 +4116,52 @@ function createApiFixture(): EmailHubApi {
         }),
       ],
     })),
+    createDomain: vi.fn(async () => ({
+      id: "domain_1",
+      domain: "demo.site",
+      verificationStatus: "pending",
+      dnsRecords: {
+        ownershipTxt: {
+          type: "TXT",
+          name: "_emailhub.demo.site",
+          value: "emailhub-domain-verification=domain_1",
+        },
+        mx: {
+          type: "MX",
+          name: "demo.site",
+          value: "10 mx.emailhub.local",
+        },
+      },
+      createdAt: "2026-06-13T08:00:00.000Z",
+    })),
     listDomains: vi.fn(async () => ({
       items: [
         {
           id: "domain_1",
           domain: "demo.site",
           verificationStatus: "pending",
-          dnsRecords: {},
+          dnsRecords: {
+            ownershipTxt: {
+              type: "TXT",
+              name: "_emailhub.demo.site",
+              value: "emailhub-domain-verification=domain_1",
+            },
+            mx: {
+              type: "MX",
+              name: "demo.site",
+              value: "10 mx.emailhub.local",
+            },
+          },
           createdAt: "2026-06-13T08:00:00.000Z",
         },
       ],
+    })),
+    createDomainDestination: vi.fn(async (input) => ({
+      id: "dest_1",
+      domainId: input.domainId,
+      email: input.email,
+      verified: false,
+      createdAt: "2026-06-13T08:00:00.000Z",
     })),
     listDomainDestinations: vi.fn(async () => ({
       items: [
@@ -4066,6 +4173,15 @@ function createApiFixture(): EmailHubApi {
           createdAt: "2026-06-13T08:00:00.000Z",
         },
       ],
+    })),
+    createDomainAlias: vi.fn(async (input) => ({
+      id: "alias_2",
+      domainId: input.domainId,
+      address: `${input.localPart}@demo.site`,
+      localPart: input.localPart,
+      enabled: true,
+      destinationIds: input.destinationIds,
+      createdAt: "2026-06-13T08:00:00.000Z",
     })),
     listDomainAliases: vi.fn(async () => ({
       items: [
@@ -4079,6 +4195,27 @@ function createApiFixture(): EmailHubApi {
           createdAt: "2026-06-13T08:00:00.000Z",
         },
       ],
+    })),
+    setDomainCatchAll: vi.fn(async (input) => ({
+      id: "rule_1",
+      domainId: input.domainId,
+      ruleType: "catch_all" as const,
+      enabled: true,
+      config: {
+        mode: input.mode,
+        ...(input.destinationIds ? { destinationIds: input.destinationIds } : {}),
+      },
+      createdAt: "2026-06-13T08:00:00.000Z",
+    })),
+    getDomainCatchAll: vi.fn(async () => ({
+      item: {
+        id: "rule_1",
+        domainId: "domain_1",
+        ruleType: "catch_all" as const,
+        enabled: true,
+        config: { mode: "reject" as const },
+        createdAt: "2026-06-13T08:00:00.000Z",
+      },
     })),
     listDomainDeliveryLogs: vi.fn(async () => ({
       items: [

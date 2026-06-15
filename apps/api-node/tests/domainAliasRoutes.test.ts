@@ -152,6 +152,19 @@ describe("domain alias routes", () => {
           createdAt: "2026-06-13T08:00:00.000Z",
         };
       },
+      async getCatchAll(input: unknown) {
+        calls.push(["getCatchAll", input]);
+        return {
+          item: {
+            id: "rule_1",
+            domainId: "domain_1",
+            ruleType: "catch_all",
+            enabled: true,
+            config: { mode: "forward", destinationIds: ["dest_1"] },
+            createdAt: "2026-06-13T08:00:00.000Z",
+          },
+        };
+      },
       async listDeliveryLogs(input: unknown) {
         calls.push(["listDeliveryLogs", input]);
         return {
@@ -201,6 +214,9 @@ describe("domain alias routes", () => {
             }),
           },
         );
+        const currentCatchAll = await fetch(
+          `${baseUrl}/api/domains/domain_1/catch-all`,
+        );
         const logs = await fetch(
           `${baseUrl}/api/domains/domain_1/delivery-logs?limit=25`,
         );
@@ -210,6 +226,7 @@ describe("domain alias routes", () => {
         expect(alias.status).toBe(201);
         expect(aliases.status).toBe(200);
         expect(catchAll.status).toBe(200);
+        expect(currentCatchAll.status).toBe(200);
         expect(logs.status).toBe(200);
         expect(await destination.json()).toMatchObject({
           id: "dest_1",
@@ -228,6 +245,12 @@ describe("domain alias routes", () => {
         expect(await catchAll.json()).toMatchObject({
           id: "rule_1",
           config: { mode: "forward", destinationIds: ["dest_1"] },
+        });
+        expect(await currentCatchAll.json()).toMatchObject({
+          item: {
+            id: "rule_1",
+            config: { mode: "forward", destinationIds: ["dest_1"] },
+          },
         });
         expect(await logs.json()).toMatchObject({
           items: [{ id: "log_1", status: "delivered" }],
@@ -255,6 +278,7 @@ describe("domain alias routes", () => {
               destinationIds: ["dest_1"],
             },
           ],
+          ["getCatchAll", { domainId: "domain_1" }],
           ["listDeliveryLogs", { domainId: "domain_1", limit: 25 }],
         ]);
       },

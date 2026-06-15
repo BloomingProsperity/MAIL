@@ -2361,6 +2361,18 @@ describe("emailHubApi", () => {
           ],
         });
       }
+      if (url === "/api/domains/domain_1/catch-all") {
+        return jsonResponse({
+          item: {
+            id: "rule_1",
+            domainId: "domain_1",
+            ruleType: "catch_all",
+            enabled: true,
+            config: { mode: "forward", destinationIds: ["dest_1"] },
+            createdAt: "2026-06-13T08:00:00.000Z",
+          },
+        });
+      }
       return jsonResponse({
         items: [
           {
@@ -2381,15 +2393,104 @@ describe("emailHubApi", () => {
       domainId: "domain_1",
       limit: 20,
     });
+    const catchAll = await api.getDomainCatchAll({ domainId: "domain_1" });
 
     expect(domains.items[0].domain).toBe("demo.site");
     expect(aliases.items[0].address).toBe("support@demo.site");
     expect(logs.items[0].status).toBe("delivered");
+    expect(catchAll.item?.config.mode).toBe("forward");
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "/api/domains/domain_1/delivery-logs?limit=20",
       expect.objectContaining({ method: "GET" }),
     );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/domains/domain_1/catch-all",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("writes domain alias control-plane changes through stable API methods", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/domains") {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          domain: "example.com",
+        });
+        return jsonResponse({
+          id: "domain_2",
+          domain: "example.com",
+          verificationStatus: "pending",
+          dnsRecords: {},
+          createdAt: "2026-06-13T08:00:00.000Z",
+        }, 201);
+      }
+      if (url === "/api/domains/domain_2/destinations") {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          email: "owner@example.net",
+        });
+        return jsonResponse({
+          id: "dest_2",
+          domainId: "domain_2",
+          email: "owner@example.net",
+          verified: false,
+          createdAt: "2026-06-13T08:00:00.000Z",
+        }, 201);
+      }
+      if (url === "/api/domains/domain_2/aliases") {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          localPart: "support",
+          destinationIds: ["dest_2"],
+        });
+        return jsonResponse({
+          id: "alias_2",
+          domainId: "domain_2",
+          address: "support@example.com",
+          localPart: "support",
+          enabled: true,
+          destinationIds: ["dest_2"],
+          createdAt: "2026-06-13T08:00:00.000Z",
+        }, 201);
+      }
+      expect(url).toBe("/api/domains/domain_2/catch-all");
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        mode: "forward",
+        destinationIds: ["dest_2"],
+      });
+      return jsonResponse({
+        id: "rule_2",
+        domainId: "domain_2",
+        ruleType: "catch_all",
+        enabled: true,
+        config: { mode: "forward", destinationIds: ["dest_2"] },
+        createdAt: "2026-06-13T08:00:00.000Z",
+      });
+    });
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const domain = await api.createDomain({ domain: "example.com" });
+    const destination = await api.createDomainDestination({
+      domainId: domain.id,
+      email: "owner@example.net",
+    });
+    const alias = await api.createDomainAlias({
+      domainId: domain.id,
+      localPart: "support",
+      destinationIds: [destination.id],
+    });
+    const catchAll = await api.setDomainCatchAll({
+      domainId: domain.id,
+      mode: "forward",
+      destinationIds: [destination.id],
+    });
+
+    expect(alias.address).toBe("support@example.com");
+    expect(catchAll.config.destinationIds).toEqual(["dest_2"]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("previews CSV import and creates import tasks through account import routes", async () => {
