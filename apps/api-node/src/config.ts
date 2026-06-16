@@ -16,6 +16,8 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     emailEnginePreparedTokenConfigured:
       typeof env.EENGINE_PREPARED_TOKEN === "string" &&
       env.EENGINE_PREPARED_TOKEN.trim().length > 0,
+    emailEngineAuthServerSecret:
+      env.EMAILENGINE_AUTH_SERVER_SECRET ?? "dev-emailhub-secret",
     oauthProvidersConfigured: {
       gmail:
         typeof env.GOOGLE_OAUTH_CLIENT_ID === "string" &&

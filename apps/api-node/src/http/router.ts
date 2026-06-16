@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
@@ -178,6 +178,11 @@ import type {
   EmailEngineHealthProbe,
   EmailEngineHealthProbeResult,
 } from "../mail-engine/email-engine-health-probe.js";
+import {
+  InvalidEmailEngineAuthServerRequestError,
+  isEmailEngineAuthServerProto,
+  type EmailEngineAuthServerService,
+} from "../mail-engine/email-engine-auth-server.js";
 import {
   isDiagnosticLogLevel,
   type DiagnosticsLogStore,
@@ -400,8 +405,10 @@ export interface ApiConfig {
   emailEnginePreparedTokenConfigured?: boolean;
   emailEngineWebhookSecretConfigured?: boolean;
   emailEngineWebhookSecretUsesDefault?: boolean;
+  emailEngineAuthServerSecret?: string;
   oauthProvidersConfigured?: MailProviderCapabilityOptions["oauthProvidersConfigured"];
   mailEngineHealthProbe?: EmailEngineHealthProbe;
+  emailEngineAuthServerService?: EmailEngineAuthServerService;
   maxRequestBodyBytes?: number;
   maxComposeRequestBodyBytes?: number;
   maxComposeAttachmentUploadBytes?: number;
@@ -533,6 +540,14 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         request.url === "/api/mail-engine/health"
       ) {
         writeJson(response, 200, await buildMailEngineHealth(config));
+        return;
+      }
+
+      if (
+        request.method === "GET" &&
+        request.url?.startsWith("/api/mail-engine/auth-server")
+      ) {
+        await writeEmailEngineAuthServerResponse(request, response, config);
         return;
       }
 
@@ -7857,6 +7872,80 @@ async function checkEmailEngineRuntime(
   } catch {
     return { http: "unavailable", error: "probe_failed", auth: "skipped" };
   }
+}
+
+async function writeEmailEngineAuthServerResponse(
+  request: IncomingMessage,
+  response: ServerResponse,
+  config: ApiConfig,
+): Promise<void> {
+  if (!isEmailEngineAuthServerAuthorized(request, config)) {
+    writeJson(response, 401, { error: "emailengine_auth_server_unauthorized" });
+    return;
+  }
+
+  if (!config.emailEngineAuthServerService) {
+    writeJson(response, 503, { error: "emailengine_auth_server_unavailable" });
+    return;
+  }
+
+  const url = new URL(request.url ?? "", "http://email-hub.local");
+  const accountId = url.searchParams.get("account")?.trim();
+  const proto = url.searchParams.get("proto")?.trim();
+  if (!accountId || !isEmailEngineAuthServerProto(proto)) {
+    writeJson(response, 400, { error: "invalid_emailengine_auth_server_request" });
+    return;
+  }
+
+  try {
+    const credentials =
+      await config.emailEngineAuthServerService.resolveCredentials({
+        accountId,
+        proto,
+      });
+    writeJson(response, 200, credentials);
+  } catch (error) {
+    if (error instanceof InvalidEmailEngineAuthServerRequestError) {
+      writeJson(response, error.statusCode, { error: error.code });
+      return;
+    }
+
+    config.logger?.warn("emailengine_auth_server_failed", {
+      accountId,
+      proto,
+    });
+    writeJson(response, 503, { error: "emailengine_auth_server_unavailable" });
+  }
+}
+
+function isEmailEngineAuthServerAuthorized(
+  request: IncomingMessage,
+  config: ApiConfig,
+): boolean {
+  const secret = config.emailEngineAuthServerSecret;
+  if (!secret) {
+    return false;
+  }
+
+  const authorization = request.headers.authorization;
+  if (!authorization?.startsWith("Basic ")) {
+    return false;
+  }
+
+  const expected = `Basic ${Buffer.from(`emailengine:${secret}`).toString(
+    "base64",
+  )}`;
+  return safeEqual(authorization, expected);
+}
+
+function safeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function buildEmailEngineConfigurationRequired(

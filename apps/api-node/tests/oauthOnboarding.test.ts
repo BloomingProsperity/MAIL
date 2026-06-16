@@ -25,6 +25,11 @@ describe("OAuth onboarding service", () => {
           throw new Error("should not read profile while creating session");
         },
       },
+      emailEngineAccounts: {
+        async registerOAuthAccount() {
+          throw new Error("should not register EmailEngine account while creating session");
+        },
+      },
       createId: (() => {
         const ids = ["task_1", "state_1"];
         return () => ids.shift() ?? "extra";
@@ -56,6 +61,7 @@ describe("OAuth onboarding service", () => {
   it("exchanges a callback, stores the account, provider settings, and a secret ref", async () => {
     const store = createInMemoryOAuthOnboardingStore();
     const bootstrapJobs: unknown[] = [];
+    const emailEngineRegistrations: unknown[] = [];
     const providers = createOAuthProviderRegistry({
       googleClientId: "google-client-id",
       googleClientSecret: "google-client-secret",
@@ -81,6 +87,12 @@ describe("OAuth onboarding service", () => {
         async getProfile(input) {
           expect(input.accessToken).toBe("access-token");
           return { email: "me@gmail.com", displayName: "Me" };
+        },
+      },
+      emailEngineAccounts: {
+        async registerOAuthAccount(input: unknown) {
+          emailEngineRegistrations.push(input);
+          return { account: "acc_1", state: "syncing" };
         },
       },
       createId: (() => {
@@ -125,7 +137,7 @@ describe("OAuth onboarding service", () => {
         authMethod: "oauth",
         displayName: "Me",
         syncState: "syncing",
-        engineProvider: "native",
+        engineProvider: "emailengine",
       },
       syncJob: {
         id: "job_1",
@@ -139,8 +151,16 @@ describe("OAuth onboarding service", () => {
       {
         accountId: "acc_1",
         provider: "gmail",
-        engineProvider: "native",
+        engineProvider: "emailengine",
         sourceTaskId: "task_1",
+      },
+    ]);
+    expect(emailEngineRegistrations).toEqual([
+      {
+        accountId: "acc_1",
+        email: "me@gmail.com",
+        displayName: "Me",
+        provider: "gmail",
       },
     ]);
     expect(store.listStoredSecrets()).toEqual([
@@ -161,10 +181,12 @@ describe("OAuth onboarding service", () => {
         accountId: "acc_1",
         provider: "gmail",
         nativeProvider: "gmail",
-        capabilities: { read: true },
+        capabilities: { read: true, send: true, engineProvider: "emailengine" },
         settings: {
           scopes:
             "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.settings.basic openid email",
+          emailEngineOAuthProvider: "gmail",
+          tokenSource: "emailengine_auth_server",
         },
       },
     ]);
@@ -192,6 +214,11 @@ describe("OAuth onboarding service", () => {
           return { email: "me@gmail.com" };
         },
       },
+      emailEngineAccounts: {
+        async registerOAuthAccount() {
+          throw new Error("should not register without a refresh token");
+        },
+      },
       createId: (() => {
         const ids = ["task_1", "state_1"];
         return () => ids.shift() ?? "extra";
@@ -213,5 +240,57 @@ describe("OAuth onboarding service", () => {
       status: "failed",
       errorMessage: "OAuth callback did not return a refresh token",
     });
+  });
+
+  it("fails the task when EmailEngine rejects OAuth account registration", async () => {
+    const store = createInMemoryOAuthOnboardingStore();
+    const service = createOAuthOnboardingService({
+      store,
+      providers: createOAuthProviderRegistry({
+        googleClientId: "google-client-id",
+        googleClientSecret: "google-client-secret",
+      }),
+      tokenClient: {
+        async exchangeCode() {
+          return {
+            accessToken: "access-token",
+            refreshToken: "refresh-token-secret",
+            expiresIn: 3600,
+            tokenType: "Bearer",
+          };
+        },
+      },
+      profileClient: {
+        async getProfile() {
+          return { email: "me@gmail.com" };
+        },
+      },
+      emailEngineAccounts: {
+        async registerOAuthAccount() {
+          throw new Error("EmailEngine rejected refresh-token-secret");
+        },
+      },
+      createId: (() => {
+        const ids = ["task_1", "state_1", "acc_1", "secret_1"];
+        return () => ids.shift() ?? "extra";
+      })(),
+    });
+
+    await service.createAuthSession({
+      provider: "gmail",
+      redirectUri: "https://app.example.com/oauth/callback",
+    });
+
+    await expect(
+      service.completeAuthCallback({
+        state: "state_1",
+        code: "code_1",
+      }),
+    ).rejects.toThrow("EmailEngine rejected [redacted]");
+    expect(store.listTasks()[0]).toMatchObject({
+      status: "failed",
+      errorMessage: "EmailEngine rejected [redacted]",
+    });
+    expect(store.listAccounts()).toEqual([]);
   });
 });

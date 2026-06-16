@@ -707,6 +707,72 @@ describe("API routes", () => {
     );
   });
 
+  it("serves EmailEngine auth server credentials behind Basic auth", async () => {
+    const calls: unknown[] = [];
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/mail-engine/auth-server?account=acc_1&proto=imap`,
+          {
+            headers: {
+              Authorization: `Basic ${Buffer.from(
+                "emailengine:auth-secret",
+              ).toString("base64")}`,
+            },
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+          user: "me@gmail.com",
+          accessToken: "access-token",
+        });
+        expect(calls).toEqual([{ accountId: "acc_1", proto: "imap" }]);
+      },
+      {
+        emailEngineAuthServerSecret: "auth-secret",
+        emailEngineAuthServerService: {
+          async resolveCredentials(input: unknown) {
+            calls.push(input);
+            return {
+              user: "me@gmail.com",
+              accessToken: "access-token",
+            };
+          },
+        },
+      },
+    );
+  });
+
+  it("rejects unauthenticated EmailEngine auth server requests", async () => {
+    const calls: unknown[] = [];
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/mail-engine/auth-server?account=acc_1&proto=imap`,
+        );
+
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({
+          error: "emailengine_auth_server_unauthorized",
+        });
+        expect(calls).toEqual([]);
+      },
+      {
+        emailEngineAuthServerSecret: "auth-secret",
+        emailEngineAuthServerService: {
+          async resolveCredentials(input: unknown) {
+            calls.push(input);
+            return {
+              user: "me@gmail.com",
+              accessToken: "access-token",
+            };
+          },
+        },
+      },
+    );
+  });
+
   it("lists mailboxes through the mail read store", async () => {
     const calls: unknown[] = [];
     const mailReadStore = {

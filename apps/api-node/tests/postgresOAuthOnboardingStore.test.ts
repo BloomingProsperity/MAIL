@@ -108,7 +108,7 @@ describe("postgres OAuth onboarding store", () => {
                 auth_method: "oauth",
                 display_name: "Me",
                 sync_state: "syncing",
-                engine_provider: "native",
+                engine_provider: "emailengine",
               },
             ],
           };
@@ -149,7 +149,7 @@ describe("postgres OAuth onboarding store", () => {
         authMethod: "oauth",
         displayName: "Me",
         syncState: "syncing",
-        engineProvider: "native",
+        engineProvider: "emailengine",
       },
       credential: {
         accountId: "acc_1",
@@ -188,7 +188,7 @@ describe("postgres OAuth onboarding store", () => {
     expect(result.account).toMatchObject({
       id: "acc_1",
       email: "me@gmail.com",
-      engineProvider: "native",
+      engineProvider: "emailengine",
     });
   });
 });

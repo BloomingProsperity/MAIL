@@ -86,6 +86,15 @@ describe("server wiring", () => {
     expect(source).toMatch(/createEmailEngineHealthProbe\(\{\s*baseUrl: config\.emailEngineUrl,\s*accessToken: emailEngineAccessToken,/s);
   });
 
+  it("wires OAuth onboarding through EmailEngine accounts and auth server services", async () => {
+    const serverUrl = new URL("../src/server.ts", import.meta.url);
+    const source = await readFile(serverUrl, "utf8");
+
+    expect(source).toMatch(/createConfiguredEmailEngineAuthServerService/);
+    expect(source).toMatch(/config\.emailEngineAuthServerService\s*=/);
+    expect(source).toMatch(/createOAuthOnboardingService\(\{[\s\S]*emailEngineAccounts,/);
+  });
+
   it("passes Proton Bridge preset overrides into onboarding, import, and reauthorization services", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");

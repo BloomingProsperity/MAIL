@@ -169,6 +169,48 @@ describe("EmailEngine accounts client", () => {
     expect(result).toEqual({ account: "acc_1", state: "syncing" });
   });
 
+  it("registers an OAuth account through EmailEngine auth server mode", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createEmailEngineAccountsClient({
+      baseUrl: "http://emailengine:3000",
+      accessToken: "secret-token",
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return Response.json({
+          account: "acc_1",
+          state: "syncing",
+        });
+      },
+    });
+
+    const result = await client.registerOAuthAccount({
+      accountId: "acc_1",
+      email: "me@gmail.com",
+      displayName: "Me",
+      provider: "gmail",
+    });
+
+    expect(calls[0].url).toBe("http://emailengine:3000/v1/account");
+    expect(calls[0].init?.method).toBe("POST");
+    expect(calls[0].init?.headers).toMatchObject({
+      Authorization: "Bearer secret-token",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      account: "acc_1",
+      name: "Me",
+      email: "me@gmail.com",
+      oauth2: {
+        provider: "gmail",
+        auth: {
+          user: "me@gmail.com",
+        },
+        useAuthServer: true,
+      },
+    });
+    expect(result).toEqual({ account: "acc_1", state: "syncing" });
+  });
+
   it("throws a useful error when account registration fails", async () => {
     const client = createEmailEngineAccountsClient({
       baseUrl: "http://emailengine:3000/v1/",

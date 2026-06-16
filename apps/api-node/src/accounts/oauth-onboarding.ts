@@ -12,6 +12,7 @@ import type {
   OAuthProviderRegistry,
 } from "./oauth-providers.js";
 import type { OAuthTokenClient, OAuthTokenSet } from "./oauth-token-client.js";
+import type { EmailEngineAccountsClient } from "../mail-engine/email-engine-accounts-client.js";
 
 export interface OAuthOnboardingTask {
   id: string;
@@ -30,7 +31,7 @@ export interface OAuthConnectedAccount {
   authMethod: "oauth";
   displayName?: string;
   syncState: "syncing" | "reauth_required";
-  engineProvider: "native";
+  engineProvider: "emailengine" | "native";
 }
 
 export interface OAuthAccountCredential {
@@ -121,6 +122,7 @@ export interface OAuthOnboardingServiceOptions {
   providers: OAuthProviderRegistry;
   tokenClient: OAuthTokenClient;
   profileClient: OAuthProfileClient;
+  emailEngineAccounts: Pick<EmailEngineAccountsClient, "registerOAuthAccount">;
   bootstrapSyncJobs?: BootstrapSyncJobStore;
   createId: () => string;
 }
@@ -186,6 +188,7 @@ export function createOAuthOnboardingService(
 
       const provider = options.providers.get(session.provider);
       let result: OAuthOnboardingResult;
+      let refreshTokenForRedaction: string | undefined;
       try {
         const token = await options.tokenClient.exchangeCode({
           provider,
@@ -195,6 +198,7 @@ export function createOAuthOnboardingService(
         if (!token.refreshToken) {
           throw new Error("OAuth callback did not return a refresh token");
         }
+        refreshTokenForRedaction = token.refreshToken;
 
         const profile = await options.profileClient.getProfile({
           provider,
@@ -202,15 +206,23 @@ export function createOAuthOnboardingService(
         });
         const accountId = options.createId();
         const secretId = options.createId();
+        const account = accountFromProfile({
+          accountId,
+          provider,
+          profile,
+        });
+
+        await options.emailEngineAccounts.registerOAuthAccount({
+          accountId,
+          email: profile.email,
+          displayName: profile.displayName,
+          provider: provider.provider,
+        });
 
         result = await options.store.completeOAuthAccount({
           taskId: session.taskId,
           taskEmail: profile.email,
-          account: accountFromProfile({
-            accountId,
-            provider,
-            profile,
-          }),
+          account,
           credential: {
             accountId,
             credentialKind: provider.refreshCredentialKind,
@@ -220,8 +232,16 @@ export function createOAuthOnboardingService(
             accountId,
             provider: provider.provider,
             nativeProvider: provider.nativeProvider,
-            capabilities: { read: true },
-            settings: { scopes: token.scope ?? provider.scopes.join(" ") },
+            capabilities: {
+              read: true,
+              send: true,
+              engineProvider: "emailengine",
+            },
+            settings: {
+              scopes: token.scope ?? provider.scopes.join(" "),
+              emailEngineOAuthProvider: provider.provider,
+              tokenSource: "emailengine_auth_server",
+            },
           },
           secret: {
             secretRef: `db:${secretId}`,
@@ -229,7 +249,12 @@ export function createOAuthOnboardingService(
           },
         });
       } catch (error) {
-        const message = sanitizedError(error, input.code, provider.clientSecret);
+        const message = sanitizedError(
+          error,
+          input.code,
+          provider.clientSecret,
+          refreshTokenForRedaction,
+        );
         await options.store.failTask({
           taskId: session.taskId,
           errorMessage: message,
@@ -324,7 +349,7 @@ function accountFromProfile(input: {
     authMethod: "oauth",
     displayName: input.profile.displayName,
     syncState: "syncing",
-    engineProvider: "native",
+    engineProvider: "emailengine",
   };
 }
 
@@ -355,9 +380,10 @@ function sanitizedError(
   error: unknown,
   code: string,
   clientSecret?: string,
+  refreshToken?: string,
 ): string {
   let message = error instanceof Error ? error.message : "unknown OAuth error";
-  for (const secret of [code, clientSecret]) {
+  for (const secret of [code, clientSecret, refreshToken]) {
     if (secret) {
       message = message.split(secret).join("[redacted]");
     }

@@ -119,7 +119,7 @@ describe("OAuth account routes", () => {
             provider: "gmail",
             authMethod: "oauth",
             syncState: "syncing",
-            engineProvider: "native",
+            engineProvider: "emailengine",
           },
         };
       },
@@ -134,7 +134,7 @@ describe("OAuth account routes", () => {
         expect(response.status).toBe(202);
         expect(await response.json()).toMatchObject({
           task: { status: "completed" },
-          account: { id: "acc_1", engineProvider: "native" },
+          account: { id: "acc_1", engineProvider: "emailengine" },
         });
         expect(calls).toEqual([{ state: "state_1", code: "code_1" }]);
       },

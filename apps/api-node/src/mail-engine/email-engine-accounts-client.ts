@@ -20,6 +20,13 @@ export interface RegisterImapSmtpAccountInput {
   smtp: EmailEngineEndpointCredentials;
 }
 
+export interface RegisterOAuthAccountInput {
+  accountId: string;
+  email: string;
+  displayName?: string;
+  provider: "gmail" | "outlook";
+}
+
 export interface VerifyImapSmtpAccountInput {
   email: string;
   imap: EmailEngineEndpointCredentials;
@@ -48,6 +55,9 @@ export interface EmailEngineAccountsClient {
   ): Promise<EmailEngineAccountVerificationResult>;
   registerImapSmtpAccount(
     input: RegisterImapSmtpAccountInput,
+  ): Promise<EmailEngineAccountRegistrationResult>;
+  registerOAuthAccount(
+    input: RegisterOAuthAccountInput,
   ): Promise<EmailEngineAccountRegistrationResult>;
 }
 
@@ -111,6 +121,27 @@ export function createEmailEngineAccountsClient(
           }),
         },
         "EmailEngine account registration failed",
+      );
+    },
+    registerOAuthAccount(input) {
+      return request<EmailEngineAccountRegistrationResult>(
+        "/account",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            account: input.accountId,
+            name: input.displayName ?? input.email,
+            email: input.email,
+            oauth2: {
+              provider: input.provider,
+              auth: {
+                user: input.email,
+              },
+              useAuthServer: true,
+            },
+          }),
+        },
+        "EmailEngine OAuth account registration failed",
       );
     },
   };

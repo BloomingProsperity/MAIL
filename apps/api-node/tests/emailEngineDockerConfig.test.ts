@@ -23,9 +23,11 @@ describe("EmailEngine Docker configuration", () => {
   it("documents and injects prepared EmailEngine tokens for self-hosted Docker startup", async () => {
     const envExample = await readProjectFile(".env.example");
     const compose = await readProjectFile("infra", "docker-compose.yml");
+    const api = serviceSection(compose, "api");
 
     expect(envExample).toContain("EMAILENGINE_ACCESS_TOKEN=");
     expect(envExample).toContain("EENGINE_PREPARED_TOKEN=");
+    expect(envExample).toContain("EMAILENGINE_AUTH_SERVER_SECRET=");
     expect(compose).toContain(
       "EENGINE_PREPARED_TOKEN: ${EENGINE_PREPARED_TOKEN:-}",
     );
@@ -37,6 +39,9 @@ describe("EmailEngine Docker configuration", () => {
         /EMAILENGINE_ACCESS_TOKEN: \$\{EMAILENGINE_ACCESS_TOKEN:-\}/g,
       ),
     ).toHaveLength(2);
+    expect(api).toContain(
+      "EMAILENGINE_AUTH_SERVER_SECRET: ${EMAILENGINE_AUTH_SERVER_SECRET:-dev-emailhub-secret}",
+    );
   });
 
   it("reads the prepared token flag without exposing token values", () => {
@@ -58,9 +63,15 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain(
       "EMAILENGINE_WEBHOOK_URL=http://api:8080/api/webhooks/emailengine",
     );
+    expect(envExample).toContain(
+      "EMAILENGINE_AUTH_SERVER_URL=http://emailengine:dev-emailhub-secret@api:8080/api/mail-engine/auth-server",
+    );
     expect(emailEngine).toContain("EENGINE_SETTINGS:");
     expect(emailEngine).toContain(
       '"webhooks":"${EMAILENGINE_WEBHOOK_URL:-http://api:8080/api/webhooks/emailengine}"',
+    );
+    expect(emailEngine).toContain(
+      '"authServer":"${EMAILENGINE_AUTH_SERVER_URL:-http://emailengine:${EMAILENGINE_AUTH_SERVER_SECRET:-dev-emailhub-secret}@api:8080/api/mail-engine/auth-server}"',
     );
     expect(emailEngine).toContain('"webhooksEnabled":true');
     expect(emailEngine).toContain('"webhookEvents":["*"]');

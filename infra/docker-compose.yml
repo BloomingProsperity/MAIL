@@ -42,7 +42,7 @@ services:
       EENGINE_SECRET: ${EENGINE_SECRET:-dev-emailhub-secret}
       EENGINE_PREPARED_TOKEN: ${EENGINE_PREPARED_TOKEN:-}
       EENGINE_SETTINGS: >-
-        {"webhooks":"${EMAILENGINE_WEBHOOK_URL:-http://api:8080/api/webhooks/emailengine}","webhooksEnabled":true,"webhookEvents":["*"],"serviceSecret":"${EMAILENGINE_WEBHOOK_SECRET:-dev-emailhub-secret}","notifyText":false,"notifyAttachments":false}
+        {"webhooks":"${EMAILENGINE_WEBHOOK_URL:-http://api:8080/api/webhooks/emailengine}","webhooksEnabled":true,"webhookEvents":["*"],"serviceSecret":"${EMAILENGINE_WEBHOOK_SECRET:-dev-emailhub-secret}","authServer":"${EMAILENGINE_AUTH_SERVER_URL:-http://emailengine:${EMAILENGINE_AUTH_SERVER_SECRET:-dev-emailhub-secret}@api:8080/api/mail-engine/auth-server}","notifyText":false,"notifyAttachments":false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -97,6 +97,7 @@ services:
       EMAILENGINE_ACCESS_TOKEN: ${EMAILENGINE_ACCESS_TOKEN:-}
       EENGINE_PREPARED_TOKEN: ${EENGINE_PREPARED_TOKEN:-}
       EMAILENGINE_WEBHOOK_SECRET: ${EMAILENGINE_WEBHOOK_SECRET:-dev-emailhub-secret}
+      EMAILENGINE_AUTH_SERVER_SECRET: ${EMAILENGINE_AUTH_SERVER_SECRET:-dev-emailhub-secret}
       HERMES_PROVIDER: ${HERMES_PROVIDER:-hermes}
       HERMES_CHAT_COMPLETIONS_URL: ${HERMES_CHAT_COMPLETIONS_URL:-}
       HERMES_API_KEY: ${HERMES_API_KEY:-}

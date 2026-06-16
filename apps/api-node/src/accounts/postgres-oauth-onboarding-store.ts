@@ -232,7 +232,7 @@ function mapAccount(row: Record<string, unknown>): OAuthConnectedAccount {
     displayName:
       typeof row.display_name === "string" ? row.display_name : undefined,
     syncState: row.sync_state === "syncing" ? "syncing" : "reauth_required",
-    engineProvider: "native",
+    engineProvider: row.engine_provider === "native" ? "native" : "emailengine",
   };
 }
 

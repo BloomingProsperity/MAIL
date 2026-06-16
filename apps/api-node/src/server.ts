@@ -62,6 +62,7 @@ import { createPostgresMailReadStore } from "./mail-read/postgres-mail-read-stor
 import { createEmailEngineAccountsClient } from "./mail-engine/email-engine-accounts-client.js";
 import { createEmailEngineAttachmentContentStore } from "./mail-engine/email-engine-attachment-content-store.js";
 import { createEmailEngineAttachmentsClient } from "./mail-engine/email-engine-attachments-client.js";
+import { createConfiguredEmailEngineAuthServerService } from "./mail-engine/email-engine-auth-server.js";
 import { createEmailEngineHealthProbe } from "./mail-engine/email-engine-health-probe.js";
 import { createEmailEngineSubmitClient } from "./mail-engine/email-engine-submit-client.js";
 import { createMailNavigationSummaryService } from "./mail-navigation/navigation-summary.js";
@@ -167,6 +168,9 @@ if (pool) {
         async registerImapSmtpAccount() {
           throw new Error("EMAILENGINE_ACCESS_TOKEN is not configured");
         },
+        async registerOAuthAccount() {
+          throw new Error("EMAILENGINE_ACCESS_TOKEN is not configured");
+        },
       };
   const emailEngineAttachments = config.emailEngineAccessTokenConfigured
     ? createEmailEngineAttachmentsClient({
@@ -175,6 +179,10 @@ if (pool) {
       })
     : undefined;
   config.mailEngineIngestStore = createPostgresMailEngineIngestStore(pool);
+  config.emailEngineAuthServerService =
+    createConfiguredEmailEngineAuthServerService({
+      client: pool,
+    });
   config.operationalEventLogService = createOperationalEventLogService({
     store: createPostgresOperationalEventStore(pool),
   });
@@ -383,6 +391,7 @@ if (pool) {
     providers: oauthProviders,
     tokenClient: createOAuthTokenClient(),
     profileClient: createOAuthProfileClient(),
+    emailEngineAccounts,
     bootstrapSyncJobs,
     createId: randomUUID,
   });
