@@ -317,6 +317,54 @@ describe("mail action service", () => {
       }),
     ).rejects.toBeInstanceOf(InvalidMailActionRequestError);
   });
+
+  it("deduplicates apply-label ids before calling the store", async () => {
+    const calls: unknown[] = [];
+    const service = createMailActionService({
+      store: createStore({
+        async applyAction(input) {
+          calls.push(input);
+          return {
+            accountId: input.accountId,
+            messageId: input.messageId,
+            action: input.action,
+            state: {
+              unread: true,
+              starred: false,
+              archived: false,
+              deleted: false,
+              mailboxIds: ["inbox"],
+              labelIds: input.labelIds ?? [],
+            },
+            command: {
+              id: "cmd_1",
+              commandType: "apply_labels",
+              accountId: input.accountId,
+              messageId: input.messageId,
+              idempotencyKey: "mail-action:acc_1:msg_1:apply_labels:label_1",
+              status: "queued",
+            },
+          };
+        },
+      }),
+    });
+
+    await service.applyAction({
+      accountId: "acc_1",
+      messageId: "msg_1",
+      action: "apply_labels",
+      labelIds: ["label_1", "label_1"],
+    });
+
+    expect(calls).toEqual([
+      {
+        accountId: "acc_1",
+        messageId: "msg_1",
+        action: "apply_labels",
+        labelIds: ["label_1"],
+      },
+    ]);
+  });
 });
 
 function createStore(overrides: Partial<MailActionStore>): MailActionStore {

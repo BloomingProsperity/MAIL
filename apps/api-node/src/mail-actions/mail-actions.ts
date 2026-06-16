@@ -205,7 +205,7 @@ function normalizeActionInput(input: MailActionInput): MailActionInput {
   }
 
   if (action === "apply_labels") {
-    const labelIds = (input.labelIds ?? []).map(requiredString);
+    const labelIds = [...new Set((input.labelIds ?? []).map(requiredString))];
     if (labelIds.length === 0) {
       throw new InvalidMailActionRequestError("labelIds are required");
     }

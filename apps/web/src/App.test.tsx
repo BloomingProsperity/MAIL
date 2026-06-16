@@ -504,11 +504,17 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
     expect(
       within(result).getByRole("button", {
+        name: "Apply Hermes organization action 应用标签 客户",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(result).getByRole("button", {
         name: "Create Hermes action item follow-up Confirm launch schedule",
       }),
     ).toBeTruthy();
-    expect(within(result).getByText(/还有 2 条建议/)).toBeTruthy();
+    expect(within(result).getByText(/还有 1 条建议/)).toBeTruthy();
     expect(api.applyMailAction).not.toHaveBeenCalled();
+    expect(api.upsertLabel).not.toHaveBeenCalled();
     expect(api.recordSmartInboxFeedback).not.toHaveBeenCalled();
     expect(api.createFollowUp).not.toHaveBeenCalled();
   });
@@ -521,6 +527,8 @@ describe("Email Hub first UI baseline", () => {
       labels: [],
       actions: [
         { type: "mark_important", reason: "deadline today" },
+        { type: "apply_label", label: "客户", reason: "high confidence" },
+        { type: "apply_label", label: "项目", reason: "new project thread" },
         { type: "archive", reason: "cleanup" },
       ],
     });
@@ -544,7 +552,8 @@ describe("Email Hub first UI baseline", () => {
         name: "Ask Hermes to organize selected message",
       }),
     );
-    await screen.findByLabelText("Hermes 整理建议");
+    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 5_000 });
+    vi.mocked(api.upsertLabel).mockClear();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -559,6 +568,46 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText("Hermes 建议已应用：标为重要。")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Apply Hermes organization action 应用标签 客户",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.applyMailAction).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        action: "apply_labels",
+        labelIds: ["label_customer"],
+      });
+    });
+    expect(api.upsertLabel).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("Hermes 建议已应用：应用标签 客户。写回状态：queued。"),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Apply Hermes organization action 应用标签 项目",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.upsertLabel).toHaveBeenCalledWith({
+        accountId: "account_1",
+        name: "项目",
+        color: "blue",
+      });
+      expect(api.applyMailAction).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        action: "apply_labels",
+        labelIds: ["label_项目"],
+      });
+    });
+    expect(
+      await screen.findByText("Hermes 建议已应用：应用标签 项目。写回状态：queued。"),
+    ).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -599,7 +648,7 @@ describe("Email Hub first UI baseline", () => {
         name: "Ask Hermes to organize selected message",
       }),
     );
-    await screen.findByLabelText("Hermes 整理建议");
+    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 5_000 });
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -623,6 +672,21 @@ describe("Email Hub first UI baseline", () => {
 
   it("shows a safe Hermes organization apply failure without leaking backend details", async () => {
     const api = createApiFixture();
+    vi.mocked(api.triagePriorityWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_priority_fail",
+      skillId: "priority_triage",
+      priority: "medium",
+      bucket: "P2 Important",
+      score: 72,
+      reasons: ["needs review"],
+      explanation: "Review when possible.",
+    });
+    vi.mocked(api.suggestLabelsWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_labels_fail",
+      skillId: "label_suggest",
+      labels: [],
+      actions: [],
+    });
     vi.mocked(api.cleanupNewsletterWithHermes).mockResolvedValueOnce({
       skillRunId: "run_newsletter_fail",
       skillId: "newsletter_cleanup",
@@ -631,6 +695,11 @@ describe("Email Hub first UI baseline", () => {
       senderCategory: "personal",
       reasons: [],
       actions: [{ type: "mark_not_important", reason: "low value" }],
+    });
+    vi.mocked(api.extractActionItemsWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_actions_fail",
+      skillId: "action_item_extract",
+      items: [],
     });
     vi.mocked(api.recordSmartInboxFeedback).mockRejectedValueOnce(
       new ApiRequestError(500, "internal_error", {
@@ -647,7 +716,7 @@ describe("Email Hub first UI baseline", () => {
         name: "Ask Hermes to organize selected message",
       }),
     );
-    await screen.findByLabelText("Hermes 整理建议");
+    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 5_000 });
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -5235,6 +5304,7 @@ function createApiFixture(): EmailHubApi {
       unread: true,
       starred: false,
       mailboxIds: ["mailbox_inbox"],
+      labelIds: [],
       attachmentCount: 0,
       classification: {
         bucket: "P1 Urgent",
@@ -5271,7 +5341,7 @@ function createApiFixture(): EmailHubApi {
           input.action === "trash"
             ? []
             : ["mailbox_inbox"],
-        labelIds: [],
+        labelIds: input.action === "apply_labels" ? (input.labelIds ?? []) : [],
         doneAt: input.action === "done" ? "2026-06-13T10:00:00.000Z" : null,
         undoToken: input.action === "done" ? "undo_1" : null,
         undoExpiresAt:
@@ -5279,7 +5349,12 @@ function createApiFixture(): EmailHubApi {
       },
       command: {
         id: "cmd_1",
-        commandType: input.action === "done" ? "archive" : "move",
+        commandType:
+          input.action === "done"
+            ? "archive"
+            : input.action === "apply_labels"
+              ? "apply_labels"
+              : "move",
         accountId: input.accountId,
         messageId: input.messageId,
         idempotencyKey: "mail-action",

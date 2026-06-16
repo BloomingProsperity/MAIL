@@ -154,6 +154,12 @@ type HermesOrganizationApplyAction =
       label: string;
       kind: "mail";
       action: Extract<MailAction, "archive">;
+    }
+  | {
+      id: string;
+      label: string;
+      kind: "label";
+      labelName: string;
     };
 
 type PasswordReauthorizationFormState = {
@@ -225,6 +231,7 @@ interface MailItem {
   unread: boolean;
   starred: boolean;
   mailboxIds?: string[];
+  labelIds?: string[];
   bucket: string;
   score: number;
   reasons: string[];
@@ -254,10 +261,13 @@ interface QuickCategory {
 
 interface LabelItem {
   id: string;
+  accountId: string;
   label: string;
   count: number;
   tone: Tone;
 }
+
+const PREVIEW_ACCOUNT_ID = "account_1";
 
 const quickReplyActions: QuickReplyAction[] = [
   {
@@ -319,11 +329,41 @@ const folders: FolderItem[] = [
 ];
 
 const previewLabels: LabelItem[] = [
-  { id: "work", label: "工作", count: 32, tone: "coral" },
-  { id: "customer", label: "客户", count: 18, tone: "green" },
-  { id: "finance", label: "财务", count: 6, tone: "blue" },
-  { id: "product", label: "产品", count: 42, tone: "yellow" },
-  { id: "market", label: "市场", count: 15, tone: "purple" }
+  {
+    id: "work",
+    accountId: PREVIEW_ACCOUNT_ID,
+    label: "工作",
+    count: 32,
+    tone: "coral",
+  },
+  {
+    id: "customer",
+    accountId: PREVIEW_ACCOUNT_ID,
+    label: "客户",
+    count: 18,
+    tone: "green",
+  },
+  {
+    id: "finance",
+    accountId: PREVIEW_ACCOUNT_ID,
+    label: "财务",
+    count: 6,
+    tone: "blue",
+  },
+  {
+    id: "product",
+    accountId: PREVIEW_ACCOUNT_ID,
+    label: "产品",
+    count: 42,
+    tone: "yellow",
+  },
+  {
+    id: "market",
+    accountId: PREVIEW_ACCOUNT_ID,
+    label: "市场",
+    count: 15,
+    tone: "purple",
+  }
 ];
 
 const densityOptions: Array<{ id: MailDensity; label: string; shortLabel: string }> = [
@@ -373,8 +413,6 @@ const folderIcons: Record<string, typeof Inbox> = {
   all: Mail,
   attachments: Paperclip
 };
-
-const PREVIEW_ACCOUNT_ID = "account_1";
 
 const mailItems: MailItem[] = [
   {
@@ -1201,6 +1239,7 @@ export function App(props: AppProps = {}) {
               unread: result.state.unread,
               starred: result.state.starred,
               mailboxIds: result.state.mailboxIds,
+              labelIds: result.state.labelIds,
             }
           : item,
       );
@@ -1500,6 +1539,8 @@ export function App(props: AppProps = {}) {
               onUndoDone={() => void undoDone()}
               onSmartInboxBucketDone={(bucket) => void applySmartInboxBucketDone(bucket)}
               onSmartInboxFeedback={recordSmartInboxFeedback}
+              onMailActionResult={applyActionResult}
+              onLabelsChanged={(accountId) => void refreshLabels(accountId)}
               onTrackFollowUp={() => void trackSelectedFollowUp()}
               onConfirmHermesFollowUp={() => void confirmHermesFollowUp()}
             />
@@ -1796,6 +1837,8 @@ function MailWorkspace(props: {
   onUndoDone: () => void;
   onSmartInboxBucketDone: (bucket: string) => void;
   onSmartInboxFeedback: (action: SmartInboxFeedbackAction) => ReaderActionResult;
+  onMailActionResult: (result: MailActionResult) => void;
+  onLabelsChanged: (accountId: string) => void;
   onTrackFollowUp: () => void;
   onConfirmHermesFollowUp: () => void;
 }) {
@@ -2661,15 +2704,59 @@ function MailWorkspace(props: {
     setReaderHermesApplyBusy(action.id);
     setReaderHermesNotice(`正在应用 Hermes 建议：${action.label}...`);
 
-    const applied =
-      action.kind === "mail"
-        ? await props.onArchive()
-        : await props.onSmartInboxFeedback(action.action);
+    let applied = false;
+    let successNotice: string | undefined;
+    if (action.kind === "mail") {
+      applied = await props.onArchive();
+    } else if (action.kind === "smart_inbox") {
+      applied = await props.onSmartInboxFeedback(action.action);
+    } else if (!props.api) {
+      setReaderHermesNotice("连接服务后才能应用 Hermes 标签建议。");
+      setReaderHermesApplyBusy(undefined);
+      return;
+    } else {
+      try {
+        const accountId = props.selectedMail.accountId;
+        const normalizedLabelName = action.labelName.toLowerCase();
+        const existingLabel = props.labels.find(
+          (label) =>
+            label.accountId === accountId &&
+            label.label.toLowerCase() === normalizedLabelName,
+        );
+        let labelId = existingLabel?.id;
+        if (!labelId) {
+          const labelPage = await props.api.listLabels({ accountId });
+          labelId = labelPage.items.find(
+            (label) => label.name.toLowerCase() === normalizedLabelName,
+          )?.id;
+        }
+        if (!labelId) {
+          const label = await props.api.upsertLabel({
+            accountId,
+            name: action.labelName,
+            color: "blue",
+          });
+          labelId = label.id;
+        }
+        const result = await props.api.applyMailAction({
+          accountId,
+          messageId: props.selectedMail.id,
+          action: "apply_labels",
+          labelIds: [labelId],
+        });
+        props.onMailActionResult(result);
+        props.onLabelsChanged(accountId);
+        applied = true;
+        successNotice = `Hermes 建议已应用：${action.label}。写回状态：${result.command.status}。`;
+      } catch {
+        applied = false;
+      }
+    }
 
     setReaderHermesApplyBusy(undefined);
     setReaderHermesNotice(
       applied
-        ? `Hermes 建议已应用：${action.label}。`
+        ? (successNotice ?? `Hermes 建议已应用：${action.label}。`)
         : `Hermes 建议应用失败：${action.label}。`,
     );
   }
@@ -4413,6 +4500,15 @@ function hermesOrganizationApplyActions(
     if (action.type === "archive") {
       add({ id: "mail:archive", kind: "mail", action: "archive", label: "归档" });
     }
+    if (action.type === "apply_label" && action.label?.trim()) {
+      const labelName = action.label.trim();
+      add({
+        id: `label:${labelName.toLowerCase()}`,
+        kind: "label",
+        label: `应用标签 ${labelName}`,
+        labelName,
+      });
+    }
     if (action.type === "move_to_feed") {
       add({
         id: "smart_inbox:move_to_feed",
@@ -4461,7 +4557,7 @@ function hermesOrganizationUnsupportedActionCount(
 ): number {
   const unsupportedLabelActions = result.labels.actions.filter(
     (action) =>
-      action.type === "apply_label" ||
+      (action.type === "apply_label" && !action.label?.trim()) ||
       action.type === "snooze" ||
       action.type === "keep_in_inbox",
   ).length;
@@ -9442,6 +9538,7 @@ function mapMailboxDtoToFolderItem(mailbox: MailboxDto): FolderItem {
 function mapLabelDtoToLabelItem(label: LabelDto): LabelItem {
   return {
     id: label.id,
+    accountId: label.accountId,
     label: label.name,
     count: label.messageCount,
     tone: toneForLabelColor(label.color),
