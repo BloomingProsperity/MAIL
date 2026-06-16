@@ -38,6 +38,12 @@ describe("Hermes rule learning service", () => {
           type: "apply_label",
           labelName: "验证码",
           labelColor: "blue",
+          savedView: expect.objectContaining({
+            id: "codes",
+            label: "验证码",
+            kind: "keyword",
+            keywords: expect.arrayContaining(["验证码", "verification", "otp"]),
+          }),
           providerWriteback: false,
           requiresConfirmation: true,
         }),
@@ -71,6 +77,13 @@ describe("Hermes rule learning service", () => {
             type: "apply_label",
             labelName: "验证码",
             labelColor: "blue",
+            savedView: {
+              id: "codes",
+              label: "验证码",
+              tone: "blue",
+              kind: "keyword",
+              keywords: ["验证码", "verification", "otp"],
+            },
             providerWriteback: false,
             requiresConfirmation: true,
           },
@@ -118,12 +131,77 @@ describe("Hermes rule learning service", () => {
         labelId: "label_codes",
         labelName: "验证码",
         labelColor: "blue",
+        savedView: {
+          id: "codes",
+          label: "验证码",
+          tone: "blue",
+          kind: "keyword",
+          keywords: expect.arrayContaining(["验证码", "verification", "otp"]),
+        },
         applyToHistory: false,
         providerWriteback: false,
         requiresConfirmation: false,
       },
       enabled: true,
     });
+    expect(store.listSavedViews()).toEqual([]);
+  });
+
+  it("derives a saved view when approving older content label candidates", async () => {
+    const store = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_invoices",
+          accountId: "account_1",
+          title: "创建 Invoices 智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["invoice", "receipt"] },
+          action: {
+            type: "apply_label",
+            labelName: "Invoices",
+            labelColor: "green",
+            providerWriteback: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.78,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+        },
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      labelService: {
+        async upsertLabel(input) {
+          return {
+            id: "label_invoices",
+            accountId: input.accountId,
+            name: input.name,
+            color: input.color ?? "blue",
+            messageCount: 0,
+            createdAt: "2026-06-13T10:09:00.000Z",
+          };
+        },
+      },
+      createId: nextId(["rule_invoices"]),
+      now: () => "2026-06-13T10:10:00.000Z",
+    });
+
+    await service.approveRule({
+      accountId: "account_1",
+      candidateId: "candidate_invoices",
+    });
+
+    expect(store.listSavedViews()).toEqual([
+      {
+        id: "hermes_invoices",
+        label: "Invoices",
+        tone: "green",
+        kind: "keyword",
+        keywords: ["invoice", "receipt"],
+      },
+    ]);
   });
 
   it("suggests a shadow sender rule after repeated user feedback", async () => {

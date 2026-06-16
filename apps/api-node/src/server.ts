@@ -41,6 +41,8 @@ import { createPostgresHermesAuditLogStore } from "./hermes/postgres-audit-log-s
 import { createHermesAuditLogService } from "./hermes/audit-log.js";
 import { createHermesRuleService } from "./hermes/rules.js";
 import { createHermesTranslationPreferenceService } from "./hermes/translation-preferences.js";
+import { getHermesSkills } from "./hermes/skills.js";
+import { createHermesWorkspaceContextService } from "./hermes/workspace-context.js";
 import { createApiHandler } from "./http/router.js";
 import { createLabelService } from "./labels/labels.js";
 import { createPostgresLabelStore } from "./labels/postgres-label-store.js";
@@ -204,6 +206,68 @@ if (pool) {
   config.mailNavigationService = createMailNavigationSummaryService(
     createPostgresMailNavigationStore(pool),
   );
+  config.hermesWorkspaceContextService = createHermesWorkspaceContextService({
+    syncCenterStore: config.syncCenterStore,
+    mailNavigationService: config.mailNavigationService,
+    labelService: config.labelService,
+    hermesRuleService: config.hermesRuleService,
+    getMailEngineContext: async () => {
+      const http =
+        (await config.mailEngineHealthProbe?.check().catch(() => ({
+          http: "unavailable" as const,
+        }))) ?? { http: "skipped" as const };
+      const urlConfigured = config.emailEngineUrl.trim().length > 0;
+      const accessTokenConfigured =
+        config.emailEngineAccessTokenConfigured === true;
+      const webhookSecretConfigured =
+        config.emailEngineWebhookSecret.trim().length > 0;
+      const webhookSecretDefault =
+        config.emailEngineWebhookSecretUsesDefault === true ||
+        config.emailEngineWebhookSecret === "dev-emailhub-secret";
+      const ok =
+        urlConfigured &&
+        http.http === "ok" &&
+        accessTokenConfigured &&
+        webhookSecretConfigured &&
+        !webhookSecretDefault;
+
+      return {
+        provider: "emailengine",
+        ok,
+        missing: [
+          ...(urlConfigured ? [] : ["EMAILENGINE_URL"]),
+          ...(accessTokenConfigured ? [] : ["EMAILENGINE_ACCESS_TOKEN"]),
+          ...((accessTokenConfigured &&
+            config.emailEnginePreparedTokenConfigured === false)
+            ? ["EENGINE_PREPARED_TOKEN"]
+            : []),
+          ...(webhookSecretConfigured ? [] : ["EMAILENGINE_WEBHOOK_SECRET"]),
+        ],
+        warnings: [
+          ...(webhookSecretConfigured && webhookSecretDefault
+            ? ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"]
+            : []),
+          ...((accessTokenConfigured &&
+            config.emailEnginePreparedTokenConfigured === false)
+            ? ["EENGINE_PREPARED_TOKEN_MISSING"]
+            : []),
+        ],
+        readiness: {
+          status: ok ? "ready" : "degraded",
+          summary: ok
+            ? "EmailEngine 已具备上线配置。"
+            : "EmailEngine 配置未完全就绪，Hermes 涉及邮箱写回的操作会受限。",
+        },
+        capabilities: {
+          imapSmtpOnboarding: accessTokenConfigured,
+          attachmentDownload: accessTokenConfigured,
+          send: accessTokenConfigured,
+        },
+      };
+    },
+    getSkills: getHermesSkills,
+    now: () => new Date().toISOString(),
+  });
   config.syncControlService = createSyncControlService({
     store: createPostgresSyncControlStore(pool),
     createId: randomUUID,

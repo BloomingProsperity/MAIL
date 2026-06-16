@@ -409,6 +409,7 @@ export interface HermesEmailSearchQaResult {
 
 export type HermesRuleCandidateStatus = "shadow" | "approved" | "dismissed";
 export type HermesRuleRunMode = "shadow" | "active";
+export type HermesSkillMode = "read" | "draft" | "classify" | "learn";
 
 export interface HermesRuleCandidateDto {
   id: string;
@@ -447,6 +448,54 @@ export interface HermesRuleSimulationDto {
   sampleMessageIds: string[];
   actionPreview: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface HermesSkillDto {
+  id: string;
+  title: string;
+  mode: HermesSkillMode;
+  description: string;
+}
+
+export interface HermesWorkspaceOperationBoundaryDto {
+  id: string;
+  title: string;
+  mode: "read_only" | "draft_only" | "confirmation_required";
+  description: string;
+}
+
+export interface HermesWorkspaceMailEngineContextDto {
+  provider: "emailengine";
+  ok: boolean;
+  missing: string[];
+  warnings: string[];
+  readiness: {
+    status: "ready" | "degraded";
+    summary: string;
+  };
+  capabilities: {
+    imapSmtpOnboarding: boolean;
+    attachmentDownload: boolean;
+    send: boolean;
+  };
+}
+
+export interface HermesWorkspaceContextDto {
+  generatedAt: string;
+  accountScope: {
+    requestedAccountId?: string;
+    availableAccountIds: string[];
+    selectedAccount?: SyncCenterAccountDto;
+  };
+  accounts: SyncCenterAccountDto[];
+  navigation?: MailNavigationSummaryDto;
+  labels: LabelDto[];
+  rules: HermesRuleDto[];
+  pendingRuleCandidates: HermesRuleCandidateDto[];
+  skills: HermesSkillDto[];
+  mailEngine?: HermesWorkspaceMailEngineContextDto;
+  operationBoundaries: HermesWorkspaceOperationBoundaryDto[];
+  unavailableModules: string[];
 }
 
 export type HermesPriorityLevel = "low" | "medium" | "high";
@@ -605,8 +654,13 @@ export interface SyncCenterAccountDto {
   accountId: string;
   email: string;
   provider: string;
+  authMethod?: "password" | "oauth";
+  displayName?: string;
   syncState: string;
+  engineProvider?: "emailengine" | "native";
+  reauthRequired?: boolean;
   nextAction?: string;
+  accountUpdatedAt?: string;
   latestSyncJob?: unknown;
   latestJob?: unknown;
 }
@@ -1472,6 +1526,11 @@ export interface EmailHubApi {
   searchMailWithHermes(
     input: HermesEmailSearchQaInput,
   ): Promise<HermesEmailSearchQaResult>;
+  getHermesWorkspaceContext(input?: {
+    accountId?: string;
+    ruleLimit?: number;
+    labelLimit?: number;
+  }): Promise<HermesWorkspaceContextDto>;
   draftHermesRule(input: {
     accountId: string;
     command: string;
@@ -2142,6 +2201,25 @@ export function createEmailHubApi(
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });
+    },
+
+    getHermesWorkspaceContext(input = {}) {
+      const params = new URLSearchParams();
+      if (input.accountId) {
+        params.set("accountId", input.accountId);
+      }
+      if (input.ruleLimit !== undefined) {
+        params.set("ruleLimit", String(input.ruleLimit));
+      }
+      if (input.labelLimit !== undefined) {
+        params.set("labelLimit", String(input.labelLimit));
+      }
+      const query = params.toString();
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/workspace/context${query ? `?${query}` : ""}`,
+      );
     },
 
     draftHermesRule(input) {

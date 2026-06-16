@@ -21,6 +21,7 @@ import type {
   HermesThreadSummaryResult,
   HermesTranslationPreferenceResult,
   HermesTranslateTextResult,
+  HermesWorkspaceContextDto,
   MailNavigationSummaryDto,
   MailEngineHealthDto,
   MailProviderCapabilityDto,
@@ -132,6 +133,10 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    const context = await screen.findByLabelText("Hermes mailbox context");
+    expect(within(context).getByText("1 个账号")).toBeTruthy();
+    expect(within(context).getByText("2 个分组")).toBeTruthy();
+    expect(within(context).getByText("规则需确认")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Hermes 指令"), {
       target: { value: "客户上次提到的合同是什么" },
     });
@@ -179,6 +184,11 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
 
     await waitFor(() => {
+      expect(api.getHermesWorkspaceContext).toHaveBeenCalledWith({
+        accountId: "account_1",
+        ruleLimit: 10,
+        labelLimit: 20,
+      });
       expect(api.draftHermesRule).toHaveBeenCalledWith({
         accountId: "account_1",
         command: "帮我创建一个规则，左侧加一个验证码分组，验证码邮件都进这个分组",
@@ -6019,6 +6029,112 @@ function createApiFixture(): EmailHubApi {
         },
       ],
     } satisfies HermesEmailSearchQaResult)),
+    getHermesWorkspaceContext: vi.fn(async () => ({
+      generatedAt: "2026-06-16T01:00:00.000Z",
+      accountScope: {
+        requestedAccountId: "account_1",
+        availableAccountIds: ["account_1"],
+        selectedAccount: {
+          accountId: "account_1",
+          email: "sync@example.com",
+          provider: "gmail",
+          authMethod: "oauth",
+          syncState: "syncing",
+          engineProvider: "emailengine",
+          reauthRequired: false,
+          nextAction: "none",
+          accountUpdatedAt: "2026-06-16T00:00:00.000Z",
+        },
+      },
+      accounts: [
+        {
+          accountId: "account_1",
+          email: "sync@example.com",
+          provider: "gmail",
+          authMethod: "oauth",
+          syncState: "syncing",
+          engineProvider: "emailengine",
+          reauthRequired: false,
+          nextAction: "none",
+          accountUpdatedAt: "2026-06-16T00:00:00.000Z",
+        },
+      ],
+      navigation: {
+        providerGroups: [{ id: "gmail", label: "Gmail", count: 7 }],
+        quickCategories: [
+          { id: "codes", label: "验证码", count: 4, tone: "blue" },
+          { id: "receipts", label: "账单/收据", count: 2, tone: "green" },
+        ],
+      },
+      labels: [
+        {
+          id: "label_code",
+          accountId: "account_1",
+          name: "验证码",
+          color: "blue",
+          messageCount: 4,
+          createdAt: "2026-06-13T10:01:00.000Z",
+        },
+      ],
+      rules: [
+        {
+          id: "rule_codes",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "verification", "otp"] },
+          action: {
+            type: "apply_label",
+            labelId: "label_code",
+            requiresConfirmation: false,
+          },
+          confidence: 0.9,
+          enabled: true,
+          createdAt: "2026-06-13T10:02:00.000Z",
+          approvedAt: "2026-06-13T10:02:00.000Z",
+        },
+      ],
+      pendingRuleCandidates: [],
+      skills: [
+        {
+          id: "translate_text",
+          title: "翻译邮件",
+          mode: "read",
+          description: "翻译邮件正文",
+        },
+        {
+          id: "rule_suggest",
+          title: "规则建议",
+          mode: "learn",
+          description: "从重复行为生成候选规则",
+        },
+      ],
+      mailEngine: {
+        provider: "emailengine",
+        ok: true,
+        missing: [],
+        warnings: [],
+        readiness: {
+          status: "ready",
+          summary: "EmailEngine 已具备上线配置。",
+        },
+        capabilities: {
+          imapSmtpOnboarding: true,
+          attachmentDownload: true,
+          send: true,
+        },
+      },
+      operationBoundaries: [
+        {
+          id: "create_mailbox_rule",
+          title: "创建邮箱规则和左侧分组",
+          mode: "confirmation_required",
+          description: "先模拟，再确认启用。",
+        },
+      ],
+      unavailableModules: [],
+    } satisfies HermesWorkspaceContextDto)),
     draftHermesRule: vi.fn(async () => ({
       candidates: [
         {

@@ -237,6 +237,7 @@ export function createHermesRuleService(
           type: "apply_label",
           labelName: draft.labelName,
           labelColor: draft.labelColor,
+          savedView: draft.savedView,
           applyToHistory: false,
           providerWriteback: false,
           requiresConfirmation: true,
@@ -311,7 +312,9 @@ export function createHermesRuleService(
         approvedAt: options.now(),
         ...(actionOverride ? { actionOverride } : {}),
       });
-      const savedView = rule ? savedViewFromRuleAction(rule.action) : undefined;
+      const savedView = rule
+        ? savedViewFromRuleAction(rule.action, rule.condition)
+        : undefined;
       if (savedView && !findBuiltInSavedView(savedView.id)) {
         await options.store.upsertSavedView(savedView);
       }
@@ -339,7 +342,10 @@ interface InMemoryHermesRuleStoreSeed {
 
 export function createInMemoryHermesRuleStore(
   seed: InMemoryHermesRuleStoreSeed = {},
-): HermesRuleStore & { listRuns(): HermesRuleSimulation[] } {
+): HermesRuleStore & {
+  listRuns(): HermesRuleSimulation[];
+  listSavedViews(): SavedViewDefinition[];
+} {
   const behaviors = [...(seed.observedBehaviors ?? [])];
   const candidates = [...(seed.candidates ?? [])];
   const rules = [...(seed.rules ?? [])];
@@ -479,6 +485,13 @@ export function createInMemoryHermesRuleStore(
     listRuns() {
       return runs.map((run) => ({ ...run }));
     },
+
+    listSavedViews() {
+      return savedViews.map((view) => ({
+        ...view,
+        keywords: [...view.keywords],
+      }));
+    },
   };
 }
 
@@ -561,6 +574,7 @@ function labelRuleDraftForCommand(command: string): {
   title: string;
   labelName: string;
   labelColor: LabelColor;
+  savedView: SavedViewDefinition;
   keywords: string[];
   confidence: number;
 } {
@@ -569,6 +583,7 @@ function labelRuleDraftForCommand(command: string): {
     title: savedViewDraft.title,
     labelName: savedViewDraft.savedView.label,
     labelColor: savedViewDraft.savedView.tone,
+    savedView: savedViewDraft.savedView,
     keywords: savedViewDraft.savedView.keywords,
     confidence: savedViewDraft.confidence,
   };
@@ -595,6 +610,7 @@ async function approvedLabelActionForCandidate(input: {
     labelId: label.id,
     labelName: label.name,
     labelColor: label.color,
+    savedView: draftAction.savedView,
     applyToHistory: false,
     providerWriteback: false,
     requiresConfirmation: false,
@@ -604,6 +620,7 @@ async function approvedLabelActionForCandidate(input: {
 function labelDraftActionFromCandidate(candidate: HermesRuleCandidate): {
   labelName: string;
   labelColor: LabelColor;
+  savedView: SavedViewDefinition;
 } {
   const action = candidate.action;
   if (action.type !== "apply_label") {
@@ -618,21 +635,38 @@ function labelDraftActionFromCandidate(candidate: HermesRuleCandidate): {
   return {
     labelName,
     labelColor,
+    savedView:
+      savedViewDefinitionFromValue(action.savedView) ??
+      savedViewDefinitionFromLabelAction(action, candidate.condition),
   };
 }
 
 function savedViewFromRuleAction(
   action: Record<string, unknown>,
+  condition: Record<string, unknown> = {},
 ): SavedViewDefinition | undefined {
+  if (action.type === "apply_label") {
+    return (
+      savedViewDefinitionFromValue(action.savedView) ??
+      savedViewDefinitionFromLabelAction(action, condition)
+    );
+  }
+
   if (action.type !== "ensure_saved_view") {
     return undefined;
   }
-  const savedView = action.savedView;
-  if (!savedView || typeof savedView !== "object" || Array.isArray(savedView)) {
+
+  return savedViewDefinitionFromValue(action.savedView);
+}
+
+function savedViewDefinitionFromValue(
+  value: unknown,
+): SavedViewDefinition | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
 
-  const record = savedView as Record<string, unknown>;
+  const record = value as Record<string, unknown>;
   if (
     typeof record.id !== "string" ||
     typeof record.label !== "string" ||
@@ -653,16 +687,49 @@ function savedViewFromRuleAction(
   };
 }
 
-function candidateKeywords(candidate: HermesRuleCandidate): string[] {
-  const fromCondition = candidate.condition.anyKeywords;
-  if (Array.isArray(fromCondition)) {
-    return uniqueStrings(
-      fromCondition.filter((item): item is string => typeof item === "string"),
-    );
+function savedViewDefinitionFromLabelAction(
+  action: Record<string, unknown>,
+  condition: Record<string, unknown>,
+): SavedViewDefinition {
+  const labelName = action.labelName;
+  const labelColor = action.labelColor ?? "blue";
+  if (typeof labelName !== "string" || !isTone(labelColor)) {
+    throw new InvalidHermesRuleRequestError();
   }
 
-  const savedView = savedViewFromRuleAction(candidate.action);
+  const keywords = conditionKeywords(condition);
+  if (keywords.length === 0) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return {
+    id: `hermes_${stableTextId(labelName)}`,
+    label: labelName,
+    tone: labelColor,
+    kind: "keyword",
+    keywords,
+  };
+}
+
+function candidateKeywords(candidate: HermesRuleCandidate): string[] {
+  const fromCondition = conditionKeywords(candidate.condition);
+  if (fromCondition.length > 0) {
+    return fromCondition;
+  }
+
+  const savedView = savedViewFromRuleAction(candidate.action, candidate.condition);
   return savedView ? savedView.keywords : [];
+}
+
+function conditionKeywords(condition: Record<string, unknown>): string[] {
+  const fromCondition = condition.anyKeywords;
+  if (!Array.isArray(fromCondition)) {
+    return [];
+  }
+
+  return uniqueStrings(
+    fromCondition.filter((item): item is string => typeof item === "string"),
+  );
 }
 
 function extractRequestedGroupLabel(command: string): string | undefined {

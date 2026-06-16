@@ -57,6 +57,7 @@ import type {
   HermesRuntimeVersionStatus,
   HermesThreadSummaryResult,
   HermesTranslateTextResult,
+  HermesWorkspaceContextDto,
   ImapSmtpConnectionDiagnostic,
   ImapSmtpConnectionTestResult,
   ImapSmtpOnboardingInput,
@@ -597,6 +598,10 @@ export function App(props: AppProps = {}) {
     useState<HermesRuleCandidateDto | undefined>();
   const [hermesDockRuleSimulation, setHermesDockRuleSimulation] =
     useState<HermesRuleSimulationDto | undefined>();
+  const [hermesWorkspaceContext, setHermesWorkspaceContext] =
+    useState<HermesWorkspaceContextDto | undefined>();
+  const [hermesWorkspaceContextLoading, setHermesWorkspaceContextLoading] =
+    useState(false);
   const [hermesDockBusy, setHermesDockBusy] = useState(false);
   const [workspaceFolders, setWorkspaceFolders] = useState<FolderItem[]>(folders);
   const [workspaceMail, setWorkspaceMail] = useState<MailItem[]>(
@@ -742,6 +747,44 @@ export function App(props: AppProps = {}) {
     setHermesDockRuleSimulation(undefined);
   }
 
+  async function refreshHermesWorkspaceContext(options: {
+    accountId?: string;
+    force?: boolean;
+  } = {}) {
+    if (!props.api || hermesWorkspaceContextLoading) {
+      return;
+    }
+
+    const accountIdForContext =
+      options.accountId ?? selectedMail?.accountId ?? selectedAccountId;
+    if (!accountIdForContext) {
+      return;
+    }
+
+    if (
+      !options.force &&
+      hermesWorkspaceContext?.accountScope.requestedAccountId ===
+        accountIdForContext
+    ) {
+      return;
+    }
+
+    setHermesWorkspaceContextLoading(true);
+    try {
+      setHermesWorkspaceContext(
+        await props.api.getHermesWorkspaceContext({
+          accountId: accountIdForContext,
+          ruleLimit: 10,
+          labelLimit: 20,
+        }),
+      );
+    } catch {
+      // Keep the current context badge; prompt-specific errors are shown separately.
+    } finally {
+      setHermesWorkspaceContextLoading(false);
+    }
+  }
+
   async function submitHermesDockPrompt(rawPrompt: string) {
     const question = rawPrompt.trim();
     if (!question) {
@@ -770,6 +813,10 @@ export function App(props: AppProps = {}) {
     if (isHermesRuleCommand(question)) {
       setHermesDockNotice("Hermes 正在读取邮箱环境并生成规则草案...");
       try {
+        await refreshHermesWorkspaceContext({
+          accountId: hermesAccountId,
+          force: true,
+        });
         const draft = await props.api.draftHermesRule({
           accountId: hermesAccountId,
           command: question,
@@ -838,6 +885,10 @@ export function App(props: AppProps = {}) {
       });
       await refreshNavigationSummary();
       await refreshLabels(hermesDockRuleCandidate.accountId);
+      await refreshHermesWorkspaceContext({
+        accountId: hermesDockRuleCandidate.accountId,
+        force: true,
+      });
       setHermesDockNotice(`Hermes 规则已启用：${rule.title}`);
     } catch {
       setHermesDockNotice("Hermes 规则启用失败。");
@@ -1481,8 +1532,11 @@ export function App(props: AppProps = {}) {
         result={hermesDockResult}
         ruleCandidate={hermesDockRuleCandidate}
         ruleSimulation={hermesDockRuleSimulation}
+        workspaceContext={hermesWorkspaceContext}
+        workspaceContextLoading={hermesWorkspaceContextLoading}
         busy={hermesDockBusy}
         onPromptChange={updateHermesPrompt}
+        onOpen={() => void refreshHermesWorkspaceContext()}
         onSubmit={(prompt) => void submitHermesDockPrompt(prompt)}
         onApproveRule={() => void approveHermesDockRule()}
         onOpenSearch={launchGlobalSearch}
@@ -8984,8 +9038,11 @@ function HermesDock(props: {
   result?: HermesEmailSearchQaResult;
   ruleCandidate?: HermesRuleCandidateDto;
   ruleSimulation?: HermesRuleSimulationDto;
+  workspaceContext?: HermesWorkspaceContextDto;
+  workspaceContextLoading?: boolean;
   busy: boolean;
   onPromptChange: (value: string) => void;
+  onOpen: () => void;
   onSubmit: (prompt: string) => void;
   onApproveRule: () => void;
   onOpenSearch: (query: string) => void;
@@ -9008,6 +9065,9 @@ function HermesDock(props: {
   }, [activityVersion, isOpen, props.prompt]);
 
   function showDock() {
+    if (!isOpen) {
+      props.onOpen();
+    }
     setIsOpen(true);
     setActivityVersion((version) => version + 1);
   }
@@ -9063,6 +9123,10 @@ function HermesDock(props: {
               <Send size={18} />
             </button>
           </form>
+          <HermesWorkspaceContextBar
+            context={props.workspaceContext}
+            loading={props.workspaceContextLoading}
+          />
           {props.notice ? (
             <div className="dock-result-status" role="status">
               {props.notice}
@@ -9134,6 +9198,42 @@ function HermesDock(props: {
         </>
       )}
     </section>
+  );
+}
+
+function HermesWorkspaceContextBar(props: {
+  context?: HermesWorkspaceContextDto;
+  loading?: boolean;
+}) {
+  if (props.loading && !props.context) {
+    return (
+      <div className="dock-context" role="status">
+        <span>正在读取邮箱环境...</span>
+      </div>
+    );
+  }
+
+  const context = props.context;
+  if (!context) {
+    return null;
+  }
+
+  const confirmationBoundary = context.operationBoundaries.find(
+    (boundary) => boundary.mode === "confirmation_required",
+  );
+  const statusLabel =
+    context.mailEngine?.readiness.status === "ready"
+      ? "EmailEngine ready"
+      : "EmailEngine degraded";
+
+  return (
+    <div className="dock-context" aria-label="Hermes mailbox context">
+      <span>{context.accounts.length} 个账号</span>
+      <span>{context.navigation?.quickCategories.length ?? 0} 个分组</span>
+      <span>{context.rules.length} 条规则</span>
+      <span>{statusLabel}</span>
+      {confirmationBoundary ? <span>规则需确认</span> : null}
+    </div>
   );
 }
 

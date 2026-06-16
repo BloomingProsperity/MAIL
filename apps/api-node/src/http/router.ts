@@ -64,6 +64,10 @@ import {
   type HermesRuleService,
 } from "../hermes/rules.js";
 import {
+  InvalidHermesWorkspaceContextRequestError,
+  type HermesWorkspaceContextService,
+} from "../hermes/workspace-context.js";
+import {
   InvalidHermesFollowUpReminderRequestError,
   type HermesFollowUpReminderService,
   type HermesFollowUpReminderStatus,
@@ -392,6 +396,7 @@ export interface ApiConfig {
   hermesFollowUpReminderService?: HermesFollowUpReminderService;
   hermesAuditLogService?: HermesAuditLogService;
   hermesRuleService?: HermesRuleService;
+  hermesWorkspaceContextService?: HermesWorkspaceContextService;
   hermesMemoryStore?: HermesMemoryStore;
   hermesDraftFeedbackStore?: HermesDraftFeedbackStore;
   smartInboxFeedbackStore?: SmartInboxFeedbackStore;
@@ -653,6 +658,27 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
 
       if (request.method === "GET" && request.url === "/api/hermes/skills") {
         writeJson(response, 200, getHermesSkills());
+        return;
+      }
+
+      if (
+        request.method === "GET" &&
+        isHermesWorkspaceContextRoute(request.url)
+      ) {
+        if (!config.hermesWorkspaceContextService) {
+          writeJson(response, 503, {
+            error: "hermes_workspace_context_unavailable",
+          });
+          return;
+        }
+
+        writeJson(
+          response,
+          200,
+          await config.hermesWorkspaceContextService.getContext(
+            parseHermesWorkspaceContextInput(request.url),
+          ),
+        );
         return;
       }
 
@@ -2306,6 +2332,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
+      if (error instanceof InvalidHermesWorkspaceContextRequestError) {
+        writeJson(response, 400, { error: error.code });
+        return;
+      }
+
       if (error instanceof InvalidHermesFollowUpReminderRequestError) {
         writeJson(response, 400, { error: error.code });
         return;
@@ -3120,6 +3151,60 @@ function parseHermesRuleRoute(
     action: match[2] as "simulate" | "approve",
     candidateId: decodeURIComponent(match[1]),
   };
+}
+
+function isHermesWorkspaceContextRoute(requestUrl: string | undefined): boolean {
+  if (!requestUrl) {
+    return false;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  return url.pathname === "/api/hermes/workspace/context";
+}
+
+function parseHermesWorkspaceContextInput(requestUrl: string | undefined): {
+  accountId?: string;
+  ruleLimit?: number;
+  labelLimit?: number;
+} {
+  const url = new URL(requestUrl ?? "/", "http://localhost");
+  return {
+    ...optionalWorkspaceContextParam(url, "accountId"),
+    ...optionalWorkspaceContextLimit(url, "ruleLimit"),
+    ...optionalWorkspaceContextLimit(url, "labelLimit"),
+  };
+}
+
+function optionalWorkspaceContextParam<
+  K extends "accountId",
+>(url: URL, key: K): Partial<Record<K, string>> {
+  const value = url.searchParams.get(key)?.trim();
+  if (!value) {
+    return {};
+  }
+  if (value.length > 256 || /[\u0000-\u001f]/.test(value)) {
+    throw new InvalidHermesWorkspaceContextRequestError();
+  }
+
+  return { [key]: value } as Partial<Record<K, string>>;
+}
+
+function optionalWorkspaceContextLimit<
+  K extends "ruleLimit" | "labelLimit",
+>(url: URL, key: K): Partial<Record<K, number>> {
+  const value = url.searchParams.get(key);
+  if (!value) {
+    return {};
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new InvalidHermesWorkspaceContextRequestError();
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new InvalidHermesWorkspaceContextRequestError();
+  }
+
+  return { [key]: parsed } as Partial<Record<K, number>>;
 }
 
 function parseLabelRoute(

@@ -1888,6 +1888,87 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("loads Hermes workspace context for mailbox-aware operations", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        generatedAt: "2026-06-16T01:00:00.000Z",
+        accountScope: {
+          requestedAccountId: "account_1",
+          availableAccountIds: ["account_1"],
+        },
+        accounts: [
+          {
+            accountId: "account_1",
+            email: "lina@example.com",
+            provider: "gmail",
+            authMethod: "oauth",
+            syncState: "syncing",
+            engineProvider: "emailengine",
+            reauthRequired: false,
+            nextAction: "none",
+            accountUpdatedAt: "2026-06-16T00:00:00.000Z",
+          },
+        ],
+        navigation: {
+          providerGroups: [{ id: "gmail", label: "Gmail", count: 1 }],
+          quickCategories: [{ id: "codes", label: "验证码", tone: "blue", count: 3 }],
+        },
+        labels: [],
+        rules: [],
+        pendingRuleCandidates: [],
+        skills: [
+          {
+            id: "translate_text",
+            title: "翻译邮件",
+            mode: "read",
+            description: "翻译邮件正文",
+          },
+        ],
+        mailEngine: {
+          provider: "emailengine",
+          ok: false,
+          missing: ["EMAILENGINE_ACCESS_TOKEN"],
+          warnings: [],
+          readiness: {
+            status: "degraded",
+            summary: "EmailEngine 配置未完全就绪。",
+          },
+          capabilities: {
+            imapSmtpOnboarding: false,
+            attachmentDownload: false,
+            send: false,
+          },
+        },
+        operationBoundaries: [
+          {
+            id: "create_mailbox_rule",
+            title: "创建邮箱规则和左侧分组",
+            mode: "confirmation_required",
+            description: "先模拟，再确认启用。",
+          },
+        ],
+        unavailableModules: [],
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.getHermesWorkspaceContext({
+      accountId: "account_1",
+      ruleLimit: 5,
+      labelLimit: 8,
+    });
+
+    expect(result.accountScope.requestedAccountId).toBe("account_1");
+    expect(result.operationBoundaries[0]).toMatchObject({
+      id: "create_mailbox_rule",
+      mode: "confirmation_required",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/workspace/context?accountId=account_1&ruleLimit=5&labelLimit=8",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("runs Hermes quick reply through the backend skills route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(
