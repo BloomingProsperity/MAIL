@@ -51,6 +51,7 @@ import type {
   HermesProviderCatalogItem,
   HermesProviderProbeMissing,
   HermesRuleCandidateDto,
+  HermesRuleHistoryBackfillDto,
   HermesRuleSimulationDto,
   HermesRuntimeMode,
   HermesRuntimeUpdateChannel,
@@ -609,6 +610,8 @@ export function App(props: AppProps = {}) {
     useState<HermesRuleSimulationDto | undefined>();
   const [hermesDockActionPlan, setHermesDockActionPlan] =
     useState<HermesActionPlanDto | undefined>();
+  const [hermesDockHistoryBackfill, setHermesDockHistoryBackfill] =
+    useState<HermesRuleHistoryBackfillDto | undefined>();
   const [hermesWorkspaceContext, setHermesWorkspaceContext] =
     useState<HermesWorkspaceContextDto | undefined>();
   const [hermesWorkspaceContextLoading, setHermesWorkspaceContextLoading] =
@@ -759,6 +762,7 @@ export function App(props: AppProps = {}) {
     setHermesDockNotice(undefined);
     setHermesDockResult(undefined);
     setHermesDockActionPlan(undefined);
+    setHermesDockHistoryBackfill(undefined);
     setHermesDockRuleCandidate(undefined);
     setHermesDockRuleSimulation(undefined);
   }
@@ -806,6 +810,7 @@ export function App(props: AppProps = {}) {
     if (!question) {
       setHermesDockResult(undefined);
       setHermesDockActionPlan(undefined);
+      setHermesDockHistoryBackfill(undefined);
       setHermesDockRuleCandidate(undefined);
       setHermesDockRuleSimulation(undefined);
       setHermesDockNotice("请输入要让 Hermes 查找或回答的问题。");
@@ -814,6 +819,7 @@ export function App(props: AppProps = {}) {
 
     setHermesDockResult(undefined);
     setHermesDockActionPlan(undefined);
+    setHermesDockHistoryBackfill(undefined);
     setHermesDockRuleCandidate(undefined);
     setHermesDockRuleSimulation(undefined);
     if (!props.api) {
@@ -898,14 +904,21 @@ export function App(props: AppProps = {}) {
       setHermesDockActionPlan({
         ...hermesDockActionPlan,
         status: "completed",
+        steps: confirmation.steps,
+        safety: confirmation.safety,
       });
+      setHermesDockHistoryBackfill(confirmation.historyBackfill);
       await refreshNavigationSummary();
       await refreshLabels(hermesDockRuleCandidate.accountId);
       await refreshHermesWorkspaceContext({
         accountId: hermesDockRuleCandidate.accountId,
         force: true,
       });
-      setHermesDockNotice(`Hermes 执行计划已完成：${rule.title}`);
+      setHermesDockNotice(
+        confirmation.historyBackfill
+          ? `Hermes 执行计划已完成：${rule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。`
+          : `Hermes 执行计划已完成：${rule.title}`,
+      );
     } catch {
       setHermesDockNotice("Hermes 执行计划确认失败。");
     } finally {
@@ -1549,6 +1562,7 @@ export function App(props: AppProps = {}) {
         actionPlan={hermesDockActionPlan}
         ruleCandidate={hermesDockRuleCandidate}
         ruleSimulation={hermesDockRuleSimulation}
+        historyBackfill={hermesDockHistoryBackfill}
         workspaceContext={hermesWorkspaceContext}
         workspaceContextLoading={hermesWorkspaceContextLoading}
         busy={hermesDockBusy}
@@ -9110,6 +9124,7 @@ function HermesDock(props: {
   actionPlan?: HermesActionPlanDto;
   ruleCandidate?: HermesRuleCandidateDto;
   ruleSimulation?: HermesRuleSimulationDto;
+  historyBackfill?: HermesRuleHistoryBackfillDto;
   workspaceContext?: HermesWorkspaceContextDto;
   workspaceContextLoading?: boolean;
   busy: boolean;
@@ -9295,6 +9310,12 @@ function HermesDock(props: {
               {props.ruleSimulation ? (
                 <p>
                   Shadow simulation：命中 {props.ruleSimulation.matchedCount} 封邮件
+                </p>
+              ) : null}
+              {props.historyBackfill ? (
+                <p>
+                  历史回填：匹配 {props.historyBackfill.matchedCount} 封，新增{" "}
+                  {props.historyBackfill.appliedCount} 个标签关联
                 </p>
               ) : null}
               {actionPlan ? (

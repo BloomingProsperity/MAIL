@@ -3,6 +3,7 @@ import type {
   DraftHermesRuleInput,
   HermesRule,
   HermesRuleCandidate,
+  HermesRuleHistoryBackfill,
   HermesRuleService,
   HermesRuleSimulation,
 } from "./rules.js";
@@ -79,6 +80,7 @@ export interface HermesActionPlanConfirmation {
   status: "completed";
   confirmedAt: string;
   rule: HermesRule;
+  historyBackfill?: HermesRuleHistoryBackfill;
   safety: HermesActionPlanSafety;
   steps: HermesActionPlanStep[];
 }
@@ -103,7 +105,7 @@ export interface HermesActionPlanService {
 export interface CreateHermesActionPlanServiceOptions {
   ruleService: Pick<
     HermesRuleService,
-    "draftRule" | "simulateRule" | "approveRule"
+    "draftRule" | "simulateRule" | "approveRule" | "backfillRuleHistory"
   >;
   workspaceContextService: Pick<HermesWorkspaceContextService, "getContext">;
   planStore: HermesActionPlanStore;
@@ -122,6 +124,7 @@ export class InvalidHermesActionPlanRequestError extends Error {
 
 const ACTION_PLAN_SKILL_ID = "action_plan";
 const ACTION_PLAN_SKILL_TITLE = "执行计划";
+const HISTORY_BACKFILL_LIMIT = 5000;
 
 export function createHermesActionPlanService(
   options: CreateHermesActionPlanServiceOptions,
@@ -264,6 +267,14 @@ export function createHermesActionPlanService(
         return undefined;
       }
 
+      const historyBackfill =
+        rule.action.applyToHistory === true
+          ? await options.ruleService.backfillRuleHistory({
+              accountId,
+              ruleId: rule.id,
+              limit: HISTORY_BACKFILL_LIMIT,
+            })
+          : undefined;
       const confirmedAt = options.now();
       const confirmation: HermesActionPlanConfirmation = {
         id: options.createId(),
@@ -273,13 +284,14 @@ export function createHermesActionPlanService(
         status: "completed",
         confirmedAt,
         rule,
+        ...(historyBackfill ? { historyBackfill } : {}),
         safety: confirmedRuleSafety(rule),
-        steps: buildConfirmationSteps(rule),
+        steps: buildConfirmationSteps(rule, historyBackfill),
       };
       const auditEventId = await recordActionPlanRun(options, {
         runId: confirmation.id,
         eventType: "hermes.action_plan.confirmed",
-        readMessageIds: [],
+        readMessageIds: historyBackfill?.sampleMessageIds ?? [],
         input: {
           planId,
           accountId,
@@ -290,6 +302,7 @@ export function createHermesActionPlanService(
           ruleId: rule.id,
           status: confirmation.status,
           safety: confirmation.safety,
+          ...(historyBackfill ? { historyBackfill } : {}),
         },
         action: {
           type: "confirm_action_plan",
@@ -297,6 +310,14 @@ export function createHermesActionPlanService(
           candidateId,
           ruleId: rule.id,
           status: confirmation.status,
+          ...(historyBackfill
+            ? {
+                historyBackfill: {
+                  matchedCount: historyBackfill.matchedCount,
+                  appliedCount: historyBackfill.appliedCount,
+                },
+              }
+            : {}),
         },
       });
 
@@ -350,14 +371,20 @@ function buildDraftSteps(
       title: "等待用户确认",
       mode: "confirmation_required",
       status: "requires_confirmation",
-      detail: "确认后才会创建本地标签/左侧分组并启用规则。",
+      detail:
+        candidate.action.applyToHistory === true
+          ? "确认后会创建本地标签/左侧分组、启用规则，并回填已同步匹配邮件。"
+          : "确认后才会创建本地标签/左侧分组并启用规则。",
       resource: { type: "hermes_rule_candidate", id: candidate.id },
     },
   ];
 }
 
-function buildConfirmationSteps(rule: HermesRule): HermesActionPlanStep[] {
-  return [
+function buildConfirmationSteps(
+  rule: HermesRule,
+  historyBackfill?: HermesRuleHistoryBackfill,
+): HermesActionPlanStep[] {
+  const steps: HermesActionPlanStep[] = [
     {
       id: "approve_rule_candidate",
       title: "启用规则",
@@ -366,6 +393,19 @@ function buildConfirmationSteps(rule: HermesRule): HermesActionPlanStep[] {
       detail: rule.title,
       resource: { type: "hermes_rule", id: rule.id },
     },
+  ];
+  if (historyBackfill) {
+    steps.push({
+      id: "backfill_history_labels",
+      title: "回填历史邮件",
+      mode: "mutation",
+      status: "completed",
+      detail: `匹配 ${historyBackfill.matchedCount} 封已同步邮件，新增 ${historyBackfill.appliedCount} 个标签关联。`,
+      resource: { type: "hermes_rule", id: rule.id },
+    });
+  }
+
+  steps.push(
     {
       id: "refresh_workspace_context",
       title: "刷新邮箱环境",
@@ -373,7 +413,8 @@ function buildConfirmationSteps(rule: HermesRule): HermesActionPlanStep[] {
       status: "completed",
       detail: "前端会刷新左侧分组、标签和 Hermes workspace context。",
     },
-  ];
+  );
+  return steps;
 }
 
 function summarizeWorkspace(
@@ -427,7 +468,6 @@ function isConfirmableRulePlan(input: {
     typeof input.simulationId === "string" &&
     input.simulationId.length > 0 &&
     input.safety.providerWriteback === false &&
-    input.safety.appliesToHistory === false &&
     input.safety.destructive === false
   );
 }

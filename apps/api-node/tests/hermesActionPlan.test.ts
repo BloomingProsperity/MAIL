@@ -263,6 +263,137 @@ describe("Hermes action plan service", () => {
     ]);
   });
 
+  it("confirms explicit all-mail plans and backfills matching local labels", async () => {
+    const runStoreCalls: unknown[] = [];
+    const planStore = createInMemoryHermesActionPlanStore({
+      plans: [
+        createPlanRecord(
+          {
+            id: "plan_1",
+            accountId: "account_1",
+            candidateId: "candidate_codes",
+            simulationId: "simulation_1",
+          },
+          {
+            appliesToHistory: true,
+          },
+        ),
+      ],
+    });
+    const ruleStore = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            applyToHistory: true,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-16T08:00:00.000Z",
+        },
+      ],
+      messages: [
+        {
+          accountId: "account_1",
+          messageId: "message_code_1",
+          senderEmail: "login@example.com",
+          subject: "Your OTP verification code",
+        },
+        {
+          accountId: "account_1",
+          messageId: "message_code_2",
+          senderEmail: "auth@example.com",
+          subject: "验证码 482911",
+        },
+      ],
+    });
+    const ruleService = createHermesRuleService({
+      store: ruleStore,
+      labelService: {
+        async upsertLabel(input) {
+          return {
+            id: "label_codes",
+            accountId: input.accountId,
+            name: input.name,
+            color: input.color ?? "blue",
+            messageCount: 0,
+            createdAt: "2026-06-16T08:01:00.000Z",
+          };
+        },
+      },
+      createId: nextId(["rule_codes"]),
+      now: () => "2026-06-16T08:02:00.000Z",
+    });
+    const service = createHermesActionPlanService({
+      ruleService,
+      workspaceContextService: {
+        async getContext() {
+          throw new Error("not used while confirming");
+        },
+      },
+      planStore,
+      runStore: {
+        async recordCompletedSkillRun(input) {
+          runStoreCalls.push(input);
+        },
+      },
+      createId: nextId(["confirmation_1", "audit_confirm_1"]),
+      now: () => "2026-06-16T08:03:00.000Z",
+    });
+
+    const result = await service.confirmPlan({
+      planId: "plan_1",
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+    });
+
+    expect(result).toMatchObject({
+      id: "confirmation_1",
+      auditEventId: "audit_confirm_1",
+      safety: {
+        requiresUserConfirmation: false,
+        providerWriteback: false,
+        appliesToHistory: true,
+        destructive: false,
+      },
+      historyBackfill: {
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        matchedCount: 2,
+        appliedCount: 2,
+        sampleMessageIds: ["message_code_1", "message_code_2"],
+      },
+    });
+    expect(result?.steps.map((step) => step.id)).toEqual([
+      "approve_rule_candidate",
+      "backfill_history_labels",
+      "refresh_workspace_context",
+    ]);
+    expect(runStoreCalls).toEqual([
+      expect.objectContaining({
+        auditEvent: expect.objectContaining({
+          readMessageIds: ["message_code_1", "message_code_2"],
+          action: expect.objectContaining({
+            historyBackfill: {
+              matchedCount: 2,
+              appliedCount: 2,
+            },
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it("does not confirm a candidate without a matching pending plan", async () => {
     const planStore = createInMemoryHermesActionPlanStore({
       plans: [
@@ -411,6 +542,9 @@ describe("Hermes action plan service", () => {
         async approveRule() {
           throw new Error("should not approve");
         },
+        async backfillRuleHistory() {
+          throw new Error("should not backfill");
+        },
       },
       workspaceContextService: {
         async getContext() {
@@ -441,6 +575,7 @@ function createPlanRecord(
     HermesActionPlanRecord,
     "id" | "accountId" | "candidateId" | "simulationId"
   >,
+  safety: Partial<HermesActionPlanRecord["safety"]> = {},
 ): HermesActionPlanRecord {
   return {
     id: input.id,
@@ -465,6 +600,7 @@ function createPlanRecord(
       providerWriteback: false,
       appliesToHistory: false,
       destructive: false,
+      ...safety,
     },
     steps: [
       {

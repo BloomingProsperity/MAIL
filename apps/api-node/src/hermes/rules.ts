@@ -68,6 +68,14 @@ export interface HermesRuleSimulation {
   createdAt: string;
 }
 
+export interface HermesRuleHistoryBackfill {
+  accountId: string;
+  ruleId: string;
+  matchedCount: number;
+  appliedCount: number;
+  sampleMessageIds: string[];
+}
+
 export interface SuggestHermesRulesInput {
   accountId: string;
   behaviorWindowDays?: number;
@@ -94,6 +102,12 @@ export interface SimulateHermesRuleInput {
 export interface ApproveHermesRuleInput {
   accountId: string;
   candidateId: string;
+}
+
+export interface BackfillHermesRuleHistoryInput {
+  accountId: string;
+  ruleId: string;
+  limit?: number;
 }
 
 export interface ListHermesRulesInput {
@@ -133,6 +147,15 @@ export interface HermesRuleStore {
     approvedAt: string;
     actionOverride?: Record<string, unknown>;
   }): Promise<HermesRule | undefined>;
+  getRule(input: {
+    accountId: string;
+    ruleId: string;
+  }): Promise<HermesRule | undefined>;
+  backfillContentLabelRule(input: {
+    accountId: string;
+    rule: HermesRule;
+    limit: number;
+  }): Promise<HermesRuleHistoryBackfill>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
   upsertSavedView(input: SavedViewDefinition): Promise<void>;
 }
@@ -151,6 +174,9 @@ export interface HermesRuleService {
     input: SimulateHermesRuleInput,
   ): Promise<HermesRuleSimulation | undefined>;
   approveRule(input: ApproveHermesRuleInput): Promise<HermesRule | undefined>;
+  backfillRuleHistory(
+    input: BackfillHermesRuleHistoryInput,
+  ): Promise<HermesRuleHistoryBackfill | undefined>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
 }
 
@@ -238,7 +264,7 @@ export function createHermesRuleService(
           labelName: draft.labelName,
           labelColor: draft.labelColor,
           savedView: draft.savedView,
-          applyToHistory: false,
+          applyToHistory: draft.applyToHistory,
           providerWriteback: false,
           requiresConfirmation: true,
         },
@@ -325,6 +351,31 @@ export function createHermesRuleService(
       return rule;
     },
 
+    async backfillRuleHistory(input) {
+      const accountId = requireString(input.accountId);
+      const ruleId = requireString(input.ruleId);
+      const limit = positiveInteger(input.limit ?? 5000, 1, 10000);
+      const rule = await options.store.getRule({ accountId, ruleId });
+      if (!rule) {
+        return undefined;
+      }
+      if (!isHistoryBackfillableRule(rule)) {
+        return {
+          accountId,
+          ruleId,
+          matchedCount: 0,
+          appliedCount: 0,
+          sampleMessageIds: [],
+        };
+      }
+
+      return options.store.backfillContentLabelRule({
+        accountId,
+        rule,
+        limit,
+      });
+    },
+
     async listRules(input) {
       return options.store.listRules({
         accountId: requireString(input.accountId),
@@ -354,6 +405,7 @@ export function createInMemoryHermesRuleStore(
   const rules = [...(seed.rules ?? [])];
   const messages = [...(seed.messages ?? [])];
   const savedViews = [...(seed.savedViews ?? [])];
+  const labelAssignments = new Set<string>();
   const runs: HermesRuleSimulation[] = [];
 
   return {
@@ -463,6 +515,64 @@ export function createInMemoryHermesRuleStore(
       };
       rules.push(rule);
       return { ...rule };
+    },
+
+    async getRule(input) {
+      const rule = rules.find(
+        (item) => item.accountId === input.accountId && item.id === input.ruleId,
+      );
+      return rule ? { ...rule } : undefined;
+    },
+
+    async backfillContentLabelRule(input) {
+      const labelId =
+        typeof input.rule.action.labelId === "string"
+          ? input.rule.action.labelId
+          : undefined;
+      if (!labelId) {
+        return {
+          accountId: input.accountId,
+          ruleId: input.rule.id,
+          matchedCount: 0,
+          appliedCount: 0,
+          sampleMessageIds: [],
+        };
+      }
+
+      const keywords = ruleKeywords(input.rule);
+      const matches = messages
+        .filter(
+          (message) =>
+            (message.accountId ?? input.accountId) === input.accountId &&
+            keywords.some((keyword) =>
+              [
+                message.senderEmail,
+                message.subject ?? "",
+                message.currentBucket ?? "",
+              ]
+                .join(" ")
+                .toLowerCase()
+                .includes(keyword.toLowerCase()),
+            ),
+        )
+        .slice(0, input.limit);
+      let appliedCount = 0;
+      for (const match of matches) {
+        const assignmentKey = `${match.messageId}:${labelId}`;
+        if (labelAssignments.has(assignmentKey)) {
+          continue;
+        }
+        labelAssignments.add(assignmentKey);
+        appliedCount += 1;
+      }
+
+      return {
+        accountId: input.accountId,
+        ruleId: input.rule.id,
+        matchedCount: matches.length,
+        appliedCount,
+        sampleMessageIds: matches.slice(0, 25).map((message) => message.messageId),
+      };
     },
 
     async listRules(input) {
@@ -583,6 +693,7 @@ function labelRuleDraftForCommand(command: string): {
   savedView: SavedViewDefinition;
   keywords: string[];
   confidence: number;
+  applyToHistory: boolean;
 } {
   const savedViewDraft = savedViewDraftForCommand(command);
   return {
@@ -592,6 +703,7 @@ function labelRuleDraftForCommand(command: string): {
     savedView: savedViewDraft.savedView,
     keywords: savedViewDraft.savedView.keywords,
     confidence: savedViewDraft.confidence,
+    applyToHistory: shouldApplyRuleToHistory(command),
   };
 }
 
@@ -617,7 +729,7 @@ async function approvedLabelActionForCandidate(input: {
     labelName: label.name,
     labelColor: label.color,
     savedView: draftAction.savedView,
-    applyToHistory: false,
+    applyToHistory: draftAction.applyToHistory,
     providerWriteback: false,
     requiresConfirmation: false,
   };
@@ -627,6 +739,7 @@ function labelDraftActionFromCandidate(candidate: HermesRuleCandidate): {
   labelName: string;
   labelColor: LabelColor;
   savedView: SavedViewDefinition;
+  applyToHistory: boolean;
 } {
   const action = candidate.action;
   if (action.type !== "apply_label") {
@@ -641,6 +754,7 @@ function labelDraftActionFromCandidate(candidate: HermesRuleCandidate): {
   return {
     labelName,
     labelColor,
+    applyToHistory: action.applyToHistory === true,
     savedView:
       savedViewDefinitionFromValue(action.savedView) ??
       savedViewDefinitionFromLabelAction(action, candidate.condition),
@@ -727,6 +841,16 @@ function candidateKeywords(candidate: HermesRuleCandidate): string[] {
   return savedView ? savedView.keywords : [];
 }
 
+function ruleKeywords(rule: HermesRule): string[] {
+  const fromCondition = conditionKeywords(rule.condition);
+  if (fromCondition.length > 0) {
+    return fromCondition;
+  }
+
+  const savedView = savedViewFromRuleAction(rule.action, rule.condition);
+  return savedView ? savedView.keywords : [];
+}
+
 function conditionKeywords(condition: Record<string, unknown>): string[] {
   const fromCondition = condition.anyKeywords;
   if (!Array.isArray(fromCondition)) {
@@ -763,6 +887,23 @@ function extractContainsTerms(command: string): string[] {
     command,
   );
   return match?.[1] ? [match[1].trim()] : [];
+}
+
+function shouldApplyRuleToHistory(command: string): boolean {
+  return /所有|全部|已有|现有|历史|以前|过去|已经同步|账号里|账号里的|all|existing|history|historical|past/i.test(
+    command,
+  );
+}
+
+function isHistoryBackfillableRule(rule: HermesRule): boolean {
+  return (
+    rule.enabled === true &&
+    rule.ruleType === "content_label" &&
+    rule.action.type === "apply_label" &&
+    typeof rule.action.labelId === "string" &&
+    rule.action.applyToHistory === true &&
+    rule.action.providerWriteback !== true
+  );
 }
 
 function stableTextId(value: string): string {

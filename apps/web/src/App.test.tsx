@@ -183,7 +183,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
     fireEvent.change(screen.getByLabelText("Hermes 指令"), {
       target: {
-        value: "帮我创建一个规则，左侧加一个验证码分组，验证码邮件都进这个分组",
+        value: "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
       },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
@@ -196,7 +196,8 @@ describe("Email Hub first UI baseline", () => {
       });
       expect(api.createHermesActionPlan).toHaveBeenCalledWith({
         accountId: "account_1",
-        command: "帮我创建一个规则，左侧加一个验证码分组，验证码邮件都进这个分组",
+        command:
+          "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
         sampleLimit: 25,
       });
     });
@@ -208,7 +209,7 @@ describe("Email Hub first UI baseline", () => {
     expect(within(plan).getByText("启用验证码智能分组")).toBeTruthy();
     expect(within(plan).getByText("审计事件：audit_plan_1")).toBeTruthy();
     expect(within(plan).getByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
-    expect(within(plan).getByText(/不写回服务商 · 不回填历史/)).toBeTruthy();
+    expect(within(plan).getByText(/不写回服务商 · 会处理历史/)).toBeTruthy();
 
     fireEvent.click(within(plan).getByRole("button", { name: "确认计划" }));
 
@@ -222,7 +223,12 @@ describe("Email Hub first UI baseline", () => {
     expect(api.approveHermesRule).not.toHaveBeenCalled();
     expect(api.getMailNavigationSummary).toHaveBeenCalled();
     expect(api.listLabels).toHaveBeenCalledWith({ accountId: "account_1" });
-    expect(await screen.findByText("Hermes 执行计划已完成：启用验证码智能分组")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "Hermes 执行计划已完成：启用验证码智能分组，已回填 4 封历史邮件。",
+      ),
+    ).toBeTruthy();
+    expect(within(plan).getByText(/历史回填：匹配 4 封，新增 4 个标签关联/)).toBeTruthy();
   });
 
   it("loads account labels into the directory and filters mail by label", async () => {
@@ -6166,7 +6172,7 @@ function createApiFixture(): EmailHubApi {
       id: "plan_1",
       auditEventId: "audit_plan_1",
       accountId: "account_1",
-      command: "帮我创建一个规则，左侧加一个验证码分组，验证码邮件都进这个分组",
+      command: "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
       intent: "create_mailbox_rule",
       status: "requires_confirmation",
       createdAt: "2026-06-13T10:00:00.000Z",
@@ -6183,7 +6189,7 @@ function createApiFixture(): EmailHubApi {
           labelName: "验证码",
           labelColor: "blue",
           providerWriteback: false,
-          applyToHistory: false,
+          applyToHistory: true,
           requiresConfirmation: true,
         },
         confidence: 0.9,
@@ -6219,7 +6225,7 @@ function createApiFixture(): EmailHubApi {
       safety: {
         requiresUserConfirmation: true,
         providerWriteback: false,
-        appliesToHistory: false,
+        appliesToHistory: true,
         destructive: false,
       },
       steps: [
@@ -6249,7 +6255,7 @@ function createApiFixture(): EmailHubApi {
           title: "等待用户确认",
           mode: "confirmation_required",
           status: "requires_confirmation",
-          detail: "确认后才会创建本地标签/左侧分组并启用规则。",
+          detail: "确认后会创建本地标签/左侧分组、启用规则，并回填已同步匹配邮件。",
         },
       ],
     } satisfies HermesActionPlanDto)),
@@ -6273,7 +6279,7 @@ function createApiFixture(): EmailHubApi {
           labelId: "label_code",
           labelName: "验证码",
           labelColor: "blue",
-          applyToHistory: false,
+          applyToHistory: true,
           providerWriteback: false,
           requiresConfirmation: false,
         },
@@ -6285,10 +6291,32 @@ function createApiFixture(): EmailHubApi {
       safety: {
         requiresUserConfirmation: false,
         providerWriteback: false,
-        appliesToHistory: false,
+        appliesToHistory: true,
         destructive: false,
       },
-      steps: [],
+      historyBackfill: {
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        matchedCount: 4,
+        appliedCount: 4,
+        sampleMessageIds: ["message_1", "message_2"],
+      },
+      steps: [
+        {
+          id: "approve_rule_candidate",
+          title: "启用规则",
+          mode: "mutation",
+          status: "completed",
+          detail: "启用验证码智能分组",
+        },
+        {
+          id: "backfill_history_labels",
+          title: "回填历史邮件",
+          mode: "mutation",
+          status: "completed",
+          detail: "匹配 4 封已同步邮件，新增 4 个标签关联。",
+        },
+      ],
     } satisfies HermesActionPlanConfirmationDto)),
     draftHermesRule: vi.fn(async () => ({
       candidates: [

@@ -2061,8 +2061,15 @@ describe("emailHubApi", () => {
           safety: {
             requiresUserConfirmation: false,
             providerWriteback: false,
-            appliesToHistory: false,
+            appliesToHistory: true,
             destructive: false,
+          },
+          historyBackfill: {
+            accountId: "account_1",
+            ruleId: "rule_codes",
+            matchedCount: 3,
+            appliedCount: 2,
+            sampleMessageIds: ["message_1"],
           },
           steps: [],
         }),
@@ -2082,6 +2089,11 @@ describe("emailHubApi", () => {
 
     expect(plan.auditEventId).toBe("audit_plan_1");
     expect(confirmation.rule.id).toBe("rule_codes");
+    expect(confirmation.historyBackfill).toMatchObject({
+      matchedCount: 3,
+      appliedCount: 2,
+      sampleMessageIds: ["message_1"],
+    });
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "/api/hermes/action-plans",

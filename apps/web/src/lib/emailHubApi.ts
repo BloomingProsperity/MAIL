@@ -577,6 +577,14 @@ export interface HermesActionPlanDto {
   steps: HermesActionPlanStepDto[];
 }
 
+export interface HermesRuleHistoryBackfillDto {
+  accountId: string;
+  ruleId: string;
+  matchedCount: number;
+  appliedCount: number;
+  sampleMessageIds: string[];
+}
+
 export interface HermesActionPlanConfirmationDto {
   id: string;
   auditEventId?: string;
@@ -586,6 +594,7 @@ export interface HermesActionPlanConfirmationDto {
   status: "completed";
   confirmedAt: string;
   rule: HermesRuleDto;
+  historyBackfill?: HermesRuleHistoryBackfillDto;
   safety: HermesActionPlanSafetyDto;
   steps: HermesActionPlanStepDto[];
 }

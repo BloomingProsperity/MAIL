@@ -329,6 +329,67 @@ describe("postgres Hermes rule store", () => {
     });
   });
 
+  it("backfills local label assignments for approved content rules", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              matched_count: "3",
+              applied_count: "2",
+              sample_message_ids: ["message_1", "message_2"],
+            },
+          ],
+        };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    const result = await store.backfillContentLabelRule({
+      accountId: "account_1",
+      limit: 5000,
+      rule: {
+        id: "rule_codes",
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        title: "启用验证码智能分组",
+        ruleType: "content_label",
+        condition: { anyKeywords: ["验证码", "otp"] },
+        action: {
+          type: "apply_label",
+          labelId: "11111111-1111-4111-8111-111111111111",
+          labelName: "验证码",
+          applyToHistory: true,
+          providerWriteback: false,
+        },
+        confidence: 0.9,
+        enabled: true,
+        createdAt: "2026-06-13T10:10:00.000Z",
+        approvedAt: "2026-06-13T10:10:00.000Z",
+      },
+    });
+
+    expect(queries[0].text).toMatch(/WITH matching_messages AS/i);
+    expect(queries[0].text).toMatch(/INSERT INTO label_assignments/i);
+    expect(queries[0].text).toMatch(/ON CONFLICT \(message_id, label_id\) DO NOTHING/i);
+    expect(queries[0].text).toMatch(/labels\.account_id = \$1/i);
+    expect(queries[0].values).toEqual([
+      "account_1",
+      ["验证码", "otp"],
+      "11111111-1111-4111-8111-111111111111",
+      5000,
+    ]);
+    expect(result).toEqual({
+      accountId: "account_1",
+      ruleId: "rule_codes",
+      matchedCount: 3,
+      appliedCount: 2,
+      sampleMessageIds: ["message_1", "message_2"],
+    });
+  });
+
   it("does not approve a candidate that already left shadow mode", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

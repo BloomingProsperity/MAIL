@@ -63,6 +63,33 @@ describe("Hermes rule learning service", () => {
     });
   });
 
+  it("marks explicit all-mail commands for local history backfill", async () => {
+    const store = createInMemoryHermesRuleStore({
+      messages: [
+        message("msg_1", "login@example.com", "Your OTP verification code"),
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      createId: nextId(["candidate_codes"]),
+      now: () => "2026-06-13T10:00:00.000Z",
+    });
+
+    const draft = await service.draftRule({
+      accountId: "account_1",
+      command: "帮我创建一个规则，账号里的所有验证码邮件都进验证码分组",
+    });
+
+    expect(draft.candidates[0]).toMatchObject({
+      action: {
+        type: "apply_label",
+        applyToHistory: true,
+        providerWriteback: false,
+        requiresConfirmation: true,
+      },
+    });
+  });
+
   it("approves a content label candidate by upserting the account label", async () => {
     const upsertedLabels: unknown[] = [];
     const store = createInMemoryHermesRuleStore({
@@ -145,6 +172,90 @@ describe("Hermes rule learning service", () => {
       enabled: true,
     });
     expect(store.listSavedViews()).toEqual([]);
+  });
+
+  it("backfills approved local labels across matching history", async () => {
+    const store = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            applyToHistory: true,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+        },
+      ],
+      messages: [
+        message("msg_1", "login@example.com", "Your OTP verification code"),
+        message("msg_2", "login@example.com", "验证码 482911"),
+        message("msg_3", "client@example.com", "Contract update"),
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      labelService: {
+        async upsertLabel(input) {
+          return {
+            id: "label_codes",
+            accountId: input.accountId,
+            name: input.name,
+            color: input.color ?? "blue",
+            messageCount: 0,
+            createdAt: "2026-06-13T10:09:00.000Z",
+          };
+        },
+      },
+      createId: nextId(["rule_codes"]),
+      now: () => "2026-06-13T10:10:00.000Z",
+    });
+
+    const rule = await service.approveRule({
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+    });
+    const firstBackfill = await service.backfillRuleHistory({
+      accountId: "account_1",
+      ruleId: rule!.id,
+      limit: 100,
+    });
+    const secondBackfill = await service.backfillRuleHistory({
+      accountId: "account_1",
+      ruleId: rule!.id,
+      limit: 100,
+    });
+
+    expect(rule?.action).toMatchObject({
+      type: "apply_label",
+      labelId: "label_codes",
+      applyToHistory: true,
+      providerWriteback: false,
+    });
+    expect(firstBackfill).toEqual({
+      accountId: "account_1",
+      ruleId: "rule_codes",
+      matchedCount: 2,
+      appliedCount: 2,
+      sampleMessageIds: ["msg_1", "msg_2"],
+    });
+    expect(secondBackfill).toEqual({
+      accountId: "account_1",
+      ruleId: "rule_codes",
+      matchedCount: 2,
+      appliedCount: 0,
+      sampleMessageIds: ["msg_1", "msg_2"],
+    });
   });
 
   it("does not upsert labels for content candidates that already left shadow mode", async () => {

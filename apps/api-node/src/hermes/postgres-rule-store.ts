@@ -5,6 +5,7 @@ import type {
   HermesRuleCandidate,
   HermesRuleCandidateStatus,
   HermesRuleFeedbackAction,
+  HermesRuleHistoryBackfill,
   HermesRuleMessageMatch,
   HermesRuleSimulation,
   HermesRuleStore,
@@ -55,6 +56,12 @@ interface MessageMatchRow extends Record<string, unknown> {
   received_at?: string | null;
   current_bucket?: string | null;
   current_score?: string | number | null;
+}
+
+interface HistoryBackfillRow extends Record<string, unknown> {
+  matched_count: string | number;
+  applied_count: string | number;
+  sample_message_ids?: string[] | null;
 }
 
 export function createPostgresHermesRuleStore(
@@ -341,6 +348,110 @@ export function createPostgresHermesRuleStore(
       });
     },
 
+    async getRule(input) {
+      const result = await client.query<RuleRow>(
+        `
+          SELECT
+            id,
+            account_id,
+            candidate_id,
+            title,
+            rule_type,
+            condition,
+            action,
+            confidence,
+            enabled,
+            created_at,
+            approved_at
+          FROM hermes_rules
+          WHERE account_id = $1
+            AND id = $2
+          LIMIT 1
+        `,
+        [input.accountId, input.ruleId],
+      );
+
+      return result.rows[0] ? ruleFromRow(result.rows[0]) : undefined;
+    },
+
+    async backfillContentLabelRule(input) {
+      const labelId =
+        typeof input.rule.action.labelId === "string"
+          ? input.rule.action.labelId
+          : undefined;
+      const keywords = ruleKeywords(input.rule);
+      if (!labelId || keywords.length === 0) {
+        return emptyHistoryBackfill(input.accountId, input.rule.id);
+      }
+
+      const result = await client.query<HistoryBackfillRow>(
+        `
+          WITH matching_messages AS (
+            SELECT DISTINCT messages.id, messages.received_at
+            FROM messages
+            JOIN message_state
+              ON message_state.message_id = messages.id
+            LEFT JOIN message_classification
+              ON message_classification.message_id = messages.id
+            LEFT JOIN search_documents
+              ON search_documents.message_id = messages.id
+            WHERE messages.account_id = $1
+              AND message_state.deleted_at IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM unnest($2::text[]) AS keyword
+                WHERE messages.subject ILIKE '%' || keyword || '%'
+                   OR messages.from_email ILIKE '%' || keyword || '%'
+                   OR COALESCE(messages.from_name, '') ILIKE '%' || keyword || '%'
+                   OR COALESCE(messages.snippet, '') ILIKE '%' || keyword || '%'
+                   OR COALESCE(search_documents.raw_text, '') ILIKE '%' || keyword || '%'
+                   OR COALESCE(message_classification.reasons::text, '') ILIKE '%' || keyword || '%'
+              )
+            ORDER BY messages.received_at DESC, messages.id DESC
+            LIMIT $4
+          ),
+          inserted_assignments AS (
+            INSERT INTO label_assignments (message_id, label_id)
+            SELECT matching_messages.id, labels.id
+            FROM matching_messages
+            JOIN labels
+              ON labels.account_id = $1
+             AND labels.id = $3::uuid
+            ON CONFLICT (message_id, label_id) DO NOTHING
+            RETURNING message_id
+          )
+          SELECT
+            (SELECT COUNT(*) FROM matching_messages) AS matched_count,
+            (SELECT COUNT(*) FROM inserted_assignments) AS applied_count,
+            COALESCE(
+              (
+                SELECT ARRAY_AGG(sample.id::text ORDER BY sample.received_at DESC, sample.id DESC)
+                FROM (
+                  SELECT id, received_at
+                  FROM matching_messages
+                  ORDER BY received_at DESC, id DESC
+                  LIMIT 25
+                ) sample
+              ),
+              ARRAY[]::text[]
+            ) AS sample_message_ids
+        `,
+        [input.accountId, keywords, labelId, input.limit],
+      );
+      const row = result.rows[0];
+      if (!row) {
+        return emptyHistoryBackfill(input.accountId, input.rule.id);
+      }
+
+      return {
+        accountId: input.accountId,
+        ruleId: input.rule.id,
+        matchedCount: Number(row.matched_count),
+        appliedCount: Number(row.applied_count),
+        sampleMessageIds: row.sample_message_ids ?? [],
+      };
+    },
+
     async listRules(input) {
       const result = await client.query<RuleRow>(
         `
@@ -412,6 +523,35 @@ function candidateKeywords(candidate: HermesRuleCandidate): string[] {
     return [];
   }
   return value.filter((item): item is string => typeof item === "string");
+}
+
+function ruleKeywords(rule: HermesRule): string[] {
+  const fromCondition = rule.condition.anyKeywords;
+  if (Array.isArray(fromCondition)) {
+    return fromCondition.filter((item): item is string => typeof item === "string");
+  }
+
+  const savedView = rule.action.savedView;
+  if (!savedView || typeof savedView !== "object" || Array.isArray(savedView)) {
+    return [];
+  }
+  const keywords = (savedView as Record<string, unknown>).keywords;
+  return Array.isArray(keywords)
+    ? keywords.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function emptyHistoryBackfill(
+  accountId: string,
+  ruleId: string,
+): HermesRuleHistoryBackfill {
+  return {
+    accountId,
+    ruleId,
+    matchedCount: 0,
+    appliedCount: 0,
+    sampleMessageIds: [],
+  };
 }
 
 function savedViewMatchConfig(input: SavedViewDefinition): Record<string, unknown> {
