@@ -1231,6 +1231,23 @@ h2 {
   white-space: pre-wrap;
 }
 
+.hermes-organize-result {
+  display: grid;
+  gap: 7px;
+}
+
+.hermes-action-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.hermes-action-list li + li {
+  margin-top: 4px;
+}
+
 .message-body {
   display: grid;
   gap: 7px;

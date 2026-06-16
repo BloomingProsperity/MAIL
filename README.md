@@ -47,7 +47,7 @@ file included, then run:
 
 ```powershell
 $env:EMAILHUB_API_BASE_URL = "http://127.0.0.1:8080"
-docker compose -f infra/docker-compose.yml -f infra/docker-compose.test.yml up --build
+docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.test.yml up --build
 npm run smoke:imap-smtp-onboarding
 ```
 
@@ -249,8 +249,12 @@ The API resolves the internal provider attachment id server-side and streams the
 
 ```powershell
 Copy-Item .env.example .env
-docker compose -f infra/docker-compose.yml up --build
+docker compose --env-file .env -f infra/docker-compose.yml up --build
 ```
+
+Run the compose command from the repository root. The compose file lives under
+`infra/`, so `--env-file .env` is required to interpolate the root `.env`
+values for EmailEngine tokens, webhook secrets, and host port bindings.
 
 Default entry points:
 
@@ -293,7 +297,7 @@ For the real IMAP/SMTP onboarding smoke check, include the test compose file so
 EmailEngine can reach GreenMail on the Docker network:
 
 ```powershell
-docker compose -f infra/docker-compose.yml -f infra/docker-compose.test.yml up --build
+docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.test.yml up --build
 $env:EMAILHUB_API_BASE_URL = "http://127.0.0.1:8080"
 npm run smoke:imap-smtp-onboarding
 ```

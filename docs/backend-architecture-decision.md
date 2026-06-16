@@ -968,6 +968,10 @@ Docker Compose includes a `migrate` service based on `postgres:16-alpine`.
 volumes upgradeable instead of relying only on Postgres first-boot init scripts.
 Postgres, Redis, and EmailEngine stay on the Docker network by default; only
 `api` and `web` publish host ports, configurable with `API_BIND` and `WEB_BIND`.
+When running `infra/docker-compose.yml` from the repository root, use
+`docker compose --env-file .env -f infra/docker-compose.yml ...` so root `.env`
+values are interpolated into EmailEngine tokens, webhook secrets, and bind
+addresses.
 
 Postgres transactions must go through `apps/api-node/src/db/transaction.ts`.
 When a `pg.Pool` is passed to a store, `withTransaction` checks out one client

@@ -6,8 +6,12 @@ import type {
   EmailHubApi,
   FollowUpDto,
   FollowUpPage,
+  HermesActionItemExtractResult,
   HermesEmailSearchQaResult,
   HermesFollowupTrackerResult,
+  HermesLabelSuggestResult,
+  HermesNewsletterCleanupResult,
+  HermesPriorityTriageResult,
   HermesQuickReplyResult,
   HermesReplyDraftResult,
   HermesRewritePolishResult,
@@ -228,6 +232,65 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText("你好，请确认发布计划。")).toBeTruthy();
+  });
+
+  it("runs Hermes organization skills from the message reader", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to organize selected message",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.triagePriorityWithHermes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: "Live subject",
+          threadText: "Live body from backend",
+          senderEmail: "client@example.com",
+          currentBucket: "P1 Urgent",
+          currentScore: 96,
+          currentReasons: ["Direct to you"],
+          language: "zh-CN",
+          readMessageIds: ["message_1"],
+          memoryScope: "sender:client@example.com",
+          memoryLayers: [
+            "contact_memory",
+            "procedural_memory",
+            "semantic_profile",
+            "writing_style_profile",
+          ],
+        }),
+      );
+    });
+    expect(api.suggestLabelsWithHermes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentLabels: [],
+        availableLabels: ["工作", "客户", "财务", "产品", "市场"],
+      }),
+    );
+    expect(api.cleanupNewsletterWithHermes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentBucket: "P1 Urgent",
+        senderEmail: "client@example.com",
+      }),
+    );
+    expect(api.extractActionItemsWithHermes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: "Live subject",
+        readMessageIds: ["message_1"],
+      }),
+    );
+    const result = await screen.findByLabelText("Hermes 整理建议");
+    expect(within(result).getByText(/P1 Urgent · 分数 94/)).toBeTruthy();
+    expect(within(result).getByText(/标签： 客户/)).toBeTruthy();
+    expect(within(result).getByText(/订阅判断：personal · 88%/)).toBeTruthy();
+    expect(within(result).getByText(/Confirm launch schedule/)).toBeTruthy();
   });
 
   it("shows a reader-level Hermes error without replacing the message body", async () => {
@@ -5135,6 +5198,45 @@ function createApiFixture(): EmailHubApi {
         },
       ],
     } satisfies HermesEmailSearchQaResult)),
+    triagePriorityWithHermes: vi.fn(async () => ({
+      skillRunId: "run_priority_1",
+      skillId: "priority_triage",
+      priority: "high",
+      bucket: "P1 Urgent",
+      score: 94,
+      reasons: ["deadline today", "direct to you"],
+      explanation: "Needs a reply today.",
+    } satisfies HermesPriorityTriageResult)),
+    suggestLabelsWithHermes: vi.fn(async () => ({
+      skillRunId: "run_labels_1",
+      skillId: "label_suggest",
+      labels: [{ name: "客户", confidence: 0.92, reason: "client thread" }],
+      actions: [
+        { type: "apply_label", label: "客户", reason: "high confidence" },
+      ],
+    } satisfies HermesLabelSuggestResult)),
+    cleanupNewsletterWithHermes: vi.fn(async () => ({
+      skillRunId: "run_newsletter_1",
+      skillId: "newsletter_cleanup",
+      isNewsletter: false,
+      confidence: 0.88,
+      senderCategory: "personal",
+      reasons: ["direct conversation"],
+      actions: [{ type: "keep_in_inbox", reason: "needs reply" }],
+    } satisfies HermesNewsletterCleanupResult)),
+    extractActionItemsWithHermes: vi.fn(async () => ({
+      skillRunId: "run_actions_1",
+      skillId: "action_item_extract",
+      items: [
+        {
+          title: "Confirm launch schedule",
+          owner: "me",
+          dueText: "today",
+          priority: "high",
+          status: "open",
+        },
+      ],
+    } satisfies HermesActionItemExtractResult)),
     translateText: vi.fn(async () => ({
       skillRunId: "run_translate_1",
       skillId: "translate_text",

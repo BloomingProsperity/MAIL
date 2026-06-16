@@ -40,7 +40,11 @@ import type {
   GatekeeperMode,
   GatekeeperSenderDto,
   HermesEmailSearchQaResult,
+  HermesActionItemExtractResult,
   HermesFollowupTrackerResult,
+  HermesLabelSuggestResult,
+  HermesNewsletterCleanupResult,
+  HermesPriorityTriageResult,
   HermesMemoryDto,
   HermesQuickReplyScenario,
   HermesProviderCatalogItem,
@@ -111,6 +115,14 @@ const PREVIEW_ATTACHMENT_ROWS = [
 ];
 
 type ComposeAutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
+type ReaderHermesBusy = "summary" | "translation" | "organize";
+
+interface ReaderHermesOrganizationResult {
+  priority: HermesPriorityTriageResult;
+  labels: HermesLabelSuggestResult;
+  newsletter: HermesNewsletterCleanupResult;
+  actionItems: HermesActionItemExtractResult;
+}
 
 type PasswordReauthorizationFormState = {
   username: string;
@@ -1344,13 +1356,14 @@ function MailWorkspace(props: {
   >();
   const [attachmentDownloadNotice, setAttachmentDownloadNotice] = useState("");
   const [readerHermesNotice, setReaderHermesNotice] = useState("");
-  const [readerHermesBusy, setReaderHermesBusy] = useState<
-    "summary" | "translation" | undefined
-  >();
+  const [readerHermesBusy, setReaderHermesBusy] =
+    useState<ReaderHermesBusy | undefined>();
   const [readerHermesSummary, setReaderHermesSummary] =
     useState<HermesThreadSummaryResult | undefined>();
   const [readerHermesTranslation, setReaderHermesTranslation] =
     useState<HermesTranslateTextResult | undefined>();
+  const [readerHermesOrganization, setReaderHermesOrganization] =
+    useState<ReaderHermesOrganizationResult | undefined>();
   const [rescheduleTimes, setRescheduleTimes] = useState<Record<string, string>>(
     {},
   );
@@ -1408,6 +1421,7 @@ function MailWorkspace(props: {
     setReaderHermesNotice("");
     setReaderHermesSummary(undefined);
     setReaderHermesTranslation(undefined);
+    setReaderHermesOrganization(undefined);
     setReaderHermesBusy(undefined);
   }, [props.selectedMail.id]);
 
@@ -1993,6 +2007,98 @@ function MailWorkspace(props: {
       }
       setReaderHermesTranslation(undefined);
       setReaderHermesNotice("Hermes 翻译暂时不可用。");
+    } finally {
+      if (readerHermesRequestRef.current === requestId) {
+        setReaderHermesBusy(undefined);
+      }
+    }
+  }
+
+  async function askHermesToOrganizeReader() {
+    if (!props.api) {
+      setReaderHermesNotice("Hermes 暂时不可用。");
+      return;
+    }
+
+    const threadText = currentReaderText();
+    if (!threadText) {
+      setReaderHermesNotice("这封邮件还没有可用于整理的正文。");
+      return;
+    }
+
+    const requestId = readerHermesRequestRef.current + 1;
+    const memoryScope = `sender:${props.selectedMail.email}`;
+    const memoryLayers = [
+      "contact_memory",
+      "procedural_memory",
+      "semantic_profile",
+      "writing_style_profile",
+    ];
+    const readMessageIds = [props.selectedMail.id];
+    readerHermesRequestRef.current = requestId;
+    setReaderHermesBusy("organize");
+    setReaderHermesNotice("Hermes 正在整理当前邮件...");
+    try {
+      const [priority, labelsResult, newsletter, actionItems] = await Promise.all([
+        props.api.triagePriorityWithHermes({
+          subject: props.selectedMail.subject,
+          threadText,
+          senderEmail: props.selectedMail.email,
+          currentBucket: props.selectedMail.bucket,
+          currentScore: props.selectedMail.score,
+          currentReasons: props.selectedMail.reasons,
+          language: "zh-CN",
+          readMessageIds,
+          memoryScope,
+          memoryLayers,
+        }),
+        props.api.suggestLabelsWithHermes({
+          subject: props.selectedMail.subject,
+          threadText,
+          senderEmail: props.selectedMail.email,
+          currentLabels: [],
+          availableLabels: labels.map((label) => label.label),
+          language: "zh-CN",
+          readMessageIds,
+          memoryScope,
+          memoryLayers,
+        }),
+        props.api.cleanupNewsletterWithHermes({
+          subject: props.selectedMail.subject,
+          threadText,
+          senderEmail: props.selectedMail.email,
+          currentBucket: props.selectedMail.bucket,
+          language: "zh-CN",
+          readMessageIds,
+          memoryScope,
+          memoryLayers,
+        }),
+        props.api.extractActionItemsWithHermes({
+          subject: props.selectedMail.subject,
+          threadText,
+          language: "zh-CN",
+          now: new Date().toISOString(),
+          readMessageIds,
+          memoryScope,
+          memoryLayers,
+        }),
+      ]);
+      if (readerHermesRequestRef.current !== requestId) {
+        return;
+      }
+      setReaderHermesOrganization({
+        priority,
+        labels: labelsResult,
+        newsletter,
+        actionItems,
+      });
+      setReaderHermesNotice(`Hermes 已整理：${priority.skillRunId}`);
+    } catch {
+      if (readerHermesRequestRef.current !== requestId) {
+        return;
+      }
+      setReaderHermesOrganization(undefined);
+      setReaderHermesNotice("Hermes 整理暂时不可用。");
     } finally {
       if (readerHermesRequestRef.current === requestId) {
         setReaderHermesBusy(undefined);
@@ -3197,6 +3303,15 @@ function MailWorkspace(props: {
             >
               翻译中文
             </button>
+            <button
+              className="toolbar-button"
+              type="button"
+              aria-label="Ask Hermes to organize selected message"
+              disabled={Boolean(readerHermesBusy)}
+              onClick={() => void askHermesToOrganizeReader()}
+            >
+              Hermes 整理
+            </button>
             <button className="toolbar-button" type="button">归档</button>
             <button className="toolbar-button danger" type="button">删除</button>
           </div>
@@ -3280,6 +3395,76 @@ function MailWorkspace(props: {
                   <strong>Hermes 翻译</strong>
                 </div>
                 <p>{readerHermesTranslation.translatedText}</p>
+              </div>
+            ) : null}
+
+            {readerHermesOrganization ? (
+              <div
+                className="reason-box hermes-reader-result hermes-organize-result"
+                role="status"
+                aria-label="Hermes 整理建议"
+              >
+                <div>
+                  <Sparkles size={18} />
+                  <strong>Hermes 整理建议</strong>
+                </div>
+                <p>
+                  {readerHermesOrganization.priority.bucket} · 分数{" "}
+                  {readerHermesOrganization.priority.score} ·{" "}
+                  {readerHermesOrganization.priority.reasons.join("，")}
+                </p>
+                {readerHermesOrganization.priority.explanation ? (
+                  <p>{readerHermesOrganization.priority.explanation}</p>
+                ) : null}
+                {readerHermesOrganization.labels.labels.length > 0 ? (
+                  <p>
+                    标签：{" "}
+                    {readerHermesOrganization.labels.labels
+                      .map((label) =>
+                        label.reason ? `${label.name}（${label.reason}）` : label.name,
+                      )
+                      .join("，")}
+                  </p>
+                ) : null}
+                {readerHermesOrganization.labels.actions.length > 0 ? (
+                  <p>
+                    建议动作：{" "}
+                    {readerHermesOrganization.labels.actions
+                      .map(formatHermesLabelAction)
+                      .join("，")}
+                  </p>
+                ) : null}
+                <p>
+                  订阅判断：{readerHermesOrganization.newsletter.senderCategory} ·{" "}
+                  {Math.round(readerHermesOrganization.newsletter.confidence * 100)}%
+                  {readerHermesOrganization.newsletter.reasons.length > 0
+                    ? ` · ${readerHermesOrganization.newsletter.reasons.join("，")}`
+                    : ""}
+                </p>
+                {readerHermesOrganization.newsletter.actions.length > 0 ? (
+                  <p>
+                    订阅建议：{" "}
+                    {readerHermesOrganization.newsletter.actions
+                      .map(formatHermesNewsletterAction)
+                      .join("，")}
+                  </p>
+                ) : null}
+                {readerHermesOrganization.actionItems.items.length > 0 ? (
+                  <ul className="hermes-action-list">
+                    {readerHermesOrganization.actionItems.items.map((item) => (
+                      <li key={`${item.title}-${item.dueAt ?? item.dueText ?? ""}`}>
+                        <strong>{item.title}</strong>
+                        {item.owner ? ` · ${item.owner}` : ""}
+                        {item.dueText ?? item.dueAt
+                          ? ` · ${item.dueText ?? formatMailDate(item.dueAt!)}`
+                          : ""}
+                        {item.priority ? ` · ${item.priority}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>待办：未发现明确待办。</p>
+                )}
               </div>
             ) : null}
 
@@ -3411,6 +3596,38 @@ function formatSendIdentity(identity: MailSendIdentityDto): string {
       : []),
   ];
   return markers.length > 0 ? `${label} · ${markers.join(" · ")}` : label;
+}
+
+function formatHermesLabelAction(
+  action: ReaderHermesOrganizationResult["labels"]["actions"][number],
+): string {
+  const actionLabels: Record<typeof action.type, string> = {
+    apply_label: "应用标签",
+    archive: "归档",
+    snooze: "稍后",
+    keep_in_inbox: "保留收件箱",
+    move_to_feed: "移入 Feed",
+    mark_important: "标为重要",
+  };
+  const target = action.label ?? action.snoozeUntil;
+  const base = target ? `${actionLabels[action.type]} ${target}` : actionLabels[action.type];
+  return action.reason ? `${base}（${action.reason}）` : base;
+}
+
+function formatHermesNewsletterAction(
+  action: ReaderHermesOrganizationResult["newsletter"]["actions"][number],
+): string {
+  const actionLabels: Record<typeof action.type, string> = {
+    move_to_feed: "移入 Feed",
+    archive: "归档",
+    unsubscribe_later: "稍后退订",
+    keep_in_inbox: "保留收件箱",
+    mark_not_important: "降低优先级",
+  };
+  const base = action.unsubscribeUrl
+    ? `${actionLabels[action.type]} ${action.unsubscribeUrl}`
+    : actionLabels[action.type];
+  return action.reason ? `${base}（${action.reason}）` : base;
 }
 
 function formatSendIdentityCandidateState(

@@ -1602,6 +1602,157 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs Hermes organize skills through backend preview skill routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            skillRunId: "run_priority_1",
+            skillId: "priority_triage",
+            priority: "high",
+            bucket: "P1 Urgent",
+            score: 94,
+            reasons: ["deadline today"],
+            explanation: "Needs a reply today.",
+          },
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            skillRunId: "run_labels_1",
+            skillId: "label_suggest",
+            labels: [{ name: "客户", confidence: 0.92, reason: "client thread" }],
+            actions: [
+              { type: "apply_label", label: "客户", reason: "high confidence" },
+            ],
+          },
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            skillRunId: "run_newsletter_1",
+            skillId: "newsletter_cleanup",
+            isNewsletter: false,
+            confidence: 0.88,
+            senderCategory: "personal",
+            reasons: ["direct conversation"],
+            actions: [{ type: "keep_in_inbox", reason: "needs reply" }],
+          },
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            skillRunId: "run_actions_1",
+            skillId: "action_item_extract",
+            items: [
+              {
+                title: "Confirm launch schedule",
+                owner: "me",
+                dueText: "today",
+                priority: "high",
+                status: "open",
+              },
+            ],
+          },
+          202,
+        ),
+      );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+    const common = {
+      subject: "Launch schedule",
+      threadText: "Please confirm the launch schedule today.",
+      language: "zh-CN",
+      readMessageIds: ["message_1"],
+      memoryScope: "sender:lina@example.com",
+      memoryLayers: ["contact_memory", "procedural_memory"],
+    };
+
+    const priority = await api.triagePriorityWithHermes({
+      ...common,
+      senderEmail: "lina@example.com",
+      currentBucket: "P2 Important",
+      currentScore: 82,
+      currentReasons: ["Direct to you"],
+    });
+    const labels = await api.suggestLabelsWithHermes({
+      ...common,
+      senderEmail: "lina@example.com",
+      currentLabels: ["市场"],
+      availableLabels: ["客户", "市场"],
+    });
+    const newsletter = await api.cleanupNewsletterWithHermes({
+      ...common,
+      senderEmail: "lina@example.com",
+      currentBucket: "P2 Important",
+    });
+    const actionItems = await api.extractActionItemsWithHermes({
+      ...common,
+      now: "2026-06-16T09:00:00.000Z",
+    });
+
+    expect(priority.bucket).toBe("P1 Urgent");
+    expect(labels.labels[0].name).toBe("客户");
+    expect(newsletter.senderCategory).toBe("personal");
+    expect(actionItems.items[0].title).toBe("Confirm launch schedule");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/hermes/skills/priority_triage/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          ...common,
+          senderEmail: "lina@example.com",
+          currentBucket: "P2 Important",
+          currentScore: 82,
+          currentReasons: ["Direct to you"],
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/hermes/skills/label_suggest/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          ...common,
+          senderEmail: "lina@example.com",
+          currentLabels: ["市场"],
+          availableLabels: ["客户", "市场"],
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/hermes/skills/newsletter_cleanup/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          ...common,
+          senderEmail: "lina@example.com",
+          currentBucket: "P2 Important",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/hermes/skills/action_item_extract/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          ...common,
+          now: "2026-06-16T09:00:00.000Z",
+        }),
+      }),
+    );
+  });
+
   it("runs Hermes translation and thread summary through backend skill routes", async () => {
     const fetchMock = vi
       .fn()

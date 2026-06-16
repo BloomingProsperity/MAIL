@@ -396,6 +396,158 @@ export interface HermesEmailSearchQaResult {
   matches: HermesEmailSearchQaMatch[];
 }
 
+export type HermesPriorityLevel = "low" | "medium" | "high";
+export type HermesPriorityBucket =
+  | "P0 Pinned"
+  | "P1 Urgent"
+  | "P2 Important"
+  | "P3 Needs Action"
+  | "P4 FYI / Updates"
+  | "P5 Transactions"
+  | "P6 Feed"
+  | "P7 Screen";
+
+export interface HermesPriorityTriageInput {
+  subject?: string;
+  threadText: string;
+  senderEmail?: string;
+  currentBucket?: string;
+  currentScore?: number;
+  currentReasons?: string[];
+  language?: string;
+  readMessageIds?: string[];
+  memoryIds?: string[];
+  memoryScope?: string;
+  memoryLayers?: string[];
+}
+
+export interface HermesPriorityTriageResult {
+  skillRunId: string;
+  auditEventId?: string;
+  skillId: "priority_triage";
+  priority: HermesPriorityLevel;
+  bucket: HermesPriorityBucket;
+  score: number;
+  reasons: string[];
+  explanation?: string;
+}
+
+export type HermesLabelActionType =
+  | "apply_label"
+  | "archive"
+  | "snooze"
+  | "keep_in_inbox"
+  | "move_to_feed"
+  | "mark_important";
+
+export interface HermesLabelSuggestion {
+  name: string;
+  confidence?: number;
+  reason?: string;
+}
+
+export interface HermesLabelActionSuggestion {
+  type: HermesLabelActionType;
+  label?: string;
+  snoozeUntil?: string;
+  reason?: string;
+}
+
+export interface HermesLabelSuggestInput {
+  subject?: string;
+  threadText: string;
+  senderEmail?: string;
+  currentLabels?: string[];
+  availableLabels?: string[];
+  language?: string;
+  readMessageIds?: string[];
+  memoryIds?: string[];
+  memoryScope?: string;
+  memoryLayers?: string[];
+}
+
+export interface HermesLabelSuggestResult {
+  skillRunId: string;
+  auditEventId?: string;
+  skillId: "label_suggest";
+  labels: HermesLabelSuggestion[];
+  actions: HermesLabelActionSuggestion[];
+}
+
+export type HermesNewsletterSenderCategory =
+  | "newsletter"
+  | "marketing"
+  | "transactional"
+  | "personal"
+  | "unknown";
+export type HermesNewsletterCleanupActionType =
+  | "move_to_feed"
+  | "archive"
+  | "unsubscribe_later"
+  | "keep_in_inbox"
+  | "mark_not_important";
+
+export interface HermesNewsletterCleanupAction {
+  type: HermesNewsletterCleanupActionType;
+  unsubscribeUrl?: string;
+  reason?: string;
+}
+
+export interface HermesNewsletterCleanupInput {
+  subject?: string;
+  threadText: string;
+  senderEmail?: string;
+  listId?: string;
+  currentBucket?: string;
+  language?: string;
+  readMessageIds?: string[];
+  memoryIds?: string[];
+  memoryScope?: string;
+  memoryLayers?: string[];
+}
+
+export interface HermesNewsletterCleanupResult {
+  skillRunId: string;
+  auditEventId?: string;
+  skillId: "newsletter_cleanup";
+  isNewsletter: boolean;
+  confidence: number;
+  senderCategory: HermesNewsletterSenderCategory;
+  reasons: string[];
+  actions: HermesNewsletterCleanupAction[];
+}
+
+export type HermesActionItemPriority = "low" | "medium" | "high";
+export type HermesActionItemStatus = "open" | "waiting" | "blocked" | "done";
+
+export interface HermesActionItem {
+  title: string;
+  owner?: string;
+  dueAt?: string;
+  dueText?: string;
+  priority?: HermesActionItemPriority;
+  status?: HermesActionItemStatus;
+  sourceQuote?: string;
+}
+
+export interface HermesActionItemExtractInput {
+  subject?: string;
+  threadText: string;
+  language?: string;
+  now?: string;
+  readMessageIds?: string[];
+  memoryIds?: string[];
+  memoryScope?: string;
+  memoryLayers?: string[];
+}
+
+export interface HermesActionItemExtractResult {
+  skillRunId: string;
+  auditEventId?: string;
+  skillId: "action_item_extract";
+  items: HermesActionItem[];
+}
+
 export interface SyncCenterAccountDto {
   accountId: string;
   email: string;
@@ -1252,6 +1404,18 @@ export interface EmailHubApi {
   searchMailWithHermes(
     input: HermesEmailSearchQaInput,
   ): Promise<HermesEmailSearchQaResult>;
+  triagePriorityWithHermes(
+    input: HermesPriorityTriageInput,
+  ): Promise<HermesPriorityTriageResult>;
+  suggestLabelsWithHermes(
+    input: HermesLabelSuggestInput,
+  ): Promise<HermesLabelSuggestResult>;
+  cleanupNewsletterWithHermes(
+    input: HermesNewsletterCleanupInput,
+  ): Promise<HermesNewsletterCleanupResult>;
+  extractActionItemsWithHermes(
+    input: HermesActionItemExtractInput,
+  ): Promise<HermesActionItemExtractResult>;
   previewAccountCsv(input: { csv: string }): Promise<AccountImportPreview>;
   createAccountCsvImport(input: {
     csv: string;
@@ -1862,6 +2026,34 @@ export function createEmailHubApi(
 
     searchMailWithHermes(input) {
       return request(fetchImpl, baseUrl, "/api/hermes/skills/email_search_qa/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    triagePriorityWithHermes(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills/priority_triage/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    suggestLabelsWithHermes(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills/label_suggest/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    cleanupNewsletterWithHermes(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills/newsletter_cleanup/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    extractActionItemsWithHermes(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills/action_item_extract/run", {
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });
