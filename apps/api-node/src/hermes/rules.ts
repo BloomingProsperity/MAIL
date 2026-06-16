@@ -1,5 +1,6 @@
 import {
   findBuiltInSavedView,
+  getBuiltInSavedViews,
   type SavedViewDefinition,
 } from "../mail-navigation/saved-views.js";
 import type { LabelColor, LabelService } from "../labels/labels.js";
@@ -677,17 +678,12 @@ function savedViewDraftForCommand(command: string): {
   confidence: number;
 } {
   const normalized = command.toLowerCase();
-  const builtInCodes = findBuiltInSavedView("codes");
-  if (
-    builtInCodes &&
-    /验证码|驗證碼|动态码|安全码|otp|verification|security code|one-time code/i.test(
-      command,
-    )
-  ) {
+  const builtInView = builtInSavedViewForCommand(command);
+  if (builtInView) {
     return {
-      title: "启用验证码智能分组",
-      savedView: builtInCodes,
-      confidence: 0.9,
+      title: `启用${builtInView.label}智能分组`,
+      savedView: builtInView,
+      confidence: builtInView.id === "codes" ? 0.9 : 0.84,
     };
   }
 
@@ -712,6 +708,21 @@ function savedViewDraftForCommand(command: string): {
     },
     confidence: normalized.includes("规则") ? 0.78 : 0.7,
   };
+}
+
+function builtInSavedViewForCommand(
+  command: string,
+): SavedViewDefinition | undefined {
+  const normalized = command.toLowerCase();
+  return getBuiltInSavedViews().find((view) => {
+    if (view.minAttachmentCount !== undefined) {
+      return false;
+    }
+
+    return [view.label, ...view.keywords].some((keyword) =>
+      normalized.includes(keyword.toLowerCase()),
+    );
+  });
 }
 
 function labelRuleDraftForCommand(command: string): {

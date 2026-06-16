@@ -594,6 +594,110 @@ describe("postgres mirror store", () => {
     ]);
   });
 
+  it("applies multiple approved Hermes content label rules to a newly mirrored message", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const accountId = "00000000-0000-0000-0000-000000000001";
+    const codesLabelId = "11111111-1111-4111-8111-111111111111";
+    const securityLabelId = "22222222-2222-4222-8222-222222222222";
+    const receiptsLabelId = "33333333-3333-4333-8333-333333333333";
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("INSERT INTO messages")) {
+          return { rows: [{ id: "message_1" }] };
+        }
+        if (text.includes("rule_type = 'content_label'")) {
+          return {
+            rows: [
+              {
+                id: "rule_codes",
+                condition: { anyKeywords: ["otp", "验证码"] },
+                action: {
+                  type: "apply_label",
+                  labelId: codesLabelId,
+                  labelName: "验证码",
+                },
+              },
+              {
+                id: "rule_security",
+                condition: { anyKeywords: ["security code"] },
+                action: {
+                  type: "apply_label",
+                  labelId: securityLabelId,
+                  labelName: "安全码",
+                },
+              },
+              {
+                id: "rule_duplicate_codes",
+                condition: { anyKeywords: ["one-time password"] },
+                action: {
+                  type: "apply_label",
+                  labelId: codesLabelId,
+                  labelName: "验证码",
+                },
+              },
+              {
+                id: "rule_receipts",
+                condition: { anyKeywords: ["receipt", "invoice"] },
+                action: {
+                  type: "apply_label",
+                  labelId: receiptsLabelId,
+                  labelName: "发票",
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes("INSERT INTO provider_message_refs")) {
+          return {
+            rows: [
+              {
+                id: "ref_1",
+                provider: "emailengine",
+                provider_message_id: "ee_msg_1",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresMirrorStore(client);
+
+    await store.upsertMessage({
+      engineAccountId: accountId,
+      provider: "emailengine",
+      message: {
+        id: "ee_msg_1",
+        subject: "Your OTP security code",
+        date: "2026-06-12T09:00:00.000Z",
+        from: { address: "login@example.com" },
+        text: {
+          plain:
+            "Use this one-time password to finish sign in. It expires soon.",
+        },
+      },
+    });
+
+    const contentRuleQuery = queries.find((query) =>
+      query.text.includes("rule_type = 'content_label'"),
+    );
+    expect(contentRuleQuery?.text).toMatch(/LIMIT 100/i);
+    expect(contentRuleQuery?.values).toEqual([accountId]);
+
+    const assignmentQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO label_assignments"),
+    );
+    expect(assignmentQuery?.text).toMatch(/labels\.account_id = \$2/i);
+    expect(assignmentQuery?.text).toMatch(/ON CONFLICT \(message_id, label_id\) DO NOTHING/i);
+    expect(assignmentQuery?.values).toEqual([
+      "message_1",
+      accountId,
+      [codesLabelId, securityLabelId],
+    ]);
+    expect(assignmentQuery?.values).not.toContain(receiptsLabelId);
+  });
+
   it("does not apply Hermes content labels when no keyword matches", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

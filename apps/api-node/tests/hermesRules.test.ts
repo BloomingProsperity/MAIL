@@ -63,6 +63,68 @@ describe("Hermes rule learning service", () => {
     });
   });
 
+  it("drafts built-in semantic groups for common mailbox rule commands", async () => {
+    const cases = [
+      {
+        command: "把所有发票和账单邮件放到账单分组",
+        expectedId: "receipts",
+        expectedLabel: "发票/账单",
+        expectedKeywords: ["发票", "账单", "invoice", "receipt"],
+      },
+      {
+        command: "快递物流邮件自动进物流分组",
+        expectedId: "shipping",
+        expectedLabel: "快递/物流",
+        expectedKeywords: ["快递", "物流", "tracking", "delivery"],
+      },
+      {
+        command: "会议邀请和日程邮件归到日程分组",
+        expectedId: "meetings",
+        expectedLabel: "会议/日程",
+        expectedKeywords: ["会议", "日程", "meeting", "calendar"],
+      },
+      {
+        command: "把订阅 newsletter 和营销邮件自动移到订阅分组",
+        expectedId: "newsletters",
+        expectedLabel: "订阅/营销",
+        expectedKeywords: ["订阅", "newsletter", "promotion"],
+      },
+    ];
+
+    for (const item of cases) {
+      const store = createInMemoryHermesRuleStore();
+      const service = createHermesRuleService({
+        store,
+        createId: nextId([`candidate_${item.expectedId}`]),
+        now: () => "2026-06-13T10:00:00.000Z",
+      });
+
+      const draft = await service.draftRule({
+        accountId: "account_1",
+        command: item.command,
+      });
+
+      expect(draft.candidates[0]).toMatchObject({
+        id: `candidate_${item.expectedId}`,
+        title: `启用${item.expectedLabel}智能分组`,
+        condition: {
+          anyKeywords: expect.arrayContaining(item.expectedKeywords),
+        },
+        action: {
+          type: "apply_label",
+          labelName: item.expectedLabel,
+          savedView: {
+            id: item.expectedId,
+            label: item.expectedLabel,
+            keywords: expect.arrayContaining(item.expectedKeywords),
+          },
+          providerWriteback: false,
+          requiresConfirmation: true,
+        },
+      });
+    }
+  });
+
   it("marks explicit all-mail commands for local history backfill", async () => {
     const store = createInMemoryHermesRuleStore({
       messages: [
