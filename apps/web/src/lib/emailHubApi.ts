@@ -803,6 +803,33 @@ export interface AccountTransferImportResult {
   }>;
 }
 
+export interface MailEngineSetupActionDto {
+  code: string;
+  label: string;
+  env: string[];
+  effect: string;
+}
+
+export interface MailEngineHealthDto {
+  provider: "emailengine";
+  ok: boolean;
+  detail: string;
+  capabilities: {
+    urlConfigured: boolean;
+    accessTokenConfigured: boolean;
+    imapSmtpOnboarding: boolean;
+    attachmentDownload: boolean;
+    send: boolean;
+  };
+  missing: string[];
+  warnings: string[];
+  readiness: {
+    status: "ready" | "degraded";
+    summary: string;
+    setupActions: MailEngineSetupActionDto[];
+  };
+}
+
 export type FollowUpKind = "manual" | "needs_reply" | "waiting_on_them";
 export type FollowUpStatus = "open" | "due" | "done" | "cancelled";
 export type FollowUpListStatus = FollowUpStatus | "all";
@@ -1269,6 +1296,7 @@ export interface EmailHubApi {
     accountId: string;
   }): Promise<SyncRetryFailedResult>;
   getMailNavigationSummary(): Promise<MailNavigationSummaryDto>;
+  getMailEngineHealth(): Promise<MailEngineHealthDto>;
   getMailProviderCapabilities(): Promise<MailProviderCapabilitiesResponse>;
   createDomain(input: { domain: string }): Promise<DomainDto>;
   listDomains(): Promise<Page<DomainDto>>;
@@ -2012,6 +2040,10 @@ export function createEmailHubApi(
 
     getMailNavigationSummary() {
       return request(fetchImpl, baseUrl, "/api/mail-navigation/summary");
+    },
+
+    getMailEngineHealth() {
+      return request(fetchImpl, baseUrl, "/api/mail-engine/health");
     },
 
     getMailProviderCapabilities() {

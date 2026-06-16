@@ -14,6 +14,7 @@ import type {
   HermesThreadSummaryResult,
   HermesTranslateTextResult,
   MailNavigationSummaryDto,
+  MailEngineHealthDto,
   MailProviderCapabilityDto,
   OAuthStartResult,
   ReauthorizationTaskDto,
@@ -1800,6 +1801,45 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
   });
 
+  it("shows EmailEngine readiness in Sync Center", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
+      provider: "emailengine",
+      ok: false,
+      detail: "adapter boundary ready: http://emailengine:3000",
+      capabilities: {
+        urlConfigured: true,
+        accessTokenConfigured: false,
+        imapSmtpOnboarding: false,
+        attachmentDownload: false,
+        send: false,
+      },
+      missing: ["EMAILENGINE_ACCESS_TOKEN"],
+      warnings: [],
+      readiness: {
+        status: "degraded",
+        summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
+        setupActions: [
+          {
+            code: "set_emailengine_access_token",
+            label: "设置 EmailEngine 访问令牌",
+            env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+            effect: "添加邮箱、附件下载、发信和同步任务会失败。",
+          },
+        ],
+      },
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+
+    expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
+    expect(screen.getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
+    expect(
+      screen.getByText("EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN"),
+    ).toBeTruthy();
+  });
+
   it("starts OAuth reauthorization from Sync Center", async () => {
     const api = createApiFixture();
     const oauthRedirect = vi.fn();
@@ -2346,6 +2386,51 @@ describe("Email Hub first UI baseline", () => {
     await waitFor(() => {
       expect(screen.getByRole("status").textContent).toContain("QQ 邮箱");
     });
+  });
+
+  it("surfaces EmailEngine production setup gaps from Add Mail", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
+      provider: "emailengine",
+      ok: false,
+      detail: "adapter boundary ready: http://emailengine:3000",
+      capabilities: {
+        urlConfigured: true,
+        accessTokenConfigured: false,
+        imapSmtpOnboarding: false,
+        attachmentDownload: false,
+        send: false,
+      },
+      missing: ["EMAILENGINE_ACCESS_TOKEN"],
+      warnings: [],
+      readiness: {
+        status: "degraded",
+        summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
+        setupActions: [
+          {
+            code: "set_emailengine_access_token",
+            label: "设置 EmailEngine 访问令牌",
+            env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+            effect: "添加邮箱、附件下载、发信和同步任务会失败。",
+          },
+        ],
+      },
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
+    );
+
+    expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
+    expect(screen.getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
+    expect(
+      screen.getByText("EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("添加邮箱、附件下载、发信和同步任务会失败。"),
+    ).toBeTruthy();
+    expect(document.body.textContent ?? "").not.toContain("super-secret-token");
   });
 
   it("tests custom domain server settings before onboarding from Add Mail", async () => {
@@ -4740,6 +4825,28 @@ function createApiFixture(): EmailHubApi {
         }),
       ],
     })),
+    getMailEngineHealth: vi.fn(
+      async () =>
+        ({
+          provider: "emailengine",
+          ok: true,
+          detail: "adapter boundary ready: http://emailengine:3000",
+          capabilities: {
+            urlConfigured: true,
+            accessTokenConfigured: true,
+            imapSmtpOnboarding: true,
+            attachmentDownload: true,
+            send: true,
+          },
+          missing: [],
+          warnings: [],
+          readiness: {
+            status: "ready",
+            summary: "EmailEngine 已具备上线配置。",
+            setupActions: [],
+          },
+        }) satisfies MailEngineHealthDto,
+    ),
     createDomain: vi.fn(async () => ({
       id: "domain_1",
       domain: "demo.site",

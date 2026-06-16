@@ -257,6 +257,26 @@ Default entry points:
 - Web: http://127.0.0.1:5173
 - API: http://127.0.0.1:8080/health
 
+For an EmailEngine-first launch, set these values in `.env` before onboarding
+real mailboxes:
+
+- `EMAILENGINE_ACCESS_TOKEN`: raw token used by the Email Hub API and worker.
+- `EENGINE_PREPARED_TOKEN`: EmailEngine prepared token for unattended container startup.
+- `EMAILENGINE_WEBHOOK_SECRET` and `EENGINE_SECRET`: rotate both away from
+  `dev-emailhub-secret` for production.
+
+Then check the launch readiness endpoint:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/api/mail-engine/health
+```
+
+The response includes `readiness.status`, `missing`, `warnings`, and
+`readiness.setupActions`. Token and secret values are never returned. The web
+app also shows the same EmailEngine setup status in Add Mail and Sync Center so
+operators can see why onboarding, sync, attachment download, or send is not
+available.
+
 After the stack is healthy, run the EmailEngine webhook smoke check from the
 host:
 
@@ -299,9 +319,9 @@ unique message to GreenMail from the host, and finally polls
 account.
 
 `/health` checks API readiness plus a Postgres `SELECT 1`; EmailEngine
-capability diagnostics remain at `/api/mail-engine/health`. Postgres, Redis,
-and EmailEngine are internal Docker services by default. Use `API_BIND` and
-`WEB_BIND` in `.env` to change the host bindings.
+capability and launch diagnostics remain at `/api/mail-engine/health`.
+Postgres, Redis, and EmailEngine are internal Docker services by default. Use
+`API_BIND` and `WEB_BIND` in `.env` to change the host bindings.
 
 ## Logging
 

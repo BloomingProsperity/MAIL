@@ -300,6 +300,19 @@ describe("API routes", () => {
           send: false,
         },
         missing: ["EMAILENGINE_ACCESS_TOKEN"],
+        warnings: [],
+        readiness: {
+          status: "degraded",
+          summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
+          setupActions: [
+            {
+              code: "set_emailengine_access_token",
+              label: "设置 EmailEngine 访问令牌",
+              env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+              effect: "添加邮箱、附件下载、发信和同步任务会失败。",
+            },
+          ],
+        },
       });
     });
   });
@@ -322,6 +335,12 @@ describe("API routes", () => {
             send: true,
           },
           missing: [],
+          warnings: [],
+          readiness: {
+            status: "ready",
+            summary: "EmailEngine 已具备上线配置。",
+            setupActions: [],
+          },
         });
       },
       {
@@ -362,6 +381,73 @@ describe("API routes", () => {
       {
         emailEngineAccessTokenConfigured: true,
         emailEngineAccessTokenHint: "super-secret-token",
+      },
+    );
+  });
+
+  it("warns when EmailEngine webhook secrets are still using development defaults", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/mail-engine/health`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          provider: "emailengine",
+          ok: true,
+          missing: [],
+          warnings: ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"],
+          readiness: {
+            status: "degraded",
+            setupActions: [
+              {
+                code: "rotate_emailengine_webhook_secret",
+                label: "替换默认回调密钥",
+                env: ["EMAILENGINE_WEBHOOK_SECRET", "EENGINE_SECRET"],
+                effect: "生产环境不应继续使用开发默认密钥。",
+              },
+            ],
+          },
+        });
+      },
+      {
+        emailEngineAccessTokenConfigured: true,
+        emailEngineWebhookSecret: "dev-emailhub-secret",
+        emailEngineWebhookSecretUsesDefault: true,
+      },
+    );
+  });
+
+  it("reports missing EmailEngine URL and webhook secret setup actions", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/mail-engine/health`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          provider: "emailengine",
+          ok: false,
+          missing: ["EMAILENGINE_URL", "EMAILENGINE_WEBHOOK_SECRET"],
+          readiness: {
+            status: "degraded",
+            setupActions: [
+              {
+                code: "set_emailengine_url",
+                env: ["EMAILENGINE_URL"],
+              },
+              {
+                code: "set_emailengine_webhook_secret",
+                env: ["EMAILENGINE_WEBHOOK_SECRET", "EENGINE_SECRET"],
+              },
+            ],
+          },
+        });
+      },
+      {
+        emailEngineUrl: "",
+        emailEngineAccessTokenConfigured: true,
+        emailEngineWebhookSecret: "",
+        emailEngineWebhookSecretConfigured: false,
+        emailEngineWebhookSecretUsesDefault: false,
       },
     );
   });

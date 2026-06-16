@@ -2,11 +2,17 @@ import type { ApiConfig } from "./http/router.js";
 import type { ImapSmtpProviderPresetOverrides } from "./accounts/imap-smtp-onboarding.js";
 
 export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
+  const webhookSecret = env.EMAILENGINE_WEBHOOK_SECRET ?? "dev-emailhub-secret";
   return {
     apiName: "email-hub-api",
     emailEngineUrl: env.EMAILENGINE_URL ?? "http://emailengine:3000",
-    emailEngineWebhookSecret:
-      env.EMAILENGINE_WEBHOOK_SECRET ?? "dev-emailhub-secret",
+    emailEngineWebhookSecret: webhookSecret,
+    emailEngineWebhookSecretConfigured:
+      typeof env.EMAILENGINE_WEBHOOK_SECRET === "string" &&
+      env.EMAILENGINE_WEBHOOK_SECRET.trim().length > 0,
+    emailEngineWebhookSecretUsesDefault:
+      !env.EMAILENGINE_WEBHOOK_SECRET ||
+      env.EMAILENGINE_WEBHOOK_SECRET === "dev-emailhub-secret",
   };
 }
 

@@ -64,6 +64,7 @@ import type {
   MailDraftAttachmentDto,
   MailDraftDto,
   MailDraftSource,
+  MailEngineHealthDto,
   MailProviderCapabilityDto,
   MailSearchScope,
   MailSendIdentityCandidateDto,
@@ -3669,6 +3670,8 @@ function AddMailPage(props: {
   const [diagnostics, setDiagnostics] = useState<OperationalEventDto[]>([]);
   const [onboardingRecoveryDiagnostics, setOnboardingRecoveryDiagnostics] =
     useState<ImapSmtpConnectionDiagnostic[]>([]);
+  const [mailEngineHealth, setMailEngineHealth] =
+    useState<MailEngineHealthDto | undefined>();
   const [providerOptions, setProviderOptions] =
     useState<ProviderOption[]>(providers);
   const [csvImportText, setCsvImportText] = useState("");
@@ -3705,6 +3708,31 @@ function AddMailPage(props: {
       .catch(() => {
         if (!cancelled) {
           setProviderOptions(providers);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [props.api]);
+
+  useEffect(() => {
+    if (!props.api) {
+      setMailEngineHealth(undefined);
+      return;
+    }
+
+    let cancelled = false;
+    props.api
+      .getMailEngineHealth()
+      .then((health) => {
+        if (!cancelled) {
+          setMailEngineHealth(health);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMailEngineHealth(undefined);
         }
       });
 
@@ -4126,6 +4154,10 @@ function AddMailPage(props: {
 
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
 
+      {mailEngineHealth ? (
+        <MailEngineReadinessPanel health={mailEngineHealth} />
+      ) : null}
+
       {onboardingRecoveryDiagnostics.length > 0 ? (
         <section
           className="page-panel diagnostic-list connection-diagnostic-list"
@@ -4479,6 +4511,50 @@ function AddMailPage(props: {
             </div>
           ))}
         </section>
+      ) : null}
+    </section>
+  );
+}
+
+function MailEngineReadinessPanel(props: { health: MailEngineHealthDto }) {
+  const degraded = props.health.readiness.status === "degraded";
+  return (
+    <section
+      className={`page-panel mail-engine-readiness ${
+        degraded ? "is-degraded" : "is-ready"
+      }`}
+      aria-label="EmailEngine 上线体检"
+    >
+      <div>
+        <strong>
+          {degraded ? "EmailEngine 上线还差配置" : "EmailEngine 接入就绪"}
+        </strong>
+        <span>{props.health.readiness.summary}</span>
+      </div>
+      <div className="mail-engine-readiness-grid">
+        <p>
+          <strong>{props.health.capabilities.accessTokenConfigured ? "已配置" : "缺少"}</strong>
+          <span>访问令牌</span>
+        </p>
+        <p>
+          <strong>{props.health.capabilities.imapSmtpOnboarding ? "可用" : "不可用"}</strong>
+          <span>邮箱接入</span>
+        </p>
+        <p>
+          <strong>{props.health.capabilities.send ? "可用" : "不可用"}</strong>
+          <span>发信链路</span>
+        </p>
+      </div>
+      {props.health.readiness.setupActions.length > 0 ? (
+        <div className="mail-engine-setup-actions">
+          {props.health.readiness.setupActions.map((action) => (
+            <div key={action.code}>
+              <strong>{action.label}</strong>
+              <span>{action.env.join(" / ")}</span>
+              <p>{action.effect}</p>
+            </div>
+          ))}
+        </div>
       ) : null}
     </section>
   );
@@ -5168,6 +5244,8 @@ function SyncCenterPage(props: {
   );
   const [diagnosticNotice, setDiagnosticNotice] = useState("");
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
+  const [mailEngineHealth, setMailEngineHealth] =
+    useState<MailEngineHealthDto | undefined>();
 
   function mergeAccountState(update: { accountId: string; syncState: string }) {
     setAccounts((current) =>
@@ -5456,6 +5534,31 @@ function SyncCenterPage(props: {
     };
   }, [props.api]);
 
+  useEffect(() => {
+    if (!props.api) {
+      setMailEngineHealth(undefined);
+      return;
+    }
+
+    let alive = true;
+    props.api
+      .getMailEngineHealth()
+      .then((health) => {
+        if (alive) {
+          setMailEngineHealth(health);
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setMailEngineHealth(undefined);
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [props.api]);
+
   return (
     <section className="workspace-page page-scroll">
       <header className="topbar single">
@@ -5465,6 +5568,9 @@ function SyncCenterPage(props: {
         </div>
       </header>
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
+      {mailEngineHealth ? (
+        <MailEngineReadinessPanel health={mailEngineHealth} />
+      ) : null}
       <section className="page-panel">
         {accounts.map((account) => (
           <div className="task-row" key={account.accountId}>

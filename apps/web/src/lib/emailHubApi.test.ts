@@ -61,6 +61,59 @@ describe("emailHubApi", () => {
     });
   });
 
+  it("loads EmailEngine readiness for production setup guidance", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        provider: "emailengine",
+        ok: false,
+        detail: "adapter boundary ready: http://emailengine:3000",
+        capabilities: {
+          urlConfigured: true,
+          accessTokenConfigured: false,
+          imapSmtpOnboarding: false,
+          attachmentDownload: false,
+          send: false,
+        },
+        missing: ["EMAILENGINE_ACCESS_TOKEN"],
+        warnings: [],
+        readiness: {
+          status: "degraded",
+          summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
+          setupActions: [
+            {
+              code: "set_emailengine_access_token",
+              label: "设置 EmailEngine 访问令牌",
+              env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+              effect: "添加邮箱、附件下载、发信和同步任务会失败。",
+            },
+          ],
+        },
+      }),
+    );
+    const api = createEmailHubApi({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: fetchMock as any,
+    });
+
+    await expect(api.getMailEngineHealth()).resolves.toMatchObject({
+      provider: "emailengine",
+      ok: false,
+      missing: ["EMAILENGINE_ACCESS_TOKEN"],
+      readiness: {
+        status: "degraded",
+        setupActions: [
+          {
+            code: "set_emailengine_access_token",
+          },
+        ],
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/api/mail-engine/health",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("loads smart-sorted messages with local mailbox ids only", async () => {
     const fetchMock = vi.fn(async (url: string) =>
       jsonResponse({

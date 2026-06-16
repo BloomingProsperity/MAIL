@@ -358,6 +358,8 @@ export interface ApiConfig {
   emailEngineUrl: string;
   emailEngineWebhookSecret: string;
   emailEngineAccessTokenConfigured?: boolean;
+  emailEngineWebhookSecretConfigured?: boolean;
+  emailEngineWebhookSecretUsesDefault?: boolean;
   maxRequestBodyBytes?: number;
   maxComposeRequestBodyBytes?: number;
   maxComposeAttachmentUploadBytes?: number;
@@ -6304,9 +6306,25 @@ function buildMailEngineHealth(config: ApiConfig): {
     send: boolean;
   };
   missing: string[];
+  warnings: string[];
+  readiness: {
+    status: "ready" | "degraded";
+    summary: string;
+    setupActions: Array<{
+      code: string;
+      label: string;
+      env: string[];
+      effect: string;
+    }>;
+  };
 } {
   const urlConfigured = config.emailEngineUrl.trim().length > 0;
   const accessTokenConfigured = config.emailEngineAccessTokenConfigured === true;
+  const webhookSecretConfigured =
+    config.emailEngineWebhookSecret.trim().length > 0;
+  const webhookSecretUsesDefault =
+    config.emailEngineWebhookSecretUsesDefault === true ||
+    config.emailEngineWebhookSecret === "dev-emailhub-secret";
   const capabilities = {
     urlConfigured,
     accessTokenConfigured,
@@ -6317,6 +6335,54 @@ function buildMailEngineHealth(config: ApiConfig): {
     send: accessTokenConfigured && Boolean(config.mailComposeService),
   };
   const missing = getMissingEmailEngineConfiguration(config);
+  const warnings = [
+    ...(webhookSecretConfigured && webhookSecretUsesDefault
+      ? ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"]
+      : []),
+  ];
+  const setupActions = [
+    ...(!urlConfigured
+      ? [
+          {
+            code: "set_emailengine_url",
+            label: "设置 EmailEngine 服务地址",
+            env: ["EMAILENGINE_URL"],
+            effect: "API 无法调用 EmailEngine。",
+          },
+        ]
+      : []),
+    ...(!accessTokenConfigured
+      ? [
+          {
+            code: "set_emailengine_access_token",
+            label: "设置 EmailEngine 访问令牌",
+            env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+            effect: "添加邮箱、附件下载、发信和同步任务会失败。",
+          },
+        ]
+      : []),
+    ...(!webhookSecretConfigured
+      ? [
+          {
+            code: "set_emailengine_webhook_secret",
+            label: "设置 EmailEngine 回调密钥",
+            env: ["EMAILENGINE_WEBHOOK_SECRET", "EENGINE_SECRET"],
+            effect: "EmailEngine webhook 无法安全校验。",
+          },
+        ]
+      : []),
+    ...(webhookSecretConfigured && webhookSecretUsesDefault
+      ? [
+          {
+            code: "rotate_emailengine_webhook_secret",
+            label: "替换默认回调密钥",
+            env: ["EMAILENGINE_WEBHOOK_SECRET", "EENGINE_SECRET"],
+            effect: "生产环境不应继续使用开发默认密钥。",
+          },
+        ]
+      : []),
+  ];
+  const ready = urlConfigured && accessTokenConfigured && setupActions.length === 0;
 
   return {
     provider: "emailengine",
@@ -6324,6 +6390,14 @@ function buildMailEngineHealth(config: ApiConfig): {
     detail: `adapter boundary ready: ${config.emailEngineUrl}`,
     capabilities,
     missing,
+    warnings,
+    readiness: {
+      status: ready ? "ready" : "degraded",
+      summary: ready
+        ? "EmailEngine 已具备上线配置。"
+        : "EmailEngine 配置未完全就绪，部分上线能力会降级。",
+      setupActions,
+    },
   };
 }
 
@@ -6348,6 +6422,9 @@ function getMissingEmailEngineConfiguration(config: ApiConfig): string[] {
     ...(config.emailEngineAccessTokenConfigured === true
       ? []
       : ["EMAILENGINE_ACCESS_TOKEN"]),
+    ...(config.emailEngineWebhookSecret.trim().length > 0
+      ? []
+      : ["EMAILENGINE_WEBHOOK_SECRET"]),
   ];
 }
 

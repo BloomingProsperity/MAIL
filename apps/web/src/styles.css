@@ -1770,6 +1770,76 @@ h2 {
   line-height: 1.45;
 }
 
+.mail-engine-readiness {
+  display: grid;
+  gap: 12px;
+  margin-top: 0;
+  border-color: var(--border-light);
+}
+
+.mail-engine-readiness.is-degraded {
+  border-color: rgba(213, 89, 75, 0.3);
+  background: rgba(213, 89, 75, 0.06);
+}
+
+.mail-engine-readiness.is-ready {
+  border-color: rgba(55, 130, 96, 0.28);
+  background: rgba(55, 130, 96, 0.06);
+}
+
+.mail-engine-readiness > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.mail-engine-readiness > div:first-child strong {
+  font-size: 14px;
+}
+
+.mail-engine-readiness > div:first-child span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mail-engine-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mail-engine-readiness-grid p,
+.mail-engine-setup-actions > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--bg-panel);
+}
+
+.mail-engine-readiness-grid strong,
+.mail-engine-setup-actions strong {
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.mail-engine-readiness-grid span,
+.mail-engine-setup-actions span,
+.mail-engine-setup-actions p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mail-engine-setup-actions {
+  display: grid;
+  gap: 8px;
+}
+
 .settings-module {
   display: flex;
   align-items: center;
@@ -2614,6 +2684,7 @@ h2 {
   .settings-card-grid,
   .alias-form-grid,
   .migration-summary-grid,
+  .mail-engine-readiness-grid,
   .mode-grid,
   .memory-filter-grid,
   .reauthorization-form,

@@ -366,9 +366,14 @@ process health.
 `GET /api/mail-engine/health` reports capability-level readiness instead of a
 single vague boolean. It returns `urlConfigured`, `accessTokenConfigured`,
 `imapSmtpOnboarding`, `attachmentDownload`, `send`, and a `missing` list such as
-`["EMAILENGINE_ACCESS_TOKEN"]`. The response must never include token values.
-This lets Docker users see why 163/QQ/iCloud/Proton Bridge onboarding is not
-available even when the API and EmailEngine containers are running.
+`["EMAILENGINE_ACCESS_TOKEN"]`. It also returns `warnings` and
+`readiness.setupActions` for launch blockers such as a missing token or the
+default development webhook secret. The response must never include token or
+secret values. This lets Docker users see why 163/QQ/iCloud/Proton Bridge
+onboarding, attachment download, send, or sync is not available even when the
+API and EmailEngine containers are running. The frontend surfaces the same
+readiness panel in Add Mail and Sync Center; Native Engine remains second
+priority while EmailEngine is the first launch path.
 
 IMAP/SMTP onboarding routes must surface the same configuration boundary. When
 `EMAILENGINE_ACCESS_TOKEN` is missing, both `/api/accounts/imap-smtp/test` and
