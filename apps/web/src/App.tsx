@@ -4533,11 +4533,21 @@ function MailEngineReadinessPanel(props: { health: MailEngineHealthDto }) {
       </div>
       <div className="mail-engine-readiness-grid">
         <p>
-          <strong>{props.health.capabilities.accessTokenConfigured ? "已配置" : "缺少"}</strong>
+          <strong>
+            {formatMailEngineHttpStatus(props.health.checks?.http ?? "skipped")}
+          </strong>
+          <span>运行探测</span>
+        </p>
+        <p>
+          <strong>
+            {props.health.capabilities.accessTokenConfigured ? "已配置" : "缺少"}
+          </strong>
           <span>访问令牌</span>
         </p>
         <p>
-          <strong>{props.health.capabilities.imapSmtpOnboarding ? "可用" : "不可用"}</strong>
+          <strong>
+            {props.health.capabilities.imapSmtpOnboarding ? "可用" : "不可用"}
+          </strong>
           <span>邮箱接入</span>
         </p>
         <p>
@@ -4558,6 +4568,20 @@ function MailEngineReadinessPanel(props: { health: MailEngineHealthDto }) {
       ) : null}
     </section>
   );
+}
+
+function formatMailEngineHttpStatus(
+  status: NonNullable<MailEngineHealthDto["checks"]>["http"],
+): string {
+  if (status === "ok") {
+    return "可达";
+  }
+
+  if (status === "unavailable") {
+    return "不可达";
+  }
+
+  return "未探测";
 }
 
 function CsvImportPreviewTable(props: {

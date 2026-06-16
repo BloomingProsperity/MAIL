@@ -292,6 +292,12 @@ describe("API routes", () => {
         provider: "emailengine",
         ok: false,
         detail: "adapter boundary ready: http://emailengine:3000",
+        checks: {
+          url: "configured",
+          http: "skipped",
+          accessToken: "missing",
+          webhookSecret: "custom",
+        },
         capabilities: {
           urlConfigured: true,
           accessTokenConfigured: false,
@@ -327,6 +333,12 @@ describe("API routes", () => {
           provider: "emailengine",
           ok: true,
           detail: "adapter boundary ready: http://emailengine:3000",
+          checks: {
+            url: "configured",
+            http: "ok",
+            accessToken: "configured",
+            webhookSecret: "custom",
+          },
           capabilities: {
             urlConfigured: true,
             accessTokenConfigured: true,
@@ -345,6 +357,11 @@ describe("API routes", () => {
       },
       {
         emailEngineAccessTokenConfigured: true,
+        mailEngineHealthProbe: {
+          async check() {
+            return { http: "ok", statusCode: 200 };
+          },
+        },
         accountOnboardingService: {
           async onboardImapSmtp() {
             throw new Error("not used");
@@ -381,6 +398,87 @@ describe("API routes", () => {
       {
         emailEngineAccessTokenConfigured: true,
         emailEngineAccessTokenHint: "super-secret-token",
+      },
+    );
+  });
+
+  it("converts EmailEngine runtime probe exceptions into degraded readiness", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const health = await fetch(`${baseUrl}/health`);
+        const response = await fetch(`${baseUrl}/api/mail-engine/health`);
+
+        expect(health.status).toBe(200);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          provider: "emailengine",
+          ok: false,
+          checks: {
+            http: "unavailable",
+            accessToken: "configured",
+          },
+          warnings: ["EMAILENGINE_HTTP_UNAVAILABLE"],
+          readiness: {
+            status: "degraded",
+            setupActions: [
+              {
+                code: "check_emailengine_runtime",
+              },
+            ],
+          },
+        });
+      },
+      {
+        emailEngineAccessTokenConfigured: true,
+        mailEngineHealthProbe: {
+          async check() {
+            throw new Error("probe crashed with private endpoint detail");
+          },
+        },
+      },
+    );
+  });
+
+  it("reports EmailEngine runtime probe failures without blocking API health", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const health = await fetch(`${baseUrl}/health`);
+        const response = await fetch(`${baseUrl}/api/mail-engine/health`);
+
+        expect(health.status).toBe(200);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          provider: "emailengine",
+          ok: false,
+          checks: {
+            http: "unavailable",
+            accessToken: "configured",
+          },
+          warnings: ["EMAILENGINE_HTTP_UNAVAILABLE"],
+          readiness: {
+            status: "degraded",
+            setupActions: [
+              {
+                code: "check_emailengine_runtime",
+                label: "检查 EmailEngine 容器状态",
+                env: ["EMAILENGINE_URL"],
+                effect: "API 当前无法连通 EmailEngine /health。",
+              },
+            ],
+          },
+        });
+      },
+      {
+        emailEngineAccessTokenConfigured: true,
+        mailEngineHealthProbe: {
+          async check() {
+            return {
+              http: "unavailable",
+              statusCode: 503,
+              error: "bad_gateway",
+            };
+          },
+        },
       },
     );
   });
@@ -426,6 +524,12 @@ describe("API routes", () => {
         expect(await response.json()).toMatchObject({
           provider: "emailengine",
           ok: false,
+          checks: {
+            url: "missing",
+            http: "skipped",
+            accessToken: "configured",
+            webhookSecret: "missing",
+          },
           missing: ["EMAILENGINE_URL", "EMAILENGINE_WEBHOOK_SECRET"],
           readiness: {
             status: "degraded",

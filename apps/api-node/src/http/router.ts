@@ -139,6 +139,10 @@ import {
 import type { MailNavigationSummaryService } from "../mail-navigation/navigation-summary.js";
 import type { Logger } from "../logging/logger.js";
 import { sanitizeRequestUrl } from "../logging/logger.js";
+import type {
+  EmailEngineHealthProbe,
+  EmailEngineHealthProbeResult,
+} from "../mail-engine/email-engine-health-probe.js";
 import {
   isDiagnosticLogLevel,
   type DiagnosticsLogStore,
@@ -360,6 +364,7 @@ export interface ApiConfig {
   emailEngineAccessTokenConfigured?: boolean;
   emailEngineWebhookSecretConfigured?: boolean;
   emailEngineWebhookSecretUsesDefault?: boolean;
+  mailEngineHealthProbe?: EmailEngineHealthProbe;
   maxRequestBodyBytes?: number;
   maxComposeRequestBodyBytes?: number;
   maxComposeAttachmentUploadBytes?: number;
@@ -482,7 +487,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         request.method === "GET" &&
         request.url === "/api/mail-engine/health"
       ) {
-        writeJson(response, 200, buildMailEngineHealth(config));
+        writeJson(response, 200, await buildMailEngineHealth(config));
         return;
       }
 
@@ -6294,10 +6299,16 @@ async function buildApiHealth(config: ApiConfig): Promise<{
   }
 }
 
-function buildMailEngineHealth(config: ApiConfig): {
+async function buildMailEngineHealth(config: ApiConfig): Promise<{
   provider: "emailengine";
   ok: boolean;
   detail: string;
+  checks: {
+    url: "configured" | "missing";
+    http: "ok" | "unavailable" | "skipped";
+    accessToken: "configured" | "missing";
+    webhookSecret: "custom" | "default" | "missing";
+  };
   capabilities: {
     urlConfigured: boolean;
     accessTokenConfigured: boolean;
@@ -6317,7 +6328,7 @@ function buildMailEngineHealth(config: ApiConfig): {
       effect: string;
     }>;
   };
-} {
+}> {
   const urlConfigured = config.emailEngineUrl.trim().length > 0;
   const accessTokenConfigured = config.emailEngineAccessTokenConfigured === true;
   const webhookSecretConfigured =
@@ -6325,6 +6336,9 @@ function buildMailEngineHealth(config: ApiConfig): {
   const webhookSecretUsesDefault =
     config.emailEngineWebhookSecretUsesDefault === true ||
     config.emailEngineWebhookSecret === "dev-emailhub-secret";
+  const probeResult = await checkEmailEngineRuntime(config, urlConfigured);
+  const httpAvailable =
+    probeResult.http === "ok" || probeResult.http === "skipped";
   const capabilities = {
     urlConfigured,
     accessTokenConfigured,
@@ -6336,6 +6350,9 @@ function buildMailEngineHealth(config: ApiConfig): {
   };
   const missing = getMissingEmailEngineConfiguration(config);
   const warnings = [
+    ...(probeResult.http === "unavailable"
+      ? ["EMAILENGINE_HTTP_UNAVAILABLE"]
+      : []),
     ...(webhookSecretConfigured && webhookSecretUsesDefault
       ? ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"]
       : []),
@@ -6348,6 +6365,16 @@ function buildMailEngineHealth(config: ApiConfig): {
             label: "设置 EmailEngine 服务地址",
             env: ["EMAILENGINE_URL"],
             effect: "API 无法调用 EmailEngine。",
+          },
+        ]
+      : []),
+    ...(probeResult.http === "unavailable"
+      ? [
+          {
+            code: "check_emailengine_runtime",
+            label: "检查 EmailEngine 容器状态",
+            env: ["EMAILENGINE_URL"],
+            effect: "API 当前无法连通 EmailEngine /health。",
           },
         ]
       : []),
@@ -6382,12 +6409,26 @@ function buildMailEngineHealth(config: ApiConfig): {
         ]
       : []),
   ];
-  const ready = urlConfigured && accessTokenConfigured && setupActions.length === 0;
+  const ready =
+    urlConfigured &&
+    accessTokenConfigured &&
+    httpAvailable &&
+    setupActions.length === 0;
 
   return {
     provider: "emailengine",
-    ok: urlConfigured && accessTokenConfigured,
+    ok: urlConfigured && accessTokenConfigured && httpAvailable,
     detail: `adapter boundary ready: ${config.emailEngineUrl}`,
+    checks: {
+      url: urlConfigured ? "configured" : "missing",
+      http: probeResult.http,
+      accessToken: accessTokenConfigured ? "configured" : "missing",
+      webhookSecret: !webhookSecretConfigured
+        ? "missing"
+        : webhookSecretUsesDefault
+          ? "default"
+          : "custom",
+    },
     capabilities,
     missing,
     warnings,
@@ -6399,6 +6440,21 @@ function buildMailEngineHealth(config: ApiConfig): {
       setupActions,
     },
   };
+}
+
+async function checkEmailEngineRuntime(
+  config: ApiConfig,
+  urlConfigured: boolean,
+): Promise<EmailEngineHealthProbeResult | { http: "skipped" }> {
+  if (!urlConfigured || !config.mailEngineHealthProbe) {
+    return { http: "skipped" };
+  }
+
+  try {
+    return await config.mailEngineHealthProbe.check();
+  } catch {
+    return { http: "unavailable", error: "probe_failed" };
+  }
 }
 
 function buildEmailEngineConfigurationRequired(

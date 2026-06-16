@@ -49,6 +49,7 @@ import { createPostgresMailReadStore } from "./mail-read/postgres-mail-read-stor
 import { createEmailEngineAccountsClient } from "./mail-engine/email-engine-accounts-client.js";
 import { createEmailEngineAttachmentContentStore } from "./mail-engine/email-engine-attachment-content-store.js";
 import { createEmailEngineAttachmentsClient } from "./mail-engine/email-engine-attachments-client.js";
+import { createEmailEngineHealthProbe } from "./mail-engine/email-engine-health-probe.js";
 import { createEmailEngineSubmitClient } from "./mail-engine/email-engine-submit-client.js";
 import { createMailNavigationSummaryService } from "./mail-navigation/navigation-summary.js";
 import { createPostgresMailNavigationStore } from "./mail-navigation/postgres-navigation-store.js";
@@ -92,6 +93,9 @@ config.emailEngineAccessTokenConfigured =
   emailEngineAccessToken.trim().length > 0;
 config.logger = logger;
 config.diagnosticsLogStore = diagnosticsLogStore;
+config.mailEngineHealthProbe = createEmailEngineHealthProbe({
+  baseUrl: config.emailEngineUrl,
+});
 config.databaseHealthCheck = async () => {
   if (!pool) {
     throw new Error("DATABASE_URL is not configured");

@@ -1807,6 +1807,12 @@ describe("Email Hub first UI baseline", () => {
       provider: "emailengine",
       ok: false,
       detail: "adapter boundary ready: http://emailengine:3000",
+      checks: {
+        url: "configured",
+        http: "unavailable",
+        accessToken: "missing",
+        webhookSecret: "custom",
+      },
       capabilities: {
         urlConfigured: true,
         accessTokenConfigured: false,
@@ -1834,10 +1840,42 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
 
     expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
+    expect(screen.getByText("运行探测")).toBeTruthy();
+    expect(screen.getByText("不可达")).toBeTruthy();
     expect(screen.getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
     expect(
       screen.getByText("EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN"),
     ).toBeTruthy();
+  });
+
+  it("keeps EmailEngine readiness visible when older APIs omit runtime checks", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
+      provider: "emailengine",
+      ok: false,
+      detail: "adapter boundary ready: http://emailengine:3000",
+      capabilities: {
+        urlConfigured: true,
+        accessTokenConfigured: false,
+        imapSmtpOnboarding: false,
+        attachmentDownload: false,
+        send: false,
+      },
+      missing: ["EMAILENGINE_ACCESS_TOKEN"],
+      warnings: [],
+      readiness: {
+        status: "degraded",
+        summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
+        setupActions: [],
+      },
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+
+    expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
+    expect(screen.getByText("运行探测")).toBeTruthy();
+    expect(screen.getByText("未探测")).toBeTruthy();
   });
 
   it("starts OAuth reauthorization from Sync Center", async () => {
@@ -2394,6 +2432,12 @@ describe("Email Hub first UI baseline", () => {
       provider: "emailengine",
       ok: false,
       detail: "adapter boundary ready: http://emailengine:3000",
+      checks: {
+        url: "configured",
+        http: "unavailable",
+        accessToken: "missing",
+        webhookSecret: "custom",
+      },
       capabilities: {
         urlConfigured: true,
         accessTokenConfigured: false,
@@ -2423,6 +2467,8 @@ describe("Email Hub first UI baseline", () => {
     );
 
     expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
+    expect(screen.getByText("运行探测")).toBeTruthy();
+    expect(screen.getByText("不可达")).toBeTruthy();
     expect(screen.getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
     expect(
       screen.getByText("EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN"),
@@ -4831,6 +4877,12 @@ function createApiFixture(): EmailHubApi {
           provider: "emailengine",
           ok: true,
           detail: "adapter boundary ready: http://emailengine:3000",
+          checks: {
+            url: "configured",
+            http: "ok",
+            accessToken: "configured",
+            webhookSecret: "custom",
+          },
           capabilities: {
             urlConfigured: true,
             accessTokenConfigured: true,

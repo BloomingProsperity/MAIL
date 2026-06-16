@@ -67,6 +67,12 @@ describe("emailHubApi", () => {
         provider: "emailengine",
         ok: false,
         detail: "adapter boundary ready: http://emailengine:3000",
+        checks: {
+          url: "configured",
+          http: "unavailable",
+          accessToken: "missing",
+          webhookSecret: "custom",
+        },
         capabilities: {
           urlConfigured: true,
           accessTokenConfigured: false,
@@ -98,6 +104,10 @@ describe("emailHubApi", () => {
     await expect(api.getMailEngineHealth()).resolves.toMatchObject({
       provider: "emailengine",
       ok: false,
+      checks: {
+        http: "unavailable",
+        accessToken: "missing",
+      },
       missing: ["EMAILENGINE_ACCESS_TOKEN"],
       readiness: {
         status: "degraded",

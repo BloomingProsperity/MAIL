@@ -814,6 +814,12 @@ export interface MailEngineHealthDto {
   provider: "emailengine";
   ok: boolean;
   detail: string;
+  checks?: {
+    url: "configured" | "missing";
+    http: "ok" | "unavailable" | "skipped";
+    accessToken: "configured" | "missing";
+    webhookSecret: "custom" | "default" | "missing";
+  };
   capabilities: {
     urlConfigured: boolean;
     accessTokenConfigured: boolean;
