@@ -285,6 +285,17 @@ describe("mail engine runtime migration", () => {
     );
   });
 
+  it("adds account-scoped labels", async () => {
+    const sql = await readMigrationFile("0040_account_labels.sql");
+
+    expect(sql).toMatch(/ALTER TABLE labels/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS account_id UUID/i);
+    expect(sql).toMatch(/DROP CONSTRAINT IF EXISTS labels_name_key/i);
+    expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS labels_account_name_uidx/i);
+    expect(sql).toMatch(/ON labels \(account_id, lower\(name\)\)/i);
+    expect(sql).toMatch(/label_assignments_label_message_idx/i);
+  });
+
   it("adds Spark done undo state columns and lookup indexes", async () => {
     const sql = await readMigrationFile("0019_message_done_undo.sql");
 

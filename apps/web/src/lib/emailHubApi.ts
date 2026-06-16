@@ -108,6 +108,17 @@ export interface MessageDetailDto extends MessageListItemDto {
   attachments: AttachmentDto[];
 }
 
+export type LabelColor = "coral" | "blue" | "green" | "yellow" | "purple" | "mint";
+
+export interface LabelDto {
+  id: string;
+  accountId: string;
+  name: string;
+  color: LabelColor;
+  messageCount: number;
+  createdAt: string;
+}
+
 export interface MailActionResult {
   accountId: string;
   messageId: string;
@@ -1377,6 +1388,14 @@ export interface EmailHubApi {
     labelIds?: string[];
     tagMode?: MailTagMode;
   }): Promise<Page<MessageListItemDto>>;
+  listLabels(input: {
+    accountId: string;
+  }): Promise<Page<LabelDto>>;
+  upsertLabel(input: {
+    accountId: string;
+    name: string;
+    color?: LabelColor;
+  }): Promise<LabelDto>;
   getMessage(input: {
     accountId: string;
     messageId: string;
@@ -1868,6 +1887,31 @@ export function createEmailHubApi(
         fetchImpl,
         baseUrl,
         `${path}?${params.toString()}`,
+      );
+    },
+
+    listLabels(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/labels`,
+      );
+    },
+
+    upsertLabel(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/labels`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            cleanObject({
+              name: input.name,
+              color: input.color,
+            }),
+          ),
+        },
       );
     },
 

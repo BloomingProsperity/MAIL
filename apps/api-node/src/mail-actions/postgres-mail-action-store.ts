@@ -1,4 +1,5 @@
 import {
+  InvalidMailActionRequestError,
   type MailActionCommand,
   type MailActionInput,
   type MailProviderCommandType,
@@ -407,13 +408,17 @@ async function applyLabels(
     return undefined;
   }
 
-  for (const labelId of input.labelIds ?? []) {
+  const labelIds = input.labelIds ?? [];
+  const ownedLabelIds = await loadOwnedLabelIds(client, input.accountId, labelIds);
+  if (ownedLabelIds.size !== labelIds.length) {
+    throw new InvalidMailActionRequestError("labelIds are invalid");
+  }
+
+  for (const labelId of labelIds) {
     await client.query(
       `
         INSERT INTO label_assignments (message_id, label_id)
-        SELECT $1, labels.id
-        FROM labels
-        WHERE labels.id = $2
+        VALUES ($1, $2)
         ON CONFLICT DO NOTHING
       `,
       [input.messageId, labelId],
@@ -421,6 +426,28 @@ async function applyLabels(
   }
 
   return state;
+}
+
+async function loadOwnedLabelIds(
+  client: Queryable,
+  accountId: string,
+  labelIds: string[],
+): Promise<Set<string>> {
+  if (labelIds.length === 0) {
+    return new Set();
+  }
+
+  const result = await client.query<{ id: string }>(
+    `
+      SELECT id
+      FROM labels
+      WHERE account_id = $1
+        AND id = ANY($2::uuid[])
+    `,
+    [accountId, labelIds],
+  );
+
+  return new Set(result.rows.map((row) => row.id));
 }
 
 async function loadVisibleState(

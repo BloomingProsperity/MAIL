@@ -237,6 +237,62 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("loads and upserts account labels through the labels route", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "label_codes",
+              accountId: "account_1",
+              name: "验证码",
+              color: "blue",
+              messageCount: 4,
+              createdAt: "2026-06-13T10:00:00.000Z",
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "label_codes",
+          accountId: "account_1",
+          name: "验证码",
+          color: "blue",
+          messageCount: 0,
+          createdAt: "2026-06-13T10:01:00.000Z",
+        }),
+      );
+    const api = createEmailHubApi({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: fetchMock as any,
+    });
+
+    const page = await api.listLabels({ accountId: "account_1" });
+    const label = await api.upsertLabel({
+      accountId: "account_1",
+      name: "验证码",
+      color: "blue",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8080/api/accounts/account_1/labels",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8080/api/accounts/account_1/labels",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "验证码", color: "blue" }),
+      }),
+    );
+    expect(page.items[0].messageCount).toBe(4);
+    expect(label.name).toBe("验证码");
+  });
+
   it("reads and updates Gatekeeper settings through the account settings route", async () => {
     const fetchMock = vi
       .fn()

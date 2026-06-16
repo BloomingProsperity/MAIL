@@ -54,6 +54,18 @@ interface HermesClassificationRuleRow extends Record<string, unknown> {
   action: Record<string, unknown>;
 }
 
+interface HermesContentLabelRuleRow extends Record<string, unknown> {
+  id: string;
+  condition: Record<string, unknown>;
+  action: Record<string, unknown>;
+}
+
+interface HermesContentLabelRule {
+  id: string;
+  labelId: string;
+  keywords: string[];
+}
+
 export function createPostgresMirrorStore(client: Queryable): MirrorStore {
   const providerRefStore = createPostgresProviderRefStore(client);
 
@@ -194,6 +206,12 @@ export function createPostgresMirrorStore(client: Queryable): MirrorStore {
         message.attachments,
       );
       await upsertSearchDocument(client, messageId, message);
+      await upsertHermesContentLabelAssignments(
+        client,
+        input.engineAccountId,
+        messageId,
+        message,
+      );
 
       await providerRefStore.upsertMessageRef({
         accountId: input.engineAccountId,
@@ -333,6 +351,42 @@ async function upsertSearchDocument(
         updated_at = now()
     `,
     [messageId, rawText],
+  );
+}
+
+async function upsertHermesContentLabelAssignments(
+  client: Queryable,
+  accountId: string,
+  messageId: string,
+  message: NormalizedMirrorMessage,
+): Promise<void> {
+  const rules = await loadHermesContentLabelRules(client, accountId);
+  const labelIds = uniqueStrings(
+    rules
+      .filter((rule) => contentLabelRuleMatchesMessage(rule, message))
+      .map((rule) => rule.labelId),
+  );
+  if (labelIds.length === 0) {
+    return;
+  }
+
+  await client.query(
+    `
+      INSERT INTO label_assignments (message_id, label_id)
+      SELECT messages.id, labels.id
+      FROM messages
+      JOIN message_state
+        ON message_state.message_id = messages.id
+      JOIN labels
+        ON labels.account_id = messages.account_id
+      WHERE messages.id = $1
+        AND messages.account_id = $2
+        AND message_state.deleted_at IS NULL
+        AND labels.account_id = $2
+        AND labels.id = ANY($3::uuid[])
+      ON CONFLICT (message_id, label_id) DO NOTHING
+    `,
+    [messageId, accountId, labelIds],
   );
 }
 
@@ -1426,6 +1480,28 @@ async function loadHermesClassificationRules(
   return result.rows.flatMap((row) => hermesRuleFromAction(row.action));
 }
 
+async function loadHermesContentLabelRules(
+  client: Queryable,
+  accountId: string,
+): Promise<HermesContentLabelRule[]> {
+  const result = await client.query<HermesContentLabelRuleRow>(
+    `
+      SELECT id, condition, action
+      FROM hermes_rules
+      WHERE account_id = $1
+        AND enabled = TRUE
+        AND rule_type = 'content_label'
+        AND action->>'type' = 'apply_label'
+        AND action->>'labelId' IS NOT NULL
+      ORDER BY approved_at DESC NULLS LAST, created_at DESC, id DESC
+      LIMIT 100
+    `,
+    [accountId],
+  );
+
+  return result.rows.flatMap(contentLabelRuleFromRow);
+}
+
 async function loadSenderScreeningRules(
   client: Queryable,
   accountId: string,
@@ -1454,6 +1530,58 @@ async function loadSenderScreeningRules(
   );
 
   return result.rows.flatMap(screeningRuleToSenderRule);
+}
+
+function contentLabelRuleFromRow(
+  row: HermesContentLabelRuleRow,
+): HermesContentLabelRule[] {
+  const labelId = row.action.labelId;
+  if (typeof labelId !== "string" || labelId.trim().length === 0) {
+    return [];
+  }
+  const keywords = Array.isArray(row.condition.anyKeywords)
+    ? row.condition.anyKeywords.filter(
+        (keyword): keyword is string =>
+          typeof keyword === "string" && keyword.trim().length > 0,
+      )
+    : [];
+  if (keywords.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      id: row.id,
+      labelId,
+      keywords: uniqueStrings(keywords.map((keyword) => keyword.trim())),
+    },
+  ];
+}
+
+function contentLabelRuleMatchesMessage(
+  rule: HermesContentLabelRule,
+  message: NormalizedMirrorMessage,
+): boolean {
+  const haystack = [
+    message.subject,
+    message.fromEmail,
+    message.fromName,
+    ...message.toEmails,
+    ...message.ccEmails,
+    message.snippet,
+    message.bodyText,
+    ...message.attachments.map((attachment) => attachment.filename),
+  ]
+    .filter(
+      (part): part is string =>
+        typeof part === "string" && part.trim().length > 0,
+    )
+    .join("\n")
+    .toLowerCase();
+
+  return rule.keywords.some((keyword) =>
+    haystack.includes(keyword.trim().toLowerCase()),
+  );
 }
 
 function screeningRuleToSenderRule(

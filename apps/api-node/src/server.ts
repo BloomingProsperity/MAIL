@@ -42,6 +42,8 @@ import { createHermesAuditLogService } from "./hermes/audit-log.js";
 import { createHermesRuleService } from "./hermes/rules.js";
 import { createHermesTranslationPreferenceService } from "./hermes/translation-preferences.js";
 import { createApiHandler } from "./http/router.js";
+import { createLabelService } from "./labels/labels.js";
+import { createPostgresLabelStore } from "./labels/postgres-label-store.js";
 import { createJsonLogger } from "./logging/logger.js";
 import { createOperationalEventLogService } from "./logging/operational-events.js";
 import { createPostgresOperationalEventStore } from "./logging/postgres-operational-event-store.js";
@@ -157,6 +159,10 @@ if (pool) {
     store: createPostgresOperationalEventStore(pool),
   });
   config.mailReadStore = createPostgresMailReadStore(pool);
+  config.labelService = createLabelService({
+    store: createPostgresLabelStore(pool),
+    createId: randomUUID,
+  });
   config.hermesMemoryStore = createPostgresHermesMemoryStore(pool);
   config.hermesRuntimeConfigService = createHermesRuntimeConfigService({
     store: createPostgresHermesRuntimeConfigStore(pool),
@@ -171,6 +177,7 @@ if (pool) {
     });
   config.hermesRuleService = createHermesRuleService({
     store: createPostgresHermesRuleStore(pool),
+    labelService: config.labelService,
     createId: randomUUID,
     now: () => new Date().toISOString(),
   });

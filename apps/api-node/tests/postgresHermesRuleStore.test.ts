@@ -259,6 +259,7 @@ describe("postgres Hermes rule store", () => {
           };
         }
         if (text.includes("INSERT INTO hermes_rules")) {
+          const action = values?.[6] as Record<string, unknown>;
           return {
             rows: [
               {
@@ -268,7 +269,7 @@ describe("postgres Hermes rule store", () => {
                 title: "Prioritize client@example.com",
                 rule_type: "sender_priority",
                 condition: { senderEmail: "client@example.com" },
-                action: { type: "classify_sender", bucket: "P2 Important" },
+                action,
                 confidence: "0.850",
                 enabled: true,
                 created_at: "2026-06-13T10:10:00.000Z",
@@ -287,6 +288,11 @@ describe("postgres Hermes rule store", () => {
       candidateId: "candidate_1",
       ruleId: "rule_1",
       approvedAt: "2026-06-13T10:10:00.000Z",
+      actionOverride: {
+        type: "apply_label",
+        labelId: "label_codes",
+        labelName: "验证码",
+      },
     });
 
     expect(queries.map((query) => query.text.trim().split(/\s+/)[0])).toEqual([
@@ -303,11 +309,21 @@ describe("postgres Hermes rule store", () => {
       "2026-06-13T10:10:00.000Z",
       "candidate_1",
     ]);
+    expect(queries[3].values?.[6]).toEqual({
+      type: "apply_label",
+      labelId: "label_codes",
+      labelName: "验证码",
+    });
     expect(result).toMatchObject({
       id: "rule_1",
       accountId: "account_1",
       candidateId: "candidate_1",
       enabled: true,
+      action: {
+        type: "apply_label",
+        labelId: "label_codes",
+        labelName: "验证码",
+      },
     });
   });
 });

@@ -898,7 +898,9 @@ h2 {
 }
 
 .folder-row:hover,
-.folder-row.active {
+.folder-row.active,
+.label-row:hover,
+.label-row.active {
   border-color: var(--primary-border);
   background: var(--primary-soft);
   color: var(--primary-hover);

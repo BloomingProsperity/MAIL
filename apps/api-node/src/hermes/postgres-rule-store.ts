@@ -326,7 +326,7 @@ export function createPostgresHermesRuleStore(
             candidate.title,
             candidate.ruleType,
             candidate.condition,
-            candidate.action,
+            input.actionOverride ?? candidate.action,
             candidate.confidence,
             input.approvedAt,
           ],

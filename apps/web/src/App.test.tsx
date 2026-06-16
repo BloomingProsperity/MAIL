@@ -204,7 +204,33 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(api.getMailNavigationSummary).toHaveBeenCalled();
+    expect(api.listLabels).toHaveBeenCalledWith({ accountId: "account_1" });
     expect(await screen.findByText("Hermes 规则已启用：启用验证码智能分组")).toBeTruthy();
+  });
+
+  it("loads account labels into the directory and filters mail by label", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    const labelSection = screen.getByText("标签/项目").closest(".directory-section");
+    expect(labelSection).toBeTruthy();
+    expect(await within(labelSection as HTMLElement).findByRole("button", { name: /客户/ })).toBeTruthy();
+
+    fireEvent.click(
+      within(labelSection as HTMLElement).getByRole("button", { name: /验证码/ }),
+    );
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+        sort: "smart",
+        labelIds: ["label_code"],
+        tagMode: "any",
+      });
+    });
   });
 
   it("does not call Hermes mail search QA for an empty dock prompt", async () => {
@@ -243,6 +269,9 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
     await screen.findByText("Live body from backend");
+    await waitFor(() => {
+      expect(api.listLabels).toHaveBeenCalledWith({ accountId: "account_1" });
+    });
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -368,7 +397,7 @@ describe("Email Hub first UI baseline", () => {
     expect(api.suggestLabelsWithHermes).toHaveBeenCalledWith(
       expect.objectContaining({
         currentLabels: [],
-        availableLabels: ["工作", "客户", "财务", "产品", "市场"],
+        availableLabels: ["客户", "验证码"],
       }),
     );
     expect(api.cleanupNewsletterWithHermes).toHaveBeenCalledWith(
@@ -5145,6 +5174,34 @@ function createApiFixture(): EmailHubApi {
         },
       ],
     })),
+    listLabels: vi.fn(async () => ({
+      items: [
+        {
+          id: "label_customer",
+          accountId: "account_1",
+          name: "客户",
+          color: "green" as const,
+          messageCount: 18,
+          createdAt: "2026-06-13T10:00:00.000Z",
+        },
+        {
+          id: "label_code",
+          accountId: "account_1",
+          name: "验证码",
+          color: "blue" as const,
+          messageCount: 4,
+          createdAt: "2026-06-13T10:01:00.000Z",
+        },
+      ],
+    })),
+    upsertLabel: vi.fn(async (input) => ({
+      id: `label_${input.name}`,
+      accountId: input.accountId,
+      name: input.name,
+      color: input.color ?? "blue",
+      messageCount: 0,
+      createdAt: "2026-06-13T10:02:00.000Z",
+    })),
     getMessage: vi.fn(async () => ({
       id: "message_1",
       accountId: "account_1",
@@ -5968,19 +6025,15 @@ function createApiFixture(): EmailHubApi {
           id: "candidate_codes",
           accountId: "account_1",
           title: "启用验证码智能分组",
-          ruleType: "content_saved_view",
+          ruleType: "content_label",
           condition: {
             anyKeywords: ["验证码", "verification", "otp"],
           },
           action: {
-            type: "ensure_saved_view",
-            savedView: {
-              id: "codes",
-              label: "验证码",
-              tone: "blue",
-              kind: "keyword",
-              keywords: ["验证码", "verification", "otp"],
-            },
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
             applyToHistory: false,
             requiresConfirmation: true,
           },
@@ -5999,12 +6052,10 @@ function createApiFixture(): EmailHubApi {
       matchedCount: 4,
       sampleMessageIds: ["message_1", "message_2"],
       actionPreview: {
-        type: "ensure_saved_view",
-        savedView: {
-          id: "codes",
-          label: "验证码",
-          keywords: ["验证码", "verification", "otp"],
-        },
+        type: "apply_label",
+        labelName: "验证码",
+        labelColor: "blue",
+        providerWriteback: false,
       },
       createdAt: "2026-06-13T10:01:00.000Z",
     } satisfies HermesRuleSimulationDto)),
@@ -6013,15 +6064,16 @@ function createApiFixture(): EmailHubApi {
       accountId: input.accountId,
       candidateId: input.candidateId,
       title: "启用验证码智能分组",
-      ruleType: "content_saved_view",
+      ruleType: "content_label",
       condition: { anyKeywords: ["验证码", "verification", "otp"] },
       action: {
-        type: "ensure_saved_view",
-        savedView: {
-          id: "codes",
-          label: "验证码",
-          keywords: ["验证码", "verification", "otp"],
-        },
+        type: "apply_label",
+        labelId: "label_code",
+        labelName: "验证码",
+        labelColor: "blue",
+        applyToHistory: false,
+        providerWriteback: false,
+        requiresConfirmation: false,
       },
       confidence: 0.9,
       enabled: true,

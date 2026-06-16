@@ -2,6 +2,7 @@ import {
   findBuiltInSavedView,
   type SavedViewDefinition,
 } from "../mail-navigation/saved-views.js";
+import type { LabelColor, LabelService } from "../labels/labels.js";
 
 export type HermesRuleCandidateStatus = "shadow" | "approved" | "dismissed";
 export type HermesRuleRunMode = "shadow" | "active";
@@ -130,6 +131,7 @@ export interface HermesRuleStore {
     candidateId: string;
     ruleId: string;
     approvedAt: string;
+    actionOverride?: Record<string, unknown>;
   }): Promise<HermesRule | undefined>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
   upsertSavedView(input: SavedViewDefinition): Promise<void>;
@@ -154,6 +156,7 @@ export interface HermesRuleService {
 
 export interface CreateHermesRuleServiceOptions {
   store: HermesRuleStore;
+  labelService?: Pick<LabelService, "upsertLabel">;
   createId: () => string;
   now: () => string;
 }
@@ -221,19 +224,21 @@ export function createHermesRuleService(
     async draftRule(input) {
       const accountId = requireString(input.accountId);
       const command = requireLongText(input.command);
-      const draft = savedViewDraftForCommand(command);
+      const draft = labelRuleDraftForCommand(command);
       const candidate: HermesRuleCandidate = {
         id: options.createId(),
         accountId,
         title: draft.title,
-        ruleType: "content_saved_view",
+        ruleType: "content_label",
         condition: {
-          anyKeywords: draft.savedView.keywords,
+          anyKeywords: draft.keywords,
         },
         action: {
-          type: "ensure_saved_view",
-          savedView: draft.savedView,
+          type: "apply_label",
+          labelName: draft.labelName,
+          labelColor: draft.labelColor,
           applyToHistory: false,
+          providerWriteback: false,
           requiresConfirmation: true,
         },
         confidence: draft.confidence,
@@ -285,11 +290,26 @@ export function createHermesRuleService(
     },
 
     async approveRule(input) {
+      const accountId = requireString(input.accountId);
+      const candidateId = requireString(input.candidateId);
+      const candidate = await options.store.getRuleCandidate({
+        accountId,
+        candidateId,
+      });
+      const actionOverride =
+        candidate?.ruleType === "content_label"
+          ? await approvedLabelActionForCandidate({
+              candidate,
+              accountId,
+              labelService: options.labelService,
+            })
+          : undefined;
       const rule = await options.store.approveRuleCandidate({
-        accountId: requireString(input.accountId),
-        candidateId: requireString(input.candidateId),
+        accountId,
+        candidateId,
         ruleId: options.createId(),
         approvedAt: options.now(),
+        ...(actionOverride ? { actionOverride } : {}),
       });
       const savedView = rule ? savedViewFromRuleAction(rule.action) : undefined;
       if (savedView && !findBuiltInSavedView(savedView.id)) {
@@ -423,7 +443,7 @@ export function createInMemoryHermesRuleStore(
         title: candidate.title,
         ruleType: candidate.ruleType,
         condition: { ...candidate.condition },
-        action: { ...candidate.action },
+        action: { ...(input.actionOverride ?? candidate.action) },
         confidence: candidate.confidence,
         enabled: true,
         createdAt: input.approvedAt,
@@ -534,6 +554,70 @@ function savedViewDraftForCommand(command: string): {
       keywords,
     },
     confidence: normalized.includes("规则") ? 0.78 : 0.7,
+  };
+}
+
+function labelRuleDraftForCommand(command: string): {
+  title: string;
+  labelName: string;
+  labelColor: LabelColor;
+  keywords: string[];
+  confidence: number;
+} {
+  const savedViewDraft = savedViewDraftForCommand(command);
+  return {
+    title: savedViewDraft.title,
+    labelName: savedViewDraft.savedView.label,
+    labelColor: savedViewDraft.savedView.tone,
+    keywords: savedViewDraft.savedView.keywords,
+    confidence: savedViewDraft.confidence,
+  };
+}
+
+async function approvedLabelActionForCandidate(input: {
+  candidate: HermesRuleCandidate;
+  accountId: string;
+  labelService: Pick<LabelService, "upsertLabel"> | undefined;
+}): Promise<Record<string, unknown>> {
+  if (!input.labelService) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  const draftAction = labelDraftActionFromCandidate(input.candidate);
+  const label = await input.labelService.upsertLabel({
+    accountId: input.accountId,
+    name: draftAction.labelName,
+    color: draftAction.labelColor,
+  });
+
+  return {
+    type: "apply_label",
+    labelId: label.id,
+    labelName: label.name,
+    labelColor: label.color,
+    applyToHistory: false,
+    providerWriteback: false,
+    requiresConfirmation: false,
+  };
+}
+
+function labelDraftActionFromCandidate(candidate: HermesRuleCandidate): {
+  labelName: string;
+  labelColor: LabelColor;
+} {
+  const action = candidate.action;
+  if (action.type !== "apply_label") {
+    throw new InvalidHermesRuleRequestError();
+  }
+  const labelName = action.labelName;
+  const labelColor = action.labelColor ?? "blue";
+  if (typeof labelName !== "string" || !isLabelColor(labelColor)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return {
+    labelName,
+    labelColor,
   };
 }
 
@@ -742,6 +826,17 @@ function isTone(value: unknown): value is SavedViewDefinition["tone"] {
     value === "green" ||
     value === "yellow" ||
     value === "purple"
+  );
+}
+
+function isLabelColor(value: unknown): value is LabelColor {
+  return (
+    value === "coral" ||
+    value === "blue" ||
+    value === "green" ||
+    value === "yellow" ||
+    value === "purple" ||
+    value === "mint"
   );
 }
 

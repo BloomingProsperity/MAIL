@@ -53,11 +53,13 @@ describe("Hermes rule routes", () => {
               id: "candidate_codes",
               accountId: "account_1",
               title: "启用验证码智能分组",
-              ruleType: "content_saved_view",
+              ruleType: "content_label",
               condition: { anyKeywords: ["验证码", "verification", "otp"] },
               action: {
-                type: "ensure_saved_view",
-                savedView: { id: "codes", label: "验证码" },
+                type: "apply_label",
+                labelName: "验证码",
+                labelColor: "blue",
+                providerWriteback: false,
                 requiresConfirmation: true,
               },
               confidence: 0.9,
@@ -83,7 +85,7 @@ describe("Hermes rule routes", () => {
 
         expect(response.status).toBe(200);
         expect(await response.json()).toMatchObject({
-          candidates: [{ id: "candidate_codes", ruleType: "content_saved_view" }],
+          candidates: [{ id: "candidate_codes", ruleType: "content_label" }],
         });
       },
       { hermesRuleService },

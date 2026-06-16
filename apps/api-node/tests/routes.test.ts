@@ -854,6 +854,40 @@ describe("API routes", () => {
     );
   });
 
+  it("passes dynamic saved view ids to the mail read store", async () => {
+    const calls: unknown[] = [];
+    const mailReadStore = {
+      async listMailboxes() {
+        throw new Error("not used");
+      },
+      async listMessages(input: unknown) {
+        calls.push(input);
+        return { items: [] };
+      },
+      async getMessage() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages?savedView=hermes_contract`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(calls).toEqual([
+          {
+            accountId: "account_1",
+            limit: 50,
+            savedViewId: "hermes_contract",
+          },
+        ]);
+      },
+      { mailReadStore },
+    );
+  });
+
   it("passes quick filters, label filters, and q scopes to the mail read store", async () => {
     const calls: unknown[] = [];
     const mailReadStore = {
@@ -925,7 +959,7 @@ describe("API routes", () => {
           `/api/accounts/account_1/messages?sort=smart&cursor=${timeOnlyCursor}`,
           `/api/accounts/account_1/messages?q=${"x".repeat(257)}`,
           "/api/accounts/account_1/messages?q=hello%00world",
-          "/api/accounts/account_1/messages?savedView=not-a-view",
+          "/api/accounts/account_1/messages?savedView=../secret",
           "/api/accounts/account_1/messages?quickFilter=contact",
           "/api/accounts/account_1/messages?qScope=html",
           "/api/accounts/account_1/messages?tagMode=every",

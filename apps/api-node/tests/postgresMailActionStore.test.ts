@@ -249,6 +249,94 @@ describe("Postgres mail action store", () => {
     });
   });
 
+  it("applies labels only when they belong to the same account", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const pool = poolLike(queries, [
+      [],
+      [
+        {
+          id: "msg_1",
+          unread: false,
+          starred: false,
+          archived: false,
+          deleted: false,
+          done_at: null,
+          last_action_token: null,
+          undo_expires_at: null,
+        },
+      ],
+      [{ id: "label_1" }],
+      [],
+      [
+        {
+          id: "cmd_1",
+          command_type: "apply_labels",
+          account_id: "acc_1",
+          idempotency_key: "mail-action:acc_1:msg_1:apply_labels:label_1",
+          status: "queued",
+        },
+      ],
+      [{ mailbox_ids: [], label_ids: ["label_1"] }],
+      [],
+    ]);
+    const store = createPostgresMailActionStore(pool, {
+      createId: () => "cmd_1",
+    });
+
+    await store.applyAction({
+      accountId: "acc_1",
+      messageId: "msg_1",
+      action: "apply_labels",
+      labelIds: ["label_1"],
+    });
+
+    expect(queries[2].text).toMatch(/FROM labels/i);
+    expect(queries[2].text).toMatch(/WHERE account_id = \$1/i);
+    expect(queries[2].values).toEqual(["acc_1", ["label_1"]]);
+    expect(queries[3].text).toMatch(/INSERT INTO label_assignments/i);
+    expect(queries[3].values).toEqual(["msg_1", "label_1"]);
+  });
+
+  it("rolls back apply-label actions when any label is missing or cross-account", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const pool = poolLike(queries, [
+      [],
+      [
+        {
+          id: "msg_1",
+          unread: false,
+          starred: false,
+          archived: false,
+          deleted: false,
+          done_at: null,
+          last_action_token: null,
+          undo_expires_at: null,
+        },
+      ],
+      [{ id: "label_1" }],
+      [],
+    ]);
+    const store = createPostgresMailActionStore(pool, {
+      createId: () => "cmd_1",
+    });
+
+    await expect(
+      store.applyAction({
+        accountId: "acc_1",
+        messageId: "msg_1",
+        action: "apply_labels",
+        labelIds: ["label_1", "label_other"],
+      }),
+    ).rejects.toThrow("labelIds are invalid");
+
+    expect(queries.map((query) => query.text)).toEqual([
+      "BEGIN",
+      expect.stringMatching(/message_state/i),
+      expect.stringMatching(/FROM labels/i),
+      "ROLLBACK",
+    ]);
+  });
+
   it("rolls back when the message is not visible for the account", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const pool = poolLike(queries, [[], [], []]);

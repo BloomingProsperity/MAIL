@@ -444,7 +444,7 @@ describe("postgres mirror store", () => {
         if (text.includes("INSERT INTO messages")) {
           return { rows: [{ id: "message_1" }] };
         }
-        if (text.includes("FROM hermes_rules")) {
+        if (text.includes("action->>'type' = 'classify_sender'")) {
           return {
             rows: [
               {
@@ -487,7 +487,7 @@ describe("postgres mirror store", () => {
     });
 
     const hermesRulesQuery = queries.find((query) =>
-      query.text.includes("FROM hermes_rules"),
+      query.text.includes("action->>'type' = 'classify_sender'"),
     );
     expect(hermesRulesQuery?.text).toMatch(/enabled = TRUE/i);
     expect(hermesRulesQuery?.text).toMatch(
@@ -514,6 +514,140 @@ describe("postgres mirror store", () => {
       ]),
       "hermes_rules",
     ]);
+  });
+
+  it("applies approved Hermes content label rules to matching mirrored messages", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const labelId = "11111111-1111-4111-8111-111111111111";
+    const accountId = "00000000-0000-0000-0000-000000000001";
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("INSERT INTO messages")) {
+          return { rows: [{ id: "message_1" }] };
+        }
+        if (text.includes("rule_type = 'content_label'")) {
+          return {
+            rows: [
+              {
+                id: "rule_codes",
+                condition: { anyKeywords: ["verification", "otp", "验证码"] },
+                action: {
+                  type: "apply_label",
+                  labelId,
+                  labelName: "验证码",
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes("INSERT INTO provider_message_refs")) {
+          return {
+            rows: [
+              {
+                id: "ref_1",
+                provider: "emailengine",
+                provider_message_id: "ee_msg_1",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresMirrorStore(client);
+
+    await store.upsertMessage({
+      engineAccountId: accountId,
+      provider: "emailengine",
+      message: {
+        id: "ee_msg_1",
+        subject: "Your OTP verification code",
+        date: "2026-06-12T09:00:00.000Z",
+        from: { address: "login@example.com" },
+        text: { plain: "验证码 482911 will expire in 10 minutes." },
+      },
+    });
+
+    const contentRuleQuery = queries.find((query) =>
+      query.text.includes("rule_type = 'content_label'"),
+    );
+    expect(contentRuleQuery?.text).toMatch(/account_id = \$1/i);
+    expect(contentRuleQuery?.text).toMatch(/enabled = TRUE/i);
+    expect(contentRuleQuery?.text).toMatch(/action->>'type' = 'apply_label'/i);
+    expect(contentRuleQuery?.text).toMatch(/action->>'labelId' IS NOT NULL/i);
+    expect(contentRuleQuery?.values).toEqual([accountId]);
+
+    const assignmentQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO label_assignments"),
+    );
+    expect(assignmentQuery?.text).toMatch(/JOIN message_state/i);
+    expect(assignmentQuery?.text).toMatch(/JOIN labels/i);
+    expect(assignmentQuery?.text).toMatch(/messages\.account_id = \$2/i);
+    expect(assignmentQuery?.text).toMatch(/message_state\.deleted_at IS NULL/i);
+    expect(assignmentQuery?.text).toMatch(/labels\.account_id = \$2/i);
+    expect(assignmentQuery?.text).toMatch(/ON CONFLICT \(message_id, label_id\) DO NOTHING/i);
+    expect(assignmentQuery?.values).toEqual([
+      "message_1",
+      accountId,
+      [labelId],
+    ]);
+  });
+
+  it("does not apply Hermes content labels when no keyword matches", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("INSERT INTO messages")) {
+          return { rows: [{ id: "message_1" }] };
+        }
+        if (text.includes("rule_type = 'content_label'")) {
+          return {
+            rows: [
+              {
+                id: "rule_codes",
+                condition: { anyKeywords: ["verification", "otp", "验证码"] },
+                action: {
+                  type: "apply_label",
+                  labelId: "11111111-1111-4111-8111-111111111111",
+                  labelName: "验证码",
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes("INSERT INTO provider_message_refs")) {
+          return {
+            rows: [
+              {
+                id: "ref_1",
+                provider: "emailengine",
+                provider_message_id: "ee_msg_1",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresMirrorStore(client);
+
+    await store.upsertMessage({
+      engineAccountId: "00000000-0000-0000-0000-000000000001",
+      provider: "emailengine",
+      message: {
+        id: "ee_msg_1",
+        subject: "Contract update",
+        date: "2026-06-12T09:00:00.000Z",
+        from: { address: "client@example.com" },
+        text: { plain: "Please review the updated contract." },
+      },
+    });
+
+    expect(
+      queries.some((query) => query.text.includes("INSERT INTO label_assignments")),
+    ).toBe(false);
   });
 
   it("mirrors attachment metadata and removes stale attachments for the message", async () => {

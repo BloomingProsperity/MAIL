@@ -60,6 +60,7 @@ import type {
   ImapSmtpConnectionDiagnostic,
   ImapSmtpConnectionTestResult,
   ImapSmtpOnboardingInput,
+  LabelDto,
   AccountTransferPackage,
   MailAction,
   MailQuickFilter,
@@ -240,6 +241,13 @@ interface QuickCategory {
   tone: Tone;
 }
 
+interface LabelItem {
+  id: string;
+  label: string;
+  count: number;
+  tone: Tone;
+}
+
 const quickReplyActions: QuickReplyAction[] = [
   {
     scenario: "confirm",
@@ -299,13 +307,13 @@ const folders: FolderItem[] = [
   { id: "attachments", label: "附件", count: 68 }
 ];
 
-const labels = [
+const previewLabels: LabelItem[] = [
   { id: "work", label: "工作", count: 32, tone: "coral" },
   { id: "customer", label: "客户", count: 18, tone: "green" },
   { id: "finance", label: "财务", count: 6, tone: "blue" },
   { id: "product", label: "产品", count: 42, tone: "yellow" },
   { id: "market", label: "市场", count: 15, tone: "purple" }
-] as const;
+];
 
 const densityOptions: Array<{ id: MailDensity; label: string; shortLabel: string }> = [
   { id: "roomy", label: "宽阔", shortLabel: "宽" },
@@ -602,6 +610,8 @@ export function App(props: AppProps = {}) {
     useState<ProviderGroup[]>(providerGroups);
   const [navigationQuickCategories, setNavigationQuickCategories] =
     useState<QuickCategory[]>(quickCategories);
+  const [navigationLabels, setNavigationLabels] =
+    useState<LabelItem[]>(previewLabels);
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
     () => {
       const storedAccountId = props.defaultAccountId ?? readSelectedAccountIdFromSession();
@@ -657,28 +667,46 @@ export function App(props: AppProps = {}) {
     }
   }
 
-  async function selectFirstBackendAccount() {
-    if (!props.api) {
+  async function refreshLabels(accountIdForLabels = selectedAccountId) {
+    if (!props.api || !accountIdForLabels) {
+      setNavigationLabels(props.api ? [] : previewLabels);
       return;
+    }
+
+    try {
+      const page = await props.api.listLabels({ accountId: accountIdForLabels });
+      setNavigationLabels(page.items.map(mapLabelDtoToLabelItem));
+    } catch {
+      setNavigationLabels([]);
+    }
+  }
+
+  async function selectFirstBackendAccount(): Promise<string | undefined> {
+    if (!props.api) {
+      return undefined;
     }
 
     try {
       const page = await props.api.listSyncCenterAccounts();
       const firstAccount = page.items.find((account) => account.accountId);
       rememberSelectedAccount(firstAccount?.accountId);
+      return firstAccount?.accountId;
     } catch {
       // Keep the local preview account when account discovery is unavailable.
+      return undefined;
     }
   }
 
   async function handleConnectedAccount(nextAccountId?: string) {
+    let connectedAccountId = nextAccountId;
     if (nextAccountId) {
       rememberSelectedAccount(nextAccountId);
     } else {
-      await selectFirstBackendAccount();
+      connectedAccountId = await selectFirstBackendAccount();
     }
 
     await refreshNavigationSummary();
+    await refreshLabels(connectedAccountId ?? selectedAccountId);
   }
 
   function launchGlobalSearch(query: string) {
@@ -809,6 +837,7 @@ export function App(props: AppProps = {}) {
         approvedAt: rule.approvedAt,
       });
       await refreshNavigationSummary();
+      await refreshLabels(hermesDockRuleCandidate.accountId);
       setHermesDockNotice(`Hermes 规则已启用：${rule.title}`);
     } catch {
       setHermesDockNotice("Hermes 规则启用失败。");
@@ -917,6 +946,13 @@ export function App(props: AppProps = {}) {
     };
   }, [accountDiscoveryReady, props.api, selectedAccountId]);
 
+  useEffect(() => {
+    if (!accountDiscoveryReady) {
+      return;
+    }
+    void refreshLabels(selectedAccountId);
+  }, [accountDiscoveryReady, props.api, selectedAccountId]);
+
   async function loadSavedView(savedView: string) {
     setActiveFolder(savedView);
     if (!props.api) {
@@ -938,6 +974,31 @@ export function App(props: AppProps = {}) {
       setBackendNotice(undefined);
     } catch {
       setBackendNotice("分类邮件暂时不可用，正在显示当前邮件。");
+    }
+  }
+
+  async function loadLabel(labelId: string) {
+    setActiveFolder(`label:${labelId}`);
+    if (!props.api || !selectedAccountId) {
+      return;
+    }
+
+    setBackendNotice("正在加载标签邮件...");
+    try {
+      const messagePage = await props.api.listMessages({
+        accountId: selectedAccountId,
+        limit: 50,
+        sort: "smart",
+        labelIds: [labelId],
+        tagMode: "any",
+      });
+      const mappedMail = messagePage.items.map(mapMessageDtoToMailItem);
+      setWorkspaceMail(mappedMail);
+      setSelectedDetail(undefined);
+      setActiveMailId(firstSmartMailKey(mappedMail));
+      setBackendNotice(undefined);
+    } catch {
+      setBackendNotice("标签邮件暂时不可用，正在显示当前邮件。");
     }
   }
 
@@ -1334,6 +1395,7 @@ export function App(props: AppProps = {}) {
               backendNotice={backendNotice}
               smartInboxBusy={smartInboxBusy}
               quickCategories={navigationQuickCategories}
+              labels={navigationLabels}
               hermesFollowUpSuggestion={hermesFollowUpSuggestion}
               followUpNotice={followUpNotice}
               density={mailDensity}
@@ -1342,6 +1404,7 @@ export function App(props: AppProps = {}) {
               onDensityChange={setMailDensity}
               onFolderChange={(id) => void loadMailbox(id)}
               onSavedViewChange={(id) => void loadSavedView(id)}
+              onLabelChange={(id) => void loadLabel(id)}
               onMailChange={setActiveMailId}
               onDone={() => applySelectedAction("done")}
               onArchive={() => applySelectedAction("archive")}
@@ -1629,6 +1692,7 @@ function MailWorkspace(props: {
   backendNotice?: string;
   smartInboxBusy: SmartInboxBusyAction;
   quickCategories: QuickCategory[];
+  labels: LabelItem[];
   hermesFollowUpSuggestion?: HermesFollowupTrackerResult;
   followUpNotice?: string;
   density: MailDensity;
@@ -1637,6 +1701,7 @@ function MailWorkspace(props: {
   onDensityChange: (density: MailDensity) => void;
   onFolderChange: (id: string) => void;
   onSavedViewChange: (id: string) => void;
+  onLabelChange: (id: string) => void;
   onMailChange: (id: string) => void;
   onDone: () => ReaderActionResult;
   onArchive: () => ReaderActionResult;
@@ -2452,7 +2517,7 @@ function MailWorkspace(props: {
           threadText,
           senderEmail: props.selectedMail.email,
           currentLabels: [],
-          availableLabels: labels.map((label) => label.label),
+          availableLabels: props.labels.map((label) => label.label),
           language: "zh-CN",
           readMessageIds,
           memoryScope,
@@ -3616,8 +3681,17 @@ function MailWorkspace(props: {
                 +
               </button>
             </div>
-            {labels.map((label) => (
-              <button key={label.id} className="label-row" type="button">
+            {props.labels.map((label) => (
+              <button
+                key={label.id}
+                className={
+                  props.activeFolder === `label:${label.id}`
+                    ? "label-row active"
+                    : "label-row"
+                }
+                type="button"
+                onClick={() => props.onLabelChange(label.id)}
+              >
                 <span className={`label-dot ${label.tone}`} />
                 <span>{label.label}</span>
                 <strong>{label.count}</strong>
@@ -8946,8 +9020,8 @@ function HermesDock(props: {
 
   const result = props.result;
   const ruleCandidate = props.ruleCandidate;
-  const ruleSavedView = ruleCandidate
-    ? hermesRuleSavedView(ruleCandidate.action)
+  const rulePreview = ruleCandidate
+    ? hermesRulePreview(ruleCandidate)
     : undefined;
 
   return (
@@ -9036,10 +9110,10 @@ function HermesDock(props: {
                 <span>{ruleCandidate.status === "approved" ? "已启用" : "待确认"}</span>
               </div>
               <p>{ruleCandidate.title}</p>
-              {ruleSavedView ? (
+              {rulePreview ? (
                 <p>
-                  左侧分组：{ruleSavedView.label} · 关键词{" "}
-                  {ruleSavedView.keywords.slice(0, 5).join("，")}
+                  左侧分组：{rulePreview.label} · 关键词{" "}
+                  {rulePreview.keywords.slice(0, 5).join("，")}
                 </p>
               ) : null}
               {props.ruleSimulation ? (
@@ -9095,6 +9169,19 @@ function mapMailboxDtoToFolderItem(mailbox: MailboxDto): FolderItem {
   };
 }
 
+function mapLabelDtoToLabelItem(label: LabelDto): LabelItem {
+  return {
+    id: label.id,
+    label: label.name,
+    count: label.messageCount,
+    tone: toneForLabelColor(label.color),
+  };
+}
+
+function toneForLabelColor(color: LabelDto["color"]): Tone {
+  return color === "mint" ? "green" : color;
+}
+
 function mapMessageDtoToMailItem(message: MessageListItemDto): MailItem {
   return {
     id: message.id,
@@ -9121,9 +9208,30 @@ function isHermesRuleCommand(value: string): boolean {
   return /规则|分组|分类|标签|filter|rule/i.test(value);
 }
 
+function hermesRulePreview(
+  candidate: HermesRuleCandidateDto,
+): { label: string; keywords: string[] } | undefined {
+  const savedView = hermesRuleSavedView(candidate.action);
+  if (savedView) {
+    return {
+      label: savedView.label,
+      keywords: savedView.keywords,
+    };
+  }
+
+  const label = hermesRuleLabel(candidate.action);
+  if (!label) {
+    return undefined;
+  }
+  return {
+    label,
+    keywords: hermesRuleKeywords(candidate.condition),
+  };
+}
+
 function hermesRuleSavedView(
   action: Record<string, unknown>,
-): { id: string; label: string; keywords: string[] } | undefined {
+): { label: string; keywords: string[] } | undefined {
   if (action.type !== "ensure_saved_view") {
     return undefined;
   }
@@ -9137,12 +9245,24 @@ function hermesRuleSavedView(
     return undefined;
   }
   return {
-    id: record.id,
     label: record.label,
     keywords: Array.isArray(record.keywords)
       ? record.keywords.filter((keyword): keyword is string => typeof keyword === "string")
       : [],
   };
+}
+
+function hermesRuleLabel(action: Record<string, unknown>): string | undefined {
+  if (action.type !== "apply_label" || typeof action.labelName !== "string") {
+    return undefined;
+  }
+  return action.labelName;
+}
+
+function hermesRuleKeywords(condition: Record<string, unknown>): string[] {
+  return Array.isArray(condition.anyKeywords)
+    ? condition.anyKeywords.filter((keyword): keyword is string => typeof keyword === "string")
+    : [];
 }
 
 function mailItemKey(mail: Pick<MailItem, "accountId" | "id">): string {

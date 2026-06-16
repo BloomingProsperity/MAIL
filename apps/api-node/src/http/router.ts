@@ -52,6 +52,7 @@ import type {
   MailTagMode,
   MessageListSort,
 } from "../mail-read/mail-read-store.js";
+import { InvalidMailSavedViewError } from "../mail-read/postgres-mail-read-store.js";
 import {
   decodeMailReadCursor,
   InvalidMailReadCursorError,
@@ -124,6 +125,11 @@ import {
   type MailActionInput,
   type MailActionService,
 } from "../mail-actions/mail-actions.js";
+import {
+  InvalidLabelRequestError,
+  type LabelColor,
+  type LabelService,
+} from "../labels/labels.js";
 import {
   InvalidDomainAliasRequestError,
   type CatchAllMode,
@@ -395,6 +401,7 @@ export interface ApiConfig {
   syncControlService?: SyncControlService;
   mailComposeService?: MailComposeService;
   mailActionService?: MailActionService;
+  labelService?: LabelService;
   domainAliasService?: DomainAliasService;
   followUpService?: FollowUpService;
   mailNavigationService?: MailNavigationSummaryService;
@@ -1617,6 +1624,30 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
       }
 
+      const labelRoute = parseLabelRoute(request.url);
+      if (labelRoute) {
+        if (!config.labelService) {
+          writeJson(response, 503, { error: "labels_unavailable" });
+          return;
+        }
+
+        if (request.method === "GET") {
+          const result = await config.labelService.listLabels({
+            accountId: labelRoute.accountId,
+          });
+          writeJson(response, 200, result);
+          return;
+        }
+
+        if (request.method === "POST") {
+          const result = await config.labelService.upsertLabel(
+            parseUpsertLabelInput(labelRoute.accountId, await readRequestBody()),
+          );
+          writeJson(response, 201, result);
+          return;
+        }
+      }
+
       const mailReadRoute = parseMailReadRoute(request.url);
       if (mailReadRoute && request.method === "GET") {
         if (!config.mailReadStore) {
@@ -2202,6 +2233,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
+      if (error instanceof InvalidLabelRequestError) {
+        writeJson(response, 400, { error: error.code });
+        return;
+      }
+
       if (error instanceof InvalidDomainAliasRequestError) {
         writeJson(response, 400, { error: error.code });
         return;
@@ -2219,6 +2255,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
 
       if (error instanceof InvalidMailReadRequestError) {
         writeJson(response, error.statusCode, { error: error.code });
+        return;
+      }
+
+      if (error instanceof InvalidMailSavedViewError) {
+        writeJson(response, 400, { error: "invalid_mail_read_request" });
         return;
       }
 
@@ -3066,6 +3107,17 @@ function parseHermesRuleRoute(
     action: match[2] as "simulate" | "approve",
     candidateId: decodeURIComponent(match[1]),
   };
+}
+
+function parseLabelRoute(
+  requestUrl: string | undefined,
+): { accountId: string } | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+  const url = new URL(requestUrl, "http://localhost");
+  const match = /^\/api\/accounts\/([^/]+)\/labels$/.exec(url.pathname);
+  return match ? { accountId: decodeURIComponent(match[1]) } : undefined;
 }
 
 function parseDomainAliasRoute(
@@ -3946,7 +3998,10 @@ function parseMailSavedViewId(value: string | null): string | undefined {
   }
 
   const savedViewId = value.trim().toLowerCase();
-  if (!findBuiltInSavedView(savedViewId)) {
+  if (
+    !findBuiltInSavedView(savedViewId) &&
+    !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(savedViewId)
+  ) {
     throw new InvalidMailReadRequestError();
   }
 
@@ -5805,6 +5860,44 @@ function parseMailActionInput(
   }
 
   return { accountId, messageId, action };
+}
+
+function parseUpsertLabelInput(
+  accountId: string,
+  body: string,
+): {
+  accountId: string;
+  name: string;
+  color?: LabelColor;
+} {
+  const payload = JSON.parse(body) as {
+    name?: unknown;
+    color?: unknown;
+  };
+  if (!isNonEmptyString(payload.name)) {
+    throw new InvalidLabelRequestError();
+  }
+  return {
+    accountId,
+    name: payload.name,
+    ...(payload.color === undefined
+      ? {}
+      : { color: parseLabelColor(payload.color) }),
+  };
+}
+
+function parseLabelColor(value: unknown): LabelColor {
+  if (
+    value === "coral" ||
+    value === "blue" ||
+    value === "green" ||
+    value === "yellow" ||
+    value === "purple" ||
+    value === "mint"
+  ) {
+    return value;
+  }
+  throw new InvalidLabelRequestError();
 }
 
 function parseMailBulkActionInput(

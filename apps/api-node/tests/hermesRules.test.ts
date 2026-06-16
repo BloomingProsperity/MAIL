@@ -7,7 +7,7 @@ import {
 } from "../src/hermes/rules";
 
 describe("Hermes rule learning service", () => {
-  it("drafts a safe saved-view rule from a mailbox rule command", async () => {
+  it("drafts a safe content label rule from a mailbox rule command", async () => {
     const store = createInMemoryHermesRuleStore({
       messages: [
         message("msg_1", "login@example.com", "Your OTP verification code"),
@@ -30,17 +30,15 @@ describe("Hermes rule learning service", () => {
         id: "candidate_codes",
         accountId: "account_1",
         title: "启用验证码智能分组",
-        ruleType: "content_saved_view",
+        ruleType: "content_label",
         condition: {
           anyKeywords: expect.arrayContaining(["验证码", "verification", "otp"]),
         },
         action: expect.objectContaining({
-          type: "ensure_saved_view",
-          savedView: expect.objectContaining({
-            id: "codes",
-            label: "验证码",
-            keywords: expect.arrayContaining(["验证码", "verification", "otp"]),
-          }),
+          type: "apply_label",
+          labelName: "验证码",
+          labelColor: "blue",
+          providerWriteback: false,
           requiresConfirmation: true,
         }),
         status: "shadow",
@@ -56,6 +54,75 @@ describe("Hermes rule learning service", () => {
     ).resolves.toMatchObject({
       matchedCount: 1,
       sampleMessageIds: ["msg_1"],
+    });
+  });
+
+  it("approves a content label candidate by upserting the account label", async () => {
+    const upsertedLabels: unknown[] = [];
+    const store = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "verification", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+        },
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      labelService: {
+        async upsertLabel(input) {
+          upsertedLabels.push(input);
+          return {
+            id: "label_codes",
+            accountId: input.accountId,
+            name: input.name,
+            color: input.color ?? "blue",
+            messageCount: 0,
+            createdAt: "2026-06-13T10:09:00.000Z",
+          };
+        },
+      },
+      createId: nextId(["rule_codes"]),
+      now: () => "2026-06-13T10:10:00.000Z",
+    });
+
+    const result = await service.approveRule({
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+    });
+
+    expect(upsertedLabels).toEqual([
+      { accountId: "account_1", name: "验证码", color: "blue" },
+    ]);
+    expect(result).toMatchObject({
+      id: "rule_codes",
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+      ruleType: "content_label",
+      action: {
+        type: "apply_label",
+        labelId: "label_codes",
+        labelName: "验证码",
+        labelColor: "blue",
+        applyToHistory: false,
+        providerWriteback: false,
+        requiresConfirmation: false,
+      },
+      enabled: true,
     });
   });
 
