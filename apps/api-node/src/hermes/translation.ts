@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   appendHermesMemoryPromptSection,
   loadHermesMemoryContext,
@@ -119,7 +121,8 @@ export function createHermesTranslationService(
           skillId: "translate_text",
           skillTitle: "翻译邮件",
           input: compactObject({
-            text: input.text,
+            sourceTextHash: hashTranslationText(input.text),
+            sourceTextLength: input.text.length,
             sourceLanguage,
             targetLanguage: input.targetLanguage,
             tone: input.tone,
@@ -127,7 +130,8 @@ export function createHermesTranslationService(
             memoryLayers: input.memoryLayers,
           }),
           output: {
-            translatedText,
+            translatedTextHash: hashTranslationText(translatedText),
+            translatedTextLength: translatedText.length,
             sourceLanguage,
             targetLanguage: input.targetLanguage,
           },
@@ -170,10 +174,14 @@ function translationUserPrompt(
   return lines.join("\n");
 }
 
+function hashTranslationText(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
 function compactObject(
-  value: Record<string, string | string[] | undefined>,
-): Record<string, string | string[]> {
+  value: Record<string, unknown>,
+): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
-  ) as Record<string, string | string[]>;
+  );
 }

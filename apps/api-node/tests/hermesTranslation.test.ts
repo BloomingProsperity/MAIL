@@ -69,7 +69,7 @@ describe("Hermes translation service", () => {
     ).rejects.toThrow("target language is required");
   });
 
-  it("persists the translation run and audit event when a run store is configured", async () => {
+  it("persists redacted translation run metadata and the audit event", async () => {
     const persisted: unknown[] = [];
     const ids = ["run_1", "audit_1"];
     const service = createHermesTranslationService({
@@ -108,12 +108,14 @@ describe("Hermes translation service", () => {
           skillId: "translate_text",
           skillTitle: "翻译邮件",
           input: {
-            text: "Hello",
+            sourceTextHash: expect.any(String),
+            sourceTextLength: 5,
             sourceLanguage: "auto",
             targetLanguage: "Chinese",
           },
           output: {
-            translatedText: "你好",
+            translatedTextHash: expect.any(String),
+            translatedTextLength: 2,
             sourceLanguage: "auto",
             targetLanguage: "Chinese",
           },
@@ -132,6 +134,10 @@ describe("Hermes translation service", () => {
         },
       },
     ]);
+    expect((persisted[0] as any).run.input).not.toHaveProperty("text");
+    expect((persisted[0] as any).run.output).not.toHaveProperty(
+      "translatedText",
+    );
   });
 
   it("loads scoped memories into the prompt and audits the used memory ids", async () => {
