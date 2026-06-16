@@ -2316,6 +2316,82 @@ h2 {
   gap: 10px;
 }
 
+.hermes-skill-settings {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 12px;
+}
+
+.hermes-skill-card {
+  align-items: start;
+}
+
+.hermes-skill-card-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skill-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.skill-card-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.skill-card-head span,
+.hermes-skill-card .inline-actions span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.hermes-skill-toggles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.hermes-skill-budget-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
+  gap: 8px;
+}
+
+.hermes-skill-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  min-width: 0;
+}
+
+.hermes-skill-card input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font: inherit;
+  outline: 0;
+}
+
+.hermes-skill-card input[type="number"]:focus {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
 .search-panel {
   display: grid;
   gap: 14px;
@@ -2910,6 +2986,8 @@ h2 {
   .migration-summary-grid,
   .mail-engine-readiness-grid,
   .mode-grid,
+  .hermes-skill-toggles,
+  .hermes-skill-budget-grid,
   .memory-filter-grid,
   .reauthorization-form,
   .reauthorization-endpoints {

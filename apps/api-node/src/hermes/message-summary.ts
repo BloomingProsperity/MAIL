@@ -16,6 +16,7 @@ export interface HermesMessageSummaryInput {
   memoryScope?: string;
   memoryLayers?: string[];
   forceRefresh?: boolean;
+  maxContextChars?: number;
 }
 
 export interface HermesMessageSummaryResult extends HermesThreadSummaryResult {
@@ -103,7 +104,9 @@ export function createHermesMessageSummaryService(
         return undefined;
       }
 
-      const text = messageReadableText(message);
+      const text = messageReadableText(message, {
+        maxChars: normalized.maxContextChars,
+      });
       if (!text) {
         throw new InvalidHermesMessageSummaryRequestError(
           "message has no summarizable text",
@@ -171,7 +174,11 @@ function normalizeInput(
 > &
   Pick<
     HermesMessageSummaryInput,
-    "memoryIds" | "memoryScope" | "memoryLayers" | "forceRefresh"
+    | "memoryIds"
+    | "memoryScope"
+    | "memoryLayers"
+    | "forceRefresh"
+    | "maxContextChars"
   > {
   return {
     accountId: normalizeRequiredText(input.accountId),
@@ -187,6 +194,9 @@ function normalizeInput(
     ...(input.memoryScope ? { memoryScope: normalizeRequiredText(input.memoryScope) } : {}),
     ...(input.memoryLayers ? { memoryLayers: input.memoryLayers } : {}),
     ...(input.forceRefresh ? { forceRefresh: true } : {}),
+    ...(input.maxContextChars !== undefined
+      ? { maxContextChars: input.maxContextChars }
+      : {}),
   };
 }
 

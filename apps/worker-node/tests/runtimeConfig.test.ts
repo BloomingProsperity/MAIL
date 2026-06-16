@@ -11,6 +11,9 @@ describe("worker runtime configuration", () => {
       composeAttachmentCleanupIntervalMs: 3600000,
       composeAttachmentRetentionMs: 604800000,
       composeAttachmentCleanupLimit: 100,
+      hermesRetentionCleanupIntervalMs: 3600000,
+      hermesRetentionMs: 2592000000,
+      hermesRetentionCleanupLimit: 500,
     });
   });
 
@@ -23,6 +26,9 @@ describe("worker runtime configuration", () => {
         COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS: "999",
         COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS: "0",
         COMPOSE_ATTACHMENT_CLEANUP_LIMIT: "0",
+        HERMES_RETENTION_CLEANUP_INTERVAL_MS: "999",
+        HERMES_RETENTION_DAYS: "0",
+        HERMES_RETENTION_CLEANUP_LIMIT: "0",
       }),
     ).toEqual({
       leaseSeconds: 60,
@@ -31,6 +37,9 @@ describe("worker runtime configuration", () => {
       composeAttachmentCleanupIntervalMs: 60000,
       composeAttachmentRetentionMs: 3600000,
       composeAttachmentCleanupLimit: 1,
+      hermesRetentionCleanupIntervalMs: 60000,
+      hermesRetentionMs: 86400000,
+      hermesRetentionCleanupLimit: 1,
     });
   });
 
@@ -43,6 +52,9 @@ describe("worker runtime configuration", () => {
         COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS: "999999999",
         COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS: "999999",
         COMPOSE_ATTACHMENT_CLEANUP_LIMIT: "999999",
+        HERMES_RETENTION_CLEANUP_INTERVAL_MS: "999999999",
+        HERMES_RETENTION_DAYS: "999999",
+        HERMES_RETENTION_CLEANUP_LIMIT: "999999",
       }),
     ).toEqual({
       leaseSeconds: 3600,
@@ -51,6 +63,9 @@ describe("worker runtime configuration", () => {
       composeAttachmentCleanupIntervalMs: 86400000,
       composeAttachmentRetentionMs: 7776000000,
       composeAttachmentCleanupLimit: 10000,
+      hermesRetentionCleanupIntervalMs: 86400000,
+      hermesRetentionMs: 31536000000,
+      hermesRetentionCleanupLimit: 10000,
     });
   });
 });

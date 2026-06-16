@@ -5,6 +5,9 @@ export interface WorkerRuntimeConfig {
   composeAttachmentCleanupIntervalMs: number;
   composeAttachmentRetentionMs: number;
   composeAttachmentCleanupLimit: number;
+  hermesRetentionCleanupIntervalMs: number;
+  hermesRetentionMs: number;
+  hermesRetentionCleanupLimit: number;
 }
 
 const DEFAULT_LEASE_SECONDS = 60;
@@ -13,6 +16,9 @@ const DEFAULT_POLL_MS = 5000;
 const DEFAULT_COMPOSE_ATTACHMENT_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const DEFAULT_COMPOSE_ATTACHMENT_RETENTION_HOURS = 24 * 7;
 const DEFAULT_COMPOSE_ATTACHMENT_CLEANUP_LIMIT = 100;
+const DEFAULT_HERMES_RETENTION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const DEFAULT_HERMES_RETENTION_DAYS = 30;
+const DEFAULT_HERMES_RETENTION_CLEANUP_LIMIT = 500;
 
 export function readWorkerRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -55,6 +61,29 @@ export function readWorkerRuntimeConfig(
     composeAttachmentCleanupLimit: readBoundedInteger({
       value: env.COMPOSE_ATTACHMENT_CLEANUP_LIMIT,
       fallback: DEFAULT_COMPOSE_ATTACHMENT_CLEANUP_LIMIT,
+      min: 1,
+      max: 10000,
+    }),
+    hermesRetentionCleanupIntervalMs: readBoundedInteger({
+      value: env.HERMES_RETENTION_CLEANUP_INTERVAL_MS,
+      fallback: DEFAULT_HERMES_RETENTION_CLEANUP_INTERVAL_MS,
+      min: 60000,
+      max: 24 * 60 * 60 * 1000,
+    }),
+    hermesRetentionMs:
+      readBoundedInteger({
+        value: env.HERMES_RETENTION_DAYS,
+        fallback: DEFAULT_HERMES_RETENTION_DAYS,
+        min: 1,
+        max: 365,
+      }) *
+      24 *
+      60 *
+      60 *
+      1000,
+    hermesRetentionCleanupLimit: readBoundedInteger({
+      value: env.HERMES_RETENTION_CLEANUP_LIMIT,
+      fallback: DEFAULT_HERMES_RETENTION_CLEANUP_LIMIT,
       min: 1,
       max: 10000,
     }),

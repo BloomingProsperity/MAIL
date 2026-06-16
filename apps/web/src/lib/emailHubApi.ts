@@ -459,6 +459,30 @@ export type HermesRuleCandidateStatus = "shadow" | "approved" | "dismissed";
 export type HermesRuleRunMode = "shadow" | "active";
 export type HermesSkillMode = "read" | "draft" | "classify" | "learn";
 
+export interface HermesSkillSettingsDto {
+  enabled: boolean;
+  maxContextChars: number;
+  memoryLimit: number;
+  allowBodyRead: boolean;
+  allowMemoryWrite: boolean;
+  requireConfirmation: boolean;
+}
+
+export interface HermesSkillSettingBoundsDto {
+  maxContextChars: {
+    min: number;
+    max: number;
+    step: number;
+  };
+  memoryLimit: {
+    min: number;
+    max: number;
+    step: number;
+  };
+}
+
+export type HermesSkillSettingsUpdateInput = Partial<HermesSkillSettingsDto>;
+
 export interface HermesRuleCandidateDto {
   id: string;
   accountId: string;
@@ -503,6 +527,8 @@ export interface HermesSkillDto {
   title: string;
   mode: HermesSkillMode;
   description: string;
+  settings: HermesSkillSettingsDto;
+  settingBounds: HermesSkillSettingBoundsDto;
 }
 
 export interface HermesWorkspaceOperationBoundaryDto {
@@ -1687,6 +1713,11 @@ export interface EmailHubApi {
   testHermesRuntimeConnection(): Promise<HermesRuntimeTestResult>;
   getHermesRuntimeVersion(): Promise<HermesRuntimeVersionStatus>;
   checkHermesRuntimeUpdate(): Promise<HermesRuntimeVersionStatus>;
+  listHermesSkills(): Promise<HermesSkillDto[]>;
+  updateHermesSkillSettings(input: {
+    skillId: string;
+    patch: HermesSkillSettingsUpdateInput;
+  }): Promise<HermesSkillDto>;
   listHermesMemories(input?: HermesMemoryListInput): Promise<Page<HermesMemoryDto>>;
   updateHermesMemory(input: HermesMemoryUpdateInput): Promise<HermesMemoryDto>;
   deleteHermesMemory(input: { id: string }): Promise<void>;
@@ -2413,6 +2444,22 @@ export function createEmailHubApi(
       return request(fetchImpl, baseUrl, "/api/hermes/runtime/update/check", {
         method: "POST",
       });
+    },
+
+    listHermesSkills() {
+      return request(fetchImpl, baseUrl, "/api/hermes/skills");
+    },
+
+    updateHermesSkillSettings(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/skills/${encodePath(input.skillId)}/settings`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(cleanObject(input.patch)),
+        },
+      );
     },
 
     listHermesMemories(input = {}) {

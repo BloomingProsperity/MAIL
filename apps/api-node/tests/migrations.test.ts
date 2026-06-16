@@ -167,6 +167,20 @@ describe("mail engine runtime migration", () => {
     expect(sql).toMatch(/hermes_runtime_settings_provider_idx/i);
   });
 
+  it("adds editable Hermes skill settings", async () => {
+    const sql = await readMigrationFile("0044_hermes_skill_settings.sql");
+
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS hermes_skill_settings/i);
+    expect(sql).toMatch(/skill_id TEXT PRIMARY KEY REFERENCES hermes_skills/i);
+    expect(sql).toMatch(/max_context_chars INTEGER NOT NULL DEFAULT 24000/i);
+    expect(sql).toMatch(/memory_limit INTEGER NOT NULL DEFAULT 6/i);
+    expect(sql).toMatch(/allow_body_read BOOLEAN NOT NULL DEFAULT TRUE/i);
+    expect(sql).toMatch(/allow_memory_write BOOLEAN NOT NULL DEFAULT FALSE/i);
+    expect(sql).toMatch(/require_confirmation BOOLEAN NOT NULL DEFAULT FALSE/i);
+    expect(sql).toMatch(/hermes_skill_settings_context_chars_chk/i);
+    expect(sql).toMatch(/hermes_skill_settings_enabled_idx/i);
+  });
+
   it("adds provider capability and saved view tables for mail navigation", async () => {
     const sql = await readMigrationFile("0031_provider_capabilities_saved_views.sql");
 

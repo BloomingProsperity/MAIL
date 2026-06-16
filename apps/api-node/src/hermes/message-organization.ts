@@ -25,6 +25,7 @@ export interface HermesMessageOrganizationInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  maxContextChars?: number;
 }
 
 export interface HermesMessageOrganizationResult {
@@ -83,7 +84,9 @@ export function createHermesMessageOrganizationService(
         return undefined;
       }
 
-      const threadText = messageReadableText(message);
+      const threadText = messageReadableText(message, {
+        maxChars: normalized.maxContextChars,
+      });
       if (!threadText) {
         throw new InvalidHermesMessageOrganizationRequestError(
           "message has no organizable text",
@@ -161,7 +164,7 @@ function normalizeInput(
 ): Required<Pick<HermesMessageOrganizationInput, "accountId" | "messageId" | "language">> &
   Pick<
     HermesMessageOrganizationInput,
-    "memoryIds" | "memoryScope" | "memoryLayers"
+    "memoryIds" | "memoryScope" | "memoryLayers" | "maxContextChars"
   > {
   return {
     accountId: normalizeRequiredText(input.accountId),
@@ -174,6 +177,9 @@ function normalizeInput(
       ? { memoryScope: normalizeRequiredText(input.memoryScope) }
       : {}),
     ...(input.memoryLayers ? { memoryLayers: input.memoryLayers } : {}),
+    ...(input.maxContextChars !== undefined
+      ? { maxContextChars: input.maxContextChars }
+      : {}),
   };
 }
 

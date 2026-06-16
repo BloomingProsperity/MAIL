@@ -18,6 +18,7 @@ export interface HermesMessageReplyDraftInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  maxContextChars?: number;
 }
 
 export interface HermesMessageQuickReplyInput
@@ -76,7 +77,9 @@ export function createHermesMessageReplyService(
         return undefined;
       }
 
-      const threadText = messageReadableText(message);
+      const threadText = messageReadableText(message, {
+        maxChars: normalized.maxContextChars,
+      });
       if (!threadText) {
         throw new InvalidHermesMessageReplyRequestError(
           "message has no replyable text",
@@ -109,7 +112,9 @@ export function createHermesMessageReplyService(
         return undefined;
       }
 
-      const threadText = messageReadableText(message);
+      const threadText = messageReadableText(message, {
+        maxChars: normalized.maxContextChars,
+      });
       if (!threadText) {
         throw new InvalidHermesMessageReplyRequestError(
           "message has no replyable text",
@@ -170,6 +175,9 @@ function normalizeReplyDraftInput(
       ? { memoryScope: normalizeRequiredText(input.memoryScope) }
       : {}),
     ...(input.memoryLayers ? { memoryLayers: input.memoryLayers } : {}),
+    ...(input.maxContextChars !== undefined
+      ? { maxContextChars: input.maxContextChars }
+      : {}),
   };
 }
 

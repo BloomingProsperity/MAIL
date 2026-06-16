@@ -688,6 +688,88 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("lists and updates editable Hermes skill settings", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse([
+          {
+            id: "translate_text",
+            title: "翻译邮件",
+            mode: "read",
+            description: "翻译邮件正文",
+            settings: {
+              enabled: true,
+              maxContextChars: 24000,
+              memoryLimit: 6,
+              allowBodyRead: true,
+              allowMemoryWrite: false,
+              requireConfirmation: false,
+            },
+            settingBounds: {
+              maxContextChars: { min: 1000, max: 200000, step: 1000 },
+              memoryLimit: { min: 0, max: 50, step: 1 },
+            },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "translate_text",
+          title: "翻译邮件",
+          mode: "read",
+          description: "翻译邮件正文",
+          settings: {
+            enabled: false,
+            maxContextChars: 12000,
+            memoryLimit: 2,
+            allowBodyRead: false,
+            allowMemoryWrite: false,
+            requireConfirmation: true,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        }),
+      );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const skills = await api.listHermesSkills();
+    const updated = await api.updateHermesSkillSettings({
+      skillId: "translate_text",
+      patch: {
+        enabled: false,
+        maxContextChars: 12000,
+        memoryLimit: 2,
+        allowBodyRead: false,
+        requireConfirmation: true,
+      },
+    });
+
+    expect(skills[0].settings.enabled).toBe(true);
+    expect(updated.settings.enabled).toBe(false);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/hermes/skills",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/hermes/skills/translate_text/settings",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          enabled: false,
+          maxContextChars: 12000,
+          memoryLimit: 2,
+          allowBodyRead: false,
+          requireConfirmation: true,
+        }),
+      }),
+    );
+  });
+
   it("preserves Hermes provider request protocol metadata for settings wiring", async () => {
     const catalogResponse: HermesProviderCatalogResponse = {
       providers: [

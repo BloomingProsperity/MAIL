@@ -12,6 +12,7 @@ export interface HermesMessageFollowupTrackerInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  maxContextChars?: number;
 }
 
 export interface HermesMessageFollowupTrackerResult
@@ -57,7 +58,9 @@ export function createHermesMessageFollowupTrackerService(
         return undefined;
       }
 
-      const threadText = messageReadableText(message);
+      const threadText = messageReadableText(message, {
+        maxChars: normalized.maxContextChars,
+      });
       if (!threadText) {
         throw new InvalidHermesMessageFollowupRequestError(
           "message has no follow-up trackable text",
@@ -102,7 +105,7 @@ function normalizeInput(
 ): Required<Pick<HermesMessageFollowupTrackerInput, "accountId" | "messageId" | "language">> &
   Pick<
     HermesMessageFollowupTrackerInput,
-    "memoryIds" | "memoryScope" | "memoryLayers"
+    "memoryIds" | "memoryScope" | "memoryLayers" | "maxContextChars"
   > {
   return {
     accountId: normalizeRequiredText(input.accountId),
@@ -115,6 +118,9 @@ function normalizeInput(
       ? { memoryScope: normalizeRequiredText(input.memoryScope) }
       : {}),
     ...(input.memoryLayers ? { memoryLayers: input.memoryLayers } : {}),
+    ...(input.maxContextChars !== undefined
+      ? { maxContextChars: input.maxContextChars }
+      : {}),
   };
 }
 

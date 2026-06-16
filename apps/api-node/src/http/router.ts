@@ -11,7 +11,17 @@ import {
   type IngestWebhookResult,
   type MailEngineIngestStore,
 } from "../mail-engine/ingest-store.js";
-import { getHermesSkills } from "../hermes/skills.js";
+import {
+  getHermesSkills,
+  type HermesSkill,
+  type HermesSkillSettingsPatch,
+} from "../hermes/skills.js";
+import { limitHermesContextText } from "../hermes/message-content.js";
+import {
+  HermesSkillDisabledError,
+  InvalidHermesSkillSettingsRequestError,
+  type HermesSkillSettingsService,
+} from "../hermes/skill-settings.js";
 import { getHermesProviderCatalog } from "../hermes/provider-catalog.js";
 import {
   findProviderCapability,
@@ -428,6 +438,7 @@ export interface ApiConfig {
   hermesMessageOrganizationService?: HermesMessageOrganizationService;
   hermesMessageFollowupTrackerService?: HermesMessageFollowupTrackerService;
   hermesRuntimeConfigService?: HermesRuntimeConfigService;
+  hermesSkillSettingsService?: HermesSkillSettingsService;
   hermesProviderProbeService?: HermesProviderProbeService;
   hermesTranslationPreferenceService?: HermesTranslationPreferenceService;
   hermesFollowUpReminderService?: HermesFollowUpReminderService;
@@ -703,7 +714,34 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       }
 
       if (request.method === "GET" && request.url === "/api/hermes/skills") {
-        writeJson(response, 200, getHermesSkills());
+        writeJson(
+          response,
+          200,
+          config.hermesSkillSettingsService
+            ? await config.hermesSkillSettingsService.listSkills()
+            : getHermesSkills(),
+        );
+        return;
+      }
+
+      const hermesSkillSettingsRoute = parseHermesSkillSettingsRoute(
+        request.url,
+      );
+      if (hermesSkillSettingsRoute && request.method === "PATCH") {
+        if (!config.hermesSkillSettingsService) {
+          writeJson(response, 503, {
+            error: "hermes_skill_settings_unavailable",
+          });
+          return;
+        }
+
+        const result = await config.hermesSkillSettingsService.updateSkillSettings(
+          {
+            skillId: hermesSkillSettingsRoute.skillId,
+            patch: parseHermesSkillSettingsPatch(await readRequestBody()),
+          },
+        );
+        writeJson(response, 200, result);
         return;
       }
 
@@ -1835,12 +1873,18 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "translate_text", {
+          requiresBodyRead: true,
+        });
         const result =
           await config.hermesMessageTranslationService.translateMessage(
-            parseHermesMessageTranslationInput(
-              messageTranslationRoute.accountId,
-              messageTranslationRoute.messageId,
-              await readRequestBody(),
+            withHermesSkillContextBudget(
+              parseHermesMessageTranslationInput(
+                messageTranslationRoute.accountId,
+                messageTranslationRoute.messageId,
+                await readRequestBody(),
+              ),
+              skill,
             ),
           );
         if (!result) {
@@ -1861,11 +1905,17 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "thread_summarize", {
+          requiresBodyRead: true,
+        });
         const result = await config.hermesMessageSummaryService.summarizeMessage(
-          parseHermesMessageSummaryInput(
-            messageSummaryRoute.accountId,
-            messageSummaryRoute.messageId,
-            await readRequestBody(),
+          withHermesSkillContextBudget(
+            parseHermesMessageSummaryInput(
+              messageSummaryRoute.accountId,
+              messageSummaryRoute.messageId,
+              await readRequestBody(),
+            ),
+            skill,
           ),
         );
         if (!result) {
@@ -1888,12 +1938,18 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "reply_draft", {
+          requiresBodyRead: true,
+        });
         const result =
           await config.hermesMessageReplyService.draftMessageReply(
-            parseHermesMessageReplyDraftInput(
-              messageReplyDraftRoute.accountId,
-              messageReplyDraftRoute.messageId,
-              await readRequestBody(),
+            withHermesSkillContextBudget(
+              parseHermesMessageReplyDraftInput(
+                messageReplyDraftRoute.accountId,
+                messageReplyDraftRoute.messageId,
+                await readRequestBody(),
+              ),
+              skill,
             ),
           );
         if (!result) {
@@ -1916,12 +1972,18 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "quick_reply", {
+          requiresBodyRead: true,
+        });
         const result =
           await config.hermesMessageReplyService.quickMessageReply(
-            parseHermesMessageQuickReplyInput(
-              messageQuickReplyRoute.accountId,
-              messageQuickReplyRoute.messageId,
-              await readRequestBody(),
+            withHermesSkillContextBudget(
+              parseHermesMessageQuickReplyInput(
+                messageQuickReplyRoute.accountId,
+                messageQuickReplyRoute.messageId,
+                await readRequestBody(),
+              ),
+              skill,
             ),
           );
         if (!result) {
@@ -1944,12 +2006,29 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skills = await Promise.all([
+          ensureHermesSkillAllowed(config, "priority_triage", {
+            requiresBodyRead: true,
+          }),
+          ensureHermesSkillAllowed(config, "label_suggest", {
+            requiresBodyRead: true,
+          }),
+          ensureHermesSkillAllowed(config, "newsletter_cleanup", {
+            requiresBodyRead: true,
+          }),
+          ensureHermesSkillAllowed(config, "action_item_extract", {
+            requiresBodyRead: true,
+          }),
+        ]);
         const result =
           await config.hermesMessageOrganizationService.organizeMessage(
-            parseHermesMessageOrganizationInput(
-              messageOrganizationRoute.accountId,
-              messageOrganizationRoute.messageId,
-              await readRequestBody(),
+            withHermesSkillsContextBudget(
+              parseHermesMessageOrganizationInput(
+                messageOrganizationRoute.accountId,
+                messageOrganizationRoute.messageId,
+                await readRequestBody(),
+              ),
+              skills,
             ),
           );
         if (!result) {
@@ -1970,12 +2049,18 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "followup_tracker", {
+          requiresBodyRead: true,
+        });
         const result =
           await config.hermesMessageFollowupTrackerService.trackMessageFollowup(
-            parseHermesMessageFollowupInput(
-              messageFollowupRoute.accountId,
-              messageFollowupRoute.messageId,
-              await readRequestBody(),
+            withHermesSkillContextBudget(
+              parseHermesMessageFollowupInput(
+                messageFollowupRoute.accountId,
+                messageFollowupRoute.messageId,
+                await readRequestBody(),
+              ),
+              skill,
             ),
           );
         if (!result) {
@@ -2068,8 +2153,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "translate_text");
         const result = await config.hermesService.translate(
-          parseHermesTranslateInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesTranslateInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2084,8 +2173,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "reply_draft");
         const result = await config.hermesService.draftReply(
-          parseHermesReplyDraftInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesReplyDraftInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2100,8 +2193,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "quick_reply");
         const result = await config.hermesService.quickReply(
-          parseHermesQuickReplyInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesQuickReplyInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2116,8 +2213,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "rewrite_polish");
         const result = await config.hermesService.rewritePolish(
-          parseHermesRewritePolishInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesRewritePolishInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2132,8 +2233,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "thread_summarize");
         const result = await config.hermesService.summarizeThread(
-          parseHermesThreadSummaryInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesThreadSummaryInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2148,6 +2253,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        await ensureHermesSkillAllowed(config, "email_search_qa");
         const result = await config.hermesService.searchMail(
           parseHermesEmailSearchQaInput(await readRequestBody()),
         );
@@ -2164,8 +2270,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "action_item_extract");
         const result = await config.hermesService.extractActionItems(
-          parseHermesActionItemExtractInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesActionItemExtractInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2180,8 +2290,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "label_suggest");
         const result = await config.hermesService.suggestLabels(
-          parseHermesLabelSuggestInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesLabelSuggestInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2196,8 +2310,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "newsletter_cleanup");
         const result = await config.hermesService.cleanupNewsletter(
-          parseHermesNewsletterCleanupInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesNewsletterCleanupInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2212,8 +2330,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "priority_triage");
         const result = await config.hermesService.triagePriority(
-          parseHermesPriorityTriageInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesPriorityTriageInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2228,8 +2350,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const skill = await ensureHermesSkillAllowed(config, "followup_tracker");
         const result = await config.hermesService.trackFollowup(
-          parseHermesFollowupTrackerInput(await readRequestBody()),
+          withHermesInputTextBudget(
+            parseHermesFollowupTrackerInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -2729,6 +2855,19 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
+      if (error instanceof InvalidHermesSkillSettingsRequestError) {
+        writeJson(response, 400, { error: error.code });
+        return;
+      }
+
+      if (error instanceof HermesSkillDisabledError) {
+        writeJson(response, error.statusCode, {
+          error: error.code,
+          skillId: error.skillId,
+        });
+        return;
+      }
+
       if (error instanceof InvalidHermesProviderProbeRequestError) {
         writeJson(response, 400, { error: error.code });
         return;
@@ -2775,6 +2914,84 @@ async function recordOperationalEvent(
       error,
     });
   }
+}
+
+async function ensureHermesSkillAllowed(
+  config: ApiConfig,
+  skillId: string,
+  options: { requiresBodyRead?: boolean } = {},
+): Promise<HermesSkill | undefined> {
+  if (!config.hermesSkillSettingsService) {
+    return undefined;
+  }
+
+  const skill = await config.hermesSkillSettingsService.getSkill(skillId);
+  if (!skill) {
+    throw new InvalidHermesSkillSettingsRequestError("unknown Hermes skill");
+  }
+  if (!skill.settings.enabled) {
+    throw new HermesSkillDisabledError(skillId);
+  }
+  if (options.requiresBodyRead && !skill.settings.allowBodyRead) {
+    throw new HermesSkillDisabledError(
+      skillId,
+      "Hermes skill body reads are disabled",
+    );
+  }
+
+  return skill;
+}
+
+function withHermesSkillContextBudget<T extends object>(
+  input: T,
+  skill: HermesSkill | undefined,
+): T & { maxContextChars?: number } {
+  if (!skill) {
+    return input;
+  }
+
+  return {
+    ...input,
+    maxContextChars: skill.settings.maxContextChars,
+  };
+}
+
+function withHermesSkillsContextBudget<T extends object>(
+  input: T,
+  skills: Array<HermesSkill | undefined>,
+): T & { maxContextChars?: number } {
+  const budgets = skills
+    .map((skill) => skill?.settings.maxContextChars)
+    .filter((value): value is number => typeof value === "number");
+  if (budgets.length === 0) {
+    return input;
+  }
+
+  return {
+    ...input,
+    maxContextChars: Math.min(...budgets),
+  };
+}
+
+function withHermesInputTextBudget<T extends object>(
+  input: T,
+  skill: HermesSkill | undefined,
+): T {
+  if (!skill) {
+    return input;
+  }
+
+  const budget = { maxChars: skill.settings.maxContextChars };
+  const patch: Partial<{ text: string; threadText: string }> = {};
+  const value = input as { text?: unknown; threadText?: unknown };
+  if (typeof value.text === "string") {
+    patch.text = limitHermesContextText(value.text, budget);
+  }
+  if (typeof value.threadText === "string") {
+    patch.threadText = limitHermesContextText(value.threadText, budget);
+  }
+
+  return Object.keys(patch).length > 0 ? { ...input, ...patch } : input;
 }
 
 async function recordEmailEngineWebhookIngestEvents(
@@ -3605,6 +3822,24 @@ function parseHermesActionPlanRoute(
   };
 }
 
+function parseHermesSkillSettingsRoute(
+  requestUrl: string | undefined,
+): { skillId: string } | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  const match = /^\/api\/hermes\/skills\/([^/]+)\/settings$/.exec(
+    url.pathname,
+  );
+  if (!match) {
+    return undefined;
+  }
+
+  return { skillId: decodeURIComponent(match[1]) };
+}
+
 function isHermesWorkspaceContextRoute(requestUrl: string | undefined): boolean {
   if (!requestUrl) {
     return false;
@@ -3625,6 +3860,73 @@ function parseHermesWorkspaceContextInput(requestUrl: string | undefined): {
     ...optionalWorkspaceContextLimit(url, "ruleLimit"),
     ...optionalWorkspaceContextLimit(url, "labelLimit"),
   };
+}
+
+function parseHermesSkillSettingsPatch(body: string): HermesSkillSettingsPatch {
+  const payload = JSON.parse(body) as Record<string, unknown>;
+  const allowed = new Set([
+    "enabled",
+    "maxContextChars",
+    "memoryLimit",
+    "allowBodyRead",
+    "allowMemoryWrite",
+    "requireConfirmation",
+  ]);
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload) ||
+    Object.keys(payload).some((key) => !allowed.has(key))
+  ) {
+    throw new InvalidHermesSkillSettingsRequestError();
+  }
+
+  const patch: HermesSkillSettingsPatch = {};
+  if (payload.enabled !== undefined) {
+    patch.enabled = readHermesSkillSettingsBoolean(payload.enabled);
+  }
+  if (payload.maxContextChars !== undefined) {
+    patch.maxContextChars = readHermesSkillSettingsInteger(
+      payload.maxContextChars,
+    );
+  }
+  if (payload.memoryLimit !== undefined) {
+    patch.memoryLimit = readHermesSkillSettingsInteger(payload.memoryLimit);
+  }
+  if (payload.allowBodyRead !== undefined) {
+    patch.allowBodyRead = readHermesSkillSettingsBoolean(payload.allowBodyRead);
+  }
+  if (payload.allowMemoryWrite !== undefined) {
+    patch.allowMemoryWrite = readHermesSkillSettingsBoolean(
+      payload.allowMemoryWrite,
+    );
+  }
+  if (payload.requireConfirmation !== undefined) {
+    patch.requireConfirmation = readHermesSkillSettingsBoolean(
+      payload.requireConfirmation,
+    );
+  }
+  if (Object.keys(patch).length === 0) {
+    throw new InvalidHermesSkillSettingsRequestError();
+  }
+
+  return patch;
+}
+
+function readHermesSkillSettingsBoolean(value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    throw new InvalidHermesSkillSettingsRequestError();
+  }
+
+  return value;
+}
+
+function readHermesSkillSettingsInteger(value: unknown): number {
+  if (!Number.isInteger(value)) {
+    throw new InvalidHermesSkillSettingsRequestError();
+  }
+
+  return value as number;
 }
 
 function optionalWorkspaceContextParam<

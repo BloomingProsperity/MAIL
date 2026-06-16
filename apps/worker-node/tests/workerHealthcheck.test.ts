@@ -33,6 +33,9 @@ describe("worker healthcheck", () => {
         composeAttachmentCleanupIntervalMs: 3600000,
         composeAttachmentRetentionMs: 604800000,
         composeAttachmentCleanupLimit: 100,
+        hermesRetentionCleanupIntervalMs: 3600000,
+        hermesRetentionMs: 2592000000,
+        hermesRetentionCleanupLimit: 500,
       },
       warnings: ["EMAILENGINE_ACCESS_TOKEN"],
     });
@@ -42,6 +45,7 @@ describe("worker healthcheck", () => {
         "scheduled_send",
         "alias_delivery",
         "compose_attachment_cleanup",
+        "hermes_retention_cleanup",
       ]),
     );
     expect(JSON.stringify(health)).not.toContain("secret");

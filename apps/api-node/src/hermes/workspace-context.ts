@@ -76,7 +76,7 @@ export function createHermesWorkspaceContextService(options: {
     "listRules" | "listRuleCandidates"
   >;
   getMailEngineContext?: () => Promise<HermesWorkspaceMailEngineContext>;
-  getSkills: () => HermesSkill[];
+  getSkills: () => HermesSkill[] | Promise<HermesSkill[]>;
   now: () => string;
 }): HermesWorkspaceContextService {
   return {
@@ -170,7 +170,7 @@ export function createHermesWorkspaceContextService(options: {
         labels,
         rules,
         pendingRuleCandidates,
-        skills: options.getSkills(),
+        skills: await options.getSkills(),
         ...(mailEngine ? { mailEngine } : {}),
         operationBoundaries: buildOperationBoundaries({
           mailEngine,

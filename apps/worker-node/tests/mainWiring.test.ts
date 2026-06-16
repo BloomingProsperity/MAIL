@@ -54,6 +54,7 @@ describe("worker main wiring", () => {
     expect(main).toContain("runAliasDeliveryBatch");
     expect(main).toContain("runAttachmentTextExtractionBatch");
     expect(main).toContain("createComposeAttachmentCleanupLane");
+    expect(main).toContain("createHermesRetentionCleanupLane");
   });
 
   it("routes scheduled sends through EmailEngine and native transports", async () => {
@@ -85,6 +86,7 @@ describe("worker main wiring", () => {
     expect(main).toContain('name: "alias_delivery"');
     expect(main).toContain('name: "attachment_text_extraction"');
     expect(main).toContain('name: "compose_attachment_cleanup"');
+    expect(main).toContain('name: "hermes_retention_cleanup"');
   });
 
   it("runs compose attachment cleanup with bounded self-hosted retention settings", async () => {
@@ -95,6 +97,16 @@ describe("worker main wiring", () => {
     expect(main).toContain("composeAttachmentCleanupIntervalMs");
     expect(main).toContain("composeAttachmentRetentionMs");
     expect(main).toContain("composeAttachmentCleanupLimit");
+  });
+
+  it("runs Hermes retention cleanup with bounded self-hosted retention settings", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createPostgresHermesRetentionCleanupStore");
+    expect(main).toContain("createHermesRetentionCleanupLane");
+    expect(main).toContain("hermesRetentionCleanupIntervalMs");
+    expect(main).toContain("hermesRetentionMs");
+    expect(main).toContain("hermesRetentionCleanupLimit");
   });
 
   it("registers graceful shutdown for the poller timer and Postgres pool", async () => {

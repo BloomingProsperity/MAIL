@@ -11,6 +11,7 @@ export interface WorkerDescription {
     | "follow_up_reminder"
     | "attachment_text_extraction"
     | "compose_attachment_cleanup"
+    | "hermes_retention_cleanup"
   >;
   ready: boolean;
 }
@@ -29,6 +30,7 @@ export function describeWorker(): WorkerDescription {
       "follow_up_reminder",
       "attachment_text_extraction",
       "compose_attachment_cleanup",
+      "hermes_retention_cleanup",
     ],
     ready: true,
   };

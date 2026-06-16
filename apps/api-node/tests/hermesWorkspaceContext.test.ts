@@ -4,6 +4,7 @@ import {
   createHermesWorkspaceContextService,
   type HermesWorkspaceMailEngineContext,
 } from "../src/hermes/workspace-context";
+import { getHermesSkill } from "../src/hermes/skills";
 import type { SyncCenterAccount } from "../src/sync-center/sync-center-store";
 
 describe("Hermes workspace context service", () => {
@@ -109,18 +110,8 @@ describe("Hermes workspace context service", () => {
       },
       getMailEngineContext: async () => mailEngine,
       getSkills: () => [
-        {
-          id: "translate_text",
-          title: "翻译邮件",
-          mode: "read",
-          description: "翻译邮件正文",
-        },
-        {
-          id: "rule_suggest",
-          title: "规则建议",
-          mode: "learn",
-          description: "从重复行为生成候选规则",
-        },
+        hermesSkill("translate_text"),
+        hermesSkill("rule_suggest"),
       ],
       now: () => "2026-06-16T01:00:00.000Z",
     });
@@ -230,14 +221,7 @@ describe("Hermes workspace context service", () => {
       getMailEngineContext: async () => {
         throw new Error("health offline");
       },
-      getSkills: () => [
-        {
-          id: "translate_text",
-          title: "翻译邮件",
-          mode: "read",
-          description: "翻译邮件正文",
-        },
-      ],
+      getSkills: () => [hermesSkill("translate_text")],
       now: () => "2026-06-16T01:00:00.000Z",
     });
 
@@ -274,4 +258,12 @@ function account(
     nextAction: "none",
     accountUpdatedAt: "2026-06-16T00:00:00.000Z",
   };
+}
+
+function hermesSkill(skillId: string) {
+  const skill = getHermesSkill(skillId);
+  if (!skill) {
+    throw new Error(`missing Hermes skill fixture: ${skillId}`);
+  }
+  return skill;
 }

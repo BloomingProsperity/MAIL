@@ -26,6 +26,7 @@ import type {
   HermesRuleCandidateDto,
   HermesRuleDto,
   HermesRuleSimulationDto,
+  HermesSkillDto,
   HermesThreadSummaryResult,
   HermesTranslationPreferenceResult,
   HermesTranslateTextResult,
@@ -1134,6 +1135,60 @@ describe("Email Hub first UI baseline", () => {
         updateChannel: "stable",
       });
     });
+  });
+
+  it("lets users edit Hermes skill options from Settings", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const skillPanel = await screen.findByLabelText("Hermes skill settings");
+    expect(within(skillPanel).getByText("翻译邮件")).toBeTruthy();
+    await waitFor(() => {
+      expect(api.listHermesSkills).toHaveBeenCalled();
+    });
+
+    fireEvent.click(
+      within(skillPanel).getByLabelText("Enable Hermes skill 翻译邮件"),
+    );
+    fireEvent.click(
+      within(skillPanel).getByLabelText("Allow Hermes body reads 翻译邮件"),
+    );
+    fireEvent.click(
+      within(skillPanel).getByLabelText("Require Hermes confirmation 翻译邮件"),
+    );
+    fireEvent.change(
+      within(skillPanel).getByLabelText("Hermes skill max context 翻译邮件"),
+      { target: { value: "12000" } },
+    );
+    fireEvent.change(
+      within(skillPanel).getByLabelText("Hermes skill memory limit 翻译邮件"),
+      { target: { value: "2" } },
+    );
+    fireEvent.click(
+      within(skillPanel).getByRole("button", {
+        name: "Save Hermes skill settings 翻译邮件",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.updateHermesSkillSettings).toHaveBeenCalledWith({
+        skillId: "translate_text",
+        patch: {
+          enabled: false,
+          maxContextChars: 12000,
+          memoryLimit: 2,
+          allowBodyRead: false,
+          allowMemoryWrite: false,
+          requireConfirmation: true,
+        },
+      });
+    });
+    expect(await screen.findByText("能力选项已保存：翻译邮件。")).toBeTruthy();
   });
 
   it("clears the saved Hermes API key from Settings", async () => {
@@ -5914,6 +5969,35 @@ function hermesOrganizationResult(
   };
 }
 
+function hermesSkillFixture(
+  overrides: Partial<Omit<HermesSkillDto, "settings" | "settingBounds">> & {
+    settings?: Partial<HermesSkillDto["settings"]>;
+    settingBounds?: Partial<HermesSkillDto["settingBounds"]>;
+  } = {},
+): HermesSkillDto {
+  return {
+    id: "translate_text",
+    title: "翻译邮件",
+    mode: "read",
+    description: "翻译邮件正文",
+    ...overrides,
+    settings: {
+      enabled: true,
+      maxContextChars: 24000,
+      memoryLimit: 6,
+      allowBodyRead: true,
+      allowMemoryWrite: false,
+      requireConfirmation: false,
+      ...(overrides.settings ?? {}),
+    },
+    settingBounds: {
+      maxContextChars: { min: 1000, max: 200000, step: 1000 },
+      memoryLimit: { min: 0, max: 50, step: 1 },
+      ...(overrides.settingBounds ?? {}),
+    },
+  };
+}
+
 function createApiFixture(): EmailHubApi {
   return {
     listMailboxes: vi.fn(async () => ({
@@ -6257,6 +6341,25 @@ function createApiFixture(): EmailHubApi {
       updateChannel: "stable" as const,
       lastCheckedAt: "2026-06-14T08:05:00.000Z",
     })),
+    listHermesSkills: vi.fn(async () => [
+      hermesSkillFixture(),
+      hermesSkillFixture({
+        id: "reply_draft",
+        title: "生成回复草稿",
+        mode: "draft",
+        description: "根据上下文生成可编辑回复",
+        settings: {
+          requireConfirmation: true,
+        },
+      }),
+    ]),
+    updateHermesSkillSettings: vi.fn(async (input) =>
+      hermesSkillFixture({
+        id: input.skillId,
+        title: input.skillId === "translate_text" ? "翻译邮件" : input.skillId,
+        settings: input.patch,
+      }),
+    ),
     listHermesMemories: vi.fn(async () => ({
       items: [
         {
@@ -6958,18 +7061,21 @@ function createApiFixture(): EmailHubApi {
       ],
       pendingRuleCandidates: [],
       skills: [
-        {
+        hermesSkillFixture({
           id: "translate_text",
           title: "翻译邮件",
           mode: "read",
           description: "翻译邮件正文",
-        },
-        {
+        }),
+        hermesSkillFixture({
           id: "rule_suggest",
           title: "规则建议",
           mode: "learn",
           description: "从重复行为生成候选规则",
-        },
+          settings: {
+            requireConfirmation: true,
+          },
+        }),
       ],
       mailEngine: {
         provider: "emailengine",

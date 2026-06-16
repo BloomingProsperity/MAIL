@@ -16,6 +16,7 @@ export interface HermesMessageTranslationInput {
   memoryScope?: string;
   memoryLayers?: string[];
   forceRefresh?: boolean;
+  maxContextChars?: number;
 }
 
 export interface HermesMessageTranslationResult extends HermesTranslateResult {
@@ -102,7 +103,9 @@ export function createHermesMessageTranslationService(
         return undefined;
       }
 
-      const text = messageTranslationText(message);
+      const text = messageTranslationText(message, {
+        maxChars: normalized.maxContextChars,
+      });
       if (!text) {
         throw new InvalidHermesMessageTranslationRequestError(
           "message has no translatable text",
@@ -186,7 +189,11 @@ type NormalizedHermesMessageTranslationInput = Required<
 > &
   Pick<
     HermesMessageTranslationInput,
-    "memoryIds" | "memoryScope" | "memoryLayers" | "forceRefresh"
+    | "memoryIds"
+    | "memoryScope"
+    | "memoryLayers"
+    | "forceRefresh"
+    | "maxContextChars"
   >;
 
 function normalizeInput(
@@ -204,6 +211,9 @@ function normalizeInput(
     ...(input.memoryScope ? { memoryScope: normalizeRequiredText(input.memoryScope) } : {}),
     ...(input.memoryLayers ? { memoryLayers: input.memoryLayers } : {}),
     ...(input.forceRefresh ? { forceRefresh: true } : {}),
+    ...(input.maxContextChars !== undefined
+      ? { maxContextChars: input.maxContextChars }
+      : {}),
   };
 }
 

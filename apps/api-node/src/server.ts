@@ -25,6 +25,7 @@ import { createHermesFollowUpReminderService } from "./hermes/followup-reminders
 import { createHermesRuntimeConfigService } from "./hermes/runtime-config.js";
 import { createHermesHttpVersionChecker } from "./hermes/version-checker.js";
 import { createPostgresHermesRuntimeConfigStore } from "./hermes/postgres-runtime-config-store.js";
+import { createPostgresHermesSkillSettingsStore } from "./hermes/postgres-skill-settings-store.js";
 import { createDomainAliasService } from "./domains/domain-alias.js";
 import { createPostgresDomainAliasStore } from "./domains/postgres-domain-alias-store.js";
 import { createFollowUpService } from "./follow-ups/follow-ups.js";
@@ -51,6 +52,7 @@ import { createHermesMessageFollowupTrackerService } from "./hermes/message-foll
 import { createHermesRuleService } from "./hermes/rules.js";
 import { createHermesTranslationPreferenceService } from "./hermes/translation-preferences.js";
 import { getHermesSkills } from "./hermes/skills.js";
+import { createHermesSkillSettingsService } from "./hermes/skill-settings.js";
 import { createHermesWorkspaceContextService } from "./hermes/workspace-context.js";
 import { createApiHandler } from "./http/router.js";
 import { createLabelService } from "./labels/labels.js";
@@ -201,6 +203,9 @@ if (pool) {
       url: process.env.HERMES_VERSION_CHECK_URL,
     }),
   });
+  config.hermesSkillSettingsService = createHermesSkillSettingsService({
+    store: createPostgresHermesSkillSettingsStore(pool),
+  });
   config.hermesTranslationPreferenceService =
     createHermesTranslationPreferenceService({
       memoryStore: config.hermesMemoryStore,
@@ -305,7 +310,8 @@ if (pool) {
         },
       };
     },
-    getSkills: getHermesSkills,
+    getSkills: async () =>
+      config.hermesSkillSettingsService?.listSkills() ?? getHermesSkills(),
     now: () => new Date().toISOString(),
   });
   config.hermesActionPlanService = createHermesActionPlanService({

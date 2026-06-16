@@ -26,6 +26,10 @@ import { createPostgresScheduledSendStore } from "./postgres-scheduled-send-stor
 import { createPostgresSendIdentityVerifier } from "./postgres-send-identity-verifier.js";
 import { createLocalScheduledAttachmentBlobStore } from "./compose-attachment-blob-store.js";
 import { createComposeAttachmentCleanupLane } from "./compose-attachment-cleanup-runner.js";
+import {
+  createHermesRetentionCleanupLane,
+  createPostgresHermesRetentionCleanupStore,
+} from "./hermes-retention-cleanup-runner.js";
 import { createPostgresComposeAttachmentReferenceStore } from "./postgres-compose-attachment-reference-store.js";
 import { createPostgresSyncJobQueue } from "./postgres-sync-job-queue.js";
 import { runFollowUpReminderBatch } from "./follow-up-reminder-runner.js";
@@ -63,6 +67,9 @@ const {
   composeAttachmentCleanupIntervalMs,
   composeAttachmentRetentionMs,
   composeAttachmentCleanupLimit,
+  hermesRetentionCleanupIntervalMs,
+  hermesRetentionMs,
+  hermesRetentionCleanupLimit,
 } = runtimeConfig;
 const databaseUrl = process.env.DATABASE_URL;
 const emailEngineUrl = process.env.EMAILENGINE_URL ?? "http://emailengine:3000";
@@ -168,6 +175,13 @@ if (!databaseUrl) {
     minAgeMs: composeAttachmentRetentionMs,
     limit: composeAttachmentCleanupLimit,
   });
+  const runHermesRetentionCleanup = createHermesRetentionCleanupLane({
+    store: createPostgresHermesRetentionCleanupStore(pool),
+    clock: () => new Date(),
+    intervalMs: hermesRetentionCleanupIntervalMs,
+    retentionMs: hermesRetentionMs,
+    limit: hermesRetentionCleanupLimit,
+  });
 
   const tick = createWorkerTickRunner({
     queue,
@@ -261,6 +275,10 @@ if (!databaseUrl) {
         name: "compose_attachment_cleanup",
         run: runComposeAttachmentCleanup,
       },
+      {
+        name: "hermes_retention_cleanup",
+        run: runHermesRetentionCleanup,
+      },
     ],
   });
 
@@ -330,6 +348,9 @@ function logWorkerReady() {
     composeAttachmentCleanupIntervalMs,
     composeAttachmentRetentionMs,
     composeAttachmentCleanupLimit,
+    hermesRetentionCleanupIntervalMs,
+    hermesRetentionMs,
+    hermesRetentionCleanupLimit,
     databaseConfigured: Boolean(databaseUrl),
     emailEngineAccessTokenConfigured: Boolean(emailEngineAccessToken),
   });

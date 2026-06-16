@@ -136,11 +136,21 @@ with more than smoke-level tests.
 - State: Hermes runtime settings, runs, audit events, editable memories,
   draft feedback, reviewed rules.
 - API: `/api/hermes/*` skills, runtime, providers, memories, rules, audit log.
+- Resource guardrails: every built-in Hermes skill has backend-owned editable
+  options for enabled state, body-read permission, memory-write permission,
+  confirmation requirement, memory limit, and context character budget. Message
+  body context is capped before prompt construction and before skill run/audit
+  persistence, with a 24k character default when no per-skill override exists.
 - Worker: no silent write actions; worker only consumes explicit mail actions
-  and scheduled jobs.
+  and scheduled jobs. A `hermes_retention_cleanup` lane prunes expired Hermes
+  translation/summary caches, completed action plans, feedback, audit events,
+  and skill runs using `HERMES_RETENTION_DAYS`,
+  `HERMES_RETENTION_CLEANUP_INTERVAL_MS`, and
+  `HERMES_RETENTION_CLEANUP_LIMIT`.
 - Failure: missing endpoint/model/key, external auth required, provider failure,
   prompt output parse failure.
 - Tests: provider catalog/probe, runtime config, audit log, memory context,
+  editable skill settings, context-budget truncation, retention cleanup, and
   each skill with preview-only assertions.
 - Current writing-style status: Hermes reply drafts, quick replies, and
   rewrite/polish results now feed the same explicit final-edit feedback path.

@@ -51,7 +51,157 @@ describe("Hermes routes", () => {
       expect(skills.map((skill: { id: string }) => skill.id)).toEqual(
         expect.arrayContaining(["translate_text", "email_search_qa"]),
       );
+      expect(
+        skills.find((skill: { id: string }) => skill.id === "translate_text"),
+      ).toMatchObject({
+        settings: {
+          enabled: true,
+          maxContextChars: 24000,
+          memoryLimit: 6,
+          allowBodyRead: true,
+        },
+      });
     });
+  });
+
+  it("lists and edits Hermes skill settings through the configured service", async () => {
+    const calls: unknown[] = [];
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        calls.push(["list"]);
+        return [
+          {
+            id: "translate_text",
+            title: "翻译邮件",
+            mode: "read",
+            description: "翻译邮件正文",
+            settings: {
+              enabled: true,
+              maxContextChars: 24000,
+              memoryLimit: 6,
+              allowBodyRead: true,
+              allowMemoryWrite: false,
+              requireConfirmation: false,
+            },
+            settingBounds: {
+              maxContextChars: { min: 1000, max: 200000, step: 1000 },
+              memoryLimit: { min: 0, max: 50, step: 1 },
+            },
+          },
+        ];
+      },
+      async getSkill() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings(input: unknown) {
+        calls.push(["update", input]);
+        return {
+          id: "translate_text",
+          title: "翻译邮件",
+          mode: "read",
+          description: "翻译邮件正文",
+          settings: {
+            enabled: false,
+            maxContextChars: 12000,
+            memoryLimit: 2,
+            allowBodyRead: false,
+            allowMemoryWrite: false,
+            requireConfirmation: true,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const list = await fetch(`${baseUrl}/api/hermes/skills`);
+        const update = await fetch(
+          `${baseUrl}/api/hermes/skills/translate_text/settings`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              enabled: false,
+              maxContextChars: 12000,
+              memoryLimit: 2,
+              allowBodyRead: false,
+              requireConfirmation: true,
+            }),
+          },
+        );
+
+        expect(list.status).toBe(200);
+        expect(await list.json()).toMatchObject([
+          { id: "translate_text", settings: { enabled: true } },
+        ]);
+        expect(update.status).toBe(200);
+        expect(await update.json()).toMatchObject({
+          id: "translate_text",
+          settings: {
+            enabled: false,
+            maxContextChars: 12000,
+            memoryLimit: 2,
+            allowBodyRead: false,
+            requireConfirmation: true,
+          },
+        });
+      },
+      { hermesSkillSettingsService },
+    );
+
+    expect(calls).toEqual([
+      ["list"],
+      [
+        "update",
+        {
+          skillId: "translate_text",
+          patch: {
+            enabled: false,
+            maxContextChars: 12000,
+            memoryLimit: 2,
+            allowBodyRead: false,
+            requireConfirmation: true,
+          },
+        },
+      ],
+    ]);
+  });
+
+  it("rejects invalid Hermes skill settings updates", async () => {
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        throw new Error("not used");
+      },
+      async getSkill() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings() {
+        throw new Error("should not be called");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/translate_text/settings`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ enabled: "false" }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_skill_settings_request",
+        });
+      },
+      { hermesSkillSettingsService },
+    );
   });
 
   it("lists Hermes audit events with account, skill, message, and memory filters", async () => {
@@ -206,6 +356,131 @@ describe("Hermes routes", () => {
     );
   });
 
+  it("limits direct Hermes skill run text by the editable context budget", async () => {
+    const calls: Array<{ text: string }> = [];
+    const hermesService = {
+      async translate(input: { text: string }) {
+        calls.push(input);
+        return {
+          skillRunId: "run_1",
+          skillId: "translate_text",
+          sourceLanguage: "auto",
+          targetLanguage: "Chinese",
+          translatedText: "你好",
+        };
+      },
+    };
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings() {
+        throw new Error("not used");
+      },
+      async getSkill(skillId: string) {
+        return {
+          id: skillId,
+          title: "翻译邮件",
+          mode: "read",
+          description: "翻译邮件正文",
+          settings: {
+            enabled: true,
+            maxContextChars: 1000,
+            memoryLimit: 6,
+            allowBodyRead: true,
+            allowMemoryWrite: false,
+            requireConfirmation: false,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/translate_text/run`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              text: "x".repeat(2_000),
+              targetLanguage: "Chinese",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+      },
+      { hermesService, hermesSkillSettingsService },
+    );
+
+    expect(calls[0].text.length).toBeLessThanOrEqual(1000);
+    expect(calls[0].text).toContain("Hermes context truncated");
+  });
+
+  it("blocks disabled Hermes skills before calling the Hermes service", async () => {
+    const hermesService = {
+      async translate() {
+        throw new Error("disabled skill should not call Hermes");
+      },
+    };
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        throw new Error("not used");
+      },
+      async getSkill(skillId: string) {
+        return {
+          id: skillId,
+          title: "翻译邮件",
+          mode: "read",
+          description: "翻译邮件正文",
+          settings: {
+            enabled: false,
+            maxContextChars: 24000,
+            memoryLimit: 6,
+            allowBodyRead: true,
+            allowMemoryWrite: false,
+            requireConfirmation: false,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        };
+      },
+      async updateSkillSettings() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/translate_text/run`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              text: "Hello",
+              targetLanguage: "Chinese",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({
+          error: "hermes_skill_disabled",
+          skillId: "translate_text",
+        });
+      },
+      { hermesService, hermesSkillSettingsService },
+    );
+  });
+
   it("rejects invalid translate_text requests before hitting Hermes", async () => {
     const calls: unknown[] = [];
     const hermesService = {
@@ -318,6 +593,79 @@ describe("Hermes routes", () => {
         memoryScope: "sender:client@example.com",
         memoryLayers: ["contact_memory", "procedural_memory"],
         forceRefresh: true,
+      },
+    ]);
+  });
+
+  it("passes the editable Hermes skill context budget to message-scoped routes", async () => {
+    const calls: unknown[] = [];
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings() {
+        throw new Error("not used");
+      },
+      async getSkill(skillId: string) {
+        expect(skillId).toBe("translate_text");
+        return {
+          id: "translate_text",
+          title: "翻译邮件",
+          mode: "read",
+          description: "翻译邮件正文",
+          settings: {
+            enabled: true,
+            maxContextChars: 12000,
+            memoryLimit: 6,
+            allowBodyRead: true,
+            allowMemoryWrite: false,
+            requireConfirmation: false,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        };
+      },
+    };
+    const hermesMessageTranslationService = {
+      async translateMessage(input: unknown) {
+        calls.push(input);
+        return {
+          skillRunId: "run_message_translate_1",
+          skillId: "translate_text",
+          accountId: "account_1",
+          messageId: "message_1",
+          sourceLanguage: "auto",
+          targetLanguage: "Chinese",
+          translatedText: "你好",
+          cached: false,
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/translate`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ targetLanguage: "Chinese" }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+      },
+      { hermesMessageTranslationService, hermesSkillSettingsService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        messageId: "message_1",
+        targetLanguage: "Chinese",
+        maxContextChars: 12000,
       },
     ]);
   });

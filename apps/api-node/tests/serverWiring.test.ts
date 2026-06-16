@@ -169,6 +169,16 @@ describe("server wiring", () => {
     expect(source).toMatch(/versionChecker:\s*createHermesHttpVersionChecker/);
   });
 
+  it("wires editable Hermes skill settings into API and workspace context", async () => {
+    const serverUrl = new URL("../src/server.ts", import.meta.url);
+    const source = await readFile(serverUrl, "utf8");
+
+    expect(source).toMatch(/createHermesSkillSettingsService/);
+    expect(source).toMatch(/createPostgresHermesSkillSettingsStore/);
+    expect(source).toMatch(/config\.hermesSkillSettingsService\s*=/);
+    expect(source).toMatch(/config\.hermesSkillSettingsService\?\.listSkills/);
+  });
+
   it("registers graceful shutdown for the HTTP server and Postgres pool", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");
