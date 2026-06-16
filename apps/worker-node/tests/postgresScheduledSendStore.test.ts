@@ -79,7 +79,7 @@ describe("Postgres scheduled send store", () => {
 
     expect(queries[0].text).toMatch(/WITH candidate AS/i);
     expect(queries[0].text).toMatch(/FOR UPDATE SKIP LOCKED/i);
-    expect(queries[0].text).toMatch(/status IN \('scheduled', 'failed'\)/i);
+    expect(queries[0].text).toMatch(/status IN \('scheduled', 'queued', 'failed'\)/i);
     expect(queries[0].text).toMatch(/not_before <= \$1::timestamptz/i);
     expect(queries[0].text).toMatch(/UPDATE email_drafts/i);
     expect(queries[0].text).toMatch(/JOIN connected_accounts/i);
@@ -237,6 +237,7 @@ describe("Postgres scheduled send store", () => {
       accountId: "acc_1",
       scheduledId: "schedule_1",
       draftId: "draft_1",
+      leaseOwner: "worker-a",
       providerQueueId: "queue_1",
       providerMessageId: "<message@example.com>",
       sentAt: "2026-06-13T12:30:01.000Z",
@@ -246,6 +247,7 @@ describe("Postgres scheduled send store", () => {
     expect(queries[0].text).toMatch(/status = 'sent'/i);
     expect(queries[0].text).toMatch(/UPDATE email_drafts/i);
     expect(queries[0].text).toMatch(/provider_queue_id = \$4/i);
+    expect(queries[0].text).toMatch(/lease_owner = \$7/i);
     expect(queries[0].values).toEqual([
       "acc_1",
       "schedule_1",
@@ -253,6 +255,7 @@ describe("Postgres scheduled send store", () => {
       "queue_1",
       "<message@example.com>",
       "2026-06-13T12:30:01.000Z",
+      "worker-a",
     ]);
   });
 
@@ -269,6 +272,7 @@ describe("Postgres scheduled send store", () => {
       accountId: "acc_1",
       scheduledId: "schedule_1",
       draftId: "draft_1",
+      leaseOwner: "worker-a",
       errorMessage: "SMTP transient failure",
       now: new Date("2026-06-13T12:31:00.000Z"),
     });
@@ -278,6 +282,7 @@ describe("Postgres scheduled send store", () => {
     expect(queries[0].text).toMatch(/ELSE 'failed'/i);
     expect(queries[0].text).toMatch(/lease_owner = NULL/i);
     expect(queries[0].text).toMatch(/lease_expires_at = NULL/i);
+    expect(queries[0].text).toMatch(/lease_owner = \$6/i);
     expect(queries[0].text).toMatch(/LEAST\(\s*60 \* POWER/i);
     expect(queries[0].text).toMatch(/WHEN failed_schedule.status = 'dead_letter' THEN 'failed'/i);
     expect(queries[0].text).toMatch(/ELSE 'scheduled'/i);
@@ -287,6 +292,7 @@ describe("Postgres scheduled send store", () => {
       "draft_1",
       "SMTP transient failure",
       "2026-06-13T12:31:00.000Z",
+      "worker-a",
     ]);
   });
 });

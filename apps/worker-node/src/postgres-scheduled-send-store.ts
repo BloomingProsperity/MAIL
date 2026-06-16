@@ -47,7 +47,7 @@ export function createPostgresScheduledSendStore(
             SELECT id
             FROM scheduled_sends
             WHERE (
-                status IN ('scheduled', 'failed')
+                status IN ('scheduled', 'queued', 'failed')
                 OR (
                   status = 'sending'
                   AND lease_expires_at IS NOT NULL
@@ -133,6 +133,7 @@ export function createPostgresScheduledSendStore(
             WHERE account_id = $1
               AND id = $2
               AND status = 'sending'
+              AND lease_owner = $7
             RETURNING *
           )
           UPDATE email_drafts
@@ -153,6 +154,7 @@ export function createPostgresScheduledSendStore(
           input.providerQueueId ?? null,
           input.providerMessageId ?? null,
           input.sentAt,
+          input.leaseOwner,
         ],
       );
     },
@@ -185,6 +187,7 @@ export function createPostgresScheduledSendStore(
             WHERE account_id = $1
               AND id = $2
               AND status = 'sending'
+              AND lease_owner = $6
             RETURNING *
           )
           UPDATE email_drafts
@@ -204,6 +207,7 @@ export function createPostgresScheduledSendStore(
           input.draftId,
           input.errorMessage,
           input.now.toISOString(),
+          input.leaseOwner,
         ],
       );
     },

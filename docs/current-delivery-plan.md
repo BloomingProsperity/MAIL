@@ -51,23 +51,22 @@ with more than smoke-level tests.
   uses `/me/sendMail`; IMAP native accounts submit through SMTP with
   `smtp_password` preferred over `imap_password`, deterministic Message-ID, Bcc
   kept in the SMTP envelope, and sanitized provider errors. After successful
-  SMTP delivery, both API immediate sends and worker scheduled sends now make a
-  best-effort IMAP append into the Sent mailbox using a separate
-  `imap_password` when present, preserving the same Message-ID, Bcc, reply
-  headers, bodies, and attachments in the RFC 822 copy. Sent append failures do
-  not fail the already accepted SMTP send, preventing duplicate retries. OAuth
-  authorization and Microsoft refresh scopes include the send scopes needed by
-  these transports. API immediate sends and worker scheduled native sends now
-  detect Gmail/Graph auth, permission, missing refresh credential, rejected
-  OAuth refresh failures, and SMTP password/auth failures, mark the account
-  `reauth_required`, and create or reuse Sync Center reauthorization tasks.
-- Current API send status: API-process immediate sends now have a native
-  transport dispatcher. It reads `account_provider_settings.native_provider`,
-  refreshes OAuth access tokens through `account_credentials` and
-  `stored_secrets`, sends Gmail mail through `users.messages.send`, and sends
-  Outlook mail through Microsoft Graph `/me/sendMail`, and sends native IMAP
-  account mail through SMTP using stored provider settings and stored secrets.
-  Sync Center exposes native-send reauthorization tasks and starts the existing
+  SMTP delivery, worker send jobs make a best-effort IMAP append into the Sent
+  mailbox using a separate `imap_password` when present, preserving the same
+  Message-ID, Bcc, reply headers, bodies, and attachments in the RFC 822 copy.
+  Sent append failures do not fail the already accepted SMTP send, preventing
+  duplicate retries. OAuth authorization and Microsoft refresh scopes include
+  the send scopes needed by these transports. Worker immediate-queue and
+  scheduled native sends detect Gmail/Graph auth, permission, missing refresh
+  credential, rejected OAuth refresh failures, and SMTP password/auth failures,
+  mark the account `reauth_required`, and create or reuse Sync Center
+  reauthorization tasks.
+- Current API send status: API-process immediate sends validate the draft,
+  account state, and From identity, then create an immediate `queued`
+  `scheduled_sends` outbox row with a stable idempotency key. Provider
+  submission, native transport dispatch, OAuth refresh, SMTP delivery, and Sent
+  append now happen in the worker scheduled-send lane. Sync Center exposes
+  native-send reauthorization tasks and starts the existing
   OAuth or IMAP/SMTP recovery flows from the frontend.
 - Current send identity status: compose now exposes account send identities
   through `/api/accounts/:accountId/send-identities`. The default account
@@ -102,12 +101,13 @@ with more than smoke-level tests.
   explicitly state `sendMailTargetMode=users`, `userSendMailEligible=true`, and
   provide a target mailbox id or UPN. Otherwise they keep the safer
   `/me/sendMail` plus Graph `from` behavior that was actually verified. Draft
-  creation, draft updates, scheduling, API immediate send, API send-now, and the
-  worker scheduled-send path re-check the selected From address against the
-  current verified identity set before provider submission. EmailEngine, native
-  Gmail, native Graph, native SMTP, and scheduled-send worker paths all carry the
-  selected From identity; SMTP keeps the authenticated account as the envelope
-  sender while allowing the verified alias in the visible From header. Gmail
+  creation, draft updates, scheduling, API immediate send, and API send-now
+  re-check the selected From address before queueing. The worker
+  scheduled-send path re-checks it again before provider submission.
+  EmailEngine, native Gmail, native Graph, native SMTP, and scheduled-send
+  worker paths all carry the selected From identity; SMTP keeps the
+  authenticated account as the envelope sender while allowing the verified alias
+  in the visible From header. Gmail
   authorization now explicitly includes `gmail.settings.basic`, and Outlook
   authorization plus refresh flows include `Mail.Send.Shared` for
   shared-mailbox submissions when Exchange grants exist.
@@ -297,8 +297,9 @@ with more than smoke-level tests.
   source message's RFC Message-ID, historical `References` chain, and provider
   refs from the app-owned read model, stores them on the draft, and sends them
   through EmailEngine, native Gmail, native Graph, or native SMTP. Scheduled
-  send claims hydrate the same `threading` object, so send-now and worker
-  delivery behave the same as immediate API sends.
+  send claims hydrate the same `threading` object, so send-now, queued
+  immediate sends, and scheduled worker delivery share the same provider
+  threading behavior.
 - Current attachment status: forward compose seeds now carry app-owned
   attachment summaries into the compose panel, draft preview, draft save, API
   send, and worker scheduled-send paths. Draft rows persist an
@@ -309,11 +310,11 @@ with more than smoke-level tests.
   to the API, persist a local object-storage `storageKey` in the same
   `uploaded_file` manifest, and avoid embedding large base64 payloads in saved
   draft JSON when the backend is available. The web app keeps the older base64
-  path as a local/demo fallback. API immediate sends and worker scheduled sends
+  path as a local/demo fallback. Worker queued-immediate and scheduled sends
   hydrate the referenced bytes from the shared Docker compose attachment volume
-  before provider submission, strip internal storage keys from provider payloads,
-  and keep the existing 20-file / 25 MB aggregate send limit. The worker now
-  has a compose attachment cleanup lane that periodically queries active
+  before provider submission, strip internal storage keys from provider
+  payloads, and keep the existing 20-file / 25 MB aggregate send limit. The
+  worker now has a compose attachment cleanup lane that periodically queries active
   draft/outbox manifests, protects referenced `storageKey` values, and prunes
   only stale unreferenced blob files from the shared volume using bounded
   retention and per-run limits. Forwarded provider attachments are still

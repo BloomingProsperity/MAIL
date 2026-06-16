@@ -404,6 +404,7 @@ export interface MailComposeStore {
     draftId: string;
     scheduledAt: string;
     notBefore: string;
+    status: Extract<ScheduledSendStatus, "scheduled" | "queued">;
     idempotencyKey: string;
     now: string;
   }): Promise<ScheduledSend | undefined>;
@@ -436,6 +437,13 @@ export interface MailComposeStore {
     },
   ): Promise<ScheduledSendWithDraft | undefined>;
   rescheduleScheduledSend(input: {
+    accountId: string;
+    scheduledId: string;
+    scheduledAt: string;
+    notBefore: string;
+    now: string;
+  }): Promise<ScheduledSend | undefined>;
+  queueScheduledSendNow(input: {
     accountId: string;
     scheduledId: string;
     scheduledAt: string;
@@ -1034,86 +1042,39 @@ export function createMailComposeService(options: {
         throw new InvalidMailComposeRequestError("draft was not found");
       }
       ensureDraftCanSend(loaded);
+      await ensureAllowedSender(
+        options.sendIdentityStore,
+        loaded.account.accountId,
+        loaded.draft.from,
+      );
 
       const now = currentIso(options.now);
-      const claimed = await options.store.claimDraftForSend({
-        ...input,
-        leaseOwner: "api-send-draft",
-        leaseExpiresAt: new Date(Date.parse(now) + 60_000).toISOString(),
+      const scheduledSend = await options.store.createScheduledSend({
+        id: options.createId(),
+        accountId: input.accountId,
+        draftId: input.draftId,
+        scheduledAt: now,
+        notBefore: now,
+        status: "queued",
+        idempotencyKey: `compose:${input.draftId}:send-now`,
         now,
       });
-      if (!claimed) {
+      if (!scheduledSend) {
         throw new InvalidMailComposeRequestError("draft is not sendable");
       }
 
-      try {
-        ensureAccountCanSend(claimed.account);
-        await ensureAllowedSender(
-          options.sendIdentityStore,
-          claimed.account.accountId,
-          claimed.draft.from,
-        );
-      } catch (error) {
-        await options.store.markDraftFailed({
-          ...input,
-          errorMessage: error instanceof Error ? error.message : "send failed",
-        });
-        throw error;
-      }
-
-      const transport = options.transports[claimed.account.engineProvider];
-      if (!transport) {
-        await options.store.markDraftFailed({
-          ...input,
-          errorMessage: "send transport is unavailable",
-        });
-        throw new InvalidMailComposeRequestError("send transport is unavailable");
-      }
-
-      try {
-        const attachments = await hydrateStoredDraftAttachments(
-          options.attachmentBlobStore,
-          claimed.account.accountId,
-          claimed.transportAttachments ?? [],
-        );
-        const result = await transport.submitMessage({
-          accountId: claimed.account.accountId,
-          draftId: claimed.draft.id,
-          idempotencyKey: `compose:${claimed.draft.id}:send`,
-          ...(claimed.draft.from ? { from: claimed.draft.from } : {}),
-          to: claimed.draft.to,
-          cc: claimed.draft.cc,
-          bcc: claimed.draft.bcc,
-          subject: claimed.draft.subject,
-          ...(claimed.draft.bodyText ? { bodyText: claimed.draft.bodyText } : {}),
-          ...(claimed.draft.bodyHtml ? { bodyHtml: claimed.draft.bodyHtml } : {}),
-          ...(attachments.length > 0
-            ? { attachments: sendAttachments(attachments) }
-            : {}),
-          ...(claimed.draft.threading ? { threading: claimed.draft.threading } : {}),
-        });
-
-        const sentAt = result.sendAt ?? currentIso(options.now);
-        const draft = await options.store.markDraftSent({
-          ...input,
-          ...(result.queueId ? { providerQueueId: result.queueId } : {}),
-          ...(result.messageId ? { providerMessageId: result.messageId } : {}),
-          sentAt,
-        });
-
-        return {
-          accountId: input.accountId,
-          draftId: input.draftId,
-          action: "draft_send_queued",
-          draft,
-        };
-      } catch (error) {
-        await options.store.markDraftFailed({
-          ...input,
-          errorMessage: error instanceof Error ? error.message : "send failed",
-        });
-        throw error;
-      }
+      const queuedDraft = { ...loaded.draft };
+      delete queuedDraft.errorMessage;
+      return {
+        accountId: input.accountId,
+        draftId: input.draftId,
+        action: "draft_send_queued",
+        draft: {
+          ...queuedDraft,
+          status: "scheduled",
+          updatedAt: scheduledSend.updatedAt,
+        },
+      };
     },
 
     async scheduleDraft(input) {
@@ -1142,6 +1103,7 @@ export function createMailComposeService(options: {
         draftId: input.draftId,
         scheduledAt,
         notBefore: scheduledAt,
+        status: "scheduled",
         idempotencyKey: `compose:${input.draftId}:schedule:${scheduledAt}`,
         now,
       });
@@ -1279,94 +1241,31 @@ export function createMailComposeService(options: {
       assertNonEmpty(input.accountId);
       assertNonEmpty(input.scheduledId);
       const now = currentIso(options.now);
-      const claimed = await options.store.claimScheduledSendForSubmit({
+      const loaded = await options.store.getScheduledDraft({
         accountId: input.accountId,
         scheduledId: input.scheduledId,
-        leaseOwner: "api-send-now",
-        leaseExpiresAt: new Date(Date.parse(now) + 60_000).toISOString(),
-        now,
       });
-      if (!claimed) {
+      if (!loaded) {
         throw new InvalidMailComposeRequestError("scheduled send is not sendable");
       }
+      ensureAccountCanSend(loaded.account);
+      await ensureAllowedSender(
+        options.sendIdentityStore,
+        loaded.account.accountId,
+        loaded.draft.from,
+      );
 
-      try {
-        ensureAccountCanSend(claimed.account);
-        await ensureAllowedSender(
-          options.sendIdentityStore,
-          claimed.account.accountId,
-          claimed.draft.from,
-        );
-      } catch (error) {
-        const failed = await options.store.markScheduledSendFailed({
-          accountId: input.accountId,
-          scheduledId: input.scheduledId,
-          draftId: claimed.draft.id,
-          errorMessage: error instanceof Error ? error.message : "send failed",
-          now,
-        });
-        if (failed) {
-          return failed;
-        }
-        throw error;
+      const scheduledSend = await options.store.queueScheduledSendNow({
+        accountId: input.accountId,
+        scheduledId: input.scheduledId,
+        scheduledAt: now,
+        notBefore: now,
+        now,
+      });
+      if (!scheduledSend) {
+        throw new InvalidMailComposeRequestError("scheduled send is not sendable");
       }
-
-      const transport = options.transports[claimed.account.engineProvider];
-      if (!transport) {
-        const failed = await options.store.markScheduledSendFailed({
-          accountId: input.accountId,
-          scheduledId: input.scheduledId,
-          draftId: claimed.draft.id,
-          errorMessage: "send transport is unavailable",
-          now,
-        });
-        if (failed) {
-          return failed;
-        }
-        throw new InvalidMailComposeRequestError("send transport is unavailable");
-      }
-
-      try {
-        const attachments = await hydrateStoredDraftAttachments(
-          options.attachmentBlobStore,
-          claimed.account.accountId,
-          claimed.transportAttachments ?? [],
-        );
-        const result = await transport.submitMessage({
-          accountId: claimed.account.accountId,
-          draftId: claimed.draft.id,
-          idempotencyKey: `compose:${claimed.draft.id}:schedule:${claimed.scheduledSend.id}:send`,
-          ...(claimed.draft.from ? { from: claimed.draft.from } : {}),
-          to: claimed.draft.to,
-          cc: claimed.draft.cc,
-          bcc: claimed.draft.bcc,
-          subject: claimed.draft.subject,
-          ...(claimed.draft.bodyText ? { bodyText: claimed.draft.bodyText } : {}),
-          ...(claimed.draft.bodyHtml ? { bodyHtml: claimed.draft.bodyHtml } : {}),
-          ...(attachments.length > 0
-            ? { attachments: sendAttachments(attachments) }
-            : {}),
-          ...(claimed.draft.threading ? { threading: claimed.draft.threading } : {}),
-        });
-
-        return options.store.markScheduledSendSent({
-          accountId: input.accountId,
-          scheduledId: input.scheduledId,
-          draftId: claimed.draft.id,
-          ...(result.queueId ? { providerQueueId: result.queueId } : {}),
-          ...(result.messageId ? { providerMessageId: result.messageId } : {}),
-          sentAt: result.sendAt ?? currentIso(options.now),
-        });
-      } catch (error) {
-        await options.store.markScheduledSendFailed({
-          accountId: input.accountId,
-          scheduledId: input.scheduledId,
-          draftId: claimed.draft.id,
-          errorMessage: error instanceof Error ? error.message : "send failed",
-          now: currentIso(options.now),
-        });
-        throw error;
-      }
+      return scheduledSend;
     },
   };
 }
@@ -2015,76 +1914,6 @@ function publicDraftAttachmentFromInput(
   };
 }
 
-function sendAttachments(
-  attachments: MailDraftTransportAttachment[],
-): MailSendAttachment[] {
-  return attachments.map((attachment) => ({
-    filename: attachment.filename,
-    contentType: attachment.contentType,
-    byteSize: attachment.byteSize,
-    inline: attachment.inline,
-    ...(attachment.contentId ? { contentId: attachment.contentId } : {}),
-    ...(attachment.providerAttachmentId
-      ? { providerAttachmentId: attachment.providerAttachmentId }
-      : {}),
-    ...(attachment.contentBase64
-      ? { contentBase64: attachment.contentBase64 }
-      : {}),
-  }));
-}
-
-async function hydrateStoredDraftAttachments(
-  blobStore: MailAttachmentBlobStore | undefined,
-  accountId: string,
-  attachments: MailDraftTransportAttachment[],
-): Promise<MailDraftTransportAttachment[]> {
-  if (attachments.length === 0) {
-    return [];
-  }
-
-  const hydrated: MailDraftTransportAttachment[] = [];
-  for (const attachment of attachments) {
-    if (
-      attachment.source === "uploaded_file" &&
-      attachment.storageKey &&
-      !attachment.contentBase64
-    ) {
-      if (!blobStore) {
-        throw new InvalidMailComposeRequestError(
-          "attachment object storage is unavailable",
-        );
-      }
-      try {
-        const content = await blobStore.loadUploadedAttachmentContent({
-          accountId,
-          storageKey: attachment.storageKey,
-          maxBytes: MAX_DRAFT_ATTACHMENT_BYTES,
-        });
-        hydrated.push({
-          ...attachment,
-          byteSize: content.byteSize,
-          contentBase64: content.contentBase64,
-        });
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message === "attachments are too large"
-        ) {
-          throw new InvalidMailComposeRequestError("attachments are too large");
-        }
-        throw new InvalidMailComposeRequestError("attachment download failed");
-      }
-      enforceAttachmentLimits(hydrated);
-      continue;
-    }
-
-    hydrated.push(attachment);
-    enforceAttachmentLimits(hydrated);
-  }
-
-  return enforceAttachmentLimits(hydrated);
-}
-
 function normalizeAttachmentContentBase64(
   value: string | undefined,
 ): { contentBase64: string; byteSize: number } {
@@ -2458,7 +2287,11 @@ async function recordHermesDraftFeedback(
 }
 
 function ensureDraftCanSend(input: DraftWithAccount): void {
-  if (input.draft.status !== "draft" && input.draft.status !== "sending") {
+  if (
+    input.draft.status !== "draft" &&
+    input.draft.status !== "scheduled" &&
+    input.draft.status !== "sending"
+  ) {
     throw new InvalidMailComposeRequestError("draft is not sendable");
   }
   ensureAccountCanSend(input.account);

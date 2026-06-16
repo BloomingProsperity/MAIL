@@ -1583,7 +1583,7 @@ describe("mail compose service", () => {
     ).rejects.toThrow("attachment content is invalid");
   });
 
-  it("claims a draft, submits it through the account engine, and marks it sent", async () => {
+  it("queues a draft for immediate worker send without calling the provider", async () => {
     const calls: unknown[] = [];
     const store = createStore({
       async getDraftWithAccount(input) {
@@ -1595,22 +1595,9 @@ describe("mail compose service", () => {
             syncState: "syncing",
             engineProvider: "emailengine",
           },
-          draft: draft(),
-        };
-      },
-      async claimDraftForSend(input) {
-        calls.push(["claim", input]);
-        return {
-          account: {
-            accountId: "acc_1",
-            email: "me@example.com",
-            syncState: "syncing",
-            engineProvider: "emailengine",
-          },
           draft: {
             ...draft(),
             from: { address: "support@demo.site", name: "Support" },
-            status: "sending",
             threading: {
               action: "reply" as const,
               inReplyTo: "<source@example.com>",
@@ -1618,46 +1605,28 @@ describe("mail compose service", () => {
               emailEngineMessageId: "emailengine_msg_1",
             },
           },
-          transportAttachments: [
-            {
-              id: "attachment_1",
-              source: "message_attachment",
-              attachmentId: "attachment_1",
-              filename: "proposal.pdf",
-              contentType: "application/pdf",
-              byteSize: 2048,
-              inline: false,
-              providerAttachmentId: "ee_attachment_1",
-              contentBase64: "Zm9yd2FyZA==",
-            },
-            {
-              id: "upload_1",
-              source: "uploaded_file",
-              attachmentId: "upload_1",
-              filename: "brief.txt",
-              contentType: "text/plain",
-              byteSize: 5,
-              inline: false,
-              contentBase64: "aGVsbG8=",
-            },
-          ],
         };
       },
-      async markDraftSent(input) {
-        calls.push(["sent", input]);
-        return {
-          ...draft(),
-          status: "sent",
-          providerQueueId: input.providerQueueId,
-          providerMessageId: input.providerMessageId,
-          sentAt: input.sentAt,
-        };
+      async createScheduledSend(input) {
+        calls.push(["queue", input]);
+        return scheduledSend({
+          id: input.id,
+          accountId: input.accountId,
+          draftId: input.draftId,
+          scheduledAt: input.scheduledAt,
+          status: input.status,
+          notBefore: input.notBefore,
+          canEdit: false,
+          canSendNow: false,
+          canDelete: false,
+          updatedAt: input.now,
+        });
       },
     });
     const providerCalls: unknown[] = [];
     const service = createMailComposeService({
       store,
-      createId: () => "unused",
+      createId: () => "schedule_1",
       now: () => new Date("2026-06-13T08:00:00.000Z"),
       sendIdentityStore: sendIdentityStoreFor({
         address: "support@demo.site",
@@ -1667,11 +1636,7 @@ describe("mail compose service", () => {
         emailengine: {
           async submitMessage(input) {
             providerCalls.push(input);
-            return {
-              queueId: "queue_1",
-              messageId: "<message@example.com>",
-              sendAt: "2026-06-13T08:00:00.000Z",
-            };
+            throw new Error("not expected");
           },
         },
       },
@@ -1682,62 +1647,20 @@ describe("mail compose service", () => {
       draftId: "draft_1",
     });
 
-    expect(providerCalls).toEqual([
-      {
-        accountId: "acc_1",
-        draftId: "draft_1",
-        idempotencyKey: "compose:draft_1:send",
-        from: { address: "support@demo.site", name: "Support" },
-        to: [{ address: "lina@example.com", name: "Lina" }],
-        cc: [],
-        bcc: [],
-        subject: "Launch confirmation",
-        bodyText: "Looks good.",
-        attachments: [
-          {
-            filename: "proposal.pdf",
-            contentType: "application/pdf",
-            byteSize: 2048,
-            inline: false,
-            providerAttachmentId: "ee_attachment_1",
-            contentBase64: "Zm9yd2FyZA==",
-          },
-          {
-            filename: "brief.txt",
-            contentType: "text/plain",
-            byteSize: 5,
-            inline: false,
-            contentBase64: "aGVsbG8=",
-          },
-        ],
-        threading: {
-          action: "reply",
-          inReplyTo: "<source@example.com>",
-          references: ["<source@example.com>"],
-          emailEngineMessageId: "emailengine_msg_1",
-        },
-      },
-    ]);
+    expect(providerCalls).toEqual([]);
     expect(calls).toEqual([
       ["get", { accountId: "acc_1", draftId: "draft_1" }],
       [
-        "claim",
+        "queue",
         {
+          id: "schedule_1",
           accountId: "acc_1",
           draftId: "draft_1",
-          leaseOwner: "api-send-draft",
-          leaseExpiresAt: "2026-06-13T08:01:00.000Z",
+          scheduledAt: "2026-06-13T08:00:00.000Z",
+          notBefore: "2026-06-13T08:00:00.000Z",
+          status: "queued",
+          idempotencyKey: "compose:draft_1:send-now",
           now: "2026-06-13T08:00:00.000Z",
-        },
-      ],
-      [
-        "sent",
-        {
-          accountId: "acc_1",
-          draftId: "draft_1",
-          providerQueueId: "queue_1",
-          providerMessageId: "<message@example.com>",
-          sentAt: "2026-06-13T08:00:00.000Z",
         },
       ],
     ]);
@@ -1746,14 +1669,100 @@ describe("mail compose service", () => {
       draftId: "draft_1",
       action: "draft_send_queued",
       draft: {
-        status: "sent",
-        providerQueueId: "queue_1",
-        providerMessageId: "<message@example.com>",
+        status: "scheduled",
+        updatedAt: "2026-06-13T08:00:00.000Z",
       },
     });
   });
 
-  it("hydrates stored uploaded attachment content before submitting a draft", async () => {
+  it("returns the existing immediate send queue item for retried draft sends", async () => {
+    const calls: unknown[] = [];
+    const store = createStore({
+      async getDraftWithAccount(input) {
+        calls.push(["get", input]);
+        return {
+          account: {
+            accountId: "acc_1",
+            email: "me@example.com",
+            syncState: "syncing",
+            engineProvider: "emailengine",
+          },
+          draft: {
+            ...draft(),
+            from: { address: "support@demo.site", name: "Support" },
+            status: "scheduled",
+            errorMessage: "previous transient error",
+          },
+        };
+      },
+      async createScheduledSend(input) {
+        calls.push(["queue", input]);
+        return scheduledSend({
+          id: "schedule_existing",
+          accountId: input.accountId,
+          draftId: input.draftId,
+          scheduledAt: "2026-06-13T07:59:59.000Z",
+          status: "queued",
+          notBefore: "2026-06-13T07:59:59.000Z",
+          canEdit: false,
+          canSendNow: false,
+          canDelete: false,
+          updatedAt: "2026-06-13T08:00:01.000Z",
+        });
+      },
+    });
+    const providerCalls: unknown[] = [];
+    const service = createMailComposeService({
+      store,
+      createId: () => "schedule_retry",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      sendIdentityStore: sendIdentityStoreFor({
+        address: "support@demo.site",
+        name: "Support",
+      }),
+      transports: {
+        emailengine: {
+          async submitMessage(input) {
+            providerCalls.push(input);
+            throw new Error("not expected");
+          },
+        },
+      },
+    });
+
+    const result = await service.sendDraft({
+      accountId: "acc_1",
+      draftId: "draft_1",
+    });
+
+    expect(providerCalls).toEqual([]);
+    expect(calls).toEqual([
+      ["get", { accountId: "acc_1", draftId: "draft_1" }],
+      [
+        "queue",
+        {
+          id: "schedule_retry",
+          accountId: "acc_1",
+          draftId: "draft_1",
+          scheduledAt: "2026-06-13T08:00:00.000Z",
+          notBefore: "2026-06-13T08:00:00.000Z",
+          status: "queued",
+          idempotencyKey: "compose:draft_1:send-now",
+          now: "2026-06-13T08:00:00.000Z",
+        },
+      ],
+    ]);
+    expect(result).toMatchObject({
+      action: "draft_send_queued",
+      draft: {
+        status: "scheduled",
+        updatedAt: "2026-06-13T08:00:01.000Z",
+      },
+    });
+    expect(result.draft).not.toHaveProperty("errorMessage");
+  });
+
+  it("does not hydrate stored uploaded attachment content while queueing a draft", async () => {
     const storageKey = "11111111-1111-4111-8111-111111111111";
     const blobCalls: unknown[] = [];
     const store = createStore({
@@ -1765,50 +1774,39 @@ describe("mail compose service", () => {
             syncState: "syncing",
             engineProvider: "emailengine",
           },
-          draft: draft(),
-        };
-      },
-      async claimDraftForSend() {
-        return {
-          account: {
-            accountId: "acc_1",
-            email: "me@example.com",
-            syncState: "syncing",
-            engineProvider: "emailengine",
-          },
           draft: {
             ...draft(),
             from: { address: "support@demo.site", name: "Support" },
-            status: "sending",
+            attachments: [
+              {
+                id: `upload_${storageKey}`,
+                source: "uploaded_file" as const,
+                attachmentId: `upload_${storageKey}`,
+                storageKey,
+                filename: "brief.txt",
+                contentType: "text/plain",
+                byteSize: 5,
+                inline: false,
+              },
+            ],
           },
-          transportAttachments: [
-            {
-              id: `upload_${storageKey}`,
-              source: "uploaded_file" as const,
-              attachmentId: `upload_${storageKey}`,
-              storageKey,
-              filename: "brief.txt",
-              contentType: "text/plain",
-              byteSize: 5,
-              inline: false,
-            },
-          ],
         };
       },
-      async markDraftSent(input) {
-        return {
-          ...draft(),
-          status: "sent",
-          providerQueueId: input.providerQueueId,
-          providerMessageId: input.providerMessageId,
-          sentAt: input.sentAt,
-        };
+      async createScheduledSend(input) {
+        return scheduledSend({
+          id: input.id,
+          accountId: input.accountId,
+          draftId: input.draftId,
+          scheduledAt: input.scheduledAt,
+          status: input.status,
+          notBefore: input.notBefore,
+        });
       },
     });
     const providerCalls: unknown[] = [];
     const service = createMailComposeService({
       store,
-      createId: () => "unused",
+      createId: () => "schedule_1",
       now: () => new Date("2026-06-13T08:00:00.000Z"),
       sendIdentityStore: sendIdentityStoreFor({
         address: "support@demo.site",
@@ -1818,11 +1816,7 @@ describe("mail compose service", () => {
         emailengine: {
           async submitMessage(input) {
             providerCalls.push(input);
-            return {
-              queueId: "queue_1",
-              messageId: "<message@example.com>",
-              sendAt: "2026-06-13T08:00:00.000Z",
-            };
+            throw new Error("not expected");
           },
         },
       },
@@ -1845,47 +1839,18 @@ describe("mail compose service", () => {
       draftId: "draft_1",
     });
 
-    expect(blobCalls).toEqual([
-      {
-        accountId: "acc_1",
-        storageKey,
-        maxBytes: MAX_DRAFT_ATTACHMENT_BYTES,
-      },
-    ]);
-    expect(providerCalls).toEqual([
-      expect.objectContaining({
-        attachments: [
-          {
-            filename: "brief.txt",
-            contentType: "text/plain",
-            byteSize: 5,
-            inline: false,
-            contentBase64: "aGVsbG8=",
-          },
-        ],
-      }),
-    ]);
+    expect(blobCalls).toEqual([]);
+    expect(providerCalls).toEqual([]);
     expect(JSON.stringify(providerCalls)).not.toContain(storageKey);
   });
 
-  it("marks claimed drafts failed when send-as permission was revoked before send", async () => {
+  it("rejects queueing a draft when the saved send-as identity was revoked", async () => {
     const calls: unknown[] = [];
     const providerCalls: unknown[] = [];
     const service = createMailComposeService({
       store: createStore({
-        async getDraftWithAccount() {
-          return {
-            account: {
-              accountId: "acc_1",
-              email: "me@example.com",
-              syncState: "syncing",
-              engineProvider: "emailengine",
-            },
-            draft: draft(),
-          };
-        },
-        async claimDraftForSend(input) {
-          calls.push(["claim", input]);
+        async getDraftWithAccount(input) {
+          calls.push(["get", input]);
           return {
             account: {
               accountId: "acc_1",
@@ -1896,16 +1861,7 @@ describe("mail compose service", () => {
             draft: {
               ...draft(),
               from: { address: "support@demo.site", name: "Support" },
-              status: "sending",
             },
-          };
-        },
-        async markDraftFailed(input) {
-          calls.push(["failed", input]);
-          return {
-            ...draft(),
-            status: "failed",
-            errorMessage: input.errorMessage,
           };
         },
       }),
@@ -1929,21 +1885,7 @@ describe("mail compose service", () => {
     ).rejects.toThrow("from address is not allowed");
     expect(providerCalls).toEqual([]);
     expect(calls).toEqual([
-      [
-        "claim",
-        expect.objectContaining({
-          accountId: "acc_1",
-          draftId: "draft_1",
-        }),
-      ],
-      [
-        "failed",
-        {
-          accountId: "acc_1",
-          draftId: "draft_1",
-          errorMessage: "from address is not allowed",
-        },
-      ],
+      ["get", { accountId: "acc_1", draftId: "draft_1" }],
     ]);
   });
 
@@ -2038,6 +1980,7 @@ describe("mail compose service", () => {
           draftId: "draft_1",
           scheduledAt: "2026-06-13T12:30:00.000Z",
           notBefore: "2026-06-13T12:30:00.000Z",
+          status: "scheduled",
           idempotencyKey: "compose:draft_1:schedule:2026-06-13T12:30:00.000Z",
           now: "2026-06-13T08:00:00.000Z",
         },
@@ -2573,11 +2516,11 @@ describe("mail compose service", () => {
     ).rejects.toThrow("scheduled draft was not found");
   });
 
-  it("sends a scheduled draft now through the account engine", async () => {
+  it("queues a scheduled draft for immediate worker send without calling the provider", async () => {
     const calls: unknown[] = [];
     const store = createStore({
-      async claimScheduledSendForSubmit(input) {
-        calls.push(["claim", input]);
+      async getScheduledDraft(input) {
+        calls.push(["get", input]);
         return {
           scheduledSend: scheduledSend(),
           account: {
@@ -2589,7 +2532,7 @@ describe("mail compose service", () => {
           draft: {
             ...draft(),
             from: { address: "support@demo.site" },
-            status: "sending",
+            status: "scheduled",
             threading: {
               action: "reply_all" as const,
               inReplyTo: "<source@example.com>",
@@ -2597,28 +2540,18 @@ describe("mail compose service", () => {
               emailEngineMessageId: "emailengine_msg_1",
             },
           },
-          transportAttachments: [
-            {
-              id: "attachment_1",
-              source: "message_attachment",
-              attachmentId: "attachment_1",
-              filename: "proposal.pdf",
-              contentType: "application/pdf",
-              byteSize: 2048,
-              inline: false,
-              providerAttachmentId: "ee_attachment_1",
-              contentBase64: "Zm9yd2FyZA==",
-            },
-          ],
         };
       },
-      async markScheduledSendSent(input) {
-        calls.push(["sent", input]);
+      async queueScheduledSendNow(input) {
+        calls.push(["queue-now", input]);
         return scheduledSend({
-          status: "sent",
-          providerQueueId: input.providerQueueId,
-          providerMessageId: input.providerMessageId,
-          sentAt: input.sentAt,
+          id: input.scheduledId,
+          scheduledAt: input.scheduledAt,
+          status: "queued",
+          notBefore: input.notBefore,
+          canEdit: false,
+          canSendNow: false,
+          canDelete: false,
         });
       },
     });
@@ -2634,11 +2567,7 @@ describe("mail compose service", () => {
         emailengine: {
           async submitMessage(input) {
             providerCalls.push(input);
-            return {
-              queueId: "queue_1",
-              messageId: "<message@example.com>",
-              sendAt: "2026-06-13T08:00:01.000Z",
-            };
+            throw new Error("not expected");
           },
         },
       },
@@ -2649,73 +2578,41 @@ describe("mail compose service", () => {
       scheduledId: "schedule_1",
     });
 
-    expect(providerCalls).toEqual([
-      {
-        accountId: "acc_1",
-        draftId: "draft_1",
-        idempotencyKey: "compose:draft_1:schedule:schedule_1:send",
-        from: { address: "support@demo.site" },
-        to: [{ address: "lina@example.com", name: "Lina" }],
-        cc: [],
-        bcc: [],
-        subject: "Launch confirmation",
-        bodyText: "Looks good.",
-        attachments: [
-          {
-            filename: "proposal.pdf",
-            contentType: "application/pdf",
-            byteSize: 2048,
-            inline: false,
-            providerAttachmentId: "ee_attachment_1",
-            contentBase64: "Zm9yd2FyZA==",
-          },
-        ],
-        threading: {
-          action: "reply_all",
-          inReplyTo: "<source@example.com>",
-          references: ["<root@example.com>", "<source@example.com>"],
-          emailEngineMessageId: "emailengine_msg_1",
-        },
-      },
-    ]);
+    expect(providerCalls).toEqual([]);
     expect(calls).toEqual([
       [
-        "claim",
+        "get",
         {
           accountId: "acc_1",
           scheduledId: "schedule_1",
-          leaseOwner: "api-send-now",
-          leaseExpiresAt: "2026-06-13T08:01:00.000Z",
-          now: "2026-06-13T08:00:00.000Z",
         },
       ],
       [
-        "sent",
+        "queue-now",
         {
           accountId: "acc_1",
           scheduledId: "schedule_1",
-          draftId: "draft_1",
-          providerQueueId: "queue_1",
-          providerMessageId: "<message@example.com>",
-          sentAt: "2026-06-13T08:00:01.000Z",
+          scheduledAt: "2026-06-13T08:00:00.000Z",
+          notBefore: "2026-06-13T08:00:00.000Z",
+          now: "2026-06-13T08:00:00.000Z",
         },
       ],
     ]);
     expect(result).toMatchObject({
       id: "schedule_1",
-      status: "sent",
-      providerQueueId: "queue_1",
-      providerMessageId: "<message@example.com>",
+      status: "queued",
+      notBefore: "2026-06-13T08:00:00.000Z",
+      canSendNow: false,
     });
   });
 
-  it("marks scheduled send-now failed when send-as permission was revoked", async () => {
+  it("rejects send-now before queueing when the saved send-as identity was revoked", async () => {
     const calls: unknown[] = [];
     const providerCalls: unknown[] = [];
     const service = createMailComposeService({
       store: createStore({
-        async claimScheduledSendForSubmit(input) {
-          calls.push(["claim", input]);
+        async getScheduledDraft(input) {
+          calls.push(["get", input]);
           return {
             scheduledSend: scheduledSend(),
             account: {
@@ -2727,16 +2624,9 @@ describe("mail compose service", () => {
             draft: {
               ...draft(),
               from: { address: "support@demo.site" },
-              status: "sending",
+              status: "scheduled",
             },
           };
-        },
-        async markScheduledSendFailed(input) {
-          calls.push(["failed", input]);
-          return scheduledSend({
-            status: "failed",
-            lastError: input.errorMessage,
-          });
         },
       }),
       createId: () => "unused",
@@ -2752,32 +2642,20 @@ describe("mail compose service", () => {
       },
     });
 
-    const result = await service.sendScheduledNow({
-      accountId: "acc_1",
-      scheduledId: "schedule_1",
-    });
+    await expect(
+      service.sendScheduledNow({
+        accountId: "acc_1",
+        scheduledId: "schedule_1",
+      }),
+    ).rejects.toThrow("from address is not allowed");
 
-    expect(result).toMatchObject({
-      status: "failed",
-      lastError: "from address is not allowed",
-    });
     expect(providerCalls).toEqual([]);
     expect(calls).toEqual([
       [
-        "claim",
-        expect.objectContaining({
-          accountId: "acc_1",
-          scheduledId: "schedule_1",
-        }),
-      ],
-      [
-        "failed",
+        "get",
         {
           accountId: "acc_1",
           scheduledId: "schedule_1",
-          draftId: "draft_1",
-          errorMessage: "from address is not allowed",
-          now: "2026-06-13T08:00:00.000Z",
         },
       ],
     ]);
@@ -2820,6 +2698,9 @@ function createStore(overrides: Partial<MailComposeStore>): MailComposeStore {
       throw new Error("not used");
     },
     async rescheduleScheduledSend() {
+      throw new Error("not used");
+    },
+    async queueScheduledSendNow() {
       throw new Error("not used");
     },
     async cancelScheduledSend() {

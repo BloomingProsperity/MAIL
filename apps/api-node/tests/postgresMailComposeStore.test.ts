@@ -933,14 +933,19 @@ describe("Postgres mail compose store", () => {
       draftId: "draft_1",
       scheduledAt: "2026-06-13T12:30:00.000Z",
       notBefore: "2026-06-13T12:30:00.000Z",
+      status: "scheduled",
       idempotencyKey: "compose:draft_1:schedule:2026-06-13T12:30:00.000Z",
       now: "2026-06-13T08:00:00.000Z",
     });
 
-    expect(queries[0].text).toMatch(/WITH schedulable_draft AS/i);
+    expect(queries[0].text).toMatch(/WITH draft_lock AS/i);
+    expect(queries[0].text).toMatch(/FOR UPDATE/i);
+    expect(queries[0].text).toMatch(/existing_send AS/i);
     expect(queries[0].text).toMatch(/UPDATE email_drafts/i);
     expect(queries[0].text).toMatch(/status = 'scheduled'/i);
     expect(queries[0].text).toMatch(/INSERT INTO scheduled_sends/i);
+    expect(queries[0].text).toMatch(/ON CONFLICT \(idempotency_key\) DO NOTHING/i);
+    expect(queries[0].text).toMatch(/SELECT \* FROM existing_send/i);
     expect(queries[0].values).toEqual([
       "schedule_1",
       "acc_1",
@@ -949,6 +954,7 @@ describe("Postgres mail compose store", () => {
       "2026-06-13T12:30:00.000Z",
       "compose:draft_1:schedule:2026-06-13T12:30:00.000Z",
       "2026-06-13T08:00:00.000Z",
+      "scheduled",
     ]);
     expect(result).toMatchObject({
       id: "schedule_1",
@@ -957,6 +963,55 @@ describe("Postgres mail compose store", () => {
       status: "scheduled",
       canEdit: true,
       canSendNow: true,
+    });
+  });
+
+  it("queues an existing scheduled send for immediate worker pickup", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresMailComposeStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            scheduledRow({
+              status: "queued",
+              scheduled_at: "2026-06-13T08:00:00.000Z",
+              not_before: "2026-06-13T08:00:00.000Z",
+              updated_at: "2026-06-13T08:00:00.000Z",
+            }),
+          ],
+        };
+      },
+    });
+
+    const result = await store.queueScheduledSendNow({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+      scheduledAt: "2026-06-13T08:00:00.000Z",
+      notBefore: "2026-06-13T08:00:00.000Z",
+      now: "2026-06-13T08:00:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/UPDATE scheduled_sends/i);
+    expect(queries[0].text).toMatch(/status = 'queued'/i);
+    expect(queries[0].text).toMatch(/lease_owner = NULL/i);
+    expect(queries[0].text).toMatch(/lease_expires_at = NULL/i);
+    expect(queries[0].text).toMatch(/last_error = NULL/i);
+    expect(queries[0].text).toMatch(/status IN \('scheduled', 'failed'\)/i);
+    expect(queries[0].values).toEqual([
+      "acc_1",
+      "schedule_1",
+      "2026-06-13T08:00:00.000Z",
+      "2026-06-13T08:00:00.000Z",
+      "2026-06-13T08:00:00.000Z",
+    ]);
+    expect(result).toMatchObject({
+      id: "schedule_1",
+      status: "queued",
+      notBefore: "2026-06-13T08:00:00.000Z",
+      canEdit: false,
+      canSendNow: false,
+      canDelete: false,
     });
   });
 
@@ -1282,6 +1337,7 @@ describe("Postgres mail compose store", () => {
 
     expect(queries[0].text).toMatch(/UPDATE scheduled_sends/i);
     expect(queries[0].text).toMatch(/lease_owner = \$3/i);
+    expect(queries[0].text).toMatch(/status IN \('scheduled', 'queued', 'failed'\)/i);
     expect(queries[0].text).toMatch(/UPDATE email_drafts/i);
     expect(queries[0].text).toMatch(/email_drafts.status IN \('scheduled', 'sending'\)/i);
     expect(queries[0].values).toEqual([

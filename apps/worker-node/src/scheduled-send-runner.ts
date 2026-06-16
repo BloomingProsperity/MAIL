@@ -58,6 +58,7 @@ export interface ScheduledSendStore {
     accountId: string;
     scheduledId: string;
     draftId: string;
+    leaseOwner: string;
     providerQueueId?: string;
     providerMessageId?: string;
     sentAt: string;
@@ -66,6 +67,7 @@ export interface ScheduledSendStore {
     accountId: string;
     scheduledId: string;
     draftId: string;
+    leaseOwner: string;
     errorMessage: string;
     now: Date;
   }): Promise<void>;
@@ -205,6 +207,7 @@ async function processScheduledSend(
       accountId: job.accountId,
       scheduledId: job.id,
       draftId: job.draftId,
+      leaseOwner: input.workerId,
       ...(result.queueId ? { providerQueueId: result.queueId } : {}),
       ...(result.messageId ? { providerMessageId: result.messageId } : {}),
       sentAt: result.sendAt ?? input.now.toISOString(),
@@ -218,6 +221,7 @@ async function processScheduledSend(
       accountId: job.accountId,
       scheduledId: job.id,
       draftId: job.draftId,
+      leaseOwner: input.workerId,
       errorMessage,
       now: input.now,
     });

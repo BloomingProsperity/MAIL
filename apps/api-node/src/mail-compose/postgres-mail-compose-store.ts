@@ -380,16 +380,32 @@ export function createPostgresMailComposeStore(
     async createScheduledSend(input) {
       const result = await client.query<ScheduledSendRow>(
         `
-          WITH schedulable_draft AS (
+          WITH draft_lock AS (
+            SELECT id, status
+            FROM email_drafts
+            WHERE account_id = $2
+              AND id = $3
+            FOR UPDATE
+          ), existing_send AS (
+            SELECT scheduled_sends.*
+            FROM scheduled_sends
+            JOIN draft_lock ON draft_lock.id = scheduled_sends.draft_id
+            WHERE scheduled_sends.account_id = $2
+              AND scheduled_sends.draft_id = $3
+              AND scheduled_sends.idempotency_key = $6
+              AND scheduled_sends.status IN ('scheduled', 'queued', 'sending', 'failed')
+          ), schedulable_draft AS (
             UPDATE email_drafts
             SET status = 'scheduled',
                 error_message = NULL,
                 updated_at = $7::timestamptz
-            WHERE account_id = $2
-              AND id = $3
-              AND status = 'draft'
-            RETURNING id
-          )
+            FROM draft_lock
+            WHERE email_drafts.account_id = $2
+              AND email_drafts.id = $3
+              AND draft_lock.status = 'draft'
+              AND NOT EXISTS (SELECT 1 FROM existing_send)
+            RETURNING email_drafts.id
+          ), inserted_send AS (
           INSERT INTO scheduled_sends (
             id,
             account_id,
@@ -408,7 +424,7 @@ export function createPostgresMailComposeStore(
             $2,
             $3,
             $4::timestamptz,
-            'scheduled',
+            $8,
             0,
             5,
             $5::timestamptz,
@@ -416,7 +432,16 @@ export function createPostgresMailComposeStore(
             $7::timestamptz,
             $7::timestamptz
           FROM schedulable_draft
-          RETURNING ${scheduledColumns()}
+          ON CONFLICT (idempotency_key) DO NOTHING
+          RETURNING *
+          ), selected_send AS (
+            SELECT * FROM inserted_send
+            UNION ALL
+            SELECT * FROM existing_send
+            LIMIT 1
+          )
+          SELECT ${scheduledColumns("selected_send")}
+          FROM selected_send
         `,
         [
           input.id,
@@ -426,6 +451,7 @@ export function createPostgresMailComposeStore(
           input.notBefore,
           input.idempotencyKey,
           input.now,
+          input.status,
         ],
       );
 
@@ -594,6 +620,35 @@ export function createPostgresMailComposeStore(
       return result.rows[0] ? rowToScheduledSend(result.rows[0]) : undefined;
     },
 
+    async queueScheduledSendNow(input) {
+      const result = await client.query<ScheduledSendRow>(
+        `
+          UPDATE scheduled_sends
+          SET scheduled_at = $3::timestamptz,
+              status = 'queued',
+              not_before = $4::timestamptz,
+              attempts = 0,
+              lease_owner = NULL,
+              lease_expires_at = NULL,
+              last_error = NULL,
+              updated_at = $5::timestamptz
+          WHERE account_id = $1
+            AND id = $2
+            AND status IN ('scheduled', 'failed')
+          RETURNING ${scheduledColumns()}
+        `,
+        [
+          input.accountId,
+          input.scheduledId,
+          input.scheduledAt,
+          input.notBefore,
+          input.now,
+        ],
+      );
+
+      return result.rows[0] ? rowToScheduledSend(result.rows[0]) : undefined;
+    },
+
     async cancelScheduledSend(input) {
       const result = await client.query<ScheduledSendRow>(
         `
@@ -640,7 +695,7 @@ export function createPostgresMailComposeStore(
             WHERE account_id = $1
               AND id = $2
               AND (
-                status IN ('scheduled', 'failed')
+                status IN ('scheduled', 'queued', 'failed')
                 OR (
                   status = 'sending'
                   AND lease_expires_at IS NOT NULL
