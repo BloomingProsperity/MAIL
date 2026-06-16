@@ -2339,6 +2339,9 @@ describe("Email Hub first UI baseline", () => {
     expect(sessionStorage.getItem("email-hub:oauth:state_1")).toContain(
       '"returnTo":"add-mail"',
     );
+    expect(sessionStorage.getItem("email-hub:oauth:state_1")).toContain(
+      '"flow":"reauthorization"',
+    );
 
     fireEvent.click(
       await screen.findByLabelText("Select transfer account sync@example.com"),
@@ -3206,6 +3209,9 @@ describe("Email Hub first UI baseline", () => {
     expect(sessionStorage.getItem("email-hub:oauth:state_1")).toContain(
       '"provider":"gmail"',
     );
+    expect(sessionStorage.getItem("email-hub:oauth:state_1")).toContain(
+      '"flow":"reauthorization"',
+    );
   });
 
   it("completes password reauthorization from Sync Center", async () => {
@@ -3639,6 +3645,37 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText(/me@gmail.com/)).toBeTruthy();
+    expect(sessionStorage.getItem("email-hub:oauth:state_1")).toBeNull();
+  });
+
+  it("completes a Sync Center OAuth reauthorization callback and clears pending state", async () => {
+    const api = createApiFixture();
+    sessionStorage.setItem(
+      "email-hub:oauth:state_1",
+      JSON.stringify({
+        provider: "gmail",
+        flow: "reauthorization",
+        returnTo: "add-mail",
+      }),
+    );
+    window.history.replaceState(
+      {},
+      "",
+      "/oauth/callback?state=state_1&code=code_1",
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    await waitFor(() => {
+      expect(api.completeSyncCenterOAuthReauthorizationCallback).toHaveBeenCalledWith(
+        {
+          state: "state_1",
+          code: "code_1",
+        },
+      );
+    });
+    expect(api.completeOAuthCallback).not.toHaveBeenCalled();
+    expect(await screen.findByText(/已重新授权/)).toBeTruthy();
     expect(sessionStorage.getItem("email-hub:oauth:state_1")).toBeNull();
   });
 
@@ -6439,6 +6476,9 @@ function createApiFixture(): EmailHubApi {
       items: [reauthorizationTaskFixture()],
     })),
     startSyncCenterOAuthReauthorization: vi.fn(async () => oauthStartFixture()),
+    completeSyncCenterOAuthReauthorizationCallback: vi.fn(async () =>
+      oauthCallbackFixture(),
+    ),
     completeSyncCenterImapSmtpReauthorization: vi.fn(async (input) => ({
       task: {
         id: input.taskId,

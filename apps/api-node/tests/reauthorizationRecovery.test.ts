@@ -11,6 +11,7 @@ describe("reauthorization recovery service", () => {
       providers: createOAuthProviderRegistry({
         googleClientId: "google-client-id",
       }),
+      ...unusedOAuthDependencies(),
       reauthorizationTasks: {
         async getTask(taskId) {
           expect(taskId).toBe("task_oauth");
@@ -51,6 +52,9 @@ describe("reauthorization recovery service", () => {
         async registerImapSmtpAccount() {
           throw new Error("not used");
         },
+        async registerOAuthAccount() {
+          throw new Error("not used");
+        },
       },
     });
 
@@ -87,6 +91,326 @@ describe("reauthorization recovery service", () => {
     ]);
   });
 
+  it("completes OAuth reauthorization against the original imported account", async () => {
+    const registeredAccounts: unknown[] = [];
+    const completedTasks: unknown[] = [];
+    const tokenExchanges: unknown[] = [];
+    const profileLookups: unknown[] = [];
+    const syncJobs: unknown[] = [];
+    const service = createReauthorizationRecoveryService({
+      createId: () => "secret_1",
+      providers: createOAuthProviderRegistry({
+        googleClientId: "google-client-id",
+        googleClientSecret: "google-client-secret",
+      }),
+      reauthorizationTasks: {
+        async getTask(taskId) {
+          expect(taskId).toBe("task_oauth");
+          return {
+            id: "task_oauth",
+            email: "boss@gmail.com",
+            provider: "gmail",
+            authMethod: "oauth",
+            status: "pending",
+            payload: {
+              source: "account_transfer_import",
+              reauthRequired: true,
+              accountId: "acc_existing",
+              displayName: "Boss",
+              state: "state_1",
+              redirectUri: "https://app.example.com/oauth/callback",
+            },
+          };
+        },
+        async updateOAuthSession() {
+          throw new Error("not used");
+        },
+      },
+      oauthStore: {
+        async getSessionByState(state) {
+          expect(state).toBe("state_1");
+          return {
+            taskId: "task_oauth",
+            provider: "gmail",
+            state: "state_1",
+            redirectUri: "https://app.example.com/oauth/callback",
+          };
+        },
+        async reserveAccountIdForEmailProvider(input) {
+          expect(input).toEqual({
+            email: "boss@gmail.com",
+            provider: "gmail",
+            proposedAccountId: "acc_existing",
+          });
+          return "acc_existing";
+        },
+        async completeOAuthAccount(input) {
+          completedTasks.push(input);
+          return {
+            task: {
+              id: input.taskId,
+              email: input.taskEmail,
+              provider: "gmail",
+              authMethod: "oauth",
+              status: "completed",
+            },
+            account: input.account,
+          };
+        },
+        async failTask() {
+          throw new Error("not used");
+        },
+      },
+      accountStore: {
+        async completeTask() {
+          throw new Error("not used");
+        },
+        async failTask() {
+          throw new Error("not used");
+        },
+      },
+      emailEngineAccounts: {
+        async registerImapSmtpAccount() {
+          throw new Error("not used");
+        },
+        async registerOAuthAccount(input) {
+          registeredAccounts.push(input);
+        },
+      },
+      tokenClient: {
+        async exchangeCode(input) {
+          tokenExchanges.push(input);
+          return {
+            accessToken: "access-token",
+            refreshToken: "refresh-token-secret",
+            scope: "https://www.googleapis.com/auth/gmail.modify",
+          };
+        },
+      },
+      profileClient: {
+        async getProfile(input) {
+          profileLookups.push(input);
+          return {
+            email: "boss@gmail.com",
+            displayName: "Boss Profile",
+          };
+        },
+      },
+      bootstrapSyncJobs: {
+        async enqueueInitialSync(input) {
+          syncJobs.push(input);
+          return {
+            id: "job_1",
+            jobType: "sync_account",
+            accountId: "acc_existing",
+            idempotencyKey: "job:initial-sync:acc_existing",
+            status: "queued",
+            createdAt: "2026-06-13T08:00:00.000Z",
+          };
+        },
+      },
+    });
+
+    const result = await service.completeOAuthCallback({
+      state: "state_1",
+      code: "oauth-code-secret",
+    });
+
+    expect(tokenExchanges).toMatchObject([
+      {
+        code: "oauth-code-secret",
+        redirectUri: "https://app.example.com/oauth/callback",
+      },
+    ]);
+    expect(profileLookups).toMatchObject([{ accessToken: "access-token" }]);
+    expect(registeredAccounts).toEqual([
+      {
+        accountId: "acc_existing",
+        email: "boss@gmail.com",
+        displayName: "Boss",
+        provider: "gmail",
+      },
+    ]);
+    expect(completedTasks).toMatchObject([
+      {
+        taskId: "task_oauth",
+        taskEmail: "boss@gmail.com",
+        account: {
+          id: "acc_existing",
+          email: "boss@gmail.com",
+          provider: "gmail",
+          authMethod: "oauth",
+          displayName: "Boss",
+          syncState: "syncing",
+          engineProvider: "emailengine",
+        },
+        credential: {
+          accountId: "acc_existing",
+          credentialKind: "google_oauth_refresh_token",
+          secretRef: "db:secret_1",
+        },
+        providerSettings: {
+          accountId: "acc_existing",
+          provider: "gmail",
+          capabilities: {
+            read: true,
+            send: true,
+            engineProvider: "emailengine",
+          },
+          settings: {
+            scopes: "https://www.googleapis.com/auth/gmail.modify",
+            emailEngineOAuthProvider: "gmail",
+            tokenSource: "emailengine_auth_server",
+          },
+        },
+        secret: {
+          secretRef: "db:secret_1",
+          secretValue: "refresh-token-secret",
+        },
+      },
+    ]);
+    expect(syncJobs).toEqual([
+      {
+        accountId: "acc_existing",
+        provider: "gmail",
+        engineProvider: "emailengine",
+        sourceTaskId: "task_oauth",
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("oauth-code-secret");
+    expect(JSON.stringify(result)).not.toContain("refresh-token-secret");
+    expect(result).toEqual({
+      task: {
+        id: "task_oauth",
+        email: "boss@gmail.com",
+        provider: "gmail",
+        authMethod: "oauth",
+        status: "completed",
+      },
+      account: {
+        id: "acc_existing",
+        email: "boss@gmail.com",
+        provider: "gmail",
+        authMethod: "oauth",
+        displayName: "Boss",
+        syncState: "syncing",
+        engineProvider: "emailengine",
+      },
+      syncJob: {
+        id: "job_1",
+        jobType: "sync_account",
+        accountId: "acc_existing",
+        idempotencyKey: "job:initial-sync:acc_existing",
+        status: "queued",
+        createdAt: "2026-06-13T08:00:00.000Z",
+      },
+    });
+  });
+
+  it("fails OAuth reauthorization when the provider profile does not match the task email", async () => {
+    const failedTasks: unknown[] = [];
+    const service = createReauthorizationRecoveryService({
+      createId: () => "secret_1",
+      providers: createOAuthProviderRegistry({
+        googleClientId: "google-client-id",
+        googleClientSecret: "google-client-secret",
+      }),
+      reauthorizationTasks: {
+        async getTask() {
+          return {
+            id: "task_oauth",
+            email: "boss@gmail.com",
+            provider: "gmail",
+            authMethod: "oauth",
+            status: "pending",
+            payload: {
+              source: "account_transfer_import",
+              reauthRequired: true,
+            },
+          };
+        },
+        async updateOAuthSession() {
+          throw new Error("not used");
+        },
+      },
+      oauthStore: {
+        async getSessionByState() {
+          return {
+            taskId: "task_oauth",
+            provider: "gmail",
+            state: "state_1",
+            redirectUri: "https://app.example.com/oauth/callback",
+          };
+        },
+        async reserveAccountIdForEmailProvider() {
+          throw new Error("not used");
+        },
+        async completeOAuthAccount() {
+          throw new Error("not used");
+        },
+        async failTask(input) {
+          failedTasks.push(input);
+          return {
+            id: input.taskId,
+            email: "boss@gmail.com",
+            provider: "gmail",
+            authMethod: "oauth",
+            status: "failed",
+            errorMessage: input.errorMessage,
+          };
+        },
+      },
+      accountStore: {
+        async completeTask() {
+          throw new Error("not used");
+        },
+        async failTask() {
+          throw new Error("not used");
+        },
+      },
+      emailEngineAccounts: {
+        async registerImapSmtpAccount() {
+          throw new Error("not used");
+        },
+        async registerOAuthAccount() {
+          throw new Error("not used");
+        },
+      },
+      tokenClient: {
+        async exchangeCode() {
+          return {
+            accessToken: "access-token",
+            refreshToken: "refresh-token-secret",
+          };
+        },
+      },
+      profileClient: {
+        async getProfile() {
+          return {
+            email: "other@gmail.com",
+            displayName: "Other",
+          };
+        },
+      },
+    });
+
+    await expect(
+      service.completeOAuthCallback({
+        state: "state_1",
+        code: "oauth-code-secret",
+      }),
+    ).rejects.toThrow("OAuth account mismatch");
+
+    expect(JSON.stringify(failedTasks)).not.toContain("oauth-code-secret");
+    expect(JSON.stringify(failedTasks)).not.toContain("refresh-token-secret");
+    expect(failedTasks).toEqual([
+      {
+        taskId: "task_oauth",
+        errorMessage: "OAuth account mismatch: expected boss@gmail.com",
+      },
+    ]);
+  });
+
   it("completes IMAP/SMTP reauthorization with a fresh authorization code", async () => {
     const registeredAccounts: unknown[] = [];
     const completedTasks: unknown[] = [];
@@ -96,6 +420,7 @@ describe("reauthorization recovery service", () => {
       providers: createOAuthProviderRegistry({
         googleClientId: "google-client-id",
       }),
+      ...unusedOAuthDependencies(),
       reauthorizationTasks: {
         async getTask(taskId) {
           expect(taskId).toBe("task_password");
@@ -139,6 +464,9 @@ describe("reauthorization recovery service", () => {
       emailEngineAccounts: {
         async registerImapSmtpAccount(input) {
           registeredAccounts.push(input);
+        },
+        async registerOAuthAccount() {
+          throw new Error("not used");
         },
       },
       bootstrapSyncJobs: {
@@ -248,6 +576,7 @@ describe("reauthorization recovery service", () => {
       providers: createOAuthProviderRegistry({
         googleClientId: "google-client-id",
       }),
+      ...unusedOAuthDependencies(),
       reauthorizationTasks: {
         async getTask() {
           return {
@@ -291,6 +620,9 @@ describe("reauthorization recovery service", () => {
         async registerImapSmtpAccount(input) {
           registeredAccounts.push(input);
         },
+        async registerOAuthAccount() {
+          throw new Error("not used");
+        },
       },
     });
 
@@ -324,6 +656,7 @@ describe("reauthorization recovery service", () => {
       providers: createOAuthProviderRegistry({
         googleClientId: "google-client-id",
       }),
+      ...unusedOAuthDependencies(),
       reauthorizationTasks: {
         async getTask() {
           return {
@@ -381,6 +714,9 @@ describe("reauthorization recovery service", () => {
         async registerImapSmtpAccount(input) {
           registeredAccounts.push(input);
         },
+        async registerOAuthAccount() {
+          throw new Error("not used");
+        },
       },
     });
 
@@ -431,6 +767,7 @@ describe("reauthorization recovery service", () => {
       providers: createOAuthProviderRegistry({
         googleClientId: "google-client-id",
       }),
+      ...unusedOAuthDependencies(),
       reauthorizationTasks: {
         async getTask() {
           return {
@@ -474,6 +811,9 @@ describe("reauthorization recovery service", () => {
             { code: "EAUTH" },
           );
         },
+        async registerOAuthAccount() {
+          throw new Error("not used");
+        },
       },
     });
 
@@ -516,6 +856,7 @@ describe("reauthorization recovery service", () => {
       providers: createOAuthProviderRegistry({
         googleClientId: "google-client-id",
       }),
+      ...unusedOAuthDependencies(),
       reauthorizationTasks: {
         async getTask() {
           return {
@@ -543,6 +884,9 @@ describe("reauthorization recovery service", () => {
         async registerImapSmtpAccount() {
           throw new Error("not used");
         },
+        async registerOAuthAccount() {
+          throw new Error("not used");
+        },
       },
     });
 
@@ -554,3 +898,32 @@ describe("reauthorization recovery service", () => {
     ).rejects.toThrow("reauthorization task was not found");
   });
 });
+
+function unusedOAuthDependencies() {
+  return {
+    oauthStore: {
+      async getSessionByState() {
+        throw new Error("not used");
+      },
+      async reserveAccountIdForEmailProvider() {
+        throw new Error("not used");
+      },
+      async completeOAuthAccount() {
+        throw new Error("not used");
+      },
+      async failTask() {
+        throw new Error("not used");
+      },
+    },
+    tokenClient: {
+      async exchangeCode() {
+        throw new Error("not used");
+      },
+    },
+    profileClient: {
+      async getProfile() {
+        throw new Error("not used");
+      },
+    },
+  };
+}

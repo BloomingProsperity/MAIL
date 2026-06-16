@@ -60,6 +60,9 @@ describe("reauthorization routes", () => {
           authorizationUrl: "https://accounts.example.test/auth?state=state_1",
         };
       },
+      async completeOAuthCallback() {
+        throw new Error("not used");
+      },
       async completeImapSmtp() {
         throw new Error("not used");
       },
@@ -102,10 +105,87 @@ describe("reauthorization routes", () => {
     );
   });
 
+  it("completes OAuth reauthorization callbacks through the recovery service", async () => {
+    const calls: unknown[] = [];
+    const reauthorizationRecoveryService = {
+      async startOAuth() {
+        throw new Error("not used");
+      },
+      async completeOAuthCallback(input: unknown) {
+        calls.push(input);
+        return {
+          task: {
+            id: "task_oauth",
+            email: "boss@gmail.com",
+            provider: "gmail",
+            authMethod: "oauth",
+            status: "completed",
+          },
+          account: {
+            id: "acc_existing",
+            email: "boss@gmail.com",
+            provider: "gmail",
+            authMethod: "oauth",
+            syncState: "syncing",
+            engineProvider: "emailengine",
+          },
+        };
+      },
+      async completeImapSmtp() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/sync-center/reauthorizations/oauth/callback`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              state: "state_1",
+              code: "oauth-code-secret",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(await response.json()).toEqual({
+          task: {
+            id: "task_oauth",
+            email: "boss@gmail.com",
+            provider: "gmail",
+            authMethod: "oauth",
+            status: "completed",
+          },
+          account: {
+            id: "acc_existing",
+            email: "boss@gmail.com",
+            provider: "gmail",
+            authMethod: "oauth",
+            syncState: "syncing",
+            engineProvider: "emailengine",
+          },
+        });
+        expect(calls).toEqual([
+          {
+            state: "state_1",
+            code: "oauth-code-secret",
+          },
+        ]);
+      },
+      { reauthorizationRecoveryService },
+    );
+  });
+
   it("completes IMAP/SMTP reauthorization through the recovery service", async () => {
     const calls: unknown[] = [];
     const reauthorizationRecoveryService = {
       async startOAuth() {
+        throw new Error("not used");
+      },
+      async completeOAuthCallback() {
         throw new Error("not used");
       },
       async completeImapSmtp(input: unknown) {
@@ -179,6 +259,9 @@ describe("reauthorization routes", () => {
       async startOAuth() {
         throw new Error("should not be called");
       },
+      async completeOAuthCallback() {
+        throw new Error("should not be called");
+      },
       async completeImapSmtp() {
         throw new Error("should not be called");
       },
@@ -202,6 +285,14 @@ describe("reauthorization routes", () => {
             body: JSON.stringify({ username: "support@qq.com" }),
           },
         );
+        const oauthCallback = await fetch(
+          `${baseUrl}/api/sync-center/reauthorizations/oauth/callback`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ state: "state_1", code: "" }),
+          },
+        );
 
         expect(oauth.status).toBe(400);
         expect(await oauth.json()).toEqual({
@@ -209,6 +300,10 @@ describe("reauthorization routes", () => {
         });
         expect(password.status).toBe(400);
         expect(await password.json()).toEqual({
+          error: "invalid_reauthorization_request",
+        });
+        expect(oauthCallback.status).toBe(400);
+        expect(await oauthCallback.json()).toEqual({
           error: "invalid_reauthorization_request",
         });
       },
@@ -220,6 +315,9 @@ describe("reauthorization routes", () => {
     const operationalEvents: unknown[] = [];
     const reauthorizationRecoveryService = {
       async startOAuth() {
+        throw new Error("not used");
+      },
+      async completeOAuthCallback() {
         throw new Error("not used");
       },
       async completeImapSmtp() {
@@ -323,6 +421,83 @@ describe("reauthorization routes", () => {
         ]);
         expect(bodyText).not.toContain("qq-auth-code");
         expect(JSON.stringify(operationalEvents)).not.toContain("qq-auth-code");
+      },
+      { reauthorizationRecoveryService, operationalEventLogService },
+    );
+  });
+
+  it("records OAuth reauthorization callback failures without leaking callback codes", async () => {
+    const operationalEvents: unknown[] = [];
+    const reauthorizationRecoveryService = {
+      async startOAuth() {
+        throw new Error("not used");
+      },
+      async completeOAuthCallback() {
+        throw new Error("OAuth token exchange rejected oauth-code-secret");
+      },
+      async completeImapSmtp() {
+        throw new Error("not used");
+      },
+    };
+    const operationalEventLogService = {
+      async listEvents() {
+        throw new Error("not used");
+      },
+      async recordEvent(input: unknown) {
+        operationalEvents.push(input);
+        return {
+          id: "op_event_1",
+          occurredAt: "2026-06-14T08:00:00.000Z",
+          ...(input as Record<string, unknown>),
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/sync-center/reauthorizations/oauth/callback`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-request-id": "req_oauth_reauth",
+            },
+            body: JSON.stringify({
+              state: "state_1",
+              code: "oauth-code-secret",
+            }),
+          },
+        );
+        const bodyText = await response.text();
+
+        expect(response.status).toBe(400);
+        expect(JSON.parse(bodyText)).toEqual({
+          error: "bad_request",
+          detail: "OAuth token exchange rejected [redacted]",
+        });
+        expect(operationalEvents).toEqual([
+          {
+            service: "email-hub-api",
+            level: "error",
+            event: "reauthorization_oauth_callback_failed",
+            requestId: "req_oauth_reauth",
+            lane: "account_reauthorization",
+            message: "OAuth reauthorization callback failed",
+            context: {
+              action: "complete_oauth_reauthorization",
+              state: "state_1",
+              error: {
+                name: "Error",
+                message: "OAuth token exchange rejected [redacted]",
+              },
+            },
+          },
+        ]);
+        expect(bodyText).not.toContain("oauth-code-secret");
+        expect(JSON.stringify(operationalEvents)).not.toContain(
+          "oauth-code-secret",
+        );
       },
       { reauthorizationRecoveryService, operationalEventLogService },
     );

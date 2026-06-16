@@ -95,6 +95,25 @@ describe("server wiring", () => {
     expect(source).toMatch(/createOAuthOnboardingService\(\{[\s\S]*emailEngineAccounts,/);
   });
 
+  it("reuses the OAuth onboarding store for Sync Center reauthorization callbacks", async () => {
+    const serverUrl = new URL("../src/server.ts", import.meta.url);
+    const source = await readFile(serverUrl, "utf8");
+
+    expect(source).toMatch(
+      /const oauthOnboardingStore = createPostgresOAuthOnboardingStore\(pool\)/,
+    );
+    expect(source).toMatch(/const oauthTokenClient = createOAuthTokenClient\(\)/);
+    expect(source).toMatch(
+      /const oauthProfileClient = createOAuthProfileClient\(\)/,
+    );
+    expect(source).toMatch(
+      /createReauthorizationRecoveryService\(\{[\s\S]*oauthStore: oauthOnboardingStore,[\s\S]*tokenClient: oauthTokenClient,[\s\S]*profileClient: oauthProfileClient,/,
+    );
+    expect(source).toMatch(
+      /createOAuthOnboardingService\(\{[\s\S]*store: oauthOnboardingStore,[\s\S]*tokenClient: oauthTokenClient,[\s\S]*profileClient: oauthProfileClient,/,
+    );
+  });
+
   it("passes Proton Bridge preset overrides into onboarding, import, and reauthorization services", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");

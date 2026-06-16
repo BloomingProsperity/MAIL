@@ -143,6 +143,9 @@ if (pool) {
   const accountOnboardingStore = createPostgresAccountOnboardingStore(pool, {
     createId: randomUUID,
   });
+  const oauthOnboardingStore = createPostgresOAuthOnboardingStore(pool);
+  const oauthTokenClient = createOAuthTokenClient();
+  const oauthProfileClient = createOAuthProfileClient();
   const bootstrapSyncJobs = createPostgresBootstrapSyncJobStore(pool, {
     createId: randomUUID,
   });
@@ -380,18 +383,21 @@ if (pool) {
   });
   config.reauthorizationRecoveryService = createReauthorizationRecoveryService({
     reauthorizationTasks: createPostgresReauthorizationTaskStore(pool),
+    oauthStore: oauthOnboardingStore,
     accountStore: accountOnboardingStore,
     emailEngineAccounts,
     providers: oauthProviders,
+    tokenClient: oauthTokenClient,
+    profileClient: oauthProfileClient,
     bootstrapSyncJobs,
     createId: randomUUID,
     providerPresetOverrides,
   });
   config.oauthOnboardingService = createOAuthOnboardingService({
-    store: createPostgresOAuthOnboardingStore(pool),
+    store: oauthOnboardingStore,
     providers: oauthProviders,
-    tokenClient: createOAuthTokenClient(),
-    profileClient: createOAuthProfileClient(),
+    tokenClient: oauthTokenClient,
+    profileClient: oauthProfileClient,
     emailEngineAccounts,
     bootstrapSyncJobs,
     createId: randomUUID,

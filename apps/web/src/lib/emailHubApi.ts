@@ -1792,6 +1792,10 @@ export interface EmailHubApi {
     taskId: string;
     redirectUri: string;
   }): Promise<OAuthStartResult>;
+  completeSyncCenterOAuthReauthorizationCallback(input: {
+    state: string;
+    code: string;
+  }): Promise<OAuthCallbackResult>;
   completeSyncCenterImapSmtpReauthorization(
     input: SyncCenterImapSmtpReauthorizationInput,
   ): Promise<ImapSmtpOnboardingResult>;
@@ -2735,6 +2739,21 @@ export function createEmailHubApi(
         {
           method: "POST",
           body: JSON.stringify({ redirectUri: input.redirectUri }),
+        },
+      );
+    },
+
+    completeSyncCenterOAuthReauthorizationCallback(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        "/api/sync-center/reauthorizations/oauth/callback",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            state: input.state,
+            code: input.code,
+          }),
         },
       );
     },

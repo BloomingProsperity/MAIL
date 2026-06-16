@@ -1348,6 +1348,40 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        if (reauthorizationRoute.action === "oauth_callback") {
+          const payload = parseReauthorizationOAuthCallbackInput(
+            await readRequestBody(),
+          );
+          rememberSensitiveValues(requestSensitiveValues, [payload.code]);
+          const result = await (async () => {
+            try {
+              return await config.reauthorizationRecoveryService!.completeOAuthCallback(
+                payload,
+              );
+            } catch (error) {
+              await recordOperationalEvent(config, {
+                service: "email-hub-api",
+                level: "error",
+                event: "reauthorization_oauth_callback_failed",
+                requestId,
+                lane: "account_reauthorization",
+                message: "OAuth reauthorization callback failed",
+                context: {
+                  action: "complete_oauth_reauthorization",
+                  state: payload.state,
+                  error: safeErrorForDiagnostics(
+                    error,
+                    requestSensitiveValues,
+                  ),
+                },
+              });
+              throw error;
+            }
+          })();
+          writeJson(response, 202, result);
+          return;
+        }
+
         if (reauthorizationRoute.action === "oauth_start") {
           const result = await config.reauthorizationRecoveryService.startOAuth(
             parseReauthorizationOAuthStartInput(
@@ -3793,6 +3827,7 @@ function isStringArray(value: unknown): value is string[] {
 function parseReauthorizationRecoveryRoute(
   requestUrl: string | undefined,
 ):
+  | { action: "oauth_callback" }
   | { action: "oauth_start"; taskId: string }
   | { action: "imap_smtp"; taskId: string }
   | undefined {
@@ -3801,6 +3836,10 @@ function parseReauthorizationRecoveryRoute(
   }
 
   const url = new URL(requestUrl, "http://localhost");
+  if (url.pathname === "/api/sync-center/reauthorizations/oauth/callback") {
+    return { action: "oauth_callback" };
+  }
+
   const match =
     /^\/api\/sync-center\/reauthorizations\/([^/]+)\/(oauth\/start|imap-smtp)$/.exec(
       url.pathname,
@@ -7471,6 +7510,21 @@ function parseReauthorizationOAuthStartInput(
   }
 
   return { taskId, redirectUri: payload.redirectUri };
+}
+
+function parseReauthorizationOAuthCallbackInput(body: string): {
+  state: string;
+  code: string;
+} {
+  const payload = JSON.parse(body) as { state?: unknown; code?: unknown };
+  if (!isNonEmptyString(payload.state) || !isNonEmptyString(payload.code)) {
+    throw new InvalidReauthorizationRequestError();
+  }
+
+  return {
+    state: payload.state,
+    code: payload.code,
+  };
 }
 
 function parseReauthorizationImapSmtpInput(

@@ -1443,6 +1443,29 @@ describe("emailHubApi", () => {
         });
       }
 
+      if (url === "/api/sync-center/reauthorizations/oauth/callback") {
+        return jsonResponse(
+          {
+            task: {
+              id: "task_reauth_1",
+              email: "reauth@example.com",
+              provider: "gmail",
+              authMethod: "oauth",
+              status: "completed",
+            },
+            account: {
+              id: "acc_reauth_1",
+              email: "reauth@example.com",
+              provider: "gmail",
+              authMethod: "oauth",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          },
+          202,
+        );
+      }
+
       return jsonResponse(
         {
           provider: "gmail",
@@ -1465,6 +1488,10 @@ describe("emailHubApi", () => {
     await api.startSyncCenterOAuthReauthorization({
       taskId: "task_reauth_1",
       redirectUri: "https://app.example/oauth/callback",
+    });
+    await api.completeSyncCenterOAuthReauthorizationCallback({
+      state: "state_1",
+      code: "oauth-code-secret",
     });
     await api.completeSyncCenterImapSmtpReauthorization({
       taskId: "task_password_1",
@@ -1513,6 +1540,17 @@ describe("emailHubApi", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
+      "/api/sync-center/reauthorizations/oauth/callback",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          state: "state_1",
+          code: "oauth-code-secret",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
       "/api/sync-center/reauthorizations/task_password_1/imap-smtp",
       expect.objectContaining({
         method: "POST",
@@ -1523,7 +1561,7 @@ describe("emailHubApi", () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
+      5,
       "/api/sync-center/reauthorizations/task_custom_1/imap-smtp",
       expect.objectContaining({
         method: "POST",

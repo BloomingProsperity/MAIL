@@ -583,6 +583,7 @@ interface OAuthCallbackParams {
 
 interface OAuthPendingState {
   provider: OAuthProvider;
+  flow: "onboarding" | "reauthorization";
   returnTo: "add-mail";
   createdAt: string;
 }
@@ -1663,26 +1664,38 @@ function OAuthCallbackPage(props: {
       }
 
       try {
-        const result = await props.api.completeOAuthCallback({
-          provider: pending.provider,
-          state: props.callback.state,
-          code: props.callback.code,
-        });
+        const result =
+          pending.flow === "reauthorization"
+            ? await props.api.completeSyncCenterOAuthReauthorizationCallback({
+                state: props.callback.state,
+                code: props.callback.code,
+              })
+            : await props.api.completeOAuthCallback({
+                provider: pending.provider,
+                state: props.callback.state,
+                code: props.callback.code,
+              });
         if (!alive) {
           return;
         }
 
         clearOAuthPendingState(props.callback.state);
         props.onConnected(result.account?.id);
+        const actionText =
+          pending.flow === "reauthorization" ? "已重新授权" : "已连接";
         setStatus({
           kind: "success",
-          message: `${result.account?.email ?? result.task.email} 已连接，正在同步邮件。`,
+          message: `${result.account?.email ?? result.task.email} ${actionText}，正在同步邮件。`,
         });
       } catch {
         if (alive) {
+          const retryText =
+            pending.flow === "reauthorization"
+              ? "重新登录没有完成，请回到同步中心重试。"
+              : "邮箱连接没有完成，请回到添加邮箱重试。";
           setStatus({
             kind: "error",
-            message: "邮箱连接没有完成，请回到添加邮箱重试。",
+            message: retryText,
           });
         }
       }
@@ -1756,6 +1769,8 @@ function loadOAuthPendingState(state: string): OAuthPendingState | undefined {
 
     return {
       provider: parsed.provider,
+      flow:
+        parsed.flow === "reauthorization" ? "reauthorization" : "onboarding",
       returnTo: "add-mail",
       createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : "",
     };
@@ -4971,6 +4986,7 @@ function AddMailPage(props: {
         });
         storeOAuthPendingState(result.state, {
           provider: result.provider,
+          flow: "onboarding",
           returnTo: "add-mail",
           createdAt: new Date().toISOString(),
         });
@@ -5210,6 +5226,7 @@ function AddMailPage(props: {
       });
       storeOAuthPendingState(result.state, {
         provider: result.provider,
+        flow: "reauthorization",
         returnTo: "add-mail",
         createdAt: new Date().toISOString(),
       });
@@ -6813,6 +6830,7 @@ function SyncCenterPage(props: {
       });
       storeOAuthPendingState(result.state, {
         provider: result.provider,
+        flow: "reauthorization",
         returnTo: "add-mail",
         createdAt: new Date().toISOString(),
       });
