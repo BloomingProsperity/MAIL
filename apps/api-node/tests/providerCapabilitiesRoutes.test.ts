@@ -5,12 +5,16 @@ import { createApiHandler } from "../src/http/router";
 
 let server: Server | undefined;
 
-async function withApi(test: (baseUrl: string) => Promise<void>): Promise<void> {
+async function withApi(
+  test: (baseUrl: string) => Promise<void>,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
   server = createServer(
     createApiHandler({
       apiName: "email-hub-api",
       emailEngineUrl: "http://emailengine:3000",
       emailEngineWebhookSecret: "webhook-secret",
+      ...overrides,
     }),
   );
 
@@ -49,9 +53,10 @@ describe("mail provider capability routes", () => {
           expect.objectContaining({
             provider: "gmail",
             label: "Gmail",
-            connectionLabel: "登录 Google 账号",
-            supportsWebLogin: true,
-            setupHints: ["登录后自动同步邮件"],
+            connectionLabel: "输入 Google 应用专用密码",
+            supportsWebLogin: false,
+            supportsAppPassword: true,
+            setupHints: ["开启邮箱客户端访问后，使用 Google 应用专用密码"],
           }),
           expect.objectContaining({
             provider: "tencent_exmail",
@@ -64,6 +69,28 @@ describe("mail provider capability routes", () => {
       );
       expect(JSON.stringify(body)).not.toMatch(/OAuth|Graph|IMAP|SMTP|API/i);
     });
+  });
+
+  it("returns web-login provider capabilities when OAuth setup is configured", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/mail-providers/capabilities/gmail`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          provider: "gmail",
+          connectionLabel: "登录 Google 账号",
+          supportsWebLogin: true,
+          supportsServerSearch: true,
+          setupHints: ["登录后自动同步邮件"],
+        });
+      },
+      {
+        oauthProvidersConfigured: { gmail: true },
+      },
+    );
   });
 
   it("resolves aliases when reading one provider capability", async () => {

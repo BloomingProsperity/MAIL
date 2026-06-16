@@ -329,6 +329,30 @@ function authenticationDiagnostic(
     };
   }
 
+  if (provider === "gmail") {
+    return {
+      code: "gmail_app_password_required",
+      provider,
+      severity: "action_required",
+      affected: "account",
+      message:
+        "Use a Google app password generated for this mailbox. Your normal Google password will not work.",
+      recoveryAction: "create_google_app_password",
+    };
+  }
+
+  if (provider === "outlook") {
+    return {
+      code: "outlook_app_password_or_web_login_required",
+      provider,
+      severity: "action_required",
+      affected: "account",
+      message:
+        "Use a Microsoft app password when your account allows it, or configure web login before retrying this mailbox.",
+      recoveryAction: "create_microsoft_app_password_or_enable_web_login",
+    };
+  }
+
   if (provider === "qq") {
     return {
       code: "qq_authorization_code_required",
@@ -522,6 +546,14 @@ function iCloudImapUsername(email: string): string {
 }
 
 const IMAP_SMTP_PROVIDER_PRESETS: Record<string, ImapSmtpProviderPreset> = {
+  gmail: {
+    imap: { host: "imap.gmail.com", port: 993, secure: true },
+    smtp: { host: "smtp.gmail.com", port: 465, secure: true },
+  },
+  outlook: {
+    imap: { host: "outlook.office365.com", port: 993, secure: true },
+    smtp: { host: "smtp.office365.com", port: 587, secure: false },
+  },
   "163": {
     imap: { host: "imap.163.com", port: 993, secure: true },
     smtp: { host: "smtp.163.com", port: 465, secure: true },

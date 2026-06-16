@@ -2268,6 +2268,59 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.getByText("iCloud Mail")).toBeTruthy();
   });
 
+  it("falls back to EmailEngine app-password onboarding when Gmail web login is unavailable", async () => {
+    const api = createApiFixture();
+    const oauthRedirect = vi.fn();
+    vi.mocked(api.getMailProviderCapabilities).mockResolvedValueOnce({
+      providers: [
+        mailProviderCapabilityFixture({
+          provider: "gmail",
+          label: "Gmail",
+          connectionLabel: "输入 Google 应用专用密码",
+          accountGroup: "global",
+          supportsLogin: false,
+          supportsWebLogin: false,
+          supportsAppPassword: true,
+          supportsMailboxPassword: true,
+        }),
+      ],
+    });
+
+    render(
+      <App
+        api={api}
+        defaultAccountId="account_1"
+        oauthRedirect={oauthRedirect}
+      />,
+    );
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
+    );
+    fireEvent.change(await screen.findByLabelText("Add mail email"), {
+      target: { value: "owner@gmail.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Add mail secret"), {
+      target: { value: "google-app-password" },
+    });
+    expect(await screen.findByText("输入 Google 应用专用密码")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "连接 Gmail" }));
+
+    await waitFor(() => {
+      expect(api.testImapSmtpConnection).toHaveBeenCalledWith({
+        email: "owner@gmail.com",
+        provider: "gmail",
+        secret: "google-app-password",
+      });
+    });
+    expect(api.onboardImapSmtpAccount).toHaveBeenCalledWith({
+      email: "owner@gmail.com",
+      provider: "gmail",
+      secret: "google-app-password",
+    });
+    expect(api.startOAuthAccount).not.toHaveBeenCalled();
+    expect(oauthRedirect).not.toHaveBeenCalled();
+  });
+
   it("completes an OAuth callback from the provider and clears pending state", async () => {
     const api = createApiFixture();
     sessionStorage.setItem(

@@ -3604,7 +3604,7 @@ function providerCapabilityToOption(
 function providerAction(
   capability: MailProviderCapabilityDto,
 ): ProviderOption["action"] {
-  if (capability.provider === "gmail" || capability.provider === "outlook") {
+  if (capability.supportsWebLogin) {
     return "oauth";
   }
   if (capability.requiresLocalBridge) {

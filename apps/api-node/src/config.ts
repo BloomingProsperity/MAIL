@@ -13,6 +13,14 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     emailEngineWebhookSecretUsesDefault:
       !env.EMAILENGINE_WEBHOOK_SECRET ||
       env.EMAILENGINE_WEBHOOK_SECRET === "dev-emailhub-secret",
+    oauthProvidersConfigured: {
+      gmail:
+        typeof env.GOOGLE_OAUTH_CLIENT_ID === "string" &&
+        env.GOOGLE_OAUTH_CLIENT_ID.trim().length > 0,
+      outlook:
+        typeof env.MICROSOFT_OAUTH_CLIENT_ID === "string" &&
+        env.MICROSOFT_OAUTH_CLIENT_ID.trim().length > 0,
+    },
   };
 }
 

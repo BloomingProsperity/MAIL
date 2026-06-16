@@ -194,7 +194,70 @@ describe("IMAP/SMTP onboarding service", () => {
     ]);
   });
 
+  it("returns Gmail app-password diagnostics for EmailEngine-first fallback", async () => {
+    const store = createInMemoryAccountOnboardingStore();
+    const service = createImapSmtpOnboardingService({
+      store,
+      createId: () => {
+        throw new Error("test connection must not allocate ids");
+      },
+      emailEngineAccounts: {
+        async registerImapSmtpAccount() {
+          throw new Error("test connection must not register account");
+        },
+        async verifyImapSmtpAccount() {
+          return {
+            imap: { success: false, code: "EAUTH" },
+            smtp: { success: false, code: "EAUTH" },
+          };
+        },
+      },
+    });
+
+    const result = await service.testImapSmtpConnection({
+      email: "owner@gmail.com",
+      provider: "gmail",
+      secret: "normal-password",
+    });
+
+    expect(result.diagnostics).toEqual([
+      {
+        code: "gmail_app_password_required",
+        provider: "gmail",
+        severity: "action_required",
+        affected: "account",
+        message:
+          "Use a Google app password generated for this mailbox. Your normal Google password will not work.",
+        recoveryAction: "create_google_app_password",
+      },
+    ]);
+  });
+
   it.each([
+    {
+      provider: "gmail",
+      email: "owner@gmail.com",
+      displayName: "Gmail",
+      secret: "google-app-password",
+      imapHost: "imap.gmail.com",
+      imapPort: 993,
+      imapSecure: true,
+      smtpHost: "smtp.gmail.com",
+      smtpPort: 465,
+      smtpSecure: true,
+    },
+    {
+      provider: "outlook",
+      email: "owner@outlook.com",
+      displayName: "Outlook",
+      secret: "microsoft-app-password",
+      imapHost: "outlook.office365.com",
+      imapPort: 993,
+      imapSecure: true,
+      smtpHost: "smtp.office365.com",
+      smtpPort: 587,
+      smtpSecure: false,
+    },
     {
       provider: "163",
       email: "archive@163.com",

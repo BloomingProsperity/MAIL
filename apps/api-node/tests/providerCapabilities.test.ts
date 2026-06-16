@@ -24,13 +24,15 @@ describe("mail provider capability catalog", () => {
         expect.objectContaining({
           provider: "gmail",
           label: "Gmail",
-          connectionLabel: "登录 Google 账号",
-          supportsWebLogin: true,
+          connectionLabel: "输入 Google 应用专用密码",
+          supportsWebLogin: false,
+          supportsAppPassword: true,
+          supportsMailboxPassword: true,
           supportsScanLogin: false,
-          supportsServerSearch: true,
-          supportsLabels: true,
+          supportsServerSearch: false,
+          supportsLabels: false,
           supportsRecall: false,
-          setupHints: ["登录后自动同步邮件"],
+          setupHints: ["开启邮箱客户端访问后，使用 Google 应用专用密码"],
         }),
         expect.objectContaining({
           provider: "proton_bridge",
@@ -45,6 +47,34 @@ describe("mail provider capability catalog", () => {
     expect(JSON.stringify(capabilities)).not.toMatch(
       /OAuth|Graph|IMAP|SMTP|API/i,
     );
+  });
+
+  it("restores web-login capabilities when OAuth providers are configured", () => {
+    expect(
+      findProviderCapability("gmail", {
+        oauthProvidersConfigured: { gmail: true },
+      }),
+    ).toMatchObject({
+      provider: "gmail",
+      connectionLabel: "登录 Google 账号",
+      supportsWebLogin: true,
+      supportsServerSearch: true,
+      supportsLabels: true,
+      setupHints: ["登录后自动同步邮件"],
+    });
+    expect(
+      findProviderCapability("outlook", {
+        oauthProvidersConfigured: { outlook: true },
+      }),
+    ).toMatchObject({
+      provider: "outlook",
+      connectionLabel: "登录 Microsoft 账号",
+      supportsWebLogin: true,
+      supportsServerSearch: true,
+      supportsCalendar: true,
+      supportsContacts: true,
+      supportsOnlineArchive: true,
+    });
   });
 
   it("keeps Tencent-specific actions out of generic mailbox providers", () => {
@@ -90,11 +120,9 @@ describe("mail provider capability catalog", () => {
     });
     expect(findProviderCapability("outlook")).toMatchObject({
       provider: "outlook",
-      supportsWebLogin: true,
-      supportsServerSearch: true,
-      supportsCalendar: true,
-      supportsContacts: true,
-      supportsOnlineArchive: true,
+      supportsWebLogin: false,
+      supportsAppPassword: true,
+      setupHints: ["无法网页登录时，使用账号专用密码接入"],
     });
     expect(findProviderCapability("163")).toMatchObject({
       provider: "163",

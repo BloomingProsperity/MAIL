@@ -26,6 +26,10 @@ export interface MailProviderCapability {
   providerSpecificActions: string[];
 }
 
+export interface MailProviderCapabilityOptions {
+  oauthProvidersConfigured?: Partial<Record<"gmail" | "outlook", boolean>>;
+}
+
 interface InternalMailProviderCapability extends MailProviderCapability {
   aliases: string[];
 }
@@ -262,12 +266,17 @@ const PROVIDER_CAPABILITIES: InternalMailProviderCapability[] = [
   },
 ];
 
-export function listProviderCapabilities(): MailProviderCapability[] {
-  return PROVIDER_CAPABILITIES.map(publicCapability);
+export function listProviderCapabilities(
+  options: MailProviderCapabilityOptions = {},
+): MailProviderCapability[] {
+  return PROVIDER_CAPABILITIES.map((capability) =>
+    publicCapability(runtimeCapability(capability, options)),
+  );
 }
 
 export function findProviderCapability(
   provider: string,
+  options: MailProviderCapabilityOptions = {},
 ): MailProviderCapability | undefined {
   const normalized = normalizeProvider(provider);
   const capability = PROVIDER_CAPABILITIES.find(
@@ -276,7 +285,54 @@ export function findProviderCapability(
       item.aliases.some((alias) => normalizeProvider(alias) === normalized),
   );
 
-  return capability ? publicCapability(capability) : undefined;
+  return capability
+    ? publicCapability(runtimeCapability(capability, options))
+    : undefined;
+}
+
+function runtimeCapability(
+  capability: InternalMailProviderCapability,
+  options: MailProviderCapabilityOptions,
+): InternalMailProviderCapability {
+  if (capability.provider !== "gmail" && capability.provider !== "outlook") {
+    return capability;
+  }
+
+  const oauthConfigured =
+    options.oauthProvidersConfigured?.[capability.provider] === true;
+  if (oauthConfigured) {
+    return capability;
+  }
+
+  if (capability.provider === "gmail") {
+    return {
+      ...capability,
+      connectionLabel: "输入 Google 应用专用密码",
+      supportsLogin: false,
+      supportsWebLogin: false,
+      supportsAppPassword: true,
+      supportsMailboxPassword: true,
+      supportsServerSearch: false,
+      supportsLabels: false,
+      setupHints: ["开启邮箱客户端访问后，使用 Google 应用专用密码"],
+    };
+  }
+
+  return {
+    ...capability,
+    connectionLabel: "输入 Microsoft 应用专用密码",
+    supportsLogin: false,
+    supportsWebLogin: false,
+    supportsAppPassword: true,
+    supportsMailboxPassword: true,
+    supportsServerSearch: false,
+    supportsCalendar: false,
+    supportsContacts: false,
+    supportsOnlineArchive: false,
+    supportsSendOnBehalf: false,
+    setupHints: ["无法网页登录时，使用账号专用密码接入"],
+    providerSpecificActions: [],
+  };
 }
 
 function publicCapability(

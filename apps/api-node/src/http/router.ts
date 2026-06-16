@@ -16,6 +16,7 @@ import { getHermesProviderCatalog } from "../hermes/provider-catalog.js";
 import {
   findProviderCapability,
   listProviderCapabilities,
+  type MailProviderCapabilityOptions,
 } from "../mail-provider/provider-capabilities.js";
 import { findBuiltInSavedView } from "../mail-navigation/saved-views.js";
 import {
@@ -364,6 +365,7 @@ export interface ApiConfig {
   emailEngineAccessTokenConfigured?: boolean;
   emailEngineWebhookSecretConfigured?: boolean;
   emailEngineWebhookSecretUsesDefault?: boolean;
+  oauthProvidersConfigured?: MailProviderCapabilityOptions["oauthProvidersConfigured"];
   mailEngineHealthProbe?: EmailEngineHealthProbe;
   maxRequestBodyBytes?: number;
   maxComposeRequestBodyBytes?: number;
@@ -503,7 +505,9 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         request.url === "/api/mail-providers/capabilities"
       ) {
         writeJson(response, 200, {
-          providers: listProviderCapabilities(),
+          providers: listProviderCapabilities(
+            mailProviderCapabilityOptions(config),
+          ),
         });
         return;
       }
@@ -514,6 +518,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       if (request.method === "GET" && mailProviderCapabilityRoute) {
         const capability = findProviderCapability(
           mailProviderCapabilityRoute.provider,
+          mailProviderCapabilityOptions(config),
         );
         if (!capability) {
           writeJson(response, 404, {
@@ -6297,6 +6302,14 @@ async function buildApiHealth(config: ApiConfig): Promise<{
       },
     };
   }
+}
+
+function mailProviderCapabilityOptions(
+  config: ApiConfig,
+): MailProviderCapabilityOptions {
+  return {
+    oauthProvidersConfigured: config.oauthProvidersConfigured,
+  };
 }
 
 async function buildMailEngineHealth(config: ApiConfig): Promise<{
