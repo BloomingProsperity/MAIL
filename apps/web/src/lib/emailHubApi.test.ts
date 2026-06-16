@@ -1953,6 +1953,53 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs message-scoped Hermes summaries through the account message route", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          skillRunId: "run_summary_1",
+          skillId: "thread_summarize",
+          accountId: "account_1",
+          messageId: "message_1",
+          mode: "action_points",
+          summaryText: "Action: confirm the schedule today.",
+          cached: false,
+        },
+        202,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const summary = await api.summarizeMessage({
+      accountId: "account_1",
+      messageId: "message_1",
+      mode: "action_points",
+      focus: "decisions and reply needs",
+      language: "zh-CN",
+      memoryScope: "global",
+    });
+
+    expect(summary).toMatchObject({
+      accountId: "account_1",
+      messageId: "message_1",
+      mode: "action_points",
+      summaryText: "Action: confirm the schedule today.",
+      cached: false,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/messages/message_1/summary",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          mode: "action_points",
+          focus: "decisions and reply needs",
+          language: "zh-CN",
+          memoryScope: "global",
+        }),
+      }),
+    );
+  });
+
   it("loads Hermes workspace context for mailbox-aware operations", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

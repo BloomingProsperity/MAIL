@@ -39,10 +39,12 @@ import { createPostgresHermesRuleStore } from "./hermes/postgres-rule-store.js";
 import { createPostgresHermesActionPlanStore } from "./hermes/postgres-action-plan-store.js";
 import { createPostgresHermesRunStore } from "./hermes/postgres-run-store.js";
 import { createPostgresHermesMessageTranslationStore } from "./hermes/postgres-message-translation-store.js";
+import { createPostgresHermesMessageSummaryStore } from "./hermes/postgres-message-summary-store.js";
 import { createPostgresHermesAuditLogStore } from "./hermes/postgres-audit-log-store.js";
 import { createHermesActionPlanService } from "./hermes/action-plan.js";
 import { createHermesAuditLogService } from "./hermes/audit-log.js";
 import { createHermesMessageTranslationService } from "./hermes/message-translation.js";
+import { createHermesMessageSummaryService } from "./hermes/message-summary.js";
 import { createHermesRuleService } from "./hermes/rules.js";
 import { createHermesTranslationPreferenceService } from "./hermes/translation-preferences.js";
 import { getHermesSkills } from "./hermes/skills.js";
@@ -98,6 +100,9 @@ const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : undefin
 const hermesRunStore = pool ? createPostgresHermesRunStore(pool) : undefined;
 const hermesMessageTranslationStore = pool
   ? createPostgresHermesMessageTranslationStore(pool)
+  : undefined;
+const hermesMessageSummaryStore = pool
+  ? createPostgresHermesMessageSummaryStore(pool)
   : undefined;
 
 config.emailEngineAccessTokenConfigured =
@@ -391,6 +396,12 @@ if (configuredHermesService && config.mailReadStore) {
     mailReadStore: config.mailReadStore,
     translationService: configuredHermesService,
     store: hermesMessageTranslationStore,
+    createId: randomUUID,
+  });
+  config.hermesMessageSummaryService = createHermesMessageSummaryService({
+    mailReadStore: config.mailReadStore,
+    summaryService: configuredHermesService,
+    store: hermesMessageSummaryStore,
     createId: randomUUID,
   });
 }

@@ -2495,24 +2495,17 @@ function MailWorkspace(props: {
       return;
     }
 
-    const threadText = currentReaderText();
-    if (!threadText) {
-      setReaderHermesNotice("这封邮件还没有可用于总结的正文。");
-      return;
-    }
-
     const requestId = readerHermesRequestRef.current + 1;
     readerHermesRequestRef.current = requestId;
     setReaderHermesBusy("summary");
     setReaderHermesNotice("Hermes 正在总结当前邮件...");
     try {
-      const result = await props.api.summarizeThread({
-        subject: props.selectedMail.subject,
-        threadText,
+      const result = await props.api.summarizeMessage({
+        accountId: props.selectedMail.accountId,
+        messageId: props.selectedMail.id,
         mode: "action_points",
         focus: "decisions, deadlines, blockers, and reply needs",
         language: "zh-CN",
-        readMessageIds: [props.selectedMail.id],
         memoryScope: "global",
       });
       if (readerHermesRequestRef.current !== requestId) {
@@ -2536,12 +2529,6 @@ function MailWorkspace(props: {
   async function askHermesForReaderTranslation() {
     if (!props.api) {
       setReaderHermesNotice("Hermes 暂时不可用。");
-      return;
-    }
-
-    const text = currentReaderText();
-    if (!text) {
-      setReaderHermesNotice("这封邮件还没有可用于翻译的正文。");
       return;
     }
 

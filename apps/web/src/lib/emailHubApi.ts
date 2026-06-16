@@ -1493,6 +1493,12 @@ export interface HermesThreadSummaryResult {
   summaryText: string;
 }
 
+export interface HermesMessageSummaryResult extends HermesThreadSummaryResult {
+  accountId: string;
+  messageId: string;
+  cached: boolean;
+}
+
 export interface HermesReplyDraftResult {
   skillRunId: string;
   auditEventId?: string;
@@ -1825,6 +1831,17 @@ export interface EmailHubApi {
     memoryScope?: string;
     memoryLayers?: string[];
   }): Promise<HermesThreadSummaryResult>;
+  summarizeMessage(input: {
+    accountId: string;
+    messageId: string;
+    mode?: HermesThreadSummaryMode;
+    focus?: string;
+    language?: string;
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+    forceRefresh?: boolean;
+  }): Promise<HermesMessageSummaryResult>;
   draftReply(input: {
     subject?: string;
     threadText: string;
@@ -2828,6 +2845,28 @@ export function createEmailHubApi(
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });
+    },
+
+    summarizeMessage(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/messages/${encodePath(input.messageId)}/summary`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            cleanObject({
+              mode: input.mode,
+              focus: input.focus,
+              language: input.language,
+              memoryIds: input.memoryIds,
+              memoryScope: input.memoryScope,
+              memoryLayers: input.memoryLayers,
+              forceRefresh: input.forceRefresh,
+            }),
+          ),
+        },
+      );
     },
 
     draftReply(input) {

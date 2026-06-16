@@ -158,12 +158,12 @@ with more than smoke-level tests.
   search remains read-only: it answers and cites, but does not move, delete, or
   send mail.
 - Current reader-assist status: the message reader now exposes Hermes summary
-  and translation actions wired to `/api/hermes/skills/thread_summarize/run`
-  and the message-scoped
-  `/api/accounts/:accountId/messages/:messageId/translate` route. Translation
-  now reads the message body server-side, records the selected message id in
-  Hermes audit events, caches by body hash/language/tone, and renders a
-  read-only preview block above the original message body.
+  and translation actions wired to message-scoped
+  `/api/accounts/:accountId/messages/:messageId/summary` and
+  `/api/accounts/:accountId/messages/:messageId/translate` routes. Both now read
+  the message body server-side, record the selected message id in Hermes audit
+  events, cache by body hash and skill options, and render read-only preview
+  blocks above the original message body.
 - Current memory-management status: Settings now exposes the app-owned Hermes
   learning records. The frontend lists records through
   `/api/hermes/memories`, supports layer/scope/limit filtering, validates JSON

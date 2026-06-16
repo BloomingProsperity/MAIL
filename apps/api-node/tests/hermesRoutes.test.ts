@@ -430,6 +430,180 @@ describe("Hermes routes", () => {
     });
   });
 
+  it("summarizes a selected account message through the message-scoped Hermes route", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageSummaryService = {
+      async summarizeMessage(input: unknown) {
+        calls.push(input);
+        return {
+          skillRunId: "run_message_summary_1",
+          auditEventId: "audit_message_summary_1",
+          skillId: "thread_summarize",
+          accountId: "account_1",
+          messageId: "message_1",
+          mode: "action_points",
+          summaryText: "需要今天回复。",
+          cached: false,
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/summary`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "action_points",
+              focus: "decisions and reply needs",
+              language: "zh-CN",
+              memoryScope: "global",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(await response.json()).toEqual({
+          skillRunId: "run_message_summary_1",
+          auditEventId: "audit_message_summary_1",
+          skillId: "thread_summarize",
+          accountId: "account_1",
+          messageId: "message_1",
+          mode: "action_points",
+          summaryText: "需要今天回复。",
+          cached: false,
+        });
+      },
+      { hermesMessageSummaryService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        messageId: "message_1",
+        mode: "action_points",
+        focus: "decisions and reply needs",
+        language: "zh-CN",
+        memoryScope: "global",
+      },
+    ]);
+  });
+
+  it("returns cached message summaries with a 200 response", async () => {
+    const hermesMessageSummaryService = {
+      async summarizeMessage() {
+        return {
+          skillRunId: "run_cached",
+          skillId: "thread_summarize",
+          accountId: "account_1",
+          messageId: "message_1",
+          mode: "short",
+          summaryText: "Reply today.",
+          cached: true,
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/summary`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ mode: "short" }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          skillRunId: "run_cached",
+          cached: true,
+        });
+      },
+      { hermesMessageSummaryService },
+    );
+  });
+
+  it("returns 404 when message-scoped Hermes summary cannot read the message", async () => {
+    const hermesMessageSummaryService = {
+      async summarizeMessage() {
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/missing/summary`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ mode: "short" }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({ error: "message_not_found" });
+      },
+      { hermesMessageSummaryService },
+    );
+  });
+
+  it("rejects invalid message-scoped summary requests before hitting Hermes", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageSummaryService = {
+      async summarizeMessage(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/summary`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "everything",
+              forceRefresh: "yes",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_message_summary_request",
+        });
+      },
+      { hermesMessageSummaryService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
+  it("returns 503 when message-scoped Hermes summary is not wired", async () => {
+    await withApi(async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/accounts/account_1/messages/message_1/summary`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "short" }),
+        },
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "hermes_message_summary_unavailable",
+      });
+    });
+  });
+
   it("confirms an explicit Hermes translation preference", async () => {
     const calls: unknown[] = [];
     const hermesTranslationPreferenceService = {

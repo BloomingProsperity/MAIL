@@ -12,6 +12,7 @@ import type {
   HermesEmailSearchQaResult,
   HermesFollowupTrackerResult,
   HermesLabelSuggestResult,
+  HermesMessageSummaryResult,
   HermesMessageTranslationResult,
   HermesNewsletterCleanupResult,
   HermesPriorityTriageResult,
@@ -304,13 +305,12 @@ describe("Email Hub first UI baseline", () => {
     );
 
     await waitFor(() => {
-      expect(api.summarizeThread).toHaveBeenCalledWith({
-        subject: "Live subject",
-        threadText: "Live body from backend",
+      expect(api.summarizeMessage).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
         mode: "action_points",
         focus: "decisions, deadlines, blockers, and reply needs",
         language: "zh-CN",
-        readMessageIds: ["message_1"],
         memoryScope: "global",
       });
     });
@@ -484,6 +484,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
     vi.mocked(api.applyMailAction).mockClear();
     vi.mocked(api.recordSmartInboxFeedback).mockClear();
     vi.mocked(api.createFollowUp).mockClear();
@@ -735,7 +736,7 @@ describe("Email Hub first UI baseline", () => {
 
   it("shows a reader-level Hermes error without replacing the message body", async () => {
     const api = createApiFixture();
-    vi.mocked(api.summarizeThread).mockRejectedValueOnce(new Error("offline"));
+    vi.mocked(api.summarizeMessage).mockRejectedValueOnce(new Error("offline"));
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
@@ -754,7 +755,7 @@ describe("Email Hub first UI baseline", () => {
 
   it("ignores a stale Hermes reader summary after switching messages", async () => {
     const api = createApiFixture();
-    let resolveSummary: (value: HermesThreadSummaryResult) => void = () => {};
+    let resolveSummary: (value: HermesMessageSummaryResult) => void = () => {};
     vi.mocked(api.listMessages).mockResolvedValue({
       items: [
         {
@@ -820,7 +821,7 @@ describe("Email Hub first UI baseline", () => {
           : "First backend body",
       attachments: [],
     }));
-    vi.mocked(api.summarizeThread).mockImplementationOnce(
+    vi.mocked(api.summarizeMessage).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveSummary = resolve;
@@ -837,11 +838,11 @@ describe("Email Hub first UI baseline", () => {
       }),
     );
     await waitFor(() => {
-      expect(api.summarizeThread).toHaveBeenCalledWith(
+      expect(api.summarizeMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          subject: "First subject",
-          threadText: "First backend body",
-          readMessageIds: ["message_1"],
+          accountId: "account_1",
+          messageId: "message_1",
+          mode: "action_points",
         }),
       );
     });
@@ -859,8 +860,11 @@ describe("Email Hub first UI baseline", () => {
       resolveSummary({
         skillRunId: "run_stale_summary",
         skillId: "thread_summarize",
+        accountId: "account_1",
+        messageId: "message_1",
         mode: "action_points",
         summaryText: "Stale summary should not render.",
+        cached: false,
       });
     });
 
@@ -6641,6 +6645,15 @@ function createApiFixture(): EmailHubApi {
       mode: "action_points",
       summaryText: "需要确认发布时间，并在今天回复 Lina。",
     } satisfies HermesThreadSummaryResult)),
+    summarizeMessage: vi.fn(async (input) => ({
+      skillRunId: "run_summary_1",
+      skillId: "thread_summarize",
+      accountId: input.accountId,
+      messageId: input.messageId,
+      mode: input.mode ?? "detailed",
+      summaryText: "需要确认发布时间，并在今天回复 Lina。",
+      cached: false,
+    } satisfies HermesMessageSummaryResult)),
     confirmHermesFollowUp: vi.fn(async () => followUpFixture()),
     createFollowUp: vi.fn(async () => followUpFixture()),
     updateFollowUp: vi.fn(async () =>
