@@ -281,9 +281,12 @@ describe("Hermes routes", () => {
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
               targetLanguage: "Chinese",
+              sourceLanguage: "English",
               tone: "preserve original meaning",
+              memoryIds: ["memory_translation_1"],
               memoryScope: "sender:client@example.com",
               memoryLayers: ["contact_memory", "procedural_memory"],
+              forceRefresh: true,
             }),
           },
         );
@@ -309,9 +312,12 @@ describe("Hermes routes", () => {
         accountId: "account_1",
         messageId: "message_1",
         targetLanguage: "Chinese",
+        sourceLanguage: "English",
         tone: "preserve original meaning",
+        memoryIds: ["memory_translation_1"],
         memoryScope: "sender:client@example.com",
         memoryLayers: ["contact_memory", "procedural_memory"],
+        forceRefresh: true,
       },
     ]);
   });
@@ -405,6 +411,46 @@ describe("Hermes routes", () => {
         expect(await response.json()).toEqual({
           error: "invalid_hermes_message_translation_request",
         });
+      },
+      { hermesMessageTranslationService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
+  it("rejects message-scoped translation requests that supply client message text", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageTranslationService = {
+      async translateMessage(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        for (const payload of [
+          { targetLanguage: "Chinese", text: "client supplied text" },
+          { targetLanguage: "Chinese", bodyText: "client supplied body" },
+          { targetLanguage: "Chinese", bodyHtml: "<p>client body</p>" },
+          { targetLanguage: "Chinese", subject: "client subject" },
+          { targetLanguage: "Chinese", threadText: "client thread" },
+          { targetLanguage: "Chinese", readMessageIds: ["message_1"] },
+        ]) {
+          const response = await fetch(
+            `${baseUrl}/api/accounts/account_1/messages/message_1/translate`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(payload),
+            },
+          );
+
+          expect(response.status).toBe(400);
+          expect(await response.json()).toEqual({
+            error: "invalid_hermes_message_translation_request",
+          });
+        }
       },
       { hermesMessageTranslationService },
     );

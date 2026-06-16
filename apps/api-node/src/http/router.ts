@@ -4952,6 +4952,7 @@ function parseHermesMessageTranslationInput(
     memoryLayers?: unknown;
     forceRefresh?: unknown;
   };
+  rejectHermesMessageTranslationClientContext(payload);
   if (
     !isNonEmptyString(accountId) ||
     !isNonEmptyString(messageId) ||
@@ -4984,6 +4985,26 @@ function parseHermesMessageTranslationInput(
     ),
     ...(payload.forceRefresh ? { forceRefresh: true } : {}),
   };
+}
+
+function rejectHermesMessageTranslationClientContext(
+  payload: Record<string, unknown>,
+): void {
+  const disallowedFields = [
+    "text",
+    "bodyText",
+    "bodyHtml",
+    "subject",
+    "threadText",
+    "readMessageIds",
+  ];
+  if (
+    disallowedFields.some((field) =>
+      Object.prototype.hasOwnProperty.call(payload, field),
+    )
+  ) {
+    throw new InvalidHermesMessageTranslationRequestError();
+  }
 }
 
 function parseHermesMessageSummaryInput(

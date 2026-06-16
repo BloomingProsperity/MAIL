@@ -2236,9 +2236,12 @@ describe("emailHubApi", () => {
       accountId: "account_1",
       messageId: "message_1",
       targetLanguage: "Chinese",
+      sourceLanguage: "English",
       tone: "preserve original meaning",
+      memoryIds: ["memory_translation"],
       memoryScope: "sender:client@example.com",
       memoryLayers: ["contact_memory", "procedural_memory"],
+      forceRefresh: true,
     });
 
     expect(translation).toMatchObject({
@@ -2253,9 +2256,12 @@ describe("emailHubApi", () => {
         method: "POST",
         body: JSON.stringify({
           targetLanguage: "Chinese",
+          sourceLanguage: "English",
           tone: "preserve original meaning",
+          memoryIds: ["memory_translation"],
           memoryScope: "sender:client@example.com",
           memoryLayers: ["contact_memory", "procedural_memory"],
+          forceRefresh: true,
         }),
       }),
     );
