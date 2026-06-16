@@ -386,15 +386,15 @@ const HERMES_PROVIDER_CATALOG: HermesProviderCatalogItem[] = [
   }),
   {
     key: "custom",
-    label: "自定义模型服务",
+    label: "自定义 Hermes 网关",
     category: "custom",
     authType: "api_key_optional",
     requestProtocol: "openai_chat_completions",
     endpointEditable: true,
-    aliases: ["openai-compatible", "custom-endpoint"],
-    modelExamples: ["provider/model-name"],
-    capabilities: baseCapabilities(),
-    note: "覆盖任何新增的 OpenAI-compatible 或 Hermes-compatible 接口。",
+    aliases: ["hermes-gateway", "custom-endpoint"],
+    modelExamples: ["hermes-email"],
+    capabilities: [...baseCapabilities(), "skills", "memory"],
+    note: "仅用于接入自托管 Hermes 网关；Email Hub 不直连模型服务。",
   },
 ];
 

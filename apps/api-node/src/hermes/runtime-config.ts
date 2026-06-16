@@ -117,8 +117,9 @@ export function createHermesRuntimeConfigService(options: {
 
   return {
     async getSettings() {
+      const stored = await options.store.getSettings();
       return (
-        (await options.store.getSettings()) ??
+        (stored ? normalizePublicRuntimeSettings(stored) : undefined) ??
         envToPublicSettings(env) ??
         defaultSettings()
       );
@@ -129,15 +130,15 @@ export function createHermesRuntimeConfigService(options: {
     },
 
     async getConnectionSettings() {
-      return (
-        (await options.store.getConnectionSettings()) ??
-        envToConnectionSettings(env)
+      const stored = normalizeConnectionSettings(
+        await options.store.getConnectionSettings(),
       );
+      return stored ?? envToConnectionSettings(env);
     },
 
     async testConnection() {
       const settings =
-        (await options.store.getConnectionSettings()) ??
+        normalizeConnectionSettings(await options.store.getConnectionSettings()) ??
         envToConnectionSettings(env);
       if (!settings?.enabled || !settings.endpointUrl.trim()) {
         throw new InvalidHermesRuntimeConfigRequestError(
@@ -145,8 +146,9 @@ export function createHermesRuntimeConfigService(options: {
         );
       }
 
+      const providerKey = normalizeRuntimeProviderKey(settings.providerKey);
       await createHermesHttpTextProvider({
-        providerKey: settings.providerKey,
+        providerKey,
         endpointUrl: settings.endpointUrl,
         model: settings.model,
         apiKey: settings.apiKey,
@@ -159,8 +161,8 @@ export function createHermesRuntimeConfigService(options: {
       return {
         ok: true,
         checkedAt: now().toISOString(),
-        providerKey: settings.providerKey,
-        requestProtocol: requestProtocolForProvider(settings.providerKey),
+        providerKey,
+        requestProtocol: requestProtocolForProvider(providerKey),
         endpointUrl: settings.endpointUrl,
         model: settings.model,
       };
@@ -203,9 +205,10 @@ export function createHermesRuntimeTextProvider(options: {
       if (!settings?.enabled || !settings.endpointUrl.trim()) {
         throw new Error("Hermes runtime is not configured");
       }
+      const providerKey = normalizeRuntimeProviderKey(settings.providerKey);
 
       return createHermesHttpTextProvider({
-        providerKey: settings.providerKey,
+        providerKey,
         endpointUrl: settings.endpointUrl,
         model: settings.model,
         apiKey: settings.apiKey,
@@ -213,6 +216,37 @@ export function createHermesRuntimeTextProvider(options: {
       }).complete(input);
     },
   };
+}
+
+function normalizePublicRuntimeSettings(
+  settings: HermesRuntimeSettingsDto,
+): HermesRuntimeSettingsDto {
+  try {
+    return {
+      ...settings,
+      mode: "external_hermes",
+      providerKey: normalizeRuntimeProviderKey(settings.providerKey),
+    };
+  } catch {
+    return defaultSettings();
+  }
+}
+
+function normalizeConnectionSettings(
+  settings: HermesRuntimeConnectionSettings | undefined,
+): HermesRuntimeConnectionSettings | undefined {
+  if (!settings) {
+    return undefined;
+  }
+
+  try {
+    return {
+      ...settings,
+      providerKey: normalizeRuntimeProviderKey(settings.providerKey),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function requestProtocolForProvider(
@@ -238,7 +272,7 @@ function normalizeRuntimeUpdate(
   }
 
   const model = normalizeModel(input.model);
-  const providerKey = normalizeProviderKey(
+  const providerKey = normalizeRuntimeProviderKey(
     input.providerKey ?? defaultProviderKey(input.mode),
   );
   const endpointUrl = normalizeEndpointUrl(
@@ -254,7 +288,7 @@ function normalizeRuntimeUpdate(
 
   return {
     enabled: Boolean(input.enabled),
-    mode: input.mode,
+    mode: "external_hermes",
     providerKey,
     ...(endpointUrl ? { endpointUrl } : {}),
     model,
@@ -313,15 +347,17 @@ function normalizeProviderKey(value: string): string {
   return findHermesProvider(providerKey)?.key ?? providerKey;
 }
 
-function defaultProviderKey(mode: HermesRuntimeMode): string {
-  if (mode === "external_hermes") {
-    return "hermes";
-  }
-  if (mode === "builtin") {
-    return "emailhub";
+function normalizeRuntimeProviderKey(value: string): string {
+  const providerKey = normalizeProviderKey(value);
+  if (providerKey !== "hermes" && providerKey !== "custom") {
+    throw new InvalidHermesRuntimeConfigRequestError();
   }
 
-  return "custom";
+  return providerKey;
+}
+
+function defaultProviderKey(mode: HermesRuntimeMode): string {
+  return mode === "external_hermes" ? "hermes" : "custom";
 }
 
 function envToPublicSettings(
@@ -334,7 +370,7 @@ function envToPublicSettings(
 
   return {
     enabled: true,
-    mode: "openai_compatible",
+    mode: "external_hermes",
     providerKey: connection.providerKey,
     endpointUrl: connection.endpointUrl,
     model: connection.model,
@@ -356,7 +392,9 @@ function envToConnectionSettings(
 
   return {
     enabled: true,
-    providerKey: normalizeProviderKey(env.HERMES_PROVIDER?.trim() || "custom"),
+    providerKey: normalizeRuntimeProviderKey(
+      env.HERMES_PROVIDER?.trim() || "custom",
+    ),
     endpointUrl,
     model: env.HERMES_MODEL?.trim() || "hermes-email",
     ...(env.HERMES_API_KEY?.trim()
@@ -368,8 +406,8 @@ function envToConnectionSettings(
 function defaultSettings(): HermesRuntimeSettingsDto {
   return {
     enabled: false,
-    mode: "openai_compatible",
-    providerKey: "custom",
+    mode: "external_hermes",
+    providerKey: "hermes",
     model: "hermes-email",
     apiKeyConfigured: false,
     updatePolicy: "manual",
@@ -397,11 +435,7 @@ function settingsToVersionStatus(
 }
 
 function isHermesRuntimeMode(value: unknown): value is HermesRuntimeMode {
-  return (
-    value === "builtin" ||
-    value === "external_hermes" ||
-    value === "openai_compatible"
-  );
+  return value === "external_hermes";
 }
 
 function isHermesRuntimeUpdatePolicy(

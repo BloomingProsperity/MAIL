@@ -551,48 +551,15 @@ const fallbackHermesProviders: HermesProviderCatalogItem[] = [
     capabilities: ["chat", "email_skills", "memory"]
   },
   {
-    key: "openai-api",
-    label: "OpenAI",
-    category: "cloud",
-    authType: "api_key",
-    requestProtocol: "openai_chat_completions",
-    endpointEditable: true,
-    aliases: ["openai"],
-    modelExamples: ["gpt-5.2"],
-    capabilities: ["chat", "email_skills"]
-  },
-  {
-    key: "openrouter",
-    label: "OpenRouter",
-    category: "cloud",
-    authType: "api_key",
-    requestProtocol: "openai_chat_completions",
-    endpointEditable: true,
-    aliases: [],
-    modelExamples: ["openai/gpt-5.2"],
-    capabilities: ["chat", "email_skills"]
-  },
-  {
-    key: "ollama",
-    label: "Ollama 本地",
-    category: "local",
-    authType: "none",
-    requestProtocol: "openai_chat_completions",
-    endpointEditable: true,
-    aliases: [],
-    modelExamples: ["qwen3:latest"],
-    capabilities: ["chat", "email_skills"]
-  },
-  {
     key: "custom",
-    label: "自定义模型服务",
+    label: "自定义 Hermes 网关",
     category: "custom",
     authType: "api_key_optional",
     requestProtocol: "openai_chat_completions",
     endpointEditable: true,
-    aliases: ["openai-compatible"],
-    modelExamples: ["provider/model-name"],
-    capabilities: ["chat", "email_skills"]
+    aliases: ["hermes-gateway"],
+    modelExamples: ["hermes-email"],
+    capabilities: ["chat", "email_skills", "memory"]
   }
 ];
 
@@ -6225,11 +6192,18 @@ function isHermesProviderRuntimeSelectable(
   provider: HermesProviderCatalogItem,
 ): boolean {
   return (
+    isHermesRuntimeGatewayProvider(provider) &&
     provider.requestProtocol !== "external_oauth" &&
     provider.requestProtocol !== "aws_bedrock" &&
     provider.authType !== "oauth" &&
     provider.authType !== "aws_credentials"
   );
+}
+
+function isHermesRuntimeGatewayProvider(
+  provider: HermesProviderCatalogItem,
+): boolean {
+  return provider.key === "hermes" || provider.key === "custom";
 }
 
 function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string {
@@ -7705,12 +7679,13 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
   >();
   const [notice, setNotice] = useState("正在读取 Hermes 配置...");
   const providerOptions = useMemo<HermesProviderCatalogItem[]>(() => {
-    if (hermesProviders.some((provider) => provider.key === providerKey)) {
-      return hermesProviders;
+    const runtimeProviders = hermesProviders.filter(isHermesRuntimeGatewayProvider);
+    if (runtimeProviders.some((provider) => provider.key === providerKey)) {
+      return runtimeProviders;
     }
 
     return [
-      ...hermesProviders,
+      ...runtimeProviders,
       {
         key: providerKey,
         label: providerKey,
@@ -7779,8 +7754,11 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
       .getHermesProviders()
       .then((catalog) => {
         if (!alive) return;
-        if (catalog.providers.length > 0) {
-          setHermesProviders(catalog.providers);
+        const runtimeProviders = catalog.providers.filter(
+          isHermesRuntimeGatewayProvider,
+        );
+        if (runtimeProviders.length > 0) {
+          setHermesProviders(runtimeProviders);
         }
       })
       .catch(() => {
@@ -7793,8 +7771,12 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
       .then((settings) => {
         if (!alive) return;
         setEnabled(settings.enabled);
-        setMode(settings.mode);
-        setProviderKey(settings.providerKey);
+        setMode("external_hermes");
+        setProviderKey(
+          settings.providerKey === "hermes" || settings.providerKey === "custom"
+            ? settings.providerKey
+            : "hermes",
+        );
         setEndpointUrl(settings.endpointUrl ?? "");
         setModel(settings.model);
         setApiKeyConfigured(settings.apiKeyConfigured);
@@ -7809,7 +7791,9 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
           lastCheckedAt: settings.lastCheckedAt,
         });
         setNotice(
-          settings.apiKeyConfigured
+          settings.providerKey !== "hermes" && settings.providerKey !== "custom"
+            ? "Hermes 是唯一 AI 入口，已切回 Hermes 服务。"
+            : settings.apiKeyConfigured
             ? "Hermes 已连接访问密钥。"
             : "Hermes 尚未填写访问密钥。",
         );
@@ -7837,7 +7821,7 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
     try {
       const saved = await props.api.updateHermesRuntimeSettings({
         enabled,
-        mode,
+        mode: "external_hermes",
         providerKey,
         endpointUrl,
         model,
@@ -7968,14 +7952,10 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
             <label>
               <span>连接方式</span>
               <select
-                value={mode}
-                onChange={(event) =>
-                  setMode(event.target.value as HermesRuntimeMode)
-                }
+                value="external_hermes"
+                onChange={() => setMode("external_hermes")}
               >
                 <option value="external_hermes">Hermes 服务</option>
-                <option value="openai_compatible">兼容服务</option>
-                <option value="builtin">内置服务</option>
               </select>
             </label>
             <label>

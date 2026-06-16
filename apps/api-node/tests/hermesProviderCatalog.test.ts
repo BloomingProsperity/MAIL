@@ -44,11 +44,12 @@ describe("Hermes provider catalog", () => {
     );
     expect(providers.find((provider) => provider.key === "custom")).toMatchObject(
       {
-        label: "自定义模型服务",
+        label: "自定义 Hermes 网关",
         category: "custom",
         endpointEditable: true,
         authType: "api_key_optional",
         requestProtocol: "openai_chat_completions",
+        capabilities: expect.arrayContaining(["skills", "memory"]),
       },
     );
   });
@@ -124,8 +125,8 @@ describe("Hermes provider catalog", () => {
       capabilities: expect.arrayContaining(["provider_routing", "fallback"]),
     });
     expect(providers.find((provider) => provider.key === "custom")).toMatchObject({
-      label: "自定义模型服务",
-      aliases: expect.arrayContaining(["openai-compatible", "custom-endpoint"]),
+      label: "自定义 Hermes 网关",
+      aliases: expect.arrayContaining(["hermes-gateway", "custom-endpoint"]),
     });
 
     for (const provider of providers.filter((item) =>

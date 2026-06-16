@@ -1559,7 +1559,7 @@ describe("Email Hub first UI baseline", () => {
     expect(api.updateHermesMemory).not.toHaveBeenCalled();
   });
 
-  it("loads Hermes model interfaces from the backend catalog before saving", async () => {
+  it("keeps Hermes settings scoped to backend-provided gateway interfaces", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
@@ -1568,26 +1568,41 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
     );
 
-    expect(await screen.findByText("NovitaAI")).toBeTruthy();
+    const providerSelect = screen.getByLabelText("模型接口");
+    expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
+      .toBeTruthy();
+    expect(
+      within(providerSelect).getByRole("option", {
+        name: "自定义 Hermes 网关",
+      }),
+    ).toBeTruthy();
+    expect(within(providerSelect).queryByRole("option", { name: "NovitaAI" }))
+      .toBeNull();
+
     fireEvent.change(screen.getByLabelText("模型接口"), {
-      target: { value: "novita" },
+      target: { value: "custom" },
+    });
+    fireEvent.change(screen.getByLabelText("服务地址"), {
+      target: { value: "http://hermes-gateway:8081/v1/chat/completions" },
     });
     fireEvent.change(screen.getByLabelText("模型名称"), {
-      target: { value: "moonshotai/kimi-k2.5" },
+      target: { value: "hermes-email" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
 
     await waitFor(() => {
       expect(api.updateHermesRuntimeSettings).toHaveBeenCalledWith(
         expect.objectContaining({
-          providerKey: "novita",
-          model: "moonshotai/kimi-k2.5",
+          mode: "external_hermes",
+          providerKey: "custom",
+          endpointUrl: "http://hermes-gateway:8081/v1/chat/completions",
+          model: "hermes-email",
         }),
       );
     });
   });
 
-  it("applies Hermes provider catalog defaults when switching model interfaces", async () => {
+  it("applies Hermes gateway defaults when switching model interfaces", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
@@ -1601,14 +1616,14 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("模型接口"), {
-      target: { value: "novita" },
+      target: { value: "custom" },
     });
 
     expect((screen.getByLabelText("服务地址") as HTMLInputElement).value).toBe(
-      "https://api.novita.ai/v3/openai/chat/completions",
+      "http://hermes-gateway:8081/v1/chat/completions",
     );
     expect((screen.getByLabelText("模型名称") as HTMLInputElement).value).toBe(
-      "moonshotai/kimi-k2.5",
+      "hermes-email",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
@@ -1616,15 +1631,15 @@ describe("Email Hub first UI baseline", () => {
     await waitFor(() => {
       expect(api.updateHermesRuntimeSettings).toHaveBeenCalledWith(
         expect.objectContaining({
-          providerKey: "novita",
-          endpointUrl: "https://api.novita.ai/v3/openai/chat/completions",
-          model: "moonshotai/kimi-k2.5",
+          providerKey: "custom",
+          endpointUrl: "http://hermes-gateway:8081/v1/chat/completions",
+          model: "hermes-email",
         }),
       );
     });
   });
 
-  it("marks Hermes providers that need external setup as unavailable in Settings", async () => {
+  it("does not expose direct or externally managed providers in Settings", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
@@ -1634,15 +1649,12 @@ describe("Email Hub first UI baseline", () => {
     );
 
     const providerSelect = screen.getByLabelText("模型接口");
-    expect(await within(providerSelect).findByRole("option", { name: "AWS Bedrock" }))
+    expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
       .toBeTruthy();
-    expect(
-      (
-        within(providerSelect).getByRole("option", {
-          name: "AWS Bedrock",
-        }) as HTMLOptionElement
-      ).disabled,
-    ).toBe(true);
+    expect(within(providerSelect).queryByRole("option", { name: "AWS Bedrock" }))
+      .toBeNull();
+    expect(within(providerSelect).queryByRole("option", { name: "NovitaAI" }))
+      .toBeNull();
   });
 
   it("keeps Hermes fallback provider labels user-facing when the backend catalog is unavailable", () => {
@@ -1657,9 +1669,11 @@ describe("Email Hub first UI baseline", () => {
         name: /\bAPI\b|OpenAI-compatible/i,
       }),
     ).toBeNull();
-    expect(within(providerSelect).getByRole("option", { name: "OpenAI" })).toBeTruthy();
     expect(
-      within(providerSelect).getByRole("option", { name: "自定义模型服务" }),
+      within(providerSelect).queryByRole("option", { name: "OpenAI" }),
+    ).toBeNull();
+    expect(
+      within(providerSelect).getByRole("option", { name: "自定义 Hermes 网关" }),
     ).toBeTruthy();
   });
 
@@ -5981,6 +5995,18 @@ function createApiFixture(): EmailHubApi {
           modelExamples: ["moonshotai/kimi-k2.5"],
           defaultEndpoint: "https://api.novita.ai/v3/openai/chat/completions",
           capabilities: ["chat", "email_skills"],
+        },
+        {
+          key: "custom",
+          label: "自定义 Hermes 网关",
+          category: "custom" as const,
+          authType: "api_key_optional" as const,
+          requestProtocol: "openai_chat_completions" as const,
+          endpointEditable: true,
+          aliases: ["hermes-gateway"],
+          modelExamples: ["hermes-email"],
+          defaultEndpoint: "http://hermes-gateway:8081/v1/chat/completions",
+          capabilities: ["chat", "email_skills", "memory"],
         },
         {
           key: "aws-bedrock",
