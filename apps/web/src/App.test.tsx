@@ -408,22 +408,46 @@ describe("Email Hub first UI baseline", () => {
         targetLanguage: "Chinese",
         tone: "preserve original meaning and formatting",
         memoryScope: "sender:client@example.com",
-        memoryLayers: [
-          "contact_memory",
-          "procedural_memory",
-          "semantic_profile",
-        ],
       });
     });
     expect(await screen.findByText("你好，请确认发布计划。")).toBeTruthy();
+    expect(
+      within(screen.getByLabelText("Hermes 邮件翻译")).getByText(
+        /新翻译 · 运行 run_translate_1 · 审计 audit_translate_1/,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(screen.getByLabelText("Hermes 邮件翻译")).getByRole("button", {
+        name: "Remember Hermes translation preference",
+      }),
+    );
+    expect(
+      await screen.findByText("请选择明确源语言后，再让 Hermes 记住翻译习惯。"),
+    ).toBeTruthy();
+    expect(api.confirmTranslationPreference).not.toHaveBeenCalled();
   });
 
   it("translates reader mail to the selected target language and saves a Hermes preference", async () => {
     const api = createApiFixture();
+    vi.mocked(api.translateMessage).mockResolvedValueOnce({
+      skillRunId: "run_translate_cached",
+      auditEventId: "audit_cached_translate",
+      skillId: "translate_text",
+      accountId: "account_1",
+      messageId: "message_1",
+      sourceLanguage: "Chinese",
+      targetLanguage: "English",
+      translatedText: "Hello, please confirm the launch plan.",
+      cached: true,
+    } satisfies HermesMessageTranslationResult);
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Hermes translation source language" }),
+      { target: { value: "Chinese" } },
+    );
     fireEvent.change(
       screen.getByRole("combobox", { name: "Hermes translation target language" }),
       { target: { value: "English" } },
@@ -439,6 +463,7 @@ describe("Email Hub first UI baseline", () => {
         expect.objectContaining({
           accountId: "account_1",
           messageId: "message_1",
+          sourceLanguage: "Chinese",
           targetLanguage: "English",
           memoryScope: "sender:client@example.com",
         }),
@@ -446,6 +471,11 @@ describe("Email Hub first UI baseline", () => {
     });
     const translation = await screen.findByLabelText("Hermes 邮件翻译");
     expect(within(translation).getByText("Hello, please confirm the launch plan.")).toBeTruthy();
+    expect(
+      within(translation).getByText(
+        /缓存命中 · 运行 run_translate_cached · 审计 audit_cached_translate/,
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(
       within(translation).getByRole("button", {
@@ -456,7 +486,7 @@ describe("Email Hub first UI baseline", () => {
     await waitFor(() => {
       expect(api.confirmTranslationPreference).toHaveBeenCalledWith({
         mode: "always",
-        sourceLanguage: "auto",
+        sourceLanguage: "Chinese",
         targetLanguage: "English",
         memoryScope: "sender:client@example.com",
         reason: "Reader translation preference for client@example.com",
@@ -7075,6 +7105,7 @@ function createApiFixture(): EmailHubApi {
     } satisfies HermesTranslateTextResult)),
     translateMessage: vi.fn(async (input) => ({
       skillRunId: "run_translate_1",
+      auditEventId: "audit_translate_1",
       skillId: "translate_text",
       accountId: input.accountId,
       messageId: input.messageId,

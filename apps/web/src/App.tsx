@@ -43,6 +43,7 @@ import type {
   HermesActionPlanDto,
   HermesAuditLogEntryDto,
   HermesFollowupTrackerResult,
+  HermesMessageTranslationResult,
   HermesMessageOrganizationResult,
   HermesMemoryDto,
   HermesQuickReplyScenario,
@@ -57,7 +58,6 @@ import type {
   HermesRuntimeUpdatePolicy,
   HermesRuntimeVersionStatus,
   HermesThreadSummaryResult,
-  HermesTranslateTextResult,
   HermesWorkspaceContextDto,
   ImapSmtpConnectionDiagnostic,
   ImapSmtpConnectionTestResult,
@@ -127,6 +127,10 @@ const READER_TRANSLATION_LANGUAGES = [
   { value: "Korean", label: "한국어" },
   { value: "Spanish", label: "Español" },
   { value: "French", label: "Français" },
+] as const;
+const READER_SOURCE_LANGUAGES = [
+  { value: "auto", label: "自动识别" },
+  ...READER_TRANSLATION_LANGUAGES,
 ] as const;
 
 type ComposeAutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
@@ -1912,13 +1916,14 @@ function MailWorkspace(props: {
   const [readerHermesNotice, setReaderHermesNotice] = useState("");
   const [readerHermesBusy, setReaderHermesBusy] =
     useState<ReaderHermesBusy | undefined>();
+  const [readerTranslationSource, setReaderTranslationSource] = useState("auto");
   const [readerTranslationTarget, setReaderTranslationTarget] = useState("Chinese");
   const [readerTranslationPreferenceBusy, setReaderTranslationPreferenceBusy] =
     useState(false);
   const [readerHermesSummary, setReaderHermesSummary] =
     useState<HermesThreadSummaryResult | undefined>();
   const [readerHermesTranslation, setReaderHermesTranslation] =
-    useState<HermesTranslateTextResult | undefined>();
+    useState<HermesMessageTranslationResult | undefined>();
   const [readerHermesOrganization, setReaderHermesOrganization] =
     useState<ReaderHermesOrganizationResult | undefined>();
   const [readerHermesApplyBusy, setReaderHermesApplyBusy] =
@@ -1982,6 +1987,7 @@ function MailWorkspace(props: {
     setReaderHermesTranslation(undefined);
     setReaderHermesOrganization(undefined);
     setReaderHermesBusy(undefined);
+    setReaderTranslationSource("auto");
     setReaderHermesApplyBusy(undefined);
     setReaderTranslationPreferenceBusy(false);
   }, [props.selectedMail.id]);
@@ -2545,13 +2551,11 @@ function MailWorkspace(props: {
         accountId: props.selectedMail.accountId,
         messageId: props.selectedMail.id,
         targetLanguage: readerTranslationTarget,
+        ...(readerTranslationSource === "auto"
+          ? {}
+          : { sourceLanguage: readerTranslationSource }),
         tone: "preserve original meaning and formatting",
         memoryScope: `sender:${props.selectedMail.email}`,
-        memoryLayers: [
-          "contact_memory",
-          "procedural_memory",
-          "semantic_profile",
-        ],
       });
       if (readerHermesRequestRef.current !== requestId) {
         return;
@@ -2577,11 +2581,22 @@ function MailWorkspace(props: {
       return;
     }
 
+    const sourceLanguage =
+      readerHermesTranslation.sourceLanguage !== "auto"
+        ? readerHermesTranslation.sourceLanguage
+        : readerTranslationSource !== "auto"
+          ? readerTranslationSource
+          : undefined;
+    if (!sourceLanguage) {
+      setReaderHermesNotice("请选择明确源语言后，再让 Hermes 记住翻译习惯。");
+      return;
+    }
+
     setReaderTranslationPreferenceBusy(true);
     try {
       await props.api.confirmTranslationPreference({
         mode: "always",
-        sourceLanguage: readerHermesTranslation.sourceLanguage || "auto",
+        sourceLanguage,
         targetLanguage: readerHermesTranslation.targetLanguage,
         memoryScope: `sender:${props.selectedMail.email}`,
         reason: `Reader translation preference for ${props.selectedMail.email}`,
@@ -4024,6 +4039,18 @@ function MailWorkspace(props: {
             </button>
             <div className="reader-translation-control">
               <select
+                aria-label="Hermes translation source language"
+                value={readerTranslationSource}
+                disabled={Boolean(readerHermesBusy)}
+                onChange={(event) => setReaderTranslationSource(event.target.value)}
+              >
+                {READER_SOURCE_LANGUAGES.map((language) => (
+                  <option key={language.value} value={language.value}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+              <select
                 aria-label="Hermes translation target language"
                 value={readerTranslationTarget}
                 disabled={Boolean(readerHermesBusy)}
@@ -4168,6 +4195,13 @@ function MailWorkspace(props: {
                     {translationLanguageLabel(readerHermesTranslation.targetLanguage)}
                   </strong>
                 </div>
+                <small>
+                  {readerHermesTranslation.cached ? "缓存命中" : "新翻译"} · 运行{" "}
+                  {readerHermesTranslation.skillRunId}
+                  {readerHermesTranslation.auditEventId
+                    ? ` · 审计 ${readerHermesTranslation.auditEventId}`
+                    : ""}
+                </small>
                 <p>{readerHermesTranslation.translatedText}</p>
                 <div className="hermes-apply-actions">
                   <button
