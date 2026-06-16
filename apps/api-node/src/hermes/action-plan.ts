@@ -13,6 +13,7 @@ import type {
   HermesWorkspaceContext,
   HermesWorkspaceContextService,
 } from "./workspace-context.js";
+import type { HermesMemoryDto, HermesMemoryStore } from "./memory-store.js";
 
 export type HermesActionPlanIntent = "create_mailbox_rule";
 export type HermesActionPlanStatus = "requires_confirmation" | "completed";
@@ -74,6 +75,7 @@ export interface HermesActionPlan {
 export interface HermesActionPlanConfirmation {
   id: string;
   auditEventId?: string;
+  memory?: HermesMemoryDto;
   planId: string;
   accountId: string;
   candidateId: string;
@@ -110,6 +112,7 @@ export interface CreateHermesActionPlanServiceOptions {
   workspaceContextService: Pick<HermesWorkspaceContextService, "getContext">;
   planStore: HermesActionPlanStore;
   runStore?: HermesRunStore;
+  memoryStore?: Pick<HermesMemoryStore, "createMemory">;
   createId: () => string;
   now: () => string;
 }
@@ -276,6 +279,11 @@ export function createHermesActionPlanService(
             })
           : undefined;
       const confirmedAt = options.now();
+      const memory = await rememberConfirmedRule(options, {
+        planId,
+        command: lockedPlan.command,
+        rule,
+      });
       const confirmation: HermesActionPlanConfirmation = {
         id: options.createId(),
         planId,
@@ -284,9 +292,10 @@ export function createHermesActionPlanService(
         status: "completed",
         confirmedAt,
         rule,
+        ...(memory ? { memory } : {}),
         ...(historyBackfill ? { historyBackfill } : {}),
         safety: confirmedRuleSafety(rule),
-        steps: buildConfirmationSteps(rule, historyBackfill),
+        steps: buildConfirmationSteps(rule, historyBackfill, memory),
       };
       const auditEventId = await recordActionPlanRun(options, {
         runId: confirmation.id,
@@ -303,6 +312,15 @@ export function createHermesActionPlanService(
           status: confirmation.status,
           safety: confirmation.safety,
           ...(historyBackfill ? { historyBackfill } : {}),
+          ...(memory
+            ? {
+                memory: {
+                  id: memory.id,
+                  layer: memory.layer,
+                  scope: memory.scope,
+                },
+              }
+            : {}),
         },
         action: {
           type: "confirm_action_plan",
@@ -310,6 +328,7 @@ export function createHermesActionPlanService(
           candidateId,
           ruleId: rule.id,
           status: confirmation.status,
+          ...(memory ? { memoryId: memory.id } : {}),
           ...(historyBackfill
             ? {
                 historyBackfill: {
@@ -383,6 +402,7 @@ function buildDraftSteps(
 function buildConfirmationSteps(
   rule: HermesRule,
   historyBackfill?: HermesRuleHistoryBackfill,
+  memory?: HermesMemoryDto,
 ): HermesActionPlanStep[] {
   const steps: HermesActionPlanStep[] = [
     {
@@ -405,6 +425,17 @@ function buildConfirmationSteps(
     });
   }
 
+  if (memory) {
+    steps.push({
+      id: "learn_procedural_memory",
+      title: "学习用户习惯",
+      mode: "mutation",
+      status: "completed",
+      detail: "Hermes 已把确认过的邮箱规则写入程序记忆。",
+      resource: { type: "hermes_memory", id: memory.id },
+    });
+  }
+
   steps.push(
     {
       id: "refresh_workspace_context",
@@ -415,6 +446,78 @@ function buildConfirmationSteps(
     },
   );
   return steps;
+}
+
+async function rememberConfirmedRule(
+  options: CreateHermesActionPlanServiceOptions,
+  input: {
+    planId: string;
+    command: string;
+    rule: HermesRule;
+  },
+): Promise<HermesMemoryDto | undefined> {
+  if (!options.memoryStore) {
+    return undefined;
+  }
+
+  try {
+    return await options.memoryStore.createMemory({
+      id: options.createId(),
+      layer: "procedural_memory",
+      scope: "global",
+      confidence: Math.max(0.75, Math.min(0.98, input.rule.confidence)),
+      content: compactObject({
+        source: "hermes_action_plan",
+        planId: input.planId,
+        ruleId: input.rule.id,
+        candidateId: input.rule.candidateId,
+        accountId: input.rule.accountId,
+        command: input.command,
+        ruleType: input.rule.ruleType,
+        title: input.rule.title,
+        condition: input.rule.condition,
+        action: memorySafeRuleAction(input.rule.action),
+        preference: confirmedRulePreferenceText(input.rule),
+      }),
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function confirmedRulePreferenceText(rule: HermesRule): string {
+  const labelName =
+    typeof rule.action.labelName === "string" ? rule.action.labelName : "目标分组";
+  const keywords = Array.isArray(rule.condition.anyKeywords)
+    ? rule.condition.anyKeywords.filter(
+        (keyword): keyword is string => typeof keyword === "string",
+      )
+    : [];
+  const keywordText =
+    keywords.length > 0 ? ` matching ${keywords.slice(0, 6).join(", ")}` : "";
+  if (rule.ruleType === "content_label" && rule.action.type === "apply_label") {
+    return `For account ${rule.accountId}, keep emails${keywordText} in the "${labelName}" left-side group.`;
+  }
+
+  return `For account ${rule.accountId}, keep the confirmed mailbox rule "${rule.title}" enabled.`;
+}
+
+function memorySafeRuleAction(action: Record<string, unknown>): Record<string, unknown> {
+  return compactObject({
+    type: action.type,
+    labelId: action.labelId,
+    labelName: action.labelName,
+    labelColor: action.labelColor,
+    applyToHistory: action.applyToHistory,
+    providerWriteback: action.providerWriteback,
+    savedView: action.savedView,
+  });
+}
+
+function compactObject<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+  ) as T;
 }
 
 function summarizeWorkspace(
@@ -510,7 +613,16 @@ async function recordActionPlanRun(
 }
 
 function isMailboxRulePlanCommand(command: string): boolean {
-  return /规则|分组|分类|标签|filter|rule/i.test(command);
+  return isMailboxRuleCommand(command);
+}
+
+export function isMailboxRuleCommand(command: string): boolean {
+  return (
+    /规则|分组|分类|标签|filter|rule/i.test(command) ||
+    /(?:创建|新增|添加|新建|加|放到|放进|归到|归入|归类|移动到|移到|整理到|分配到|自动).*(?:邮件|邮箱|收件箱|左侧)/u.test(
+      command,
+    )
+  );
 }
 
 function requireText(value: unknown): string {

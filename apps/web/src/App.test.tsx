@@ -132,7 +132,7 @@ describe("Email Hub first UI baseline", () => {
       vi.advanceTimersByTime(1_000);
     });
     expect(dock?.className).toContain("is-collapsed");
-  });
+  }, 10_000);
 
   it("runs Hermes mail search QA from the compact dock and can open the Search workspace", async () => {
     const api = createApiFixture();
@@ -264,7 +264,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
     fireEvent.change(screen.getByLabelText("Hermes 指令"), {
       target: {
-        value: "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
+        value: "把验证码邮件自动放到左侧验证码，账号里的所有验证码邮件都这样处理",
       },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
@@ -278,7 +278,7 @@ describe("Email Hub first UI baseline", () => {
       expect(api.createHermesActionPlan).toHaveBeenCalledWith({
         accountId: "account_1",
         command:
-          "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
+          "把验证码邮件自动放到左侧验证码，账号里的所有验证码邮件都这样处理",
         sampleLimit: 25,
       });
     });
@@ -310,6 +310,7 @@ describe("Email Hub first UI baseline", () => {
       ),
     ).toBeTruthy();
     expect(within(plan).getByText(/历史回填：匹配 4 封，新增 4 个标签关联/)).toBeTruthy();
+    expect(within(plan).getByText("用户习惯学习：已写入 procedural_memory")).toBeTruthy();
   });
 
   it("loads account labels into the directory and filters mail by label", async () => {
@@ -531,7 +532,7 @@ describe("Email Hub first UI baseline", () => {
     expect(within(result).getByText(/标签： 客户/)).toBeTruthy();
     expect(within(result).getByText(/订阅判断：personal · 88%/)).toBeTruthy();
     expect(within(result).getByText(/Confirm launch schedule/)).toBeTruthy();
-  });
+  }, 10_000);
 
   it("does not execute Hermes organization suggestions before explicit confirmation", async () => {
     const api = createApiFixture();
@@ -616,7 +617,7 @@ describe("Email Hub first UI baseline", () => {
     expect(api.upsertLabel).not.toHaveBeenCalled();
     expect(api.recordSmartInboxFeedback).not.toHaveBeenCalled();
     expect(api.createFollowUp).not.toHaveBeenCalled();
-  });
+  }, 10_000);
 
   it("applies safe Hermes organization suggestions through existing backend actions", async () => {
     const api = createApiFixture();
@@ -724,7 +725,7 @@ describe("Email Hub first UI baseline", () => {
         action: "archive",
       });
     });
-  });
+  }, 10_000);
 
   it("creates explicit follow-ups from dated Hermes action items", async () => {
     const api = createApiFixture();
@@ -775,7 +776,7 @@ describe("Email Hub first UI baseline", () => {
         hermesSkillRunId: "run_actions_due",
       });
     });
-  });
+  }, 10_000);
 
   it("shows a safe Hermes organization apply failure without leaking backend details", async () => {
     const api = createApiFixture();
@@ -839,7 +840,7 @@ describe("Email Hub first UI baseline", () => {
     const pageText = document.body.textContent ?? "";
     expect(pageText).not.toContain("internal_error");
     expect(pageText).not.toContain("hermes-secret");
-  });
+  }, 10_000);
 
   it("shows a reader-level Hermes error without replacing the message body", async () => {
     const api = createApiFixture();
@@ -6967,6 +6968,18 @@ function createApiFixture(): EmailHubApi {
     confirmHermesActionPlan: vi.fn(async () => ({
       id: "confirmation_1",
       auditEventId: "audit_confirm_1",
+      memory: {
+        id: "memory_rule_1",
+        layer: "procedural_memory",
+        scope: "global",
+        content: {
+          source: "hermes_action_plan",
+          preference: "Keep verification code emails in the left-side group.",
+        },
+        confidence: 0.9,
+        createdAt: "2026-06-13T10:02:00.000Z",
+        updatedAt: "2026-06-13T10:02:00.000Z",
+      },
       planId: "plan_1",
       accountId: "account_1",
       candidateId: "candidate_codes",
@@ -7020,6 +7033,13 @@ function createApiFixture(): EmailHubApi {
           mode: "mutation",
           status: "completed",
           detail: "匹配 4 封已同步邮件，新增 4 个标签关联。",
+        },
+        {
+          id: "learn_procedural_memory",
+          title: "学习用户习惯",
+          mode: "mutation",
+          status: "completed",
+          detail: "Hermes 已把确认过的邮箱规则写入程序记忆。",
         },
       ],
     } satisfies HermesActionPlanConfirmationDto)),

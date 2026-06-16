@@ -310,6 +310,7 @@ if (pool) {
     workspaceContextService: config.hermesWorkspaceContextService,
     planStore: createPostgresHermesActionPlanStore(pool),
     runStore: hermesRunStore,
+    memoryStore: config.hermesMemoryStore,
     createId: randomUUID,
     now: () => new Date().toISOString(),
   });

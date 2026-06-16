@@ -617,6 +617,8 @@ export function App(props: AppProps = {}) {
     useState<HermesActionPlanDto | undefined>();
   const [hermesDockHistoryBackfill, setHermesDockHistoryBackfill] =
     useState<HermesRuleHistoryBackfillDto | undefined>();
+  const [hermesDockLearnedMemory, setHermesDockLearnedMemory] =
+    useState<HermesMemoryDto | undefined>();
   const [hermesWorkspaceContext, setHermesWorkspaceContext] =
     useState<HermesWorkspaceContextDto | undefined>();
   const [hermesWorkspaceContextLoading, setHermesWorkspaceContextLoading] =
@@ -768,6 +770,7 @@ export function App(props: AppProps = {}) {
     setHermesDockResult(undefined);
     setHermesDockActionPlan(undefined);
     setHermesDockHistoryBackfill(undefined);
+    setHermesDockLearnedMemory(undefined);
     setHermesDockRuleCandidate(undefined);
     setHermesDockRuleSimulation(undefined);
   }
@@ -817,6 +820,7 @@ export function App(props: AppProps = {}) {
       setHermesDockSearchAccountId(undefined);
       setHermesDockActionPlan(undefined);
       setHermesDockHistoryBackfill(undefined);
+      setHermesDockLearnedMemory(undefined);
       setHermesDockRuleCandidate(undefined);
       setHermesDockRuleSimulation(undefined);
       setHermesDockNotice("请输入要让 Hermes 查找或回答的问题。");
@@ -827,6 +831,7 @@ export function App(props: AppProps = {}) {
     setHermesDockSearchAccountId(undefined);
     setHermesDockActionPlan(undefined);
     setHermesDockHistoryBackfill(undefined);
+    setHermesDockLearnedMemory(undefined);
     setHermesDockRuleCandidate(undefined);
     setHermesDockRuleSimulation(undefined);
     if (!props.api) {
@@ -917,6 +922,7 @@ export function App(props: AppProps = {}) {
         safety: confirmation.safety,
       });
       setHermesDockHistoryBackfill(confirmation.historyBackfill);
+      setHermesDockLearnedMemory(confirmation.memory);
       await refreshNavigationSummary();
       await refreshLabels(hermesDockRuleCandidate.accountId);
       await refreshHermesWorkspaceContext({
@@ -1584,6 +1590,7 @@ export function App(props: AppProps = {}) {
         ruleCandidate={hermesDockRuleCandidate}
         ruleSimulation={hermesDockRuleSimulation}
         historyBackfill={hermesDockHistoryBackfill}
+        learnedMemory={hermesDockLearnedMemory}
         workspaceContext={hermesWorkspaceContext}
         workspaceContextLoading={hermesWorkspaceContextLoading}
         busy={hermesDockBusy}
@@ -10080,6 +10087,7 @@ function HermesDock(props: {
   ruleCandidate?: HermesRuleCandidateDto;
   ruleSimulation?: HermesRuleSimulationDto;
   historyBackfill?: HermesRuleHistoryBackfillDto;
+  learnedMemory?: HermesMemoryDto;
   workspaceContext?: HermesWorkspaceContextDto;
   workspaceContextLoading?: boolean;
   busy: boolean;
@@ -10273,6 +10281,9 @@ function HermesDock(props: {
                   {props.historyBackfill.appliedCount} 个标签关联
                 </p>
               ) : null}
+              {props.learnedMemory ? (
+                <p>用户习惯学习：已写入 {props.learnedMemory.layer}</p>
+              ) : null}
               {actionPlan ? (
                 <p>
                   安全边界：{actionPlan.safety.providerWriteback ? "会写回服务商" : "不写回服务商"}
@@ -10445,7 +10456,12 @@ function mapMessageDtoToMailItem(message: MessageListItemDto): MailItem {
 }
 
 function isHermesRuleCommand(value: string): boolean {
-  return /规则|分组|分类|标签|filter|rule/i.test(value);
+  return (
+    /规则|分组|分类|标签|filter|rule/i.test(value) ||
+    /(?:创建|新增|添加|新建|加|放到|放进|归到|归入|归类|移动到|移到|整理到|分配到|自动).*(?:邮件|邮箱|收件箱|左侧)/u.test(
+      value,
+    )
+  );
 }
 
 function hermesRulePreview(

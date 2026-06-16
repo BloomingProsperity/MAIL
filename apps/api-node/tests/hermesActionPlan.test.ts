@@ -81,7 +81,7 @@ describe("Hermes action plan service", () => {
 
     const plan = await service.createPlan({
       accountId: "account_1",
-      command: "帮我创建一个规则，左侧加一个验证码分组",
+      command: "把验证码邮件自动放到左侧验证码",
       sampleLimit: 10,
     });
 
@@ -394,6 +394,147 @@ describe("Hermes action plan service", () => {
     ]);
   });
 
+  it("learns confirmed mailbox rules as procedural memory", async () => {
+    const runStoreCalls: unknown[] = [];
+    const createdMemories: unknown[] = [];
+    const planStore = createInMemoryHermesActionPlanStore({
+      plans: [
+        createPlanRecord({
+          id: "plan_1",
+          accountId: "account_1",
+          command: "把验证码邮件自动放到左侧验证码",
+          candidateId: "candidate_codes",
+          simulationId: "simulation_1",
+        }),
+      ],
+    });
+    const ruleStore = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            applyToHistory: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-16T08:00:00.000Z",
+        },
+      ],
+    });
+    const ruleService = createHermesRuleService({
+      store: ruleStore,
+      labelService: {
+        async upsertLabel(input) {
+          return {
+            id: "label_codes",
+            accountId: input.accountId,
+            name: input.name,
+            color: input.color ?? "blue",
+            messageCount: 0,
+            createdAt: "2026-06-16T08:01:00.000Z",
+          };
+        },
+      },
+      createId: nextId(["rule_codes"]),
+      now: () => "2026-06-16T08:02:00.000Z",
+    });
+    const service = createHermesActionPlanService({
+      ruleService,
+      workspaceContextService: {
+        async getContext() {
+          throw new Error("not used while confirming");
+        },
+      },
+      planStore,
+      memoryStore: {
+        async createMemory(input) {
+          createdMemories.push(input);
+          return {
+            ...input,
+            createdAt: "2026-06-16T08:03:00.000Z",
+            updatedAt: "2026-06-16T08:03:00.000Z",
+          };
+        },
+      },
+      runStore: {
+        async recordCompletedSkillRun(input) {
+          runStoreCalls.push(input);
+        },
+      },
+      createId: nextId(["memory_rule_1", "confirmation_1", "audit_confirm_1"]),
+      now: () => "2026-06-16T08:03:00.000Z",
+    });
+
+    const result = await service.confirmPlan({
+      planId: "plan_1",
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+    });
+
+    expect(result).toMatchObject({
+      id: "confirmation_1",
+      auditEventId: "audit_confirm_1",
+      memory: {
+        id: "memory_rule_1",
+        layer: "procedural_memory",
+        scope: "global",
+      },
+      steps: [
+        expect.objectContaining({ id: "approve_rule_candidate" }),
+        expect.objectContaining({ id: "learn_procedural_memory" }),
+        expect.objectContaining({ id: "refresh_workspace_context" }),
+      ],
+    });
+    expect(createdMemories).toEqual([
+      expect.objectContaining({
+        id: "memory_rule_1",
+        layer: "procedural_memory",
+        scope: "global",
+        confidence: 0.9,
+        content: expect.objectContaining({
+          source: "hermes_action_plan",
+          planId: "plan_1",
+          ruleId: "rule_codes",
+          candidateId: "candidate_codes",
+          accountId: "account_1",
+          command: "把验证码邮件自动放到左侧验证码",
+          ruleType: "content_label",
+          title: "启用验证码智能分组",
+          preference: expect.stringContaining("\"验证码\" left-side group"),
+        }),
+      }),
+    ]);
+    expect((createdMemories[0] as any).content.action).toMatchObject({
+      type: "apply_label",
+      labelId: "label_codes",
+      labelName: "验证码",
+      providerWriteback: false,
+    });
+    expect((createdMemories[0] as any).content.action).not.toHaveProperty(
+      "requiresConfirmation",
+    );
+    expect(runStoreCalls).toEqual([
+      expect.objectContaining({
+        auditEvent: expect.objectContaining({
+          action: expect.objectContaining({
+            type: "confirm_action_plan",
+            memoryId: "memory_rule_1",
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it("does not confirm a candidate without a matching pending plan", async () => {
     const planStore = createInMemoryHermesActionPlanStore({
       plans: [
@@ -574,13 +715,13 @@ function createPlanRecord(
   input: Pick<
     HermesActionPlanRecord,
     "id" | "accountId" | "candidateId" | "simulationId"
-  >,
+  > & { command?: string },
   safety: Partial<HermesActionPlanRecord["safety"]> = {},
 ): HermesActionPlanRecord {
   return {
     id: input.id,
     accountId: input.accountId,
-    command: "帮我创建一个规则，左侧加一个验证码分组",
+    command: input.command ?? "帮我创建一个规则，左侧加一个验证码分组",
     intent: "create_mailbox_rule",
     status: "requires_confirmation",
     candidateId: input.candidateId,

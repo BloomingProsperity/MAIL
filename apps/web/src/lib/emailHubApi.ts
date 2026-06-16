@@ -610,6 +610,7 @@ export interface HermesRuleHistoryBackfillDto {
 export interface HermesActionPlanConfirmationDto {
   id: string;
   auditEventId?: string;
+  memory?: HermesMemoryDto;
   planId: string;
   accountId: string;
   candidateId: string;

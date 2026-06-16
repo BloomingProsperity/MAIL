@@ -133,6 +133,14 @@ describe("server wiring", () => {
     expect(source).toMatch(/config\.hermesAuditLogService\s*=/);
   });
 
+  it("lets confirmed Hermes action plans learn procedural memory", async () => {
+    const serverUrl = new URL("../src/server.ts", import.meta.url);
+    const source = await readFile(serverUrl, "utf8");
+
+    expect(source).toMatch(/createHermesActionPlanService/);
+    expect(source).toMatch(/memoryStore:\s*config\.hermesMemoryStore/);
+  });
+
   it("wires configurable Hermes update checks into runtime settings", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");
