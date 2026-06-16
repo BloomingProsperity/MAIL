@@ -446,6 +446,31 @@ h2 {
   font-weight: 800;
 }
 
+.mail-empty-panel {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 14px;
+  min-height: 100%;
+  padding: 28px;
+  color: var(--text-main);
+}
+
+.mail-empty-panel h2 {
+  margin: 10px 0 6px;
+  font-size: 20px;
+}
+
+.mail-empty-panel p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.mail-empty-panel .task-actions {
+  justify-content: flex-start;
+}
+
 .icon-button {
   width: 30px;
   padding: 0;
@@ -1254,6 +1279,7 @@ h2 {
   color: var(--text-main);
   font-size: 13px;
   line-height: 1.48;
+  white-space: pre-wrap;
 }
 
 .attachment-box {

@@ -4,14 +4,38 @@ import { describe, expect, it } from "vitest";
 import {
   assertSmokeResponse,
   buildSmokeWebhookRequest,
+  DEFAULT_EMAILENGINE_WEBHOOK_SMOKE_ACCOUNT_ID,
 } from "../src/mail-engine/webhook-smoke";
 
 describe("EmailEngine webhook smoke helpers", () => {
+  it("builds a no-op signed webhook probe by default so workers do not retry fake accounts", () => {
+    const request = buildSmokeWebhookRequest({
+      apiBaseUrl: "http://127.0.0.1:8080/",
+      secret: "webhook-secret",
+      messageId: "smoke_message",
+      eventId: "smoke_event",
+    });
+
+    expect(request.accountId).toBe(DEFAULT_EMAILENGINE_WEBHOOK_SMOKE_ACCOUNT_ID);
+    expect(request.accountId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(JSON.parse(request.body)).toMatchObject({
+      event: "emailhubSmokeProbe",
+      account: DEFAULT_EMAILENGINE_WEBHOOK_SMOKE_ACCOUNT_ID,
+      path: "INBOX",
+      data: {
+        id: "smoke_message",
+      },
+    });
+  });
+
   it("builds an EmailEngine-compatible signed webhook request", () => {
     const request = buildSmokeWebhookRequest({
       apiBaseUrl: "http://127.0.0.1:8080/",
       secret: "webhook-secret",
       accountId: "smoke_account",
+      eventName: "messageNew",
       messageId: "smoke_message",
       eventId: "smoke_event",
     });

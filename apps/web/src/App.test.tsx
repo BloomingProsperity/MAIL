@@ -816,6 +816,10 @@ describe("Email Hub first UI baseline", () => {
       await screen.findByRole("heading", { name: "Live subject" }),
     ).toBeTruthy();
     expect(await screen.findByText("Live body from backend")).toBeTruthy();
+    const reader = screen.getByRole("article");
+    expect(within(reader).queryByText("你好，")).toBeNull();
+    expect(within(reader).queryByText(/附件是我们讨论的合作方案/)).toBeNull();
+    expect(within(reader).queryByText("谢谢。")).toBeNull();
     expect(api.listMailboxes).toHaveBeenCalledWith({ accountId: "account_1" });
     expect(api.listMessages).toHaveBeenCalledWith({
       accountId: "account_1",
@@ -2427,7 +2431,7 @@ describe("Email Hub first UI baseline", () => {
     expect(api.completeOAuthCallback).not.toHaveBeenCalled();
   });
 
-  it("loads mail with the first real backend account when no default account is provided", async () => {
+  it("loads the aggregated smart inbox when no default account is provided", async () => {
     const api = createApiFixture();
     vi.mocked(api.listSyncCenterAccounts).mockResolvedValueOnce({
       items: [
@@ -2443,16 +2447,158 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} />);
 
     await waitFor(() => {
-      expect(api.listMailboxes).toHaveBeenCalledWith({
-        accountId: "2f4f58af-7359-47f0-9158-1ef3a07fbc01",
+      expect(api.listMessages).toHaveBeenCalledWith({
+        limit: 50,
+        sort: "smart",
       });
+    });
+    expect(api.listMailboxes).not.toHaveBeenCalledWith({
+      accountId: "2f4f58af-7359-47f0-9158-1ef3a07fbc01",
     });
     expect(api.listMailboxes).not.toHaveBeenCalledWith({
       accountId: "account_1",
     });
   });
 
-  it("replaces a stale preview account from session storage before loading backend mail", async () => {
+  it("uses each aggregated message account for detail reads and reader actions", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listSyncCenterAccounts).mockResolvedValueOnce({
+      items: [
+        {
+          accountId: "account_1",
+          email: "first@example.com",
+          provider: "gmail",
+          syncState: "syncing",
+        },
+        {
+          accountId: "account_2",
+          email: "second@example.com",
+          provider: "outlook",
+          syncState: "syncing",
+        },
+      ],
+    });
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items:
+        input.accountId === undefined
+          ? [
+              {
+                id: "shared_message",
+                accountId: "account_1",
+                subject: "Account one subject",
+                from: { email: "one@example.com", name: "One Sender" },
+                receivedAt: "2026-06-13T10:00:00.000Z",
+                snippet: "one snippet",
+                unread: false,
+                starred: false,
+                mailboxIds: ["mailbox_inbox"],
+                attachmentCount: 0,
+                classification: {
+                  bucket: "P2 Important",
+                  priorityScore: 80,
+                  reasons: ["First account"],
+                },
+              },
+              {
+                id: "shared_message",
+                accountId: "account_2",
+                subject: "Account two subject",
+                from: { email: "two@example.com", name: "Two Sender" },
+                receivedAt: "2026-06-13T10:05:00.000Z",
+                snippet: "two snippet",
+                unread: true,
+                starred: false,
+                mailboxIds: ["mailbox_inbox"],
+                attachmentCount: 0,
+                classification: {
+                  bucket: "P1 Urgent",
+                  priorityScore: 96,
+                  reasons: ["Second account"],
+                },
+              },
+            ]
+          : [],
+    }));
+    vi.mocked(api.getMessage).mockImplementation(async (input) => ({
+      id: input.messageId,
+      accountId: input.accountId,
+      subject:
+        input.accountId === "account_2"
+          ? "Account two subject"
+          : "Account one subject",
+      from: { email: `${input.accountId}@example.com` },
+      receivedAt: "2026-06-13T10:05:00.000Z",
+      snippet: "detail snippet",
+      unread: input.accountId === "account_2",
+      starred: false,
+      mailboxIds: ["mailbox_inbox"],
+      attachmentCount: 0,
+      classification: {
+        bucket: input.accountId === "account_2" ? "P1 Urgent" : "P2 Important",
+        priorityScore: input.accountId === "account_2" ? 96 : 80,
+        reasons: [input.accountId],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText:
+        input.accountId === "account_2"
+          ? "Second account body"
+          : "First account body",
+      attachments: [],
+    }));
+
+    render(<App api={api} />);
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenCalledWith({
+        limit: 50,
+        sort: "smart",
+      });
+    });
+    expect(
+      (await screen.findAllByText("Account two subject")).length,
+    ).toBeGreaterThan(0);
+
+    await waitFor(() => {
+      expect(api.getMessage).toHaveBeenLastCalledWith({
+        accountId: "account_2",
+        messageId: "shared_message",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Star selected message" }));
+    await waitFor(() => {
+      expect(api.applyMailAction).toHaveBeenLastCalledWith({
+        accountId: "account_2",
+        messageId: "shared_message",
+        action: "star",
+      });
+    });
+    expect(screen.getByRole("button", { name: "Unstar selected message" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark selected message as read" }));
+    await waitFor(() => {
+      expect(api.applyMailAction).toHaveBeenLastCalledWith({
+        accountId: "account_2",
+        messageId: "shared_message",
+        action: "mark_read",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive selected message" }));
+    await waitFor(() => {
+      expect(api.applyMailAction).toHaveBeenLastCalledWith({
+        accountId: "account_2",
+        messageId: "shared_message",
+        action: "archive",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Account two subject")).toBeNull();
+    });
+    expect(screen.getAllByText("Account one subject").length).toBeGreaterThan(0);
+  });
+
+  it("clears a stale preview account from session storage before loading aggregated mail", async () => {
     const api = createApiFixture();
     sessionStorage.setItem("email-hub:selected-account-id", "account_1");
     vi.mocked(api.listSyncCenterAccounts).mockResolvedValueOnce({
@@ -2469,19 +2615,18 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} />);
 
     await waitFor(() => {
-      expect(api.listMailboxes).toHaveBeenCalledWith({
-        accountId: "33333333-3333-4333-8333-333333333333",
+      expect(api.listMessages).toHaveBeenCalledWith({
+        limit: 50,
+        sort: "smart",
       });
     });
     expect(api.listMailboxes).not.toHaveBeenCalledWith({
       accountId: "account_1",
     });
-    expect(sessionStorage.getItem("email-hub:selected-account-id")).toBe(
-      "33333333-3333-4333-8333-333333333333",
-    );
+    expect(sessionStorage.getItem("email-hub:selected-account-id")).toBeNull();
   });
 
-  it("replaces a missing session account with the first account returned by the backend", async () => {
+  it("clears a missing session account before loading aggregated mail", async () => {
     const api = createApiFixture();
     sessionStorage.setItem("email-hub:selected-account-id", "deleted-account");
     vi.mocked(api.listSyncCenterAccounts).mockResolvedValueOnce({
@@ -2498,16 +2643,15 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} />);
 
     await waitFor(() => {
-      expect(api.listMailboxes).toHaveBeenCalledWith({
-        accountId: "44444444-4444-4444-8444-444444444444",
+      expect(api.listMessages).toHaveBeenCalledWith({
+        limit: 50,
+        sort: "smart",
       });
     });
     expect(api.listMailboxes).not.toHaveBeenCalledWith({
       accountId: "deleted-account",
     });
-    expect(sessionStorage.getItem("email-hub:selected-account-id")).toBe(
-      "44444444-4444-4444-8444-444444444444",
-    );
+    expect(sessionStorage.getItem("email-hub:selected-account-id")).toBeNull();
   });
 
   it("tests app-password providers before onboarding them from Add Mail", async () => {
@@ -4422,11 +4566,21 @@ function createApiFixture(): EmailHubApi {
       messageId: input.messageId,
       action: input.action,
       state: {
-        unread: false,
-        starred: false,
-        archived: input.action === "done",
-        deleted: false,
-        mailboxIds: input.action === "done" ? [] : ["mailbox_inbox"],
+        unread:
+          input.action === "mark_read"
+            ? false
+            : input.action === "mark_unread"
+              ? true
+              : true,
+        starred: input.action === "star" ? true : false,
+        archived: input.action === "done" || input.action === "archive",
+        deleted: input.action === "trash",
+        mailboxIds:
+          input.action === "done" ||
+          input.action === "archive" ||
+          input.action === "trash"
+            ? []
+            : ["mailbox_inbox"],
         labelIds: [],
         doneAt: input.action === "done" ? "2026-06-13T10:00:00.000Z" : null,
         undoToken: input.action === "done" ? "undo_1" : null,

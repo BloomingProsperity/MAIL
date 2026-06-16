@@ -4,6 +4,7 @@ export interface BuildSmokeWebhookRequestInput {
   apiBaseUrl: string;
   secret: string;
   accountId?: string;
+  eventName?: string;
   messageId?: string;
   eventId?: string;
 }
@@ -28,6 +29,7 @@ export interface RunEmailEngineWebhookSmokeInput {
   apiBaseUrl: string;
   secret: string;
   accountId?: string;
+  eventName?: string;
   messageId?: string;
   eventId?: string;
   fetchImpl?: typeof fetch;
@@ -40,14 +42,19 @@ export interface EmailEngineWebhookSmokeResult {
   duplicate: unknown;
 }
 
+export const DEFAULT_EMAILENGINE_WEBHOOK_SMOKE_ACCOUNT_ID =
+  "11111111-1111-4111-8111-111111111111";
+
 export function buildSmokeWebhookRequest(
   input: BuildSmokeWebhookRequestInput,
 ): SmokeWebhookRequest {
-  const accountId = input.accountId ?? "emailhub_smoke_account";
+  const accountId =
+    input.accountId ?? DEFAULT_EMAILENGINE_WEBHOOK_SMOKE_ACCOUNT_ID;
+  const eventName = input.eventName ?? "emailhubSmokeProbe";
   const messageId = input.messageId ?? `smoke_${randomUUID()}`;
   const eventId = input.eventId ?? `smoke_${randomUUID()}`;
   const body = JSON.stringify({
-    event: "messageNew",
+    event: eventName,
     account: accountId,
     path: "INBOX",
     data: {

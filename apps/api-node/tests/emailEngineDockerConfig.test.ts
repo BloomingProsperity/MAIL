@@ -190,6 +190,23 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("EMAILHUB_SMOKE_DELIVERY_SMTP_HOST=127.0.0.1");
     expect(envExample).toContain("EMAILHUB_SMOKE_DELIVERY_SMTP_PORT=3025");
     expect(envExample).toContain("EMAILHUB_SMOKE_DELIVERY_SMTP_SECURE=false");
+    expect(envExample).toContain(
+      "EMAILHUB_SMOKE_ACCOUNT_ID=11111111-1111-4111-8111-111111111111",
+    );
+    expect(envExample).toContain(
+      "EMAILHUB_SMOKE_WEBHOOK_EVENT=emailhubSmokeProbe",
+    );
+    expect(envExample).toContain(
+      "EMAILHUB_REAL_WEBHOOK_SMOKE_INITIAL_SYNC_ATTEMPTS=180",
+    );
+    expect(envExample).toContain(
+      "EMAILHUB_REAL_WEBHOOK_SMOKE_INITIAL_SYNC_POLL_MS=2000",
+    );
+    expect(envExample).toContain(
+      "EMAILHUB_REAL_WEBHOOK_SMOKE_REUSE_EXISTING_ACCOUNT=true",
+    );
+    expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_ATTEMPTS=60");
+    expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_POLL_MS=2000");
   });
 });
 
