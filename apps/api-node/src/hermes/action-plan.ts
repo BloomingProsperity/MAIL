@@ -6,6 +6,7 @@ import type {
   HermesRuleService,
   HermesRuleSimulation,
 } from "./rules.js";
+import type { HermesActionPlanStore } from "./action-plan-store.js";
 import type { HermesRunStore } from "./translation.js";
 import type {
   HermesWorkspaceContext,
@@ -105,6 +106,7 @@ export interface CreateHermesActionPlanServiceOptions {
     "draftRule" | "simulateRule" | "approveRule"
   >;
   workspaceContextService: Pick<HermesWorkspaceContextService, "getContext">;
+  planStore: HermesActionPlanStore;
   runStore?: HermesRunStore;
   createId: () => string;
   now: () => string;
@@ -153,18 +155,35 @@ export function createHermesActionPlanService(
         throw new InvalidHermesActionPlanRequestError();
       }
 
-      const plan: HermesActionPlan = {
-        id: options.createId(),
+      const planId = options.createId();
+      const createdAt = options.now();
+      const workspaceSummary = summarizeWorkspace(workspace);
+      const safety = rulePlanSafety(candidate);
+      const steps = buildDraftSteps(candidate, simulation);
+      const record = await options.planStore.createPlan({
+        id: planId,
         accountId,
         command,
         intent: "create_mailbox_rule",
+        candidateId: candidate.id,
+        simulationId: simulation.id,
+        workspace: workspaceSummary,
+        safety,
+        steps,
+        createdAt,
+      });
+      const plan: HermesActionPlan = {
+        id: record.id,
+        accountId,
+        command,
+        intent: record.intent,
         status: "requires_confirmation",
-        createdAt: options.now(),
+        createdAt: record.createdAt,
         candidate,
         simulation,
-        workspace: summarizeWorkspace(workspace),
-        safety: rulePlanSafety(candidate),
-        steps: buildDraftSteps(candidate, simulation),
+        workspace: record.workspace,
+        safety: record.safety,
+        steps: record.steps,
       };
       const auditEventId = await recordActionPlanRun(options, {
         runId: plan.id,
@@ -197,18 +216,51 @@ export function createHermesActionPlanService(
         },
       });
 
-      return auditEventId ? { ...plan, auditEventId } : plan;
+      if (!auditEventId) {
+        return plan;
+      }
+
+      await options.planStore.setPlanAuditEvent({
+        planId: plan.id,
+        auditEventId,
+      });
+      return { ...plan, auditEventId };
     },
 
     async confirmPlan(input) {
       const planId = requireText(input.planId);
       const accountId = requireText(input.accountId);
       const candidateId = requireText(input.candidateId);
-      const rule = await options.ruleService.approveRule({
+      const lockedPlan = await options.planStore.beginConfirmation({
+        planId,
         accountId,
         candidateId,
+        confirmingAt: options.now(),
+      });
+      if (!lockedPlan) {
+        return undefined;
+      }
+      if (!isConfirmableRulePlan(lockedPlan)) {
+        await options.planStore.failConfirmation({
+          planId,
+          accountId,
+          candidateId,
+          failureMessage: "action_plan_not_confirmable",
+        });
+        return undefined;
+      }
+
+      const rule = await options.ruleService.approveRule({
+        accountId,
+        candidateId: lockedPlan.candidateId,
       });
       if (!rule) {
+        await options.planStore.failConfirmation({
+          planId,
+          accountId,
+          candidateId,
+          failureMessage: "rule_candidate_unavailable",
+        });
         return undefined;
       }
 
@@ -246,6 +298,16 @@ export function createHermesActionPlanService(
           ruleId: rule.id,
           status: confirmation.status,
         },
+      });
+
+      await options.planStore.completePlan({
+        planId,
+        accountId,
+        candidateId,
+        confirmationId: confirmation.id,
+        ruleId: rule.id,
+        confirmedAt,
+        ...(auditEventId ? { confirmationAuditEventId: auditEventId } : {}),
       });
 
       return auditEventId
@@ -351,6 +413,23 @@ function confirmedRuleSafety(rule: HermesRule): HermesActionPlanSafety {
     appliesToHistory: rule.action.applyToHistory === true,
     destructive: false,
   };
+}
+
+function isConfirmableRulePlan(input: {
+  intent: HermesActionPlanIntent;
+  status: string;
+  simulationId?: string;
+  safety: HermesActionPlanSafety;
+}): boolean {
+  return (
+    input.intent === "create_mailbox_rule" &&
+    input.status === "confirming" &&
+    typeof input.simulationId === "string" &&
+    input.simulationId.length > 0 &&
+    input.safety.providerWriteback === false &&
+    input.safety.appliesToHistory === false &&
+    input.safety.destructive === false
+  );
 }
 
 async function recordActionPlanRun(

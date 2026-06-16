@@ -133,9 +133,11 @@ describe("postgres Hermes rule store", () => {
 
     expect(queries[0].text).toMatch(/INSERT INTO hermes_rule_runs/i);
     expect(queries[0].text).toMatch(/candidate_id/i);
+    expect(queries[0].text).toMatch(/account_id/i);
     expect(queries[0].values).toEqual([
       "run_1",
       "candidate_1",
+      "account_1",
       "shadow",
       {
         accountId: "account_1",

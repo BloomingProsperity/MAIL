@@ -147,6 +147,52 @@ describe("Hermes rule learning service", () => {
     expect(store.listSavedViews()).toEqual([]);
   });
 
+  it("does not upsert labels for content candidates that already left shadow mode", async () => {
+    const upsertedLabels: unknown[] = [];
+    const store = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "verification", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "approved",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+          approvedAt: "2026-06-13T10:10:00.000Z",
+        },
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      labelService: {
+        async upsertLabel(input) {
+          upsertedLabels.push(input);
+          throw new Error("should not upsert");
+        },
+      },
+      createId: nextId(["rule_codes"]),
+      now: () => "2026-06-13T10:10:00.000Z",
+    });
+
+    await expect(
+      service.approveRule({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      }),
+    ).resolves.toBeUndefined();
+    expect(upsertedLabels).toEqual([]);
+  });
+
   it("derives a saved view when approving older content label candidates", async () => {
     const store = createInMemoryHermesRuleStore({
       candidates: [

@@ -296,6 +296,32 @@ describe("mail engine runtime migration", () => {
     expect(sql).toMatch(/label_assignments_label_message_idx/i);
   });
 
+  it("adds durable Hermes action plans with candidate and simulation binding", async () => {
+    const sql = await readMigrationFile("0041_hermes_action_plans.sql");
+
+    expect(sql).toMatch(/ALTER TABLE hermes_rule_runs/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS account_id UUID/i);
+    expect(sql).toMatch(/hermes_rule_runs_id_candidate_account_uidx/i);
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS hermes_action_plans/i);
+    expect(sql).toMatch(/account_id UUID NOT NULL REFERENCES connected_accounts/i);
+    expect(sql).toMatch(
+      /candidate_id UUID NOT NULL REFERENCES hermes_rule_candidates/i,
+    );
+    expect(sql).toMatch(/simulation_id UUID NOT NULL/i);
+    expect(sql).toMatch(/hermes_action_plans_status_check/i);
+    expect(sql).toMatch(
+      /status IN \('requires_confirmation', 'confirming', 'completed', 'failed'\)/i,
+    );
+    expect(sql).toMatch(/hermes_action_plans_simulation_binding_fkey/i);
+    expect(sql).toMatch(
+      /FOREIGN KEY \(simulation_id, candidate_id, account_id\)/i,
+    );
+    expect(sql).toMatch(/REFERENCES hermes_rule_runs \(id, candidate_id, account_id\)/i);
+    expect(sql).toMatch(/hermes_action_plans_account_status_idx/i);
+    expect(sql).toMatch(/hermes_action_plans_candidate_idx/i);
+    expect(sql).toMatch(/hermes_action_plans_simulation_idx/i);
+  });
+
   it("adds Spark done undo state columns and lookup indexes", async () => {
     const sql = await readMigrationFile("0019_message_done_undo.sql");
 

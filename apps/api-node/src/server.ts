@@ -36,6 +36,7 @@ import { createSenderScreeningService } from "./gatekeeper/sender-screening-serv
 import { createPostgresHermesDraftFeedbackStore } from "./hermes/draft-feedback.js";
 import { createPostgresHermesMemoryStore } from "./hermes/postgres-memory-store.js";
 import { createPostgresHermesRuleStore } from "./hermes/postgres-rule-store.js";
+import { createPostgresHermesActionPlanStore } from "./hermes/postgres-action-plan-store.js";
 import { createPostgresHermesRunStore } from "./hermes/postgres-run-store.js";
 import { createPostgresHermesAuditLogStore } from "./hermes/postgres-audit-log-store.js";
 import { createHermesActionPlanService } from "./hermes/action-plan.js";
@@ -273,6 +274,7 @@ if (pool) {
   config.hermesActionPlanService = createHermesActionPlanService({
     ruleService: config.hermesRuleService,
     workspaceContextService: config.hermesWorkspaceContextService,
+    planStore: createPostgresHermesActionPlanStore(pool),
     runStore: hermesRunStore,
     createId: randomUUID,
     now: () => new Date().toISOString(),

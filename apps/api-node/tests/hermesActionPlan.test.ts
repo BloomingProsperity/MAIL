@@ -5,6 +5,10 @@ import {
   InvalidHermesActionPlanRequestError,
 } from "../src/hermes/action-plan";
 import {
+  createInMemoryHermesActionPlanStore,
+  type HermesActionPlanRecord,
+} from "../src/hermes/action-plan-store";
+import {
   createHermesRuleService,
   createInMemoryHermesRuleStore,
 } from "../src/hermes/rules";
@@ -12,6 +16,7 @@ import {
 describe("Hermes action plan service", () => {
   it("creates an auditable confirmation-required plan for mailbox rules", async () => {
     const runStoreCalls: unknown[] = [];
+    const planStore = createInMemoryHermesActionPlanStore();
     const ruleStore = createInMemoryHermesRuleStore({
       messages: [
         {
@@ -64,6 +69,7 @@ describe("Hermes action plan service", () => {
           };
         },
       },
+      planStore,
       runStore: {
         async recordCompletedSkillRun(input) {
           runStoreCalls.push(input);
@@ -126,10 +132,30 @@ describe("Hermes action plan service", () => {
         }),
       }),
     ]);
+    expect(planStore.listPlans()).toEqual([
+      expect.objectContaining({
+        id: "plan_1",
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        simulationId: "simulation_1",
+        status: "requires_confirmation",
+        auditEventId: "audit_plan_1",
+      }),
+    ]);
   });
 
   it("confirms a planned content label rule and records audit", async () => {
     const runStoreCalls: unknown[] = [];
+    const planStore = createInMemoryHermesActionPlanStore({
+      plans: [
+        createPlanRecord({
+          id: "plan_1",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          simulationId: "simulation_1",
+        }),
+      ],
+    });
     const ruleStore = createInMemoryHermesRuleStore({
       candidates: [
         {
@@ -177,6 +203,7 @@ describe("Hermes action plan service", () => {
           throw new Error("not used while confirming");
         },
       },
+      planStore,
       runStore: {
         async recordCompletedSkillRun(input) {
           runStoreCalls.push(input);
@@ -224,6 +251,152 @@ describe("Hermes action plan service", () => {
         }),
       }),
     ]);
+    expect(planStore.listPlans()).toEqual([
+      expect.objectContaining({
+        id: "plan_1",
+        candidateId: "candidate_codes",
+        status: "completed",
+        confirmationId: "confirmation_1",
+        confirmationAuditEventId: "audit_confirm_1",
+        ruleId: "rule_codes",
+      }),
+    ]);
+  });
+
+  it("does not confirm a candidate without a matching pending plan", async () => {
+    const planStore = createInMemoryHermesActionPlanStore({
+      plans: [
+        createPlanRecord({
+          id: "plan_1",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          simulationId: "simulation_1",
+        }),
+      ],
+    });
+    const ruleStore = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_other",
+          accountId: "account_1",
+          title: "启用其他智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["other"] },
+          action: {
+            type: "apply_label",
+            labelName: "其他",
+            providerWriteback: false,
+            applyToHistory: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.7,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-16T08:00:00.000Z",
+        },
+      ],
+    });
+    const ruleService = createHermesRuleService({
+      store: ruleStore,
+      createId: nextId(["rule_other"]),
+      now: () => "2026-06-16T08:02:00.000Z",
+    });
+    const service = createHermesActionPlanService({
+      ruleService,
+      workspaceContextService: {
+        async getContext() {
+          throw new Error("not used while confirming");
+        },
+      },
+      planStore,
+      createId: nextId([]),
+      now: () => "2026-06-16T08:03:00.000Z",
+    });
+
+    const result = await service.confirmPlan({
+      planId: "plan_1",
+      accountId: "account_1",
+      candidateId: "candidate_other",
+    });
+
+    expect(result).toBeUndefined();
+    expect(
+      await ruleStore.listRuleCandidates({
+        accountId: "account_1",
+        status: "shadow",
+        limit: 10,
+      }),
+    ).toMatchObject({
+      items: [{ id: "candidate_other", status: "shadow" }],
+    });
+    expect(planStore.listPlans()[0]).toMatchObject({
+      id: "plan_1",
+      status: "requires_confirmation",
+    });
+  });
+
+  it("fails a plan instead of approving when the candidate is no longer shadow", async () => {
+    const planStore = createInMemoryHermesActionPlanStore({
+      plans: [
+        createPlanRecord({
+          id: "plan_1",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          simulationId: "simulation_1",
+        }),
+      ],
+    });
+    const ruleStore = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            providerWriteback: false,
+            applyToHistory: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "approved",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-16T08:00:00.000Z",
+          approvedAt: "2026-06-16T08:01:00.000Z",
+        },
+      ],
+    });
+    const ruleService = createHermesRuleService({
+      store: ruleStore,
+      createId: nextId(["rule_codes"]),
+      now: () => "2026-06-16T08:02:00.000Z",
+    });
+    const service = createHermesActionPlanService({
+      ruleService,
+      workspaceContextService: {
+        async getContext() {
+          throw new Error("not used while confirming");
+        },
+      },
+      planStore,
+      createId: nextId([]),
+      now: () => "2026-06-16T08:03:00.000Z",
+    });
+
+    const result = await service.confirmPlan({
+      planId: "plan_1",
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+    });
+
+    expect(result).toBeUndefined();
+    expect(planStore.listPlans()[0]).toMatchObject({
+      status: "failed",
+      failureMessage: "rule_candidate_unavailable",
+    });
   });
 
   it("rejects unsupported natural-language operations in v1", async () => {
@@ -244,6 +417,7 @@ describe("Hermes action plan service", () => {
           throw new Error("should not read context");
         },
       },
+      planStore: createInMemoryHermesActionPlanStore(),
       createId: nextId([]),
       now: () => "2026-06-16T08:00:00.000Z",
     });
@@ -260,4 +434,47 @@ describe("Hermes action plan service", () => {
 function nextId(ids: string[]): () => string {
   let index = 0;
   return () => ids[index++] ?? `id_${index}`;
+}
+
+function createPlanRecord(
+  input: Pick<
+    HermesActionPlanRecord,
+    "id" | "accountId" | "candidateId" | "simulationId"
+  >,
+): HermesActionPlanRecord {
+  return {
+    id: input.id,
+    accountId: input.accountId,
+    command: "帮我创建一个规则，左侧加一个验证码分组",
+    intent: "create_mailbox_rule",
+    status: "requires_confirmation",
+    candidateId: input.candidateId,
+    simulationId: input.simulationId,
+    workspace: {
+      accountCount: 1,
+      selectedAccountId: input.accountId,
+      provider: "gmail",
+      quickCategoryCount: 1,
+      labelCount: 0,
+      ruleCount: 0,
+      pendingRuleCandidateCount: 0,
+      unavailableModules: [],
+    },
+    safety: {
+      requiresUserConfirmation: true,
+      providerWriteback: false,
+      appliesToHistory: false,
+      destructive: false,
+    },
+    steps: [
+      {
+        id: "confirm_rule",
+        title: "等待用户确认",
+        mode: "confirmation_required",
+        status: "requires_confirmation",
+        detail: "确认后启用。",
+      },
+    ],
+    createdAt: "2026-06-16T08:00:00.000Z",
+  };
 }

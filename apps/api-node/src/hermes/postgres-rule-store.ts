@@ -248,14 +248,16 @@ export function createPostgresHermesRuleStore(
           INSERT INTO hermes_rule_runs (
             id,
             candidate_id,
+            account_id,
             mode,
             result
           )
-          VALUES ($1, $2, $3, $4)
+          VALUES ($1, $2, $3, $4, $5)
         `,
         [
           input.id,
           input.candidateId,
+          input.accountId,
           input.mode,
           {
             accountId: input.accountId,

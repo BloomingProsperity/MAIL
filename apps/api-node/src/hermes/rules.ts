@@ -297,8 +297,11 @@ export function createHermesRuleService(
         accountId,
         candidateId,
       });
+      if (!candidate || candidate.status !== "shadow") {
+        return undefined;
+      }
       const actionOverride =
-        candidate?.ruleType === "content_label"
+        candidate.ruleType === "content_label"
           ? await approvedLabelActionForCandidate({
               candidate,
               accountId,
