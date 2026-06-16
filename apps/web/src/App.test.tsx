@@ -5196,6 +5196,104 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("rejects oversized compose attachments before uploading", async () => {
+    const api = createApiFixture();
+    const oversizedFile = {
+      name: "too-large.bin",
+      size: 25 * 1024 * 1024 + 1,
+      type: "application/octet-stream",
+    } as File;
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Attach files to compose"), {
+      target: { files: [oversizedFile] },
+    });
+
+    expect(await screen.findByText("附件总大小不能超过 25 MB。")).toBeTruthy();
+    expect(api.uploadComposeAttachment).not.toHaveBeenCalled();
+  });
+
+  it("shows a specific compose attachment upload limit error", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.uploadComposeAttachment).mockRejectedValueOnce(
+      new ApiRequestError(413, "request_body_too_large", {
+        error: "request_body_too_large",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Attach files to compose"), {
+      target: {
+        files: [new File(["hello"], "brief.txt", { type: "text/plain" })],
+      },
+    });
+
+    expect(
+      await screen.findByText("附件超过 25 MB，请压缩或拆分后再上传。"),
+    ).toBeTruthy();
+    expect(api.createMailDraft).not.toHaveBeenCalled();
+  });
+
+  it("keeps existing compose attachments when a later upload fails", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Attach files to compose"), {
+      target: {
+        files: [new File(["hello"], "brief.txt", { type: "text/plain" })],
+      },
+    });
+    expect(await screen.findByText("brief.txt")).toBeTruthy();
+
+    vi.mocked(api.uploadComposeAttachment).mockRejectedValueOnce(
+      new Error("network failed"),
+    );
+    fireEvent.change(screen.getByLabelText("Attach files to compose"), {
+      target: {
+        files: [new File(["later"], "later.txt", { type: "text/plain" })],
+      },
+    });
+
+    expect(
+      await screen.findByText("附件上传失败，请重新选择文件。"),
+    ).toBeTruthy();
+    expect(screen.getByText("brief.txt")).toBeTruthy();
+    expect(screen.queryByText("later.txt")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Please review the launch plan." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "Please review the launch plan.",
+        source: "manual",
+        attachments: [
+          expect.objectContaining({
+            filename: "brief.txt",
+            storageKey: "11111111-1111-4111-8111-111111111111",
+          }),
+        ],
+      });
+    });
+  });
+
   it("sends selected send-as identity from the compose panel", async () => {
     const api = createApiFixture();
 

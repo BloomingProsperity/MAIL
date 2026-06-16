@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApiHandler } from "../src/http/router";
+import { ComposeAttachmentBlobTooLargeError } from "../src/mail-compose/compose-attachment-blob-store";
 
 let server: Server | undefined;
 
@@ -866,6 +867,138 @@ describe("mail compose routes", () => {
         mailComposeService,
         composeAttachmentBlobStore,
         maxComposeAttachmentUploadBytes: 16,
+      },
+    );
+  });
+
+  it("streams raw compose attachment uploads when the blob store supports streaming", async () => {
+    const streamCalls: unknown[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+    const composeAttachmentBlobStore = {
+      async saveUploadedAttachment() {
+        throw new Error("buffer fallback must not be used");
+      },
+      async saveUploadedAttachmentStream(input: {
+        accountId: string;
+        stream: AsyncIterable<Uint8Array>;
+        maxBytes: number;
+        filename: string;
+        contentType: string;
+      }) {
+        const chunks: Buffer[] = [];
+        for await (const chunk of input.stream) {
+          chunks.push(Buffer.from(chunk));
+        }
+        streamCalls.push({
+          accountId: input.accountId,
+          body: Buffer.concat(chunks).toString("utf8"),
+          maxBytes: input.maxBytes,
+          filename: input.filename,
+          contentType: input.contentType,
+        });
+        return {
+          id: "upload_11111111-1111-4111-8111-111111111111",
+          source: "uploaded_file",
+          attachmentId: "upload_11111111-1111-4111-8111-111111111111",
+          storageKey: "11111111-1111-4111-8111-111111111111",
+          filename: "brief.txt",
+          contentType: "text/plain",
+          byteSize: 5,
+          inline: false,
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/compose/attachments`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "text/plain",
+              "x-emailhub-filename": "brief.txt",
+            },
+            body: "hello",
+          },
+        );
+
+        expect(response.status).toBe(201);
+        expect(await response.json()).toMatchObject({
+          source: "uploaded_file",
+          storageKey: "11111111-1111-4111-8111-111111111111",
+          byteSize: 5,
+        });
+        expect(streamCalls).toEqual([
+          {
+            accountId: "acc_1",
+            body: "hello",
+            maxBytes: 16,
+            filename: "brief.txt",
+            contentType: "text/plain",
+          },
+        ]);
+      },
+      {
+        mailComposeService,
+        composeAttachmentBlobStore,
+        maxComposeAttachmentUploadBytes: 16,
+      },
+    );
+  });
+
+  it("maps streamed compose attachment upload limit failures to 413", async () => {
+    const saveCalls: string[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+    const composeAttachmentBlobStore = {
+      async saveUploadedAttachment() {
+        saveCalls.push("buffer");
+        throw new Error("buffer fallback must not be used");
+      },
+      async saveUploadedAttachmentStream() {
+        saveCalls.push("stream");
+        throw new ComposeAttachmentBlobTooLargeError();
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/compose/attachments`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "text/plain",
+              "x-emailhub-filename": "brief.txt",
+            },
+            body: "hello",
+          },
+        );
+
+        expect(response.status).toBe(413);
+        expect(await response.json()).toEqual({
+          error: "request_body_too_large",
+        });
+        expect(saveCalls).toEqual([]);
+      },
+      {
+        mailComposeService,
+        composeAttachmentBlobStore,
+        maxComposeAttachmentUploadBytes: 4,
       },
     );
   });

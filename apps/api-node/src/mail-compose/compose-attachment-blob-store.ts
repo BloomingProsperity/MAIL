@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import type { MailDraftTransportAttachment } from "./mail-compose.js";
 
@@ -8,6 +11,15 @@ export interface ComposeAttachmentBlobStore {
   saveUploadedAttachment(input: {
     accountId: string;
     bytes: Uint8Array;
+    filename: string;
+    contentType: string;
+    inline?: boolean;
+    contentId?: string;
+  }): Promise<MailDraftTransportAttachment>;
+  saveUploadedAttachmentStream?(input: {
+    accountId: string;
+    stream: NodeJS.ReadableStream;
+    maxBytes: number;
     filename: string;
     contentType: string;
     inline?: boolean;
@@ -37,6 +49,14 @@ interface StoredAttachmentMetadata {
   createdAt: string;
 }
 
+export class ComposeAttachmentBlobTooLargeError extends Error {
+  readonly code = "request_body_too_large";
+
+  constructor() {
+    super("request_body_too_large");
+  }
+}
+
 export function createLocalComposeAttachmentBlobStore(input: {
   rootDir: string;
   createId?: () => string;
@@ -51,6 +71,8 @@ export function createLocalComposeAttachmentBlobStore(input: {
       const storageKey = safeStorageKey(createId());
       const attachmentId = `upload_${storageKey}`;
       const bytes = Buffer.from(attachment.bytes);
+      const tempBlobPath = path.join(rootDir, `${storageKey}.bin.part`);
+      const tempMetadataPath = path.join(rootDir, `${storageKey}.json.part`);
       const metadata: StoredAttachmentMetadata = {
         accountId: attachment.accountId,
         attachmentId,
@@ -68,14 +90,73 @@ export function createLocalComposeAttachmentBlobStore(input: {
       };
 
       await mkdir(rootDir, { recursive: true });
-      await writeFile(blobPath(rootDir, storageKey), bytes);
-      await writeFile(
-        metadataPath(rootDir, storageKey),
-        JSON.stringify(metadata),
-        "utf8",
-      );
+      try {
+        await writeFile(tempBlobPath, bytes, { flag: "wx" });
+        await writeFile(tempMetadataPath, JSON.stringify(metadata), {
+          encoding: "utf8",
+          flag: "wx",
+        });
+        await rename(tempBlobPath, blobPath(rootDir, storageKey));
+        await rename(tempMetadataPath, metadataPath(rootDir, storageKey));
+      } catch (error) {
+        await Promise.all([
+          rm(tempBlobPath, { force: true }),
+          rm(tempMetadataPath, { force: true }),
+          rm(blobPath(rootDir, storageKey), { force: true }),
+          rm(metadataPath(rootDir, storageKey), { force: true }),
+        ]);
+        throw error;
+      }
 
       return transportAttachment(metadata);
+    },
+
+    async saveUploadedAttachmentStream(attachment) {
+      const storageKey = safeStorageKey(createId());
+      const attachmentId = `upload_${storageKey}`;
+      const tempBlobPath = path.join(rootDir, `${storageKey}.bin.part`);
+      const tempMetadataPath = path.join(rootDir, `${storageKey}.json.part`);
+
+      await mkdir(rootDir, { recursive: true });
+      try {
+        const byteSize = await writeLimitedStream(
+          attachment.stream,
+          tempBlobPath,
+          attachment.maxBytes,
+        );
+        const metadata: StoredAttachmentMetadata = {
+          accountId: attachment.accountId,
+          attachmentId,
+          storageKey,
+          filename: sanitizeFilename(attachment.filename || "attachment"),
+          contentType: sanitizeContentType(
+            attachment.contentType || "application/octet-stream",
+          ),
+          byteSize,
+          inline: Boolean(attachment.inline),
+          ...(attachment.contentId
+            ? { contentId: sanitizeContentId(attachment.contentId) }
+            : {}),
+          createdAt: now().toISOString(),
+        };
+
+        await writeFile(tempMetadataPath, JSON.stringify(metadata), {
+          encoding: "utf8",
+          flag: "wx",
+        });
+        await rename(tempBlobPath, blobPath(rootDir, storageKey));
+        await rename(tempMetadataPath, metadataPath(rootDir, storageKey));
+
+        return transportAttachment(metadata);
+      } catch (error) {
+        await Promise.all([
+          rm(tempBlobPath, { force: true }),
+          rm(tempMetadataPath, { force: true }),
+          rm(blobPath(rootDir, storageKey), { force: true }),
+          rm(metadataPath(rootDir, storageKey), { force: true }),
+        ]);
+        throw error;
+      }
     },
 
     async getUploadedAttachment(attachment) {
@@ -112,6 +193,38 @@ export function createLocalComposeAttachmentBlobStore(input: {
       };
     },
   };
+}
+
+async function writeLimitedStream(
+  stream: NodeJS.ReadableStream,
+  destination: string,
+  maxBytes: number,
+): Promise<number> {
+  const limiter = new ByteLimitTransform(maxBytes);
+  await pipeline(stream, limiter, createWriteStream(destination, { flags: "wx" }));
+  return limiter.byteSize;
+}
+
+class ByteLimitTransform extends Transform {
+  byteSize = 0;
+
+  constructor(private readonly maxBytes: number) {
+    super();
+  }
+
+  override _transform(
+    chunk: Buffer,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null, data?: Buffer) => void,
+  ): void {
+    this.byteSize += chunk.byteLength;
+    if (this.byteSize > this.maxBytes) {
+      callback(new ComposeAttachmentBlobTooLargeError());
+      return;
+    }
+
+    callback(null, chunk);
+  }
 }
 
 async function readMetadata(

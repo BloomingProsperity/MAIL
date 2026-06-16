@@ -333,13 +333,15 @@ with more than smoke-level tests.
   while keeping provider attachment ids internal for transport submission.
   EmailEngine sends reuse existing provider attachments through its submit
   `attachments[].reference` contract. Direct compose uploads now POST raw bytes
-  to the API, persist a local object-storage `storageKey` in the same
-  `uploaded_file` manifest, and avoid embedding large base64 payloads in saved
-  draft JSON when the backend is available. The web app keeps the older base64
-  path as a local/demo fallback. Worker queued-immediate and scheduled sends
-  hydrate the referenced bytes from the shared Docker compose attachment volume
-  before provider submission, strip internal storage keys from provider
-  payloads, and keep the existing 20-file / 25 MB aggregate send limit. The
+  to the API. The API streams those bytes into the shared Docker compose
+  attachment volume, writes a local object-storage `storageKey` in the same
+  `uploaded_file` manifest, cleans up partial files on upload-limit failures,
+  and avoids embedding large base64 payloads in saved draft JSON when the
+  backend is available. The web app keeps the older base64 path as a local/demo
+  fallback. Worker queued-immediate and scheduled sends hydrate the referenced
+  bytes from the shared Docker compose attachment volume before provider
+  submission, strip internal storage keys from provider payloads, and keep the
+  existing 20-file / 25 MB aggregate send limit. The
   worker now has a compose attachment cleanup lane that periodically queries active
   draft/outbox manifests, protects referenced `storageKey` values, and prunes
   only stale unreferenced blob files from the shared volume using bounded
@@ -358,7 +360,7 @@ with more than smoke-level tests.
   receives only an EmailEngine provider reference it fails loudly instead of
   silently dropping the file.
 - Remaining gap: the current compose panel is intentionally compact; rich
-  editor, chunked/streaming uploads, provider-native large attachment sessions,
+  editor, resumable/chunked uploads, provider-native large attachment sessions,
   tenant-level shared-mailbox discovery/admin permission inventory, and deeper
   Sent-folder parity checks are still separate slices.
 
@@ -375,7 +377,7 @@ with more than smoke-level tests.
 ## Immediate Delivery Order
 
 1. Expand Compose into a full production editor: rich editor,
-   chunked/streaming uploads, provider-native large attachment sessions,
+   resumable/chunked uploads, provider-native large attachment sessions,
    tenant-level Graph shared-mailbox discovery/admin inventory, and
    writing-style feedback for rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live

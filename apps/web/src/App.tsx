@@ -3114,8 +3114,8 @@ function MailWorkspace(props: {
       setComposeAttachments(merged);
       setComposeNotice(`已添加 ${nextAttachments.length} 个附件。`);
       setComposePreview(undefined);
-    } catch {
-      setComposeNotice("附件上传失败，请重新选择文件。");
+    } catch (error) {
+      setComposeNotice(composeAttachmentUploadErrorNotice(error));
     } finally {
       setComposeBusy(false);
     }
@@ -4764,6 +4764,19 @@ function formatGraphDiagnosticsStatus(
     target_verification_failed: "共享箱目标失败",
   };
   return labels[status];
+}
+
+function composeAttachmentUploadErrorNotice(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 413 || error.code === "request_body_too_large") {
+      return "附件超过 25 MB，请压缩或拆分后再上传。";
+    }
+    if (error.code === "compose_attachment_storage_unavailable") {
+      return "附件存储未配置，暂时不能上传附件。";
+    }
+  }
+
+  return "附件上传失败，请重新选择文件。";
 }
 
 function candidateTargetMailboxValue(

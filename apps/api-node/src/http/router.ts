@@ -156,7 +156,10 @@ import {
   type UpdateScheduledMailDraftInput,
   type UpdateMailDraftInput,
 } from "../mail-compose/mail-compose.js";
-import type { ComposeAttachmentBlobStore } from "../mail-compose/compose-attachment-blob-store.js";
+import {
+  ComposeAttachmentBlobTooLargeError,
+  type ComposeAttachmentBlobStore,
+} from "../mail-compose/compose-attachment-blob-store.js";
 import type { ComposeAttachmentMaintenanceService } from "../maintenance/compose-attachment-maintenance.js";
 import {
   InvalidMailActionRequestError,
@@ -1026,14 +1029,29 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
             });
             return;
           }
-          const bytes = await readComposeAttachmentBody();
+          const declaredUploadBytes = parseContentLength(request);
+          if (
+            declaredUploadBytes !== undefined &&
+            declaredUploadBytes > maxComposeAttachmentUploadBytes
+          ) {
+            throw new RequestBodyTooLargeError();
+          }
+          const uploadInput = {
+            accountId: mailComposeRoute.accountId,
+            filename: parseComposeAttachmentUploadFilename(request),
+            contentType: parseComposeAttachmentUploadContentType(request),
+          };
           const attachment =
-            await config.composeAttachmentBlobStore.saveUploadedAttachment({
-              accountId: mailComposeRoute.accountId,
-              bytes,
-              filename: parseComposeAttachmentUploadFilename(request),
-              contentType: parseComposeAttachmentUploadContentType(request),
-            });
+            config.composeAttachmentBlobStore.saveUploadedAttachmentStream
+              ? await config.composeAttachmentBlobStore.saveUploadedAttachmentStream({
+                  ...uploadInput,
+                  stream: request,
+                  maxBytes: maxComposeAttachmentUploadBytes,
+                })
+              : await config.composeAttachmentBlobStore.saveUploadedAttachment({
+                  ...uploadInput,
+                  bytes: await readComposeAttachmentBody(),
+                });
           writeJson(response, 201, {
             id: attachment.id,
             source: attachment.source,
@@ -2939,7 +2957,10 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
-      if (error instanceof RequestBodyTooLargeError) {
+      if (
+        error instanceof RequestBodyTooLargeError ||
+        error instanceof ComposeAttachmentBlobTooLargeError
+      ) {
         writeJson(response, 413, { error: error.code });
         return;
       }
@@ -7518,6 +7539,15 @@ function parseComposeAttachmentUploadContentType(
   return contentType?.includes("/")
     ? contentType
     : "application/octet-stream";
+}
+
+function parseContentLength(request: IncomingMessage): number | undefined {
+  const header = singleHeader(request.headers["content-length"]);
+  if (!header) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(header, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function singleHeader(value: string | string[] | undefined): string | undefined {
