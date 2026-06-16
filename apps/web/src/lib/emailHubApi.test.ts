@@ -1906,6 +1906,53 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs message-scoped Hermes translation through the account message route", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          skillRunId: "run_translate_1",
+          skillId: "translate_text",
+          accountId: "account_1",
+          messageId: "message_1",
+          sourceLanguage: "auto",
+          targetLanguage: "Chinese",
+          translatedText: "你好，请确认发布时间。",
+          cached: false,
+        },
+        202,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const translation = await api.translateMessage({
+      accountId: "account_1",
+      messageId: "message_1",
+      targetLanguage: "Chinese",
+      tone: "preserve original meaning",
+      memoryScope: "sender:client@example.com",
+      memoryLayers: ["contact_memory", "procedural_memory"],
+    });
+
+    expect(translation).toMatchObject({
+      accountId: "account_1",
+      messageId: "message_1",
+      translatedText: "你好，请确认发布时间。",
+      cached: false,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/messages/message_1/translate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          targetLanguage: "Chinese",
+          tone: "preserve original meaning",
+          memoryScope: "sender:client@example.com",
+          memoryLayers: ["contact_memory", "procedural_memory"],
+        }),
+      }),
+    );
+  });
+
   it("loads Hermes workspace context for mailbox-aware operations", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

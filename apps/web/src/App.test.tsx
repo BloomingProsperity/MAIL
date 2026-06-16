@@ -12,6 +12,7 @@ import type {
   HermesEmailSearchQaResult,
   HermesFollowupTrackerResult,
   HermesLabelSuggestResult,
+  HermesMessageTranslationResult,
   HermesNewsletterCleanupResult,
   HermesPriorityTriageResult,
   HermesQuickReplyResult,
@@ -322,11 +323,11 @@ describe("Email Hub first UI baseline", () => {
     );
 
     await waitFor(() => {
-      expect(api.translateText).toHaveBeenCalledWith({
-        text: "Live body from backend",
+      expect(api.translateMessage).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
         targetLanguage: "Chinese",
         tone: "preserve original meaning and formatting",
-        readMessageIds: ["message_1"],
         memoryScope: "sender:client@example.com",
         memoryLayers: [
           "contact_memory",
@@ -355,8 +356,10 @@ describe("Email Hub first UI baseline", () => {
     );
 
     await waitFor(() => {
-      expect(api.translateText).toHaveBeenCalledWith(
+      expect(api.translateMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          accountId: "account_1",
+          messageId: "message_1",
           targetLanguage: "English",
           memoryScope: "sender:client@example.com",
         }),
@@ -6603,6 +6606,19 @@ function createApiFixture(): EmailHubApi {
           ? "Hello, please confirm the launch plan."
           : "你好，请确认发布计划。",
     } satisfies HermesTranslateTextResult)),
+    translateMessage: vi.fn(async (input) => ({
+      skillRunId: "run_translate_1",
+      skillId: "translate_text",
+      accountId: input.accountId,
+      messageId: input.messageId,
+      sourceLanguage: input.sourceLanguage ?? "auto",
+      targetLanguage: input.targetLanguage,
+      translatedText:
+        input.targetLanguage === "English"
+          ? "Hello, please confirm the launch plan."
+          : "你好，请确认发布计划。",
+      cached: false,
+    } satisfies HermesMessageTranslationResult)),
     confirmTranslationPreference: vi.fn(async (input) => ({
       memory: {
         id: "memory_translation_1",

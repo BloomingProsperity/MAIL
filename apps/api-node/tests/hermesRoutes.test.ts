@@ -253,6 +253,183 @@ describe("Hermes routes", () => {
     );
   });
 
+  it("translates a selected account message through the message-scoped Hermes route", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageTranslationService = {
+      async translateMessage(input: unknown) {
+        calls.push(input);
+        return {
+          skillRunId: "run_message_translate_1",
+          auditEventId: "audit_message_translate_1",
+          skillId: "translate_text",
+          accountId: "account_1",
+          messageId: "message_1",
+          sourceLanguage: "auto",
+          targetLanguage: "Chinese",
+          translatedText: "你好",
+          cached: false,
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/translate`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              targetLanguage: "Chinese",
+              tone: "preserve original meaning",
+              memoryScope: "sender:client@example.com",
+              memoryLayers: ["contact_memory", "procedural_memory"],
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(await response.json()).toEqual({
+          skillRunId: "run_message_translate_1",
+          auditEventId: "audit_message_translate_1",
+          skillId: "translate_text",
+          accountId: "account_1",
+          messageId: "message_1",
+          sourceLanguage: "auto",
+          targetLanguage: "Chinese",
+          translatedText: "你好",
+          cached: false,
+        });
+      },
+      { hermesMessageTranslationService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        messageId: "message_1",
+        targetLanguage: "Chinese",
+        tone: "preserve original meaning",
+        memoryScope: "sender:client@example.com",
+        memoryLayers: ["contact_memory", "procedural_memory"],
+      },
+    ]);
+  });
+
+  it("returns cached message translations with a 200 response", async () => {
+    const hermesMessageTranslationService = {
+      async translateMessage() {
+        return {
+          skillRunId: "run_cached",
+          skillId: "translate_text",
+          accountId: "account_1",
+          messageId: "message_1",
+          sourceLanguage: "auto",
+          targetLanguage: "Chinese",
+          translatedText: "你好",
+          cached: true,
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/translate`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ targetLanguage: "Chinese" }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          skillRunId: "run_cached",
+          cached: true,
+        });
+      },
+      { hermesMessageTranslationService },
+    );
+  });
+
+  it("returns 404 when message-scoped Hermes translation cannot read the message", async () => {
+    const hermesMessageTranslationService = {
+      async translateMessage() {
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/missing/translate`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ targetLanguage: "Chinese" }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({ error: "message_not_found" });
+      },
+      { hermesMessageTranslationService },
+    );
+  });
+
+  it("rejects invalid message-scoped translation requests before hitting Hermes", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageTranslationService = {
+      async translateMessage(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/translate`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              targetLanguage: " ",
+              forceRefresh: "yes",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_message_translation_request",
+        });
+      },
+      { hermesMessageTranslationService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
+  it("returns 503 when message-scoped Hermes translation is not wired", async () => {
+    await withApi(async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/accounts/account_1/messages/message_1/translate`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ targetLanguage: "Chinese" }),
+        },
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "hermes_message_translation_unavailable",
+      });
+    });
+  });
+
   it("confirms an explicit Hermes translation preference", async () => {
     const calls: unknown[] = [];
     const hermesTranslationPreferenceService = {

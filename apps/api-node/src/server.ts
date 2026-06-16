@@ -38,9 +38,11 @@ import { createPostgresHermesMemoryStore } from "./hermes/postgres-memory-store.
 import { createPostgresHermesRuleStore } from "./hermes/postgres-rule-store.js";
 import { createPostgresHermesActionPlanStore } from "./hermes/postgres-action-plan-store.js";
 import { createPostgresHermesRunStore } from "./hermes/postgres-run-store.js";
+import { createPostgresHermesMessageTranslationStore } from "./hermes/postgres-message-translation-store.js";
 import { createPostgresHermesAuditLogStore } from "./hermes/postgres-audit-log-store.js";
 import { createHermesActionPlanService } from "./hermes/action-plan.js";
 import { createHermesAuditLogService } from "./hermes/audit-log.js";
+import { createHermesMessageTranslationService } from "./hermes/message-translation.js";
 import { createHermesRuleService } from "./hermes/rules.js";
 import { createHermesTranslationPreferenceService } from "./hermes/translation-preferences.js";
 import { getHermesSkills } from "./hermes/skills.js";
@@ -94,6 +96,9 @@ const providerPresetOverrides =
   readImapSmtpProviderPresetOverrides(process.env);
 const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : undefined;
 const hermesRunStore = pool ? createPostgresHermesRunStore(pool) : undefined;
+const hermesMessageTranslationStore = pool
+  ? createPostgresHermesMessageTranslationStore(pool)
+  : undefined;
 
 config.emailEngineAccessTokenConfigured =
   typeof emailEngineAccessToken === "string" &&
@@ -373,13 +378,22 @@ if (pool) {
   }
 }
 
-config.hermesService = createConfiguredHermesTranslationService({
+const configuredHermesService = createConfiguredHermesTranslationService({
   runStore: hermesRunStore,
   memoryStore: config.hermesMemoryStore,
   mailReadStore: config.mailReadStore,
   runtimeConfigService: config.hermesRuntimeConfigService,
   createId: randomUUID,
 });
+config.hermesService = configuredHermesService;
+if (configuredHermesService && config.mailReadStore) {
+  config.hermesMessageTranslationService = createHermesMessageTranslationService({
+    mailReadStore: config.mailReadStore,
+    translationService: configuredHermesService,
+    store: hermesMessageTranslationStore,
+    createId: randomUUID,
+  });
+}
 
 const server = createServer(createApiHandler(config));
 const shutdown = createRuntimeShutdownHandler({

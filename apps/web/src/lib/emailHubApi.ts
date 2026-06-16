@@ -1471,6 +1471,12 @@ export interface HermesTranslateTextResult {
   translatedText: string;
 }
 
+export interface HermesMessageTranslationResult extends HermesTranslateTextResult {
+  accountId: string;
+  messageId: string;
+  cached: boolean;
+}
+
 export type HermesTranslationPreferenceMode = "always" | "never";
 
 export interface HermesTranslationPreferenceResult {
@@ -1790,6 +1796,17 @@ export interface EmailHubApi {
     memoryScope?: string;
     memoryLayers?: string[];
   }): Promise<HermesTranslateTextResult>;
+  translateMessage(input: {
+    accountId: string;
+    messageId: string;
+    targetLanguage: string;
+    sourceLanguage?: string;
+    tone?: string;
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+    forceRefresh?: boolean;
+  }): Promise<HermesMessageTranslationResult>;
   confirmTranslationPreference(input: {
     mode: HermesTranslationPreferenceMode;
     sourceLanguage: string;
@@ -2775,6 +2792,28 @@ export function createEmailHubApi(
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });
+    },
+
+    translateMessage(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/messages/${encodePath(input.messageId)}/translate`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            cleanObject({
+              targetLanguage: input.targetLanguage,
+              sourceLanguage: input.sourceLanguage,
+              tone: input.tone,
+              memoryIds: input.memoryIds,
+              memoryScope: input.memoryScope,
+              memoryLayers: input.memoryLayers,
+              forceRefresh: input.forceRefresh,
+            }),
+          ),
+        },
+      );
     },
 
     confirmTranslationPreference(input) {

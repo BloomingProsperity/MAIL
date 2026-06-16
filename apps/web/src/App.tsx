@@ -2550,11 +2550,11 @@ function MailWorkspace(props: {
     setReaderHermesBusy("translation");
     setReaderHermesNotice("Hermes 正在翻译当前邮件...");
     try {
-      const result = await props.api.translateText({
-        text,
+      const result = await props.api.translateMessage({
+        accountId: props.selectedMail.accountId,
+        messageId: props.selectedMail.id,
         targetLanguage: readerTranslationTarget,
         tone: "preserve original meaning and formatting",
-        readMessageIds: [props.selectedMail.id],
         memoryScope: `sender:${props.selectedMail.email}`,
         memoryLayers: [
           "contact_memory",

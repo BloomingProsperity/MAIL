@@ -159,9 +159,11 @@ with more than smoke-level tests.
   send mail.
 - Current reader-assist status: the message reader now exposes Hermes summary
   and translation actions wired to `/api/hermes/skills/thread_summarize/run`
-  and `/api/hermes/skills/translate_text/run`. Both actions use the app-owned
-  message body, selected message id, and global memory scope, then render
-  read-only preview blocks above the original message body.
+  and the message-scoped
+  `/api/accounts/:accountId/messages/:messageId/translate` route. Translation
+  now reads the message body server-side, records the selected message id in
+  Hermes audit events, caches by body hash/language/tone, and renders a
+  read-only preview block above the original message body.
 - Current memory-management status: Settings now exposes the app-owned Hermes
   learning records. The frontend lists records through
   `/api/hermes/memories`, supports layer/scope/limit filtering, validates JSON
