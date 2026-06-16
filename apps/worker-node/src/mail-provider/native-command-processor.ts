@@ -256,7 +256,7 @@ async function dispatchImap(
         mailboxPath: message.mailboxPath,
         uid: message.uid,
         uidvalidity: message.uidvalidity,
-        removeFlags: ["\\Seen"],
+        addFlags: ["\\Seen"],
       });
       return;
     case "mark_unread":
@@ -265,7 +265,7 @@ async function dispatchImap(
         mailboxPath: message.mailboxPath,
         uid: message.uid,
         uidvalidity: message.uidvalidity,
-        addFlags: ["\\Seen"],
+        removeFlags: ["\\Seen"],
       });
       return;
     case "star":

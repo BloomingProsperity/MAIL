@@ -324,11 +324,11 @@ describe("configured native adapters", () => {
               },
             };
           },
-          async messageFlagsAdd() {
-            throw new Error("should not add flags for mark_read");
+          async messageFlagsAdd(range: string, flags: string[]) {
+            calls.push({ event: `add:${range}:${flags.join(",")}` });
           },
-          async messageFlagsRemove(range: string, flags: string[]) {
-            calls.push({ event: `remove:${range}:${flags.join(",")}` });
+          async messageFlagsRemove() {
+            throw new Error("should not remove flags for mark_read");
           },
           async messageMove() {
             throw new Error("should not move for mark_read");
@@ -362,6 +362,96 @@ describe("configured native adapters", () => {
       true,
     );
     expect(calls.some((call) => call.query?.includes("stored_secrets"))).toBe(true);
+    expect(calls.map((call) => call.event).filter(Boolean)).toEqual([
+      "connect",
+      "lock:INBOX",
+      "add:42:\\Seen",
+      "release",
+      "logout",
+    ]);
+    expect(JSON.stringify(calls)).not.toContain("imap-app-password");
+  });
+
+  it("wires configured IMAP mark unread through flag removal", async () => {
+    const calls: Array<{ query?: string; values?: unknown[]; event?: string }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        calls.push({ query: text, values });
+        if (text.includes("stored_secrets")) {
+          return { rows: [{ secret_value: "imap-app-password" }] };
+        }
+
+        return {
+          rows: [
+            {
+              settings: {
+                imap: {
+                  host: "imap.qq.com",
+                  port: 993,
+                  secure: true,
+                  username: "support@qq.com",
+                },
+              },
+              secret_ref: "db:imap_secret",
+            },
+          ],
+        };
+      },
+    };
+    const processor = createConfiguredNativeCommandProcessor({
+      credentialClient: client,
+      secretClient: client,
+      targetResolver: {
+        resolveMessageTarget: async () => ({
+          providerMessageId: "42",
+          providerMailboxId: "INBOX",
+        }),
+      },
+      imapConnect: async () => ({
+        async connect() {
+          calls.push({ event: "connect" });
+        },
+        async getMailboxLock(path: string) {
+          calls.push({ event: `lock:${path}` });
+          return {
+            release() {
+              calls.push({ event: "release" });
+            },
+          };
+        },
+        async messageFlagsAdd() {
+          throw new Error("should not add flags for mark_unread");
+        },
+        async messageFlagsRemove(range: string, flags: string[]) {
+          calls.push({ event: `remove:${range}:${flags.join(",")}` });
+        },
+        async messageMove() {
+          throw new Error("should not move for mark_unread");
+        },
+        async logout() {
+          calls.push({ event: "logout" });
+        },
+      }),
+    });
+
+    await processor.executeCommand({
+      provider: "imap",
+      command: {
+        id: "cmd_imap_unread",
+        commandType: "mark_unread",
+        accountId: "44444444-4444-4444-4444-444444444444",
+        target: { messageId: "msg_local" },
+        payload: { action: "mark_unread" },
+        status: "running",
+        attempts: 1,
+        maxAttempts: 8,
+        idempotencyKey: "mail-action:acc:msg:mark_unread",
+        notBefore: "2026-06-12T09:00:00.000Z",
+        createdAt: "2026-06-12T09:00:00.000Z",
+        updatedAt: "2026-06-12T09:00:00.000Z",
+      },
+    });
+
     expect(calls.map((call) => call.event).filter(Boolean)).toEqual([
       "connect",
       "lock:INBOX",

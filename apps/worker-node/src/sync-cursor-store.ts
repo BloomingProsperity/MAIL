@@ -46,6 +46,10 @@ interface SyncCursorRow extends Record<string, unknown> {
   provider_mailbox_id?: string | null;
   gmail_history_id?: string | null;
   graph_delta_link?: string | null;
+  imap_uidvalidity?: string | null;
+  imap_highest_uid?: string | null;
+  imap_uid_next?: string | null;
+  imap_highest_modseq?: string | null;
   cursor_json?: unknown;
   state?: string | null;
   reset_reason?: string | null;
@@ -65,6 +69,10 @@ export function createPostgresSyncCursorStore(
             provider_mailbox_id,
             gmail_history_id,
             graph_delta_link,
+            imap_uidvalidity,
+            imap_highest_uid,
+            imap_uid_next,
+            imap_highest_modseq,
             cursor_json,
             state,
             reset_reason
@@ -206,6 +214,41 @@ function rowToCursor(row: SyncCursorRow): ProviderCursor | undefined {
     };
   }
 
+  if (row.provider === "imap") {
+    const jsonCursor = imapCursorJson(row.cursor_json);
+    const uidvalidity = stringValue(row.imap_uidvalidity) ?? jsonCursor.uidvalidity;
+    if (!uidvalidity) {
+      return undefined;
+    }
+
+    const path = stringValue(row.provider_mailbox_id) ?? jsonCursor.mailbox?.path;
+    if (!path) {
+      return undefined;
+    }
+
+    const highestUid =
+      stringValue(row.imap_highest_uid) ?? jsonCursor.highestUid;
+    const uidNext = stringValue(row.imap_uid_next) ?? jsonCursor.uidNext;
+    const highestModseq =
+      stringValue(row.imap_highest_modseq) ?? jsonCursor.highestModseq;
+
+    return {
+      provider: "imap",
+      scope: "mailbox",
+      mailbox: {
+        provider: "imap",
+        path,
+        ...(jsonCursor.mailbox?.delimiter
+          ? { delimiter: jsonCursor.mailbox.delimiter }
+          : {}),
+      },
+      uidvalidity,
+      ...(highestUid ? { highestUid } : {}),
+      ...(uidNext ? { uidNext } : {}),
+      ...(highestModseq ? { highestModseq } : {}),
+    };
+  }
+
   return undefined;
 }
 
@@ -306,6 +349,47 @@ function graphMailboxCursorJson(value: unknown): string | undefined {
   }
 
   return stringValue((mailbox as Record<string, unknown>).folderId);
+}
+
+function imapCursorJson(value: unknown): Partial<Extract<ProviderCursor, { provider: "imap" }>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const cursor = value as Record<string, unknown>;
+  if (cursor.provider !== "imap") {
+    return {};
+  }
+
+  const mailbox = cursor.mailbox;
+  const mailboxRecord =
+    mailbox && typeof mailbox === "object" && !Array.isArray(mailbox)
+      ? (mailbox as Record<string, unknown>)
+      : undefined;
+  const path = stringValue(mailboxRecord?.path);
+  const delimiter = stringValue(mailboxRecord?.delimiter);
+
+  return {
+    ...(path
+      ? {
+          mailbox: {
+            provider: "imap",
+            path,
+            ...(delimiter ? { delimiter } : {}),
+          },
+        }
+      : {}),
+    ...(stringValue(cursor.uidvalidity)
+      ? { uidvalidity: stringValue(cursor.uidvalidity) }
+      : {}),
+    ...(stringValue(cursor.highestUid)
+      ? { highestUid: stringValue(cursor.highestUid) }
+      : {}),
+    ...(stringValue(cursor.uidNext) ? { uidNext: stringValue(cursor.uidNext) } : {}),
+    ...(stringValue(cursor.highestModseq)
+      ? { highestModseq: stringValue(cursor.highestModseq) }
+      : {}),
+  };
 }
 
 function stringValue(value: unknown): string | undefined {

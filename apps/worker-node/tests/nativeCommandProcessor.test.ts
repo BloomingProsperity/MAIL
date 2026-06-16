@@ -333,8 +333,8 @@ describe("native engine command processor", () => {
   });
 
   it.each([
-    ["mark_read", { removeFlags: ["\\Seen"] }],
-    ["mark_unread", { addFlags: ["\\Seen"] }],
+    ["mark_read", { addFlags: ["\\Seen"] }],
+    ["mark_unread", { removeFlags: ["\\Seen"] }],
     ["star", { addFlags: ["\\Flagged"] }],
     ["unstar", { removeFlags: ["\\Flagged"] }],
   ] as const)("dispatches IMAP %s through flag updates", async (action, flags) => {
@@ -541,6 +541,30 @@ describe("native engine command processor", () => {
       ).rejects.toBeInstanceOf(NonRetryableQueueError);
     },
   );
+
+  it("marks incomplete native IMAP message refs as non-retryable", async () => {
+    const updateFlags = vi.fn().mockResolvedValue(undefined);
+    const processor = createNativeEngineCommandProcessor({
+      targetResolver: {
+        resolveMessageTarget: vi.fn().mockResolvedValue({
+          providerMessageId: "42",
+        }),
+      },
+      imap: {
+        updateFlags,
+        moveMessage: vi.fn(),
+        applyLabels: vi.fn(),
+      },
+    });
+
+    await expect(
+      processor.executeCommand({
+        provider: "imap",
+        command: baseCommand,
+      }),
+    ).rejects.toBeInstanceOf(NonRetryableQueueError);
+    expect(updateFlags).not.toHaveBeenCalled();
+  });
 
   it("marks missing Gmail mailbox refs as non-retryable", async () => {
     const processor = createNativeEngineCommandProcessor({
