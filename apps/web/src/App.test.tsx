@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { ApiRequestError } from "./lib/emailHubApi";
 import type {
+  ComposeAttachmentMaintenanceCleanupResultDto,
+  ComposeAttachmentMaintenanceStatusDto,
   EmailHubApi,
   FollowUpDto,
   FollowUpPage,
@@ -1189,6 +1191,48 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText("能力选项已保存：翻译邮件。")).toBeTruthy();
+  });
+
+  it("lets admins inspect and clean compose attachment cache from Settings", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+    fireEvent.click(
+      within(screen.getByLabelText("设置目录")).getByRole("button", {
+        name: "数据维护",
+      }),
+    );
+
+    const maintenancePanel = await screen.findByLabelText("数据维护面板");
+    await waitFor(() => {
+      expect(api.getComposeAttachmentMaintenanceStatus).toHaveBeenCalled();
+    });
+    expect(within(maintenancePanel).getByText("未引用附件")).toBeTruthy();
+    expect(within(maintenancePanel).getByText("2 MB 可清理")).toBeTruthy();
+
+    fireEvent.change(within(maintenancePanel).getByLabelText("清理最小保留小时"), {
+      target: { value: "48" },
+    });
+    fireEvent.change(within(maintenancePanel).getByLabelText("清理批量上限"), {
+      target: { value: "2" },
+    });
+    fireEvent.click(
+      within(maintenancePanel).getByRole("button", { name: "清理未引用附件" }),
+    );
+
+    await waitFor(() => {
+      expect(api.cleanupComposeAttachments).toHaveBeenCalledWith({
+        minAgeHours: 48,
+        limit: 2,
+      });
+    });
+    expect(
+      await within(maintenancePanel).findByText("已清理 2 个未引用附件，释放 4 KB。"),
+    ).toBeTruthy();
   });
 
   it("clears the saved Hermes API key from Settings", async () => {
@@ -6759,6 +6803,57 @@ function createApiFixture(): EmailHubApi {
             setupActions: [],
           },
         }) satisfies MailEngineHealthDto,
+    ),
+    getComposeAttachmentMaintenanceStatus: vi.fn(
+      async () =>
+        ({
+          generatedAt: "2026-06-16T00:00:00.000Z",
+          storage: "local",
+          retentionMs: 7 * 24 * 60 * 60 * 1000,
+          cleanupLimit: 100,
+          protectedStorageKeyCount: 2,
+          scanned: 12,
+          scanLimit: 5000,
+          scanLimited: false,
+          uploads: 10,
+          totalBytes: 8 * 1024 * 1024,
+          protected: 2,
+          fresh: 3,
+          staleUnreferenced: 5,
+          staleUnreferencedBytes: 2 * 1024 * 1024,
+          invalid: 0,
+        }) satisfies ComposeAttachmentMaintenanceStatusDto,
+    ),
+    cleanupComposeAttachments: vi.fn(
+      async () =>
+        ({
+          generatedAt: "2026-06-16T00:05:00.000Z",
+          storage: "local",
+          retentionMs: 48 * 60 * 60 * 1000,
+          cleanupLimit: 2,
+          protectedStorageKeyCount: 2,
+          cleanup: {
+            scanned: 4,
+            deleted: 2,
+            retained: 2,
+            skippedFresh: 1,
+            skippedProtected: 1,
+            skippedInvalid: 0,
+            bytesDeleted: 4096,
+          },
+          after: {
+            scanned: 10,
+            scanLimit: 5000,
+            scanLimited: false,
+            uploads: 8,
+            totalBytes: 7 * 1024 * 1024,
+            protected: 2,
+            fresh: 3,
+            staleUnreferenced: 0,
+            staleUnreferencedBytes: 0,
+            invalid: 0,
+          },
+        }) satisfies ComposeAttachmentMaintenanceCleanupResultDto,
     ),
     createDomain: vi.fn(async () => ({
       id: "domain_1",

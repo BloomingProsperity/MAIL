@@ -1256,6 +1256,53 @@ export interface MailEngineHealthDto {
   };
 }
 
+export interface ComposeAttachmentMaintenanceInspectionDto {
+  scanned: number;
+  scanLimit: number;
+  scanLimited: boolean;
+  uploads: number;
+  totalBytes: number;
+  protected: number;
+  fresh: number;
+  staleUnreferenced: number;
+  staleUnreferencedBytes: number;
+  invalid: number;
+  oldestCreatedAt?: string;
+  newestCreatedAt?: string;
+}
+
+export interface ComposeAttachmentMaintenanceStatusDto
+  extends ComposeAttachmentMaintenanceInspectionDto {
+  generatedAt: string;
+  storage: "local";
+  retentionMs: number;
+  cleanupLimit: number;
+  protectedStorageKeyCount: number;
+}
+
+export interface ComposeAttachmentMaintenanceCleanupInput {
+  minAgeHours?: number;
+  limit?: number;
+}
+
+export interface ComposeAttachmentMaintenanceCleanupResultDto {
+  generatedAt: string;
+  storage: "local";
+  retentionMs: number;
+  cleanupLimit: number;
+  protectedStorageKeyCount: number;
+  cleanup: {
+    scanned: number;
+    deleted: number;
+    retained: number;
+    skippedFresh: number;
+    skippedProtected: number;
+    skippedInvalid: number;
+    bytesDeleted: number;
+  };
+  after: ComposeAttachmentMaintenanceInspectionDto;
+}
+
 export type FollowUpKind = "manual" | "needs_reply" | "waiting_on_them";
 export type FollowUpStatus = "open" | "due" | "done" | "cancelled";
 export type FollowUpListStatus = FollowUpStatus | "all";
@@ -1841,6 +1888,10 @@ export interface EmailHubApi {
   getMailNavigationSummary(): Promise<MailNavigationSummaryDto>;
   getMailEngineHealth(): Promise<MailEngineHealthDto>;
   getMailProviderCapabilities(): Promise<MailProviderCapabilitiesResponse>;
+  getComposeAttachmentMaintenanceStatus(): Promise<ComposeAttachmentMaintenanceStatusDto>;
+  cleanupComposeAttachments(
+    input?: ComposeAttachmentMaintenanceCleanupInput,
+  ): Promise<ComposeAttachmentMaintenanceCleanupResultDto>;
   createDomain(input: { domain: string }): Promise<DomainDto>;
   listDomains(): Promise<Page<DomainDto>>;
   createDomainDestination(input: {
@@ -2884,6 +2935,22 @@ export function createEmailHubApi(
 
     getMailProviderCapabilities() {
       return request(fetchImpl, baseUrl, "/api/mail-providers/capabilities");
+    },
+
+    getComposeAttachmentMaintenanceStatus() {
+      return request(fetchImpl, baseUrl, "/api/maintenance/compose-attachments");
+    },
+
+    cleanupComposeAttachments(input = {}) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        "/api/maintenance/compose-attachments/cleanup",
+        {
+          method: "POST",
+          body: JSON.stringify(cleanObject(input)),
+        },
+      );
     },
 
     createDomain(input) {

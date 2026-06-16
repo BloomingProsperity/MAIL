@@ -141,6 +141,8 @@ with more than smoke-level tests.
   confirmation requirement, memory limit, and context character budget. Message
   body context is capped before prompt construction and before skill run/audit
   persistence, with a 24k character default when no per-skill override exists.
+  New Hermes skills must ship with editable settings, defaults, frontend
+  controls, and route tests before they are considered complete.
 - Worker: no silent write actions; worker only consumes explicit mail actions
   and scheduled jobs. A `hermes_retention_cleanup` lane prunes expired Hermes
   translation/summary caches, completed action plans, feedback, audit events,
@@ -250,7 +252,7 @@ with more than smoke-level tests.
   search QA, reader summary/translation, Search workspace filters, CSV import,
   transfer,
   Gatekeeper senders, Sync Center diagnostics and reauthorization tasks, Hermes
-  settings, domains.
+  settings, domains, self-hosted data maintenance.
 - Failure: backend unavailable keeps preview state with visible status.
 - Tests: API client route contracts, App behavior tests for each connected
   module, mobile/desktop layout checks where UI changes are visual.
@@ -329,7 +331,12 @@ with more than smoke-level tests.
   worker now has a compose attachment cleanup lane that periodically queries active
   draft/outbox manifests, protects referenced `storageKey` values, and prunes
   only stale unreferenced blob files from the shared volume using bounded
-  retention and per-run limits. Forwarded provider attachments are still
+  retention and per-run limits. Settings now exposes the same maintenance
+  boundary through `GET /api/maintenance/compose-attachments` and bounded
+  `POST /api/maintenance/compose-attachments/cleanup`, so self-hosted admins can
+  inspect stale uploads, protected draft references, invalid metadata, scan
+  limits, and manually prune unreferenced files without shell access. Forwarded
+  provider attachments are still
   snapshotted at draft creation through the bounded EmailEngine attachment
   download adapter, so the private transport manifest keeps both
   `providerAttachmentId` and `contentBase64` while public draft DTOs expose only
@@ -340,8 +347,7 @@ with more than smoke-level tests.
   silently dropping the file.
 - Remaining gap: the current compose panel is intentionally compact; rich
   editor, chunked/streaming uploads, provider-native large attachment sessions,
-  admin-visible attachment cleanup diagnostics/manual purge controls, admin
-  diagnostics for provider-native shared mailbox permissions, and deeper
+  admin diagnostics for provider-native shared mailbox permissions, and deeper
   Sent-folder parity checks are still separate slices.
 
 ## Product References

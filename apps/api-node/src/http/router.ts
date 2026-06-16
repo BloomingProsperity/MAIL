@@ -157,6 +157,7 @@ import {
   type UpdateMailDraftInput,
 } from "../mail-compose/mail-compose.js";
 import type { ComposeAttachmentBlobStore } from "../mail-compose/compose-attachment-blob-store.js";
+import type { ComposeAttachmentMaintenanceService } from "../maintenance/compose-attachment-maintenance.js";
 import {
   InvalidMailActionRequestError,
   type MailAction,
@@ -427,6 +428,7 @@ export interface ApiConfig {
   mailReadStore?: MailReadStore;
   attachmentDownloadService?: AttachmentDownloadService;
   composeAttachmentBlobStore?: ComposeAttachmentBlobStore;
+  composeAttachmentMaintenanceService?: ComposeAttachmentMaintenanceService;
   accountOnboardingService?: AccountOnboardingService;
   accountImportService?: AccountCsvImportService;
   accountTransferService?: AccountTransferService;
@@ -545,6 +547,45 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         );
         writeJson(response, 200, result);
         return;
+      }
+
+      const composeAttachmentMaintenanceRoute =
+        parseComposeAttachmentMaintenanceRoute(request.url);
+      if (composeAttachmentMaintenanceRoute) {
+        if (!config.composeAttachmentMaintenanceService) {
+          writeJson(response, 503, {
+            error: "compose_attachment_maintenance_unavailable",
+          });
+          return;
+        }
+
+        if (
+          composeAttachmentMaintenanceRoute === "status" &&
+          request.method === "GET"
+        ) {
+          writeJson(
+            response,
+            200,
+            await config.composeAttachmentMaintenanceService.getStatus(),
+          );
+          return;
+        }
+
+        if (
+          composeAttachmentMaintenanceRoute === "cleanup" &&
+          request.method === "POST"
+        ) {
+          writeJson(
+            response,
+            202,
+            await config.composeAttachmentMaintenanceService.cleanup(
+              parseComposeAttachmentMaintenanceCleanupInput(
+                await readRequestBody(),
+              ),
+            ),
+          );
+          return;
+        }
       }
 
       if (
@@ -2878,6 +2919,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
+      if (error instanceof InvalidComposeAttachmentMaintenanceRequestError) {
+        writeJson(response, 400, { error: error.code });
+        return;
+      }
+
       if (error instanceof RequestBodyTooLargeError) {
         writeJson(response, 413, { error: error.code });
         return;
@@ -3407,6 +3453,89 @@ function isOperationalEventsRoute(requestUrl: string | undefined): boolean {
   }
 
   return new URL(requestUrl, "http://localhost").pathname === "/api/diagnostics/events";
+}
+
+function parseComposeAttachmentMaintenanceRoute(
+  requestUrl: string | undefined,
+): "status" | "cleanup" | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const pathname = new URL(requestUrl, "http://localhost").pathname;
+  if (pathname === "/api/maintenance/compose-attachments") {
+    return "status";
+  }
+  if (pathname === "/api/maintenance/compose-attachments/cleanup") {
+    return "cleanup";
+  }
+
+  return undefined;
+}
+
+function parseComposeAttachmentMaintenanceCleanupInput(body: string): {
+  minAgeMs?: number;
+  limit?: number;
+} {
+  if (!body.trim()) {
+    return {};
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    throw new InvalidComposeAttachmentMaintenanceRequestError();
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new InvalidComposeAttachmentMaintenanceRequestError();
+  }
+
+  const record = payload as {
+    minAgeHours?: unknown;
+    limit?: unknown;
+  };
+  return {
+    ...(record.minAgeHours !== undefined
+      ? {
+          minAgeMs:
+            readComposeAttachmentMaintenanceInteger(
+              record.minAgeHours,
+              1,
+              24 * 90,
+            ) *
+            60 *
+            60 *
+            1000,
+        }
+      : {}),
+    ...(record.limit !== undefined
+      ? {
+          limit: readComposeAttachmentMaintenanceInteger(
+            record.limit,
+            1,
+            10000,
+          ),
+        }
+      : {}),
+  };
+}
+
+function readComposeAttachmentMaintenanceInteger(
+  value: unknown,
+  min: number,
+  max: number,
+): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < min ||
+    value > max
+  ) {
+    throw new InvalidComposeAttachmentMaintenanceRequestError();
+  }
+
+  return value;
 }
 
 function isHermesAuditLogRoute(requestUrl: string | undefined): boolean {
@@ -8014,6 +8143,14 @@ class InvalidHermesDraftFeedbackRequestError extends Error {
 
   constructor() {
     super("invalid_draft_feedback_request");
+  }
+}
+
+class InvalidComposeAttachmentMaintenanceRequestError extends Error {
+  readonly code = "invalid_compose_attachment_maintenance_request";
+
+  constructor() {
+    super("invalid_compose_attachment_maintenance_request");
   }
 }
 

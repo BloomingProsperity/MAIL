@@ -43,6 +43,157 @@ afterEach(async () => {
 });
 
 describe("mail compose routes", () => {
+  it("returns compose attachment maintenance status", async () => {
+    const calls: string[] = [];
+    const composeAttachmentMaintenanceService = {
+      async getStatus() {
+        calls.push("status");
+        return {
+          generatedAt: "2026-06-16T00:00:00.000Z",
+          storage: "local",
+          retentionMs: 604800000,
+          cleanupLimit: 100,
+          protectedStorageKeyCount: 2,
+          scanned: 5,
+          scanLimit: 5000,
+          scanLimited: false,
+          uploads: 4,
+          totalBytes: 1000,
+          protected: 2,
+          fresh: 1,
+          staleUnreferenced: 1,
+          staleUnreferencedBytes: 250,
+          invalid: 0,
+        };
+      },
+      async cleanup() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/maintenance/compose-attachments`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          storage: "local",
+          protectedStorageKeyCount: 2,
+          staleUnreferenced: 1,
+          staleUnreferencedBytes: 250,
+        });
+      },
+      { composeAttachmentMaintenanceService },
+    );
+    expect(calls).toEqual(["status"]);
+  });
+
+  it("runs bounded compose attachment maintenance cleanup", async () => {
+    const calls: unknown[] = [];
+    const composeAttachmentMaintenanceService = {
+      async getStatus() {
+        throw new Error("not used");
+      },
+      async cleanup(input: unknown) {
+        calls.push(input);
+        return {
+          generatedAt: "2026-06-16T00:00:00.000Z",
+          storage: "local",
+          retentionMs: 172800000,
+          cleanupLimit: 3,
+          protectedStorageKeyCount: 1,
+          cleanup: {
+            scanned: 4,
+            deleted: 3,
+            retained: 1,
+            skippedFresh: 0,
+            skippedProtected: 1,
+            skippedInvalid: 0,
+            bytesDeleted: 4096,
+          },
+          after: {
+            scanned: 1,
+            scanLimit: 5000,
+            scanLimited: false,
+            uploads: 1,
+            totalBytes: 128,
+            protected: 1,
+            fresh: 0,
+            staleUnreferenced: 0,
+            staleUnreferencedBytes: 0,
+            invalid: 0,
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/maintenance/compose-attachments/cleanup`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ minAgeHours: 48, limit: 3 }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(await response.json()).toMatchObject({
+          cleanup: { deleted: 3, bytesDeleted: 4096 },
+          after: { staleUnreferenced: 0 },
+        });
+      },
+      { composeAttachmentMaintenanceService },
+    );
+    expect(calls).toEqual([{ minAgeMs: 172800000, limit: 3 }]);
+  });
+
+  it("rejects invalid compose attachment maintenance cleanup requests", async () => {
+    const composeAttachmentMaintenanceService = {
+      async getStatus() {
+        throw new Error("not used");
+      },
+      async cleanup() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/maintenance/compose-attachments/cleanup`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ minAgeHours: 0, limit: 10001 }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_compose_attachment_maintenance_request",
+        });
+      },
+      { composeAttachmentMaintenanceService },
+    );
+  });
+
+  it("returns 503 until compose attachment maintenance is wired", async () => {
+    await withApi(async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/maintenance/compose-attachments`,
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "compose_attachment_maintenance_unavailable",
+      });
+    });
+  });
+
   it("lists account send identities through the compose service", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {

@@ -2079,6 +2079,40 @@ h2 {
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
+.maintenance-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.maintenance-stat {
+  align-items: start;
+  justify-content: start;
+  gap: 5px;
+}
+
+.maintenance-stat span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.maintenance-stat strong {
+  color: var(--text-main);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.maintenance-stat p,
+.maintenance-cleanup p {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.maintenance-cleanup {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 150px 150px auto;
+  align-items: end;
+}
+
 .memory-filter-grid {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) 96px;
@@ -2952,6 +2986,8 @@ h2 {
   .custom-server-grid,
   .import-transfer-grid,
   .audit-filter-grid,
+  .maintenance-grid,
+  .maintenance-cleanup,
   .skill-grid {
     grid-template-columns: 1fr;
   }

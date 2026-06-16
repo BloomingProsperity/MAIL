@@ -73,6 +73,11 @@ import { createMailActionService } from "./mail-actions/mail-actions.js";
 import { createPostgresMailActionStore } from "./mail-actions/postgres-mail-action-store.js";
 import { createMailComposeService } from "./mail-compose/mail-compose.js";
 import { createLocalComposeAttachmentBlobStore } from "./mail-compose/compose-attachment-blob-store.js";
+import {
+  createComposeAttachmentMaintenanceService,
+  createLocalComposeAttachmentMaintenanceBlobStore,
+  createPostgresComposeAttachmentReferenceStore,
+} from "./maintenance/compose-attachment-maintenance.js";
 import { createPostgresMailComposeStore } from "./mail-compose/postgres-mail-compose-store.js";
 import { createPostgresSendIdentityStore } from "./mail-compose/postgres-send-identity-store.js";
 import { createPostgresMailThreadingStore } from "./mail-compose/postgres-threading-store.js";
@@ -136,12 +141,37 @@ logger.info("api_configuration_loaded", {
 });
 
 if (pool) {
+  const composeAttachmentBlobDir =
+    process.env.COMPOSE_ATTACHMENT_BLOB_DIR ??
+    "/tmp/email-hub-compose-attachments";
   const composeAttachmentBlobStore = createLocalComposeAttachmentBlobStore({
-    rootDir:
-      process.env.COMPOSE_ATTACHMENT_BLOB_DIR ??
-      "/tmp/email-hub-compose-attachments",
+    rootDir: composeAttachmentBlobDir,
     createId: randomUUID,
   });
+  config.composeAttachmentMaintenanceService =
+    createComposeAttachmentMaintenanceService({
+      referenceStore: createPostgresComposeAttachmentReferenceStore(pool),
+      blobStore: createLocalComposeAttachmentMaintenanceBlobStore({
+        rootDir: composeAttachmentBlobDir,
+      }),
+      now: () => new Date(),
+      retentionMs:
+        readBoundedIntegerEnv({
+          value: process.env.COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS,
+          fallback: 24 * 7,
+          min: 1,
+          max: 24 * 90,
+        }) *
+        60 *
+        60 *
+        1000,
+      cleanupLimit: readBoundedIntegerEnv({
+        value: process.env.COMPOSE_ATTACHMENT_CLEANUP_LIMIT,
+        fallback: 100,
+        min: 1,
+        max: 10000,
+      }),
+    });
   const accountOnboardingStore = createPostgresAccountOnboardingStore(pool, {
     createId: randomUUID,
   });
@@ -518,4 +548,26 @@ function readDiagnosticsLogCapacity(value: string | undefined): number {
   }
 
   return parsed;
+}
+
+function readBoundedIntegerEnv(input: {
+  value?: string;
+  fallback: number;
+  min: number;
+  max: number;
+}): number {
+  if (!input.value) {
+    return input.fallback;
+  }
+
+  if (!/^\d+$/.test(input.value.trim())) {
+    return input.fallback;
+  }
+
+  const parsed = Number.parseInt(input.value, 10);
+  if (!Number.isInteger(parsed)) {
+    return input.fallback;
+  }
+
+  return Math.min(input.max, Math.max(input.min, parsed));
 }

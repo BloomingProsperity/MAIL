@@ -126,6 +126,86 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("reads and runs compose attachment maintenance through backend routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          generatedAt: "2026-06-16T00:00:00.000Z",
+          storage: "local",
+          retentionMs: 604800000,
+          cleanupLimit: 100,
+          protectedStorageKeyCount: 2,
+          scanned: 12,
+          scanLimit: 5000,
+          scanLimited: false,
+          uploads: 10,
+          totalBytes: 8388608,
+          protected: 2,
+          fresh: 3,
+          staleUnreferenced: 5,
+          staleUnreferencedBytes: 2097152,
+          invalid: 0,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          generatedAt: "2026-06-16T00:05:00.000Z",
+          storage: "local",
+          retentionMs: 172800000,
+          cleanupLimit: 2,
+          protectedStorageKeyCount: 2,
+          cleanup: {
+            scanned: 4,
+            deleted: 2,
+            retained: 2,
+            skippedFresh: 1,
+            skippedProtected: 1,
+            skippedInvalid: 0,
+            bytesDeleted: 4096,
+          },
+          after: {
+            scanned: 10,
+            scanLimit: 5000,
+            scanLimited: false,
+            uploads: 8,
+            totalBytes: 7340032,
+            protected: 2,
+            fresh: 3,
+            staleUnreferenced: 0,
+            staleUnreferencedBytes: 0,
+            invalid: 0,
+          },
+        }),
+      );
+    const api = createEmailHubApi({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: fetchMock as any,
+    });
+
+    const status = await api.getComposeAttachmentMaintenanceStatus();
+    const cleanup = await api.cleanupComposeAttachments({
+      minAgeHours: 48,
+      limit: 2,
+    });
+
+    expect(status.staleUnreferenced).toBe(5);
+    expect(cleanup.cleanup.deleted).toBe(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8080/api/maintenance/compose-attachments",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8080/api/maintenance/compose-attachments/cleanup",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ minAgeHours: 48, limit: 2 }),
+      }),
+    );
+  });
+
   it("loads smart-sorted messages with local mailbox ids only", async () => {
     const fetchMock = vi.fn(async (url: string) =>
       jsonResponse({

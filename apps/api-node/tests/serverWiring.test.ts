@@ -179,6 +179,18 @@ describe("server wiring", () => {
     expect(source).toMatch(/config\.hermesSkillSettingsService\?\.listSkills/);
   });
 
+  it("wires compose attachment maintenance into self-hosted cleanup controls", async () => {
+    const serverUrl = new URL("../src/server.ts", import.meta.url);
+    const source = await readFile(serverUrl, "utf8");
+
+    expect(source).toMatch(/createComposeAttachmentMaintenanceService/);
+    expect(source).toMatch(/createPostgresComposeAttachmentReferenceStore/);
+    expect(source).toMatch(/createLocalComposeAttachmentMaintenanceBlobStore/);
+    expect(source).toMatch(/config\.composeAttachmentMaintenanceService\s*=/);
+    expect(source).toMatch(/COMPOSE_ATTACHMENT_CLEANUP_RETENTION_HOURS/);
+    expect(source).toMatch(/COMPOSE_ATTACHMENT_CLEANUP_LIMIT/);
+  });
+
   it("registers graceful shutdown for the HTTP server and Postgres pool", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");
