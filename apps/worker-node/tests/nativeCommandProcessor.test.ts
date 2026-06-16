@@ -139,14 +139,15 @@ describe("native engine command processor", () => {
     });
   });
 
-  it("applies Gmail labels using resolved local label names", async () => {
+  it("applies Gmail labels using resolved provider label ids", async () => {
     const modifyMessage = vi.fn().mockResolvedValue({ id: "gm_msg_1" });
+    const resolveLabelTargets = vi.fn().mockResolvedValue(["Label_123"]);
     const processor = createNativeEngineCommandProcessor({
       targetResolver: {
         resolveMessageTarget: vi.fn().mockResolvedValue({
           providerMessageId: "gm_msg_1",
         }),
-        resolveLabelTargets: vi.fn().mockResolvedValue(["Project/Acme"]),
+        resolveLabelTargets,
       },
       gmail: {
         modifyMessage,
@@ -169,10 +170,15 @@ describe("native engine command processor", () => {
       },
     });
 
+    expect(resolveLabelTargets).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      provider: "gmail",
+      labelIds: ["label_1"],
+    });
     expect(modifyMessage).toHaveBeenCalledWith({
       accountId: "acc_1",
       messageId: "gm_msg_1",
-      addLabelIds: ["Project/Acme"],
+      addLabelIds: ["Label_123"],
     });
   });
 
@@ -292,12 +298,13 @@ describe("native engine command processor", () => {
       categories: ["Existing"],
     });
     const updateMessage = vi.fn().mockResolvedValue({ id: "graph_msg_1" });
+    const resolveLabelTargets = vi.fn().mockResolvedValue(["Project/Acme"]);
     const processor = createNativeEngineCommandProcessor({
       targetResolver: {
         resolveMessageTarget: vi.fn().mockResolvedValue({
           providerMessageId: "graph_msg_1",
         }),
-        resolveLabelTargets: vi.fn().mockResolvedValue(["Project/Acme"]),
+        resolveLabelTargets,
       },
       gmail: {
         modifyMessage: vi.fn(),
@@ -320,6 +327,11 @@ describe("native engine command processor", () => {
       },
     });
 
+    expect(resolveLabelTargets).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      provider: "graph",
+      labelIds: ["label_1"],
+    });
     expect(getMessage).toHaveBeenCalledWith({
       accountId: "acc_1",
       messageId: "graph_msg_1",
@@ -444,13 +456,14 @@ describe("native engine command processor", () => {
 
   it("dispatches IMAP label application through resolved local label names", async () => {
     const applyLabels = vi.fn().mockResolvedValue(undefined);
+    const resolveLabelTargets = vi.fn().mockResolvedValue(["Project/Acme"]);
     const processor = createNativeEngineCommandProcessor({
       targetResolver: {
         resolveMessageTarget: vi.fn().mockResolvedValue({
           providerMessageId: "42",
           providerMailboxId: "INBOX",
         }),
-        resolveLabelTargets: vi.fn().mockResolvedValue(["Project/Acme"]),
+        resolveLabelTargets,
       },
       imap: {
         updateFlags: vi.fn(),
@@ -469,6 +482,11 @@ describe("native engine command processor", () => {
       },
     });
 
+    expect(resolveLabelTargets).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      provider: "imap",
+      labelIds: ["label_1"],
+    });
     expect(applyLabels).toHaveBeenCalledWith({
       accountId: "acc_1",
       mailboxPath: "INBOX",

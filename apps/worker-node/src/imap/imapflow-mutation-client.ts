@@ -107,13 +107,29 @@ export function createImapFlowMutationClient(
       );
     },
     async applyLabels(input) {
+      const labels = input.labels.map(validateImapKeyword);
       await withMailboxSession(options, connect, input.accountId, input.mailboxPath, async (session) => {
-        if (input.labels.length > 0) {
-          await session.messageFlagsAdd(input.uid, input.labels, { uid: true });
+        if (labels.length > 0) {
+          await session.messageFlagsAdd(input.uid, labels, { uid: true });
         }
       });
     },
   };
+}
+
+function validateImapKeyword(value: string): string {
+  const label = value.trim();
+  if (
+    label.length === 0 ||
+    label.startsWith("\\") ||
+    !/^[A-Za-z0-9_.+\-/]+$/.test(label)
+  ) {
+    throw new NonRetryableQueueError(
+      `IMAP label keyword is not safe for provider writeback: ${value}`,
+    );
+  }
+
+  return label;
 }
 
 export function createPostgresImapAccountSettingsStore(

@@ -19,6 +19,8 @@ export interface ResolveSpecialMailboxTargetInput {
 }
 
 export interface ResolveLabelTargetsInput {
+  accountId: string;
+  provider: string;
   labelIds: string[];
 }
 
@@ -62,7 +64,7 @@ interface MailboxRefRow extends Record<string, unknown> {
 
 interface LabelRow extends Record<string, unknown> {
   id: string;
-  name: string;
+  target: string | null;
 }
 
 export function createPostgresEngineCommandTargetResolver(
@@ -149,19 +151,55 @@ export function createPostgresEngineCommandTargetResolver(
         return [];
       }
 
+      if (input.provider === "gmail") {
+        const result = await client.query<LabelRow>(
+          `
+            SELECT
+              labels.id,
+              CASE
+                WHEN COUNT(DISTINCT COALESCE(
+                  provider_mailbox_refs.gmail_label_id,
+                  provider_mailbox_refs.provider_mailbox_id
+                )) = 1
+                  THEN MIN(COALESCE(
+                    provider_mailbox_refs.gmail_label_id,
+                    provider_mailbox_refs.provider_mailbox_id
+                  ))
+                ELSE NULL
+              END AS target
+            FROM labels
+            LEFT JOIN provider_mailbox_refs
+              ON provider_mailbox_refs.account_id = labels.account_id
+             AND provider_mailbox_refs.provider = 'gmail'
+             AND provider_mailbox_refs.role = 'label'
+             AND lower(provider_mailbox_refs.display_name) = lower(labels.name)
+            WHERE labels.account_id = $1
+              AND labels.id = ANY($2::uuid[])
+            GROUP BY labels.id
+          `,
+          [input.accountId, input.labelIds],
+        );
+        const targetsById = new Map(result.rows.map((row) => [row.id, row.target]));
+
+        return input.labelIds
+          .map((labelId) => targetsById.get(labelId))
+          .filter((target): target is string => !!target);
+      }
+
       const result = await client.query<LabelRow>(
         `
-          SELECT id, name
+          SELECT id, name AS target
           FROM labels
-          WHERE id = ANY($1::uuid[])
+          WHERE account_id = $1
+            AND id = ANY($2::uuid[])
         `,
-        [input.labelIds],
+        [input.accountId, input.labelIds],
       );
-      const namesById = new Map(result.rows.map((row) => [row.id, row.name]));
+      const targetsById = new Map(result.rows.map((row) => [row.id, row.target]));
 
       return input.labelIds
-        .map((labelId) => namesById.get(labelId))
-        .filter((name): name is string => !!name);
+        .map((labelId) => targetsById.get(labelId))
+        .filter((target): target is string => !!target);
     },
   };
 }

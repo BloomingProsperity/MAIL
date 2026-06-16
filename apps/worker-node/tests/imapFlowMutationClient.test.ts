@@ -4,6 +4,7 @@ import {
   createImapFlowMutationClient,
   createPostgresImapAccountSettingsStore,
 } from "../src/imap/imapflow-mutation-client";
+import { NonRetryableQueueError } from "../src/queue-errors";
 
 describe("ImapFlow mutation client", () => {
   it("updates IMAP flags inside a mailbox lock and logs out", async () => {
@@ -171,6 +172,27 @@ describe("ImapFlow mutation client", () => {
       "release",
       "logout",
     ]);
+  });
+
+  it("rejects unsafe IMAP label keywords before connecting", async () => {
+    const connect = vi.fn(async () => {
+      throw new Error("should not connect for unsafe labels");
+    });
+    const client = createImapFlowMutationClient({
+      settingsStore: fixedSettingsStore(),
+      secretStore: fixedSecretStore("app-password"),
+      connect,
+    });
+
+    await expect(
+      client.applyLabels({
+        accountId: "account_1",
+        mailboxPath: "INBOX",
+        uid: "42",
+        labels: ["验证码", "Project Alpha", "\\Seen"],
+      }),
+    ).rejects.toBeInstanceOf(NonRetryableQueueError);
+    expect(connect).not.toHaveBeenCalled();
   });
 
   it("closes the connection after failed commands without leaking passwords", async () => {

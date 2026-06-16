@@ -227,7 +227,7 @@ async function applyEmailEngineLabels(
 ): Promise<void> {
   const labelIds = requiredStringArray(command.target.labelIds, "target.labelIds");
   const labelTargets = await options.targetResolver.resolveLabelTargets?.(
-    labelResolverInput(labelIds),
+    labelResolverInput(command.accountId, "emailengine", labelIds),
   );
   if (!labelTargets || labelTargets.length !== labelIds.length) {
     throw new NonRetryableQueueError(
@@ -244,8 +244,12 @@ async function applyEmailEngineLabels(
   );
 }
 
-function labelResolverInput(labelIds: string[]): ResolveLabelTargetsInput {
-  return { labelIds };
+function labelResolverInput(
+  accountId: string,
+  provider: string,
+  labelIds: string[],
+): ResolveLabelTargetsInput {
+  return { accountId, provider, labelIds };
 }
 
 function requiredString(value: unknown, name: string): string {

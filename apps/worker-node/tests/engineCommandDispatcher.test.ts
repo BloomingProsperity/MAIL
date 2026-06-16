@@ -232,6 +232,8 @@ describe("engine command dispatcher", () => {
     });
 
     expect(resolveLabelTargets).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      provider: "emailengine",
       labelIds: ["label_1", "label_2"],
     });
     expect(updateMessage).toHaveBeenCalledWith({

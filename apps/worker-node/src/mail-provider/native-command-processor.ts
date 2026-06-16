@@ -133,7 +133,7 @@ async function dispatchGmail(
       return;
     }
     case "apply_labels": {
-      const labelTargets = await resolveLabelTargets(options, command);
+      const labelTargets = await resolveLabelTargets(options, command, "gmail");
       await gmail.modifyMessage({
         accountId: command.accountId,
         messageId,
@@ -221,7 +221,7 @@ async function dispatchGraph(
       });
       return;
     case "apply_labels": {
-      const labelTargets = await resolveLabelTargets(options, command);
+      const labelTargets = await resolveLabelTargets(options, command, "graph");
       const current = await graph.getMessage({
         accountId: command.accountId,
         messageId,
@@ -329,7 +329,7 @@ async function dispatchImap(
       return;
     }
     case "apply_labels": {
-      const labelTargets = await resolveLabelTargets(options, command);
+      const labelTargets = await resolveLabelTargets(options, command, "imap");
       await imap.applyLabels({
         accountId: command.accountId,
         mailboxPath: message.mailboxPath,
@@ -389,9 +389,14 @@ async function resolveImapMessageTarget(
 async function resolveLabelTargets(
   options: NativeEngineCommandProcessorOptions,
   command: EngineCommandRecord,
+  provider: NativeProvider,
 ): Promise<string[]> {
   const labelIds = requiredStringArray(command.target.labelIds, "target.labelIds");
-  const labels = await options.targetResolver.resolveLabelTargets?.({ labelIds });
+  const labels = await options.targetResolver.resolveLabelTargets?.({
+    accountId: command.accountId,
+    provider,
+    labelIds,
+  });
   if (!labels || labels.length !== labelIds.length) {
     throw new NonRetryableQueueError(
       `native label refs not found for command ${command.id}`,
