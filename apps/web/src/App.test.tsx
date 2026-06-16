@@ -1245,6 +1245,49 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("Hermes 学习记录已删除。")).toBeTruthy();
   });
 
+  it("links Hermes memory usage to filtered audit events", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const memoryPanel = await screen.findByLabelText("Hermes 学习记录");
+    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
+    expect(within(memoryPanel).getByText("写作风格")).toBeTruthy();
+
+    fireEvent.click(
+      within(memoryPanel).getByRole("button", {
+        name: "Inspect Hermes memory usage memory_1",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.listHermesAuditLog).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        memoryId: "memory_1",
+        limit: 50,
+      });
+    });
+    expect(
+      within(auditPanel).getByText("正在查看记忆使用记录：写作风格 · global"),
+    ).toBeTruthy();
+    expect(
+      (within(auditPanel).getByLabelText("Hermes audit memory filter") as HTMLInputElement)
+        .value,
+    ).toBe("memory_1");
+
+    fireEvent.click(within(auditPanel).getByRole("button", { name: "清除记忆过滤" }));
+    await waitFor(() => {
+      expect(api.listHermesAuditLog).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+      });
+    });
+  });
+
   it("filters Hermes memories without saving runtime settings", async () => {
     const api = createApiFixture();
 

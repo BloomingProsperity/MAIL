@@ -2186,6 +2186,25 @@ h2 {
   white-space: normal;
 }
 
+.audit-focus-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--primary-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--primary-soft);
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.audit-focus-banner span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .hermes-memory-list {
   display: grid;
   gap: 10px;

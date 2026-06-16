@@ -7616,6 +7616,9 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
   const [hermesProviders, setHermesProviders] = useState<
     HermesProviderCatalogItem[]
   >(fallbackHermesProviders);
+  const [auditMemoryFocus, setAuditMemoryFocus] = useState<
+    { memoryId: string; label: string } | undefined
+  >();
   const [notice, setNotice] = useState("正在读取 Hermes 配置...");
   const providerOptions = useMemo<HermesProviderCatalogItem[]>(() => {
     if (hermesProviders.some((provider) => provider.key === providerKey)) {
@@ -8025,8 +8028,22 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
       </div>
 
       <HermesRuleManagerPanel api={props.api} accountId={props.accountId} />
-      <HermesMemoryManagerPanel api={props.api} />
-      <HermesAuditLogPanel api={props.api} accountId={props.accountId} />
+      <HermesMemoryManagerPanel
+        api={props.api}
+        onInspectMemoryUsage={(memory) =>
+          setAuditMemoryFocus({
+            memoryId: memory.id,
+            label: `${formatHermesMemoryLayer(memory.layer)} · ${memory.scope}`,
+          })
+        }
+      />
+      <HermesAuditLogPanel
+        api={props.api}
+        accountId={props.accountId}
+        focusedMemoryId={auditMemoryFocus?.memoryId}
+        focusedMemoryLabel={auditMemoryFocus?.label}
+        onClearFocusedMemory={() => setAuditMemoryFocus(undefined)}
+      />
     </section>
   );
 }
@@ -8437,7 +8454,10 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
   );
 }
 
-function HermesMemoryManagerPanel(props: { api?: EmailHubApi }) {
+function HermesMemoryManagerPanel(props: {
+  api?: EmailHubApi;
+  onInspectMemoryUsage?: (memory: HermesMemoryDto) => void;
+}) {
   const previewMemories: HermesMemoryDto[] = [
     {
       id: "preview-writing-style",
@@ -8706,6 +8726,15 @@ function HermesMemoryManagerPanel(props: { api?: EmailHubApi }) {
               </label>
               <div className="inline-actions">
                 <button
+                  className="ghost-button"
+                  type="button"
+                  disabled={isBusy}
+                  aria-label={`Inspect Hermes memory usage ${memory.id}`}
+                  onClick={() => props.onInspectMemoryUsage?.(memory)}
+                >
+                  查看使用记录
+                </button>
+                <button
                   className="primary-button"
                   type="button"
                   disabled={isBusy}
@@ -8730,7 +8759,13 @@ function HermesMemoryManagerPanel(props: { api?: EmailHubApi }) {
   );
 }
 
-function HermesAuditLogPanel(props: { api?: EmailHubApi; accountId?: string }) {
+function HermesAuditLogPanel(props: {
+  api?: EmailHubApi;
+  accountId?: string;
+  focusedMemoryId?: string;
+  focusedMemoryLabel?: string;
+  onClearFocusedMemory?: () => void;
+}) {
   const previewAuditEvents: HermesAuditLogEntryDto[] = [
     {
       id: "preview_audit_translate",
@@ -8756,9 +8791,11 @@ function HermesAuditLogPanel(props: { api?: EmailHubApi; accountId?: string }) {
   const [auditNotice, setAuditNotice] = useState("正在读取 Hermes 审计日志...");
   const [auditBusy, setAuditBusy] = useState(false);
 
-  async function loadAuditEvents() {
+  async function loadAuditEvents(overrides: { memoryId?: string } = {}) {
     const limit = Number.parseInt(limitText, 10);
     const safeLimit = Number.isInteger(limit) && limit >= 1 ? Math.min(limit, 100) : 50;
+    const effectiveMemoryId =
+      overrides.memoryId !== undefined ? overrides.memoryId : memoryIdFilter.trim();
 
     if (!props.api) {
       setEvents(previewAuditEvents);
@@ -8781,7 +8818,7 @@ function HermesAuditLogPanel(props: { api?: EmailHubApi; accountId?: string }) {
         ...(messageIdFilter.trim()
           ? { messageId: messageIdFilter.trim() }
           : {}),
-        ...(memoryIdFilter.trim() ? { memoryId: memoryIdFilter.trim() } : {}),
+        ...(effectiveMemoryId ? { memoryId: effectiveMemoryId } : {}),
         limit: safeLimit,
       });
       setEvents(page.items);
@@ -8803,6 +8840,17 @@ function HermesAuditLogPanel(props: { api?: EmailHubApi; accountId?: string }) {
     // Filters are applied by the explicit refresh button to avoid reloading while typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.accountId, props.api]);
+
+  useEffect(() => {
+    if (!props.focusedMemoryId) {
+      return;
+    }
+
+    setMemoryIdFilter(props.focusedMemoryId);
+    void loadAuditEvents({ memoryId: props.focusedMemoryId });
+    // Focus changes are user-triggered by the memory panel.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.focusedMemoryId]);
 
   return (
     <section className="settings-subpanel" aria-label="Hermes 审计日志">
@@ -8876,6 +8924,25 @@ function HermesAuditLogPanel(props: { api?: EmailHubApi; accountId?: string }) {
       <div className="backend-notice compact" role="status">
         {auditNotice}
       </div>
+
+      {props.focusedMemoryId ? (
+        <div className="audit-focus-banner" role="status">
+          <span>
+            正在查看记忆使用记录：{props.focusedMemoryLabel ?? props.focusedMemoryId}
+          </span>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() => {
+              setMemoryIdFilter("");
+              props.onClearFocusedMemory?.();
+              void loadAuditEvents({ memoryId: "" });
+            }}
+          >
+            清除记忆过滤
+          </button>
+        </div>
+      ) : null}
 
       <div className="task-list hermes-audit-list">
         {events.map((event) => (
