@@ -37,6 +37,7 @@ import {
 } from "../accounts/account-transfer.js";
 import {
   hasImapSmtpProviderPreset,
+  ImapSmtpOnboardingFailedError,
   normalizeImapSmtpProvider,
 } from "../accounts/imap-smtp-onboarding.js";
 import {
@@ -2302,6 +2303,13 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           try {
             return await accountOnboardingService.onboardImapSmtp(payload);
           } catch (error) {
+            const onboardingFailure = asImapSmtpOnboardingFailedError(error);
+            const diagnostics = onboardingFailure?.diagnostics.map((diagnostic) =>
+              sanitizeImapSmtpConnectionDiagnostic(
+                diagnostic,
+                requestSensitiveValues,
+              ),
+            );
             await recordAccountOnboardingFailure(config, {
               requestId,
               action: "onboard_imap_smtp",
@@ -2313,6 +2321,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
               message: `IMAP/SMTP onboarding failed for ${payload.provider}`,
               context: {
                 error: safeErrorForDiagnostics(error, requestSensitiveValues),
+                ...(diagnostics?.length ? { diagnostics } : {}),
               },
             });
             throw error;
@@ -2526,6 +2535,26 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         writeJson(response, 400, {
           error: reauthorizationFailure.code,
           provider: reauthorizationFailure.provider,
+          ...(diagnostics.length ? { diagnostics } : {}),
+        });
+        return;
+      }
+
+      const onboardingFailure = asImapSmtpOnboardingFailedError(error);
+      if (onboardingFailure) {
+        const diagnostics = onboardingFailure.diagnostics.map((diagnostic) =>
+          sanitizeImapSmtpConnectionDiagnostic(
+            diagnostic,
+            requestSensitiveValues,
+          ),
+        );
+        writeJson(response, 400, {
+          error: onboardingFailure.code,
+          provider: onboardingFailure.provider,
+          detail: scrubKnownSensitiveText(
+            onboardingFailure.message,
+            requestSensitiveValues,
+          ),
           ...(diagnostics.length ? { diagnostics } : {}),
         });
         return;
@@ -2922,6 +2951,49 @@ function sanitizeImapSmtpConnectionDiagnostic(
     message: scrubKnownSensitiveText(diagnostic.message, sensitiveValues),
     recoveryAction: diagnostic.recoveryAction,
   };
+}
+
+function asImapSmtpOnboardingFailedError(
+  error: unknown,
+):
+  | {
+      code: "imap_smtp_onboarding_failed";
+      provider: string;
+      message: string;
+      diagnostics: ImapSmtpConnectionDiagnostic[];
+    }
+  | undefined {
+  if (error instanceof ImapSmtpOnboardingFailedError) {
+    return {
+      code: error.code,
+      provider: error.provider,
+      message: error.message,
+      diagnostics: error.diagnostics,
+    };
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    (error as { code?: unknown }).code === "imap_smtp_onboarding_failed" &&
+    typeof (error as { provider?: unknown }).provider === "string"
+  ) {
+    return {
+      code: "imap_smtp_onboarding_failed",
+      provider: (error as { provider: string }).provider,
+      message:
+        error instanceof Error
+          ? error.message
+          : typeof (error as { message?: unknown }).message === "string"
+            ? (error as { message: string }).message
+            : "IMAP/SMTP onboarding failed",
+      diagnostics: readImapSmtpDiagnostics(
+        (error as { diagnostics?: unknown }).diagnostics,
+      ),
+    };
+  }
+
+  return undefined;
 }
 
 function asReauthorizationFailedError(

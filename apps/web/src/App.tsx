@@ -5024,12 +5024,15 @@ function AddMailPage(props: {
       setOnboardingRecoveryDiagnostics([]);
       setSecret("");
       setNotice(`${provider.title} 已接入，同步会自动开始。`);
-    } catch {
+    } catch (error) {
+      const recoveryDiagnostics = apiErrorConnectionDiagnostics(error);
       await loadOnboardingDiagnostics();
-      setOnboardingRecoveryDiagnostics([]);
+      setOnboardingRecoveryDiagnostics(recoveryDiagnostics);
       setSecret("");
       setNotice(
-        `${provider.title} 暂时无法接入，连接信息未保存。请重新检查授权码或稍后再试。`,
+        recoveryDiagnostics.length > 0
+          ? `${provider.title} 暂时无法接入，请按恢复建议处理后重试。`
+          : `${provider.title} 暂时无法接入，连接信息未保存。请重新检查授权码或稍后再试。`,
       );
     } finally {
       setBusyProvider("");
@@ -5074,12 +5077,15 @@ function AddMailPage(props: {
       setOnboardingRecoveryDiagnostics([]);
       clearCustomServerSecret();
       setNotice(`${manualProvider.title} 已接入，同步会自动开始。`);
-    } catch {
+    } catch (error) {
+      const recoveryDiagnostics = apiErrorConnectionDiagnostics(error);
       await loadOnboardingDiagnostics();
-      setOnboardingRecoveryDiagnostics([]);
+      setOnboardingRecoveryDiagnostics(recoveryDiagnostics);
       clearCustomServerSecret();
       setNotice(
-        `${manualProvider.title} 暂时无法接入，连接信息未保存。请重新检查授权码或稍后再试。`,
+        recoveryDiagnostics.length > 0
+          ? `${manualProvider.title} 暂时无法接入，请按恢复建议处理后重试。`
+          : `${manualProvider.title} 暂时无法接入，连接信息未保存。请重新检查授权码或稍后再试。`,
       );
     } finally {
       setBusyProvider("");
@@ -6616,6 +6622,8 @@ function formatConnectionDiagnosticTitle(
     proton_bridge_unreachable: "Proton Bridge 未连接",
     mail_server_unreachable: "邮箱服务连接不上",
     mail_credentials_rejected: "授权信息被拒绝",
+    gmail_app_password_required: "需要 Google 应用专用密码",
+    outlook_app_password_or_web_login_required: "需要 Outlook 专用密码或网页登录",
     icloud_app_specific_password_required: "需要 Apple 专用密码",
     qq_authorization_code_required: "需要 QQ 邮箱授权码",
     netease_163_authorization_code_required: "需要 163 邮箱授权码",
@@ -6631,6 +6639,9 @@ function formatConnectionDiagnosticAction(
     start_proton_bridge: "请启动 Proton Bridge 并保持登录后重试。",
     check_mail_server_connection: "请检查收信/发信服务器、端口和网络后重试。",
     check_mailbox_credentials: "请确认邮箱地址、用户名和授权码或专用密码。",
+    create_google_app_password: "请为 Gmail 创建应用专用密码，普通 Google 密码不能用于这里。",
+    create_microsoft_app_password_or_enable_web_login:
+      "请使用 Outlook 应用专用密码，或改用网页登录授权后重试。",
     create_apple_app_specific_password: "请在 Apple ID 中创建 App 专用密码后重试。",
     enable_qq_mail_authorization_code:
       "请在 QQ 邮箱设置里开启服务并使用生成的授权码。",

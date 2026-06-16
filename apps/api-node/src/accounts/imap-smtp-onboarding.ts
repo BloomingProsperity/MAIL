@@ -62,6 +62,22 @@ export interface AccountOnboardingResult {
   syncJob?: BootstrapSyncJob;
 }
 
+export class ImapSmtpOnboardingFailedError extends Error {
+  readonly code = "imap_smtp_onboarding_failed";
+  readonly provider: string;
+  readonly diagnostics: ImapSmtpConnectionDiagnostic[];
+
+  constructor(input: {
+    provider: string;
+    message: string;
+    diagnostics?: ImapSmtpConnectionDiagnostic[];
+  }) {
+    super(input.message);
+    this.provider = input.provider;
+    this.diagnostics = input.diagnostics ?? [];
+  }
+}
+
 export interface AccountOnboardingService {
   onboardImapSmtp(
     input: ImapSmtpOnboardingInput,
@@ -253,12 +269,23 @@ export function createImapSmtpOnboardingService(
           };
         }
       } catch (error) {
+        const sensitiveValues = imapSmtpSensitiveValues(input, settings);
+        const message = sanitizedRegistrationError(error, sensitiveValues);
+        const diagnostics = diagnosticsForImapSmtpRegistrationFailure(
+          settings.provider,
+          error,
+        ).map((diagnostic) =>
+          sanitizeImapSmtpConnectionDiagnostic(diagnostic, sensitiveValues),
+        );
         await options.store.failTask({
           taskId,
-          errorMessage:
-            error instanceof Error ? error.message : "unknown onboarding error",
+          errorMessage: message,
         });
-        throw error;
+        throw new ImapSmtpOnboardingFailedError({
+          provider: settings.provider,
+          message,
+          diagnostics,
+        });
       }
 
       return result;
@@ -337,6 +364,22 @@ export function buildImapSmtpConnectionDiagnostics(
       recoveryAction: "check_mailbox_credentials",
     },
   ];
+}
+
+export function diagnosticsForImapSmtpRegistrationFailure(
+  provider: string,
+  error: unknown,
+): ImapSmtpConnectionDiagnostic[] {
+  const check = {
+    ok: false,
+    ...(errorCode(error) ? { code: errorCode(error) } : {}),
+    error: error instanceof Error ? error.message : String(error),
+  };
+
+  return buildImapSmtpConnectionDiagnostics(provider, {
+    imap: check,
+    smtp: check,
+  });
 }
 
 function authenticationDiagnostic(
@@ -450,6 +493,72 @@ function isConnectionFailure(check: ImapSmtpConnectionCheckResult): boolean {
 
 function normalizedErrorCode(code: string | undefined): string {
   return code?.trim().toUpperCase() ?? "";
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+  ) {
+    return (error as { code: string }).code;
+  }
+
+  return undefined;
+}
+
+function imapSmtpSensitiveValues(
+  input: ImapSmtpOnboardingInput,
+  settings: ResolvedImapSmtpSettings,
+): string[] {
+  return [
+    input.secret,
+    input.imap?.secret,
+    input.smtp?.secret,
+    settings.imap.secret,
+    settings.smtp.secret,
+  ].filter(isNonEmptyString);
+}
+
+function sanitizedRegistrationError(
+  error: unknown,
+  sensitiveValues: string[],
+): string {
+  const message =
+    error instanceof Error ? error.message : "unknown onboarding error";
+  return scrubKnownSensitiveText(message, sensitiveValues);
+}
+
+function sanitizeImapSmtpConnectionDiagnostic(
+  diagnostic: ImapSmtpConnectionDiagnostic,
+  sensitiveValues: string[],
+): ImapSmtpConnectionDiagnostic {
+  return {
+    code: diagnostic.code,
+    provider: diagnostic.provider,
+    severity: diagnostic.severity,
+    affected: diagnostic.affected,
+    message: scrubKnownSensitiveText(diagnostic.message, sensitiveValues),
+    recoveryAction: diagnostic.recoveryAction,
+  };
+}
+
+function scrubKnownSensitiveText(
+  value: string,
+  sensitiveValues: string[],
+): string {
+  return sensitiveValues
+    .filter(isNonEmptyString)
+    .sort((left, right) => right.length - left.length)
+    .reduce(
+      (output, secret) => output.split(secret).join("[redacted]"),
+      value,
+    );
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 export interface ResolvedImapSmtpSettings {

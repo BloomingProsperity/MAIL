@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createImapSmtpOnboardingService,
   createInMemoryAccountOnboardingStore,
+  ImapSmtpOnboardingFailedError,
 } from "../src/accounts/imap-smtp-onboarding";
 
 describe("IMAP/SMTP onboarding service", () => {
@@ -450,6 +451,58 @@ describe("IMAP/SMTP onboarding service", () => {
         },
       },
     });
+  });
+
+  it("wraps registration failures with sanitized provider recovery diagnostics", async () => {
+    const store = createInMemoryAccountOnboardingStore();
+    const service = createImapSmtpOnboardingService({
+      store,
+      createId: (() => {
+        const ids = ["task_1", "acc_1"];
+        return () => ids.shift() ?? "extra";
+      })(),
+      emailEngineAccounts: {
+        async registerImapSmtpAccount() {
+          const error = new Error(
+            "EmailEngine account registration failed: EAUTH qq-auth-code rejected",
+          ) as Error & { code: string };
+          error.code = "EAUTH";
+          throw error;
+        },
+      },
+    });
+
+    await expect(
+      service.onboardImapSmtp({
+        email: "support@qq.com",
+        provider: "qq",
+        displayName: "Support",
+        secret: "qq-auth-code",
+      }),
+    ).rejects.toMatchObject({
+      code: "imap_smtp_onboarding_failed",
+      provider: "qq",
+      message: "EmailEngine account registration failed: EAUTH [redacted] rejected",
+      diagnostics: [
+        {
+          code: "qq_authorization_code_required",
+          provider: "qq",
+          severity: "action_required",
+          affected: "account",
+          recoveryAction: "enable_qq_mail_authorization_code",
+        },
+      ],
+    } satisfies Partial<ImapSmtpOnboardingFailedError>);
+
+    expect(store.listTasks()).toEqual([
+      expect.objectContaining({
+        id: "task_1",
+        status: "failed",
+        errorMessage:
+          "EmailEngine account registration failed: EAUTH [redacted] rejected",
+      }),
+    ]);
+    expect(JSON.stringify(store.listTasks())).not.toContain("qq-auth-code");
   });
 
   it("reuses the existing local account id before updating EmailEngine credentials", async () => {

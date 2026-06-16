@@ -4286,6 +4286,67 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("shows recovery guidance when Add Mail registration fails after a successful test", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.testImapSmtpConnection).mockResolvedValueOnce({
+      provider: "qq",
+      ok: true,
+      checks: {
+        imap: { ok: true },
+        smtp: { ok: true },
+      },
+      diagnostics: [],
+    });
+    vi.mocked(api.onboardImapSmtpAccount).mockRejectedValueOnce(
+      new ApiRequestError(400, "imap_smtp_onboarding_failed", {
+        error: "imap_smtp_onboarding_failed",
+        provider: "qq",
+        detail: "EmailEngine account registration failed: EAUTH qq-auth-code rejected",
+        diagnostics: [
+          {
+            code: "qq_authorization_code_required",
+            provider: "qq",
+            severity: "action_required",
+            affected: "account",
+            message: "Use qq-auth-code from settings.",
+            recoveryAction: "enable_qq_mail_authorization_code",
+          },
+        ],
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
+    );
+    fireEvent.change(screen.getByLabelText("Add mail email"), {
+      target: { value: "support@qq.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Add mail secret"), {
+      target: { value: "qq-auth-code" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "连接 QQ 邮箱" }));
+
+    expect(
+      await screen.findByText("QQ 邮箱 暂时无法接入，请按恢复建议处理后重试。"),
+    ).toBeTruthy();
+    expect(await screen.findByText("需要 QQ 邮箱授权码")).toBeTruthy();
+    expect(
+      screen.getByText("请在 QQ 邮箱设置里开启服务并使用生成的授权码。"),
+    ).toBeTruthy();
+    expect(api.listOperationalEvents).toHaveBeenCalledWith({
+      service: "email-hub-api",
+      lane: "account_onboarding",
+      limit: 3,
+    });
+
+    const pageText = document.body.textContent ?? "";
+    expect(pageText).not.toContain("EAUTH");
+    expect(pageText).not.toContain("qq-auth-code");
+    expect(pageText).not.toContain("imap_smtp_onboarding_failed");
+    expect(screen.queryByDisplayValue("qq-auth-code")).toBeNull();
+  });
+
   it("hides backend detail when Add Mail onboarding save fails", async () => {
     const api = createApiFixture();
     vi.mocked(api.listOperationalEvents).mockResolvedValueOnce({

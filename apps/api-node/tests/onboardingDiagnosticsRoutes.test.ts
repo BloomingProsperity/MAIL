@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApiHandler } from "../src/http/router";
+import { ImapSmtpOnboardingFailedError } from "../src/accounts/imap-smtp-onboarding";
 
 let server: Server | undefined;
 
@@ -390,6 +391,119 @@ describe("account onboarding diagnostic events", () => {
         expect(JSON.stringify(operationalEvents)).not.toContain(
           "apple-app-specific-password",
         );
+      },
+      { accountOnboardingService, operationalEventLogService },
+    );
+  });
+
+  it("returns provider recovery diagnostics when initial IMAP/SMTP registration fails", async () => {
+    const operationalEvents: unknown[] = [];
+    const accountOnboardingService = {
+      async onboardImapSmtp() {
+        throw new ImapSmtpOnboardingFailedError({
+          provider: "qq",
+          message:
+            "EmailEngine account registration failed: EAUTH [redacted] rejected",
+          diagnostics: [
+            {
+              code: "qq_authorization_code_required",
+              provider: "qq",
+              severity: "action_required" as const,
+              affected: "account" as const,
+              message:
+                "Use [redacted] from QQ Mail settings, not your normal account password.",
+              recoveryAction: "enable_qq_mail_authorization_code",
+            },
+          ],
+        });
+      },
+      async testImapSmtpConnection() {
+        throw new Error("not used");
+      },
+    };
+    const operationalEventLogService = {
+      async listEvents() {
+        throw new Error("not used");
+      },
+      async recordEvent(input: unknown) {
+        operationalEvents.push(input);
+        return {
+          id: "op_event_1",
+          occurredAt: "2026-06-14T08:00:00.000Z",
+          ...(input as Record<string, unknown>),
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/accounts/imap-smtp`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "req_add_mail_onboard_diagnostics",
+          },
+          body: JSON.stringify({
+            email: "support@qq.com",
+            provider: "qq",
+            secret: "qq-auth-code",
+          }),
+        });
+        const bodyText = await response.text();
+
+        expect(response.status).toBe(400);
+        expect(JSON.parse(bodyText)).toEqual({
+          error: "imap_smtp_onboarding_failed",
+          provider: "qq",
+          detail:
+            "EmailEngine account registration failed: EAUTH [redacted] rejected",
+          diagnostics: [
+            {
+              code: "qq_authorization_code_required",
+              provider: "qq",
+              severity: "action_required",
+              affected: "account",
+              message:
+                "Use [redacted] from QQ Mail settings, not your normal account password.",
+              recoveryAction: "enable_qq_mail_authorization_code",
+            },
+          ],
+        });
+        expect(operationalEvents).toEqual([
+          {
+            service: "email-hub-api",
+            level: "error",
+            event: "account_onboarding_failed",
+            requestId: "req_add_mail_onboard_diagnostics",
+            lane: "account_onboarding",
+            message: "IMAP/SMTP onboarding failed for qq",
+            context: {
+              action: "onboard_imap_smtp",
+              authMethod: "password",
+              email: "support@qq.com",
+              provider: "qq",
+              inputMode: "preset",
+              error: {
+                name: "Error",
+                message:
+                  "EmailEngine account registration failed: EAUTH [redacted] rejected",
+              },
+              diagnostics: [
+                {
+                  code: "qq_authorization_code_required",
+                  provider: "qq",
+                  severity: "action_required",
+                  affected: "account",
+                  message:
+                    "Use [redacted] from QQ Mail settings, not your normal account password.",
+                  recoveryAction: "enable_qq_mail_authorization_code",
+                },
+              ],
+            },
+          },
+        ]);
+        expect(bodyText).not.toContain("qq-auth-code");
+        expect(JSON.stringify(operationalEvents)).not.toContain("qq-auth-code");
       },
       { accountOnboardingService, operationalEventLogService },
     );
