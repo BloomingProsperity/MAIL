@@ -1393,6 +1393,157 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("runs Smart Inbox bucket Done per account and removes only confirmed successes", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listSyncCenterAccounts).mockResolvedValueOnce({
+      items: [
+        {
+          accountId: "account_1",
+          email: "first@example.com",
+          provider: "gmail",
+          syncState: "syncing",
+        },
+        {
+          accountId: "account_2",
+          email: "second@example.com",
+          provider: "outlook",
+          syncState: "syncing",
+        },
+      ],
+    });
+    vi.mocked(api.listMessages).mockResolvedValue({
+      items: [
+        {
+          id: "urgent_1",
+          accountId: "account_1",
+          subject: "Account one urgent",
+          from: { email: "one@example.com", name: "One Sender" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "first urgent",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 96,
+            reasons: ["First account"],
+          },
+        },
+        {
+          id: "urgent_2",
+          accountId: "account_2",
+          subject: "Account two urgent",
+          from: { email: "two@example.com", name: "Two Sender" },
+          receivedAt: "2026-06-13T10:05:00.000Z",
+          snippet: "second urgent",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 95,
+            reasons: ["Second account"],
+          },
+        },
+        {
+          id: "important_1",
+          accountId: "account_2",
+          subject: "Account two important",
+          from: { email: "important@example.com", name: "Important Sender" },
+          receivedAt: "2026-06-13T09:55:00.000Z",
+          snippet: "still visible",
+          unread: false,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P2 Important",
+            priorityScore: 80,
+            reasons: ["Keep visible"],
+          },
+        },
+      ],
+    });
+
+    render(<App api={api} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Account one urgent").length).toBeGreaterThan(0);
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Smart Inbox done P1 Urgent" }),
+    );
+
+    await waitFor(() => {
+      expect(api.applySmartInboxCardBulkAction).toHaveBeenCalledTimes(2);
+    });
+    expect(api.applySmartInboxCardBulkAction).toHaveBeenCalledWith({
+      accountId: "account_1",
+      bucket: "P1 Urgent",
+      action: "done",
+      messageIds: ["urgent_1"],
+    });
+    expect(api.applySmartInboxCardBulkAction).toHaveBeenCalledWith({
+      accountId: "account_2",
+      bucket: "P1 Urgent",
+      action: "done",
+      messageIds: ["urgent_2"],
+    });
+    expect(await screen.findByText("Smart Inbox 已完成 2 封优先邮件。")).toBeTruthy();
+    expect(screen.queryByText("Account one urgent")).toBeNull();
+    expect(screen.queryByText("Account two urgent")).toBeNull();
+    expect(screen.getAllByText("Account two important").length).toBeGreaterThan(0);
+  });
+
+  it("records Smart Inbox feedback and updates the selected card classification", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Smart Inbox move selected to newsletters",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.recordSmartInboxFeedback).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        action: "move_to_newsletters",
+      });
+    });
+    expect(await screen.findByText("Smart Inbox 已学习：移到订阅。")).toBeTruthy();
+    expect(screen.getByText("User moved sender to Newsletters")).toBeTruthy();
+  });
+
+  it("hides raw Smart Inbox backend details when feedback fails", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.recordSmartInboxFeedback).mockRejectedValueOnce(
+      new ApiRequestError(500, "internal_error", {
+        error: "internal_error",
+        detail: "postgres leaked token smart-secret",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Smart Inbox mark selected important",
+      }),
+    );
+
+    expect(await screen.findByText("Smart Inbox 反馈暂时不可用。")).toBeTruthy();
+    const pageText = document.body.textContent ?? "";
+    expect(pageText).not.toContain("internal_error");
+    expect(pageText).not.toContain("smart-secret");
+  });
+
   it("queues Spark done through the backend and exposes a local undo action", async () => {
     const api = createApiFixture();
 
@@ -3023,6 +3174,38 @@ describe("Email Hub first UI baseline", () => {
     expect(pageText).not.toContain("start_proton_bridge");
     expect(pageText).not.toContain("bridge-password");
     expect(screen.queryByDisplayValue("bridge-password")).toBeNull();
+  });
+
+  it("keeps Proton Bridge provider id when the capability catalog falls back", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMailProviderCapabilities).mockRejectedValueOnce(
+      new Error("catalog unavailable"),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
+    );
+    fireEvent.change(screen.getByLabelText("Add mail email"), {
+      target: { value: "me@proton.me" },
+    });
+    fireEvent.change(screen.getByLabelText("Add mail secret"), {
+      target: { value: "bridge-password" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+
+    await waitFor(() => {
+      expect(api.testImapSmtpConnection).toHaveBeenCalledWith({
+        email: "me@proton.me",
+        provider: "proton_bridge",
+        secret: "bridge-password",
+      });
+    });
+    expect(api.onboardImapSmtpAccount).toHaveBeenCalledWith({
+      email: "me@proton.me",
+      provider: "proton_bridge",
+      secret: "bridge-password",
+    });
   });
 
   it("hides backend detail when Add Mail onboarding save fails", async () => {

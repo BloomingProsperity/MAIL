@@ -999,6 +999,30 @@ h2 {
   gap: 8px;
 }
 
+.smart-inbox-actions,
+.smart-inbox-action-set {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.smart-inbox-actions {
+  flex: 1;
+}
+
+.smart-inbox-actions > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-inbox-action-set {
+  flex-wrap: wrap;
+}
+
 .message-row {
   display: grid;
   width: 100%;

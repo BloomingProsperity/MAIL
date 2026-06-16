@@ -81,6 +81,7 @@ import type {
   OperationalEventDto,
   ReauthorizationTaskDto,
   ScheduledSendDto,
+  SmartInboxFeedbackAction,
   SyncCenterAccountDto,
   SyncCenterImapSmtpReauthorizationInput
 } from "./lib/emailHubApi";
@@ -117,6 +118,7 @@ const PREVIEW_ATTACHMENT_ROWS = [
 
 type ComposeAutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
 type ReaderHermesBusy = "summary" | "translation" | "organize";
+type SmartInboxBusyAction = "" | "bulk_done" | SmartInboxFeedbackAction;
 
 interface ReaderHermesOrganizationResult {
   priority: HermesPriorityTriageResult;
@@ -441,7 +443,7 @@ const providers: ProviderOption[] = [
   { title: "163 邮箱", subtitle: "按提示完成邮箱授权", mark: "163", provider: "163", action: "password" },
   { title: "QQ 邮箱", subtitle: "按提示完成邮箱授权", mark: "QQ", provider: "qq", action: "password" },
   { title: "iCloud Mail", subtitle: "连接 iCloud 邮箱", mark: "iC", provider: "icloud", action: "password" },
-  { title: "Proton Mail", subtitle: "连接 Proton 邮箱", mark: "P", provider: "proton", action: "bridge" },
+  { title: "Proton Mail", subtitle: "连接 Proton 邮箱", mark: "P", provider: "proton_bridge", action: "bridge" },
   { title: "个人域名邮箱", subtitle: "连接企业或个人域名邮箱", mark: "@", provider: "custom", action: "manual" }
 ];
 
@@ -589,6 +591,8 @@ export function App(props: AppProps = {}) {
     HermesFollowupTrackerResult | undefined
   >();
   const [followUpNotice, setFollowUpNotice] = useState<string | undefined>();
+  const [smartInboxBusy, setSmartInboxBusy] =
+    useState<SmartInboxBusyAction>("");
 
   const accountId = selectedAccountId ?? PREVIEW_ACCOUNT_ID;
   const sortedMail = useMemo(
@@ -965,6 +969,110 @@ export function App(props: AppProps = {}) {
     }
   }
 
+  async function applySmartInboxBucketDone(bucket: string) {
+    if (!props.api) {
+      setBackendNotice("连接服务后才能执行 Smart Inbox 批量 Done。");
+      return;
+    }
+
+    const candidates = workspaceMail.filter((item) => item.bucket === bucket);
+    if (candidates.length === 0) {
+      setBackendNotice("当前 Smart Inbox 卡片没有可处理邮件。");
+      return;
+    }
+
+    const messageIdsByAccount = new Map<string, string[]>();
+    for (const item of candidates) {
+      const ids = messageIdsByAccount.get(item.accountId) ?? [];
+      ids.push(item.id);
+      messageIdsByAccount.set(item.accountId, ids);
+    }
+
+    setSmartInboxBusy("bulk_done");
+    try {
+      const results = await Promise.all(
+        [...messageIdsByAccount.entries()].map(([accountId, messageIds]) =>
+          props.api!.applySmartInboxCardBulkAction({
+            accountId,
+            bucket,
+            action: "done",
+            messageIds,
+          }),
+        ),
+      );
+      const succeededKeys = new Set<string>();
+      let succeededCount = 0;
+      let failedCount = 0;
+      for (const result of results) {
+        succeededCount += result.succeededCount;
+        failedCount += result.failedCount;
+        for (const item of result.succeeded) {
+          succeededKeys.add(`${result.accountId}:${item.messageId}`);
+        }
+      }
+
+      if (succeededKeys.size > 0) {
+        const remainingMail = workspaceMail.filter(
+          (item) => !succeededKeys.has(mailItemKey(item)),
+        );
+        setWorkspaceMail(remainingMail);
+        setActiveMailId((current) =>
+          current && remainingMail.some((item) => mailItemKey(item) === current)
+            ? current
+            : firstSmartMailKey(remainingMail),
+        );
+        if (selectedMail && succeededKeys.has(mailItemKey(selectedMail))) {
+          setSelectedDetail(undefined);
+        }
+      }
+
+      setBackendNotice(
+        failedCount > 0
+          ? `Smart Inbox 已完成 ${succeededCount} 封，${failedCount} 封稍后重试。`
+          : `Smart Inbox 已完成 ${succeededCount} 封${bucketLabel(bucket)}邮件。`,
+      );
+    } catch {
+      setBackendNotice("Smart Inbox 批量 Done 暂时不可用。");
+    } finally {
+      setSmartInboxBusy("");
+    }
+  }
+
+  async function recordSmartInboxFeedback(action: SmartInboxFeedbackAction) {
+    if (!props.api || !selectedMail) {
+      setBackendNotice("连接服务后才能训练 Smart Inbox。");
+      return;
+    }
+
+    setSmartInboxBusy(action);
+    try {
+      const result = await props.api.recordSmartInboxFeedback({
+        accountId: selectedMail.accountId,
+        messageId: selectedMail.id,
+        action,
+      });
+      setWorkspaceMail((items) =>
+        items.map((item) =>
+          item.accountId === result.accountId && item.id === result.messageId
+            ? {
+                ...item,
+                label: bucketLabel(result.classification.bucket),
+                tone: toneForBucket(result.classification.bucket),
+                bucket: result.classification.bucket,
+                score: result.classification.priorityScore,
+                reasons: result.classification.reasons,
+              }
+            : item,
+        ),
+      );
+      setBackendNotice(`Smart Inbox 已学习：${smartInboxFeedbackLabel(action)}。`);
+    } catch {
+      setBackendNotice("Smart Inbox 反馈暂时不可用。");
+    } finally {
+      setSmartInboxBusy("");
+    }
+  }
+
   async function trackSelectedFollowUp() {
     if (!props.api || !selectedMail) {
       setFollowUpNotice("需要先完成服务连接，才能让 Hermes 创建跟进。");
@@ -1110,6 +1218,7 @@ export function App(props: AppProps = {}) {
               selectedDetail={selectedDetail}
               undoToast={undoToast}
               backendNotice={backendNotice}
+              smartInboxBusy={smartInboxBusy}
               quickCategories={navigationQuickCategories}
               hermesFollowUpSuggestion={hermesFollowUpSuggestion}
               followUpNotice={followUpNotice}
@@ -1132,6 +1241,8 @@ export function App(props: AppProps = {}) {
                 )
               }
               onUndoDone={() => void undoDone()}
+              onSmartInboxBucketDone={(bucket) => void applySmartInboxBucketDone(bucket)}
+              onSmartInboxFeedback={(action) => void recordSmartInboxFeedback(action)}
               onTrackFollowUp={() => void trackSelectedFollowUp()}
               onConfirmHermesFollowUp={() => void confirmHermesFollowUp()}
             />
@@ -1398,6 +1509,7 @@ function MailWorkspace(props: {
   selectedDetail?: MessageDetailDto;
   undoToast?: UndoToastState;
   backendNotice?: string;
+  smartInboxBusy: SmartInboxBusyAction;
   quickCategories: QuickCategory[];
   hermesFollowUpSuggestion?: HermesFollowupTrackerResult;
   followUpNotice?: string;
@@ -1414,6 +1526,8 @@ function MailWorkspace(props: {
   onToggleStar: () => void;
   onToggleRead: () => void;
   onUndoDone: () => void;
+  onSmartInboxBucketDone: (bucket: string) => void;
+  onSmartInboxFeedback: (action: SmartInboxFeedbackAction) => void;
   onTrackFollowUp: () => void;
   onConfirmHermesFollowUp: () => void;
 }) {
@@ -2697,6 +2811,12 @@ function MailWorkspace(props: {
     }
   }
 
+  const selectedBucket = props.selectedMail.bucket;
+  const selectedBucketCount = props.mail.filter(
+    (mail) => mail.bucket === selectedBucket,
+  ).length;
+  const smartInboxDisabled = props.smartInboxBusy !== "";
+
   return (
     <section className="workspace-page mail-page">
       <header className="topbar">
@@ -3334,7 +3454,49 @@ function MailWorkspace(props: {
               <input type="checkbox" />
               全部
             </label>
-          <span>智能收件箱：先分类，再排序</span>
+            <div className="smart-inbox-actions" aria-label="Smart Inbox actions">
+              <span>
+                Smart Inbox · {bucketLabel(selectedBucket)} · {selectedBucketCount} 封
+              </span>
+              <div className="smart-inbox-action-set">
+                <button
+                  className="tiny-button"
+                  type="button"
+                  aria-label={`Smart Inbox done ${selectedBucket}`}
+                  disabled={smartInboxDisabled || selectedBucketCount === 0}
+                  onClick={() => props.onSmartInboxBucketDone(selectedBucket)}
+                >
+                  {props.smartInboxBusy === "bulk_done" ? "处理中" : "批量 Done"}
+                </button>
+                <button
+                  className="tiny-button"
+                  type="button"
+                  aria-label="Smart Inbox mark selected important"
+                  disabled={smartInboxDisabled}
+                  onClick={() => props.onSmartInboxFeedback("mark_important")}
+                >
+                  重要
+                </button>
+                <button
+                  className="tiny-button"
+                  type="button"
+                  aria-label="Smart Inbox move selected to newsletters"
+                  disabled={smartInboxDisabled}
+                  onClick={() => props.onSmartInboxFeedback("move_to_newsletters")}
+                >
+                  订阅
+                </button>
+                <button
+                  className="tiny-button"
+                  type="button"
+                  aria-label="Smart Inbox move selected to feed"
+                  disabled={smartInboxDisabled}
+                  onClick={() => props.onSmartInboxFeedback("move_to_feed")}
+                >
+                  Feed
+                </button>
+              </div>
+            </div>
           </div>
           {props.mail.map((mail) => (
             <button
@@ -8746,6 +8908,20 @@ function toneForBucket(bucket: string): Tone {
   if (bucket.includes("Feed")) return "purple";
   if (bucket.includes("Transactions")) return "blue";
   return "yellow";
+}
+
+function smartInboxFeedbackLabel(action: SmartInboxFeedbackAction): string {
+  const labels: Record<SmartInboxFeedbackAction, string> = {
+    mark_important: "标为重要",
+    mark_not_important: "降低优先级",
+    move_to_personal: "移到个人",
+    move_to_notifications: "移到通知",
+    move_to_newsletters: "移到订阅",
+    move_to_feed: "移到 Feed",
+    always_important_sender: "始终重要发件人",
+    mute_sender: "静音发件人",
+  };
+  return labels[action];
 }
 
 function isActionableFollowUpStatus(
