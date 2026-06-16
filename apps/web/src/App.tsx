@@ -3667,6 +3667,8 @@ function AddMailPage(props: {
     });
   const [busyProvider, setBusyProvider] = useState("");
   const [diagnostics, setDiagnostics] = useState<OperationalEventDto[]>([]);
+  const [onboardingRecoveryDiagnostics, setOnboardingRecoveryDiagnostics] =
+    useState<ImapSmtpConnectionDiagnostic[]>([]);
   const [providerOptions, setProviderOptions] =
     useState<ProviderOption[]>(providers);
   const [csvImportText, setCsvImportText] = useState("");
@@ -3798,22 +3800,35 @@ function AddMailPage(props: {
 
     setBusyProvider(provider.provider);
     setDiagnostics([]);
+    setOnboardingRecoveryDiagnostics([]);
     try {
       const testResult = await props.api.testImapSmtpConnection(input);
       if (!testResult.ok) {
+        const recoveryDiagnostics =
+          connectionDiagnosticsFromTestResult(testResult);
         await loadOnboardingDiagnostics();
+        setOnboardingRecoveryDiagnostics(recoveryDiagnostics);
+        setSecret("");
         setNotice(
-          `${provider.title} 连接检查没有通过：${connectionCheckSummary(testResult)}`,
+          recoveryDiagnostics.length > 0
+            ? `${provider.title} 连接检查没有通过，请按提示处理。`
+            : `${provider.title} 连接检查没有通过，请检查邮箱地址、授权码和收发信服务器。`,
         );
         return;
       }
 
       const result = await props.api.onboardImapSmtpAccount(input);
       props.onConnected?.(result.account?.id);
+      setOnboardingRecoveryDiagnostics([]);
+      setSecret("");
       setNotice(`${provider.title} 已接入，同步会自动开始。`);
     } catch {
       await loadOnboardingDiagnostics();
-      setNotice(`${provider.title} 暂时无法接入，请检查填写的信息。`);
+      setOnboardingRecoveryDiagnostics([]);
+      setSecret("");
+      setNotice(
+        `${provider.title} 暂时无法接入，连接信息未保存。请重新检查授权码或稍后再试。`,
+      );
     } finally {
       setBusyProvider("");
     }
@@ -3835,22 +3850,35 @@ function AddMailPage(props: {
 
     setBusyProvider(manualProvider.provider);
     setDiagnostics([]);
+    setOnboardingRecoveryDiagnostics([]);
     try {
       const testResult = await props.api.testImapSmtpConnection(input);
       if (!testResult.ok) {
+        const recoveryDiagnostics =
+          connectionDiagnosticsFromTestResult(testResult);
         await loadOnboardingDiagnostics();
+        setOnboardingRecoveryDiagnostics(recoveryDiagnostics);
+        clearCustomServerSecret();
         setNotice(
-          `${manualProvider.title} 连接检查没有通过，${connectionCheckSummary(testResult)}`,
+          recoveryDiagnostics.length > 0
+            ? `${manualProvider.title} 连接检查没有通过，请按提示处理。`
+            : `${manualProvider.title} 连接检查没有通过，请检查邮箱地址、授权码和收发信服务器。`,
         );
         return;
       }
 
       const result = await props.api.onboardImapSmtpAccount(input);
       props.onConnected?.(result.account?.id);
+      setOnboardingRecoveryDiagnostics([]);
+      clearCustomServerSecret();
       setNotice(`${manualProvider.title} 已接入，同步会自动开始。`);
     } catch {
       await loadOnboardingDiagnostics();
-      setNotice(`${manualProvider.title} 暂时无法接入，请检查填写的信息。`);
+      setOnboardingRecoveryDiagnostics([]);
+      clearCustomServerSecret();
+      setNotice(
+        `${manualProvider.title} 暂时无法接入，连接信息未保存。请重新检查授权码或稍后再试。`,
+      );
     } finally {
       setBusyProvider("");
     }
@@ -3861,6 +3889,10 @@ function AddMailPage(props: {
     value: CustomServerFields[K],
   ) {
     setCustomServerFields((current) => ({ ...current, [key]: value }));
+  }
+
+  function clearCustomServerSecret() {
+    setCustomServerFields((current) => ({ ...current, secret: "" }));
   }
 
   async function loadOnboardingDiagnostics() {
@@ -4093,6 +4125,30 @@ function AddMailPage(props: {
       </header>
 
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
+
+      {onboardingRecoveryDiagnostics.length > 0 ? (
+        <section
+          className="page-panel diagnostic-list connection-diagnostic-list"
+          aria-label="添加邮箱恢复建议"
+        >
+          <h2>恢复建议</h2>
+          {onboardingRecoveryDiagnostics.map((diagnostic) => (
+            <div
+              className="diagnostic-row connection-diagnostic-row"
+              key={`${diagnostic.provider}:${diagnostic.affected}:${diagnostic.code}`}
+            >
+              <div>
+                <strong>{formatConnectionDiagnosticTitle(diagnostic)}</strong>
+                <span>
+                  {formatProviderLabel(diagnostic.provider)} ·{" "}
+                  {formatConnectionDiagnosticScope(diagnostic)}
+                </span>
+                <p>{formatConnectionDiagnosticAction(diagnostic)}</p>
+              </div>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       <section className="page-panel add-mail-form" aria-label="添加邮箱信息">
         <label>
@@ -4418,7 +4474,7 @@ function AddMailPage(props: {
           <h2>最近诊断</h2>
           {diagnostics.map((event) => (
             <div className="diagnostic-row" key={event.id}>
-              <strong>{friendlyDiagnosticMessage(event)}</strong>
+              <strong>{friendlyOnboardingDiagnosticMessage(event)}</strong>
               <span>{event.occurredAt}</span>
             </div>
           ))}
@@ -4770,29 +4826,6 @@ function toServerPort(value: string): number | undefined {
   return Number.isInteger(port) && port > 0 && port <= 65535 ? port : undefined;
 }
 
-function connectionCheckSummary(result: ImapSmtpConnectionTestResult): string {
-  const failed = Object.entries(result.checks)
-    .filter(([, check]) => !check.ok)
-    .map(([name, check]) =>
-      check.code
-        ? `${connectionCheckLabel(name)} ${check.code}`
-        : connectionCheckLabel(name),
-    );
-
-  return failed.length > 0 ? failed.join(" / ") : "请检查邮箱地址和授权码";
-}
-
-function connectionCheckLabel(name: string): string {
-  if (name === "imap") {
-    return "收信";
-  }
-  if (name === "smtp") {
-    return "发信";
-  }
-
-  return name;
-}
-
 function friendlyDiagnosticMessage(event: OperationalEventDto): string {
   if (event.event === "account_onboarding_connection_test_failed") {
     return "连接检查没有通过";
@@ -4808,6 +4841,23 @@ function friendlyDiagnosticMessage(event: OperationalEventDto): string {
   }
 
   return event.message ?? event.event;
+}
+
+function friendlyOnboardingDiagnosticMessage(event: OperationalEventDto): string {
+  if (event.event === "account_onboarding_connection_test_failed") {
+    return "连接检查没有通过";
+  }
+  if (event.event === "account_onboarding_failed") {
+    return "邮箱接入失败";
+  }
+  if (event.event === "oauth_onboarding_start_failed") {
+    return "登录窗口没有打开";
+  }
+  if (event.event === "oauth_onboarding_callback_failed") {
+    return "登录授权没有完成";
+  }
+
+  return "邮箱接入诊断记录";
 }
 
 function friendlySyncDiagnosticTitle(event: OperationalEventDto): string {
@@ -5000,6 +5050,12 @@ function apiErrorConnectionDiagnostics(
   return error.diagnostics?.filter(isImapSmtpConnectionDiagnostic) ?? [];
 }
 
+function connectionDiagnosticsFromTestResult(
+  result: ImapSmtpConnectionTestResult,
+): ImapSmtpConnectionDiagnostic[] {
+  return result.diagnostics?.filter(isImapSmtpConnectionDiagnostic) ?? [];
+}
+
 function isImapSmtpConnectionDiagnostic(
   value: unknown,
 ): value is ImapSmtpConnectionDiagnostic {
@@ -5035,7 +5091,7 @@ function formatConnectionDiagnosticTitle(
     netease_163_authorization_code_required: "需要 163 邮箱授权码",
   };
 
-  return labels[diagnostic.code] ?? "重新授权需要处理";
+  return labels[diagnostic.code] ?? "连接设置需要处理";
 }
 
 function formatConnectionDiagnosticAction(

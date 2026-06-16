@@ -1749,6 +1749,27 @@ h2 {
   font-size: 12px;
 }
 
+.connection-diagnostic-list {
+  margin-top: 0;
+}
+
+.connection-diagnostic-row {
+  align-items: flex-start;
+}
+
+.connection-diagnostic-row > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.connection-diagnostic-row p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .settings-module {
   display: flex;
   align-items: center;
