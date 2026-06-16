@@ -1540,6 +1540,22 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           writeJson(response, 200, result);
           return;
         }
+
+        if (hermesRuleRoute.action === "update" && request.method === "PATCH") {
+          const result = await config.hermesRuleService.updateRuleEnabled(
+            parseHermesRuleUpdateInput(
+              hermesRuleRoute.ruleId,
+              await readRequestBody(),
+            ),
+          );
+          if (!result) {
+            writeJson(response, 404, { error: "rule_not_found" });
+            return;
+          }
+
+          writeJson(response, 200, result);
+          return;
+        }
       }
 
       const attachmentRoute = parseAttachmentDownloadRoute(request.url);
@@ -3189,6 +3205,7 @@ function parseHermesRuleRoute(
   | { action: "suggest" }
   | { action: "simulate"; candidateId: string }
   | { action: "approve"; candidateId: string }
+  | { action: "update"; ruleId: string }
   | undefined {
   if (!requestUrl) {
     return undefined;
@@ -3203,6 +3220,14 @@ function parseHermesRuleRoute(
   }
   if (url.pathname === "/api/hermes/rules/suggest") {
     return { action: "suggest" };
+  }
+
+  const updateMatch = /^\/api\/hermes\/rules\/([^/]+)$/.exec(url.pathname);
+  if (updateMatch) {
+    return {
+      action: "update",
+      ruleId: decodeURIComponent(updateMatch[1]),
+    };
   }
 
   const match = /^\/api\/hermes\/rules\/([^/]+)\/(simulate|approve)$/.exec(
@@ -5633,6 +5658,32 @@ function parseHermesRuleApprovalInput(
   return {
     accountId: payload.accountId,
     candidateId,
+  };
+}
+
+function parseHermesRuleUpdateInput(
+  ruleId: string,
+  body: string,
+): {
+  accountId: string;
+  ruleId: string;
+  enabled: boolean;
+} {
+  const payload = JSON.parse(body) as {
+    accountId?: unknown;
+    enabled?: unknown;
+  };
+  if (!isNonEmptyString(ruleId) || !isNonEmptyString(payload.accountId)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+  if (typeof payload.enabled !== "boolean") {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return {
+    accountId: payload.accountId,
+    ruleId,
+    enabled: payload.enabled,
   };
 }
 

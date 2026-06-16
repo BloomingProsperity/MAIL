@@ -116,6 +116,12 @@ export interface ListHermesRulesInput {
   limit: number;
 }
 
+export interface UpdateHermesRuleInput {
+  accountId: string;
+  ruleId: string;
+  enabled: boolean;
+}
+
 export interface HermesRuleStore {
   listObservedBehaviors(input: {
     accountId: string;
@@ -157,6 +163,7 @@ export interface HermesRuleStore {
     limit: number;
   }): Promise<HermesRuleHistoryBackfill>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
+  updateRuleEnabled(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
   upsertSavedView(input: SavedViewDefinition): Promise<void>;
 }
 
@@ -178,6 +185,7 @@ export interface HermesRuleService {
     input: BackfillHermesRuleHistoryInput,
   ): Promise<HermesRuleHistoryBackfill | undefined>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
+  updateRuleEnabled(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
 }
 
 export interface CreateHermesRuleServiceOptions {
@@ -381,6 +389,14 @@ export function createHermesRuleService(
         accountId: requireString(input.accountId),
         ...(typeof input.enabled === "boolean" ? { enabled: input.enabled } : {}),
         limit: positiveInteger(input.limit, 1, 100),
+      });
+    },
+
+    async updateRuleEnabled(input) {
+      return options.store.updateRuleEnabled({
+        accountId: requireString(input.accountId),
+        ruleId: requireString(input.ruleId),
+        enabled: requireBoolean(input.enabled),
       });
     },
   };
@@ -587,6 +603,18 @@ export function createInMemoryHermesRuleStore(
           .slice(0, input.limit)
           .map((rule) => ({ ...rule })),
       };
+    },
+
+    async updateRuleEnabled(input) {
+      const rule = rules.find(
+        (item) => item.accountId === input.accountId && item.id === input.ruleId,
+      );
+      if (!rule) {
+        return undefined;
+      }
+
+      rule.enabled = input.enabled;
+      return { ...rule };
     },
 
     async upsertSavedView(input) {
@@ -1016,6 +1044,13 @@ function requireString(value: unknown): string {
     throw new InvalidHermesRuleRequestError();
   }
 
+  return value;
+}
+
+function requireBoolean(value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    throw new InvalidHermesRuleRequestError();
+  }
   return value;
 }
 

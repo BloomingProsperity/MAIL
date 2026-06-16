@@ -1647,6 +1647,16 @@ export interface EmailHubApi {
     accountId: string;
     candidateId: string;
   }): Promise<HermesActionPlanConfirmationDto>;
+  listHermesRules(input: {
+    accountId: string;
+    enabled?: boolean;
+    limit?: number;
+  }): Promise<Page<HermesRuleDto>>;
+  updateHermesRule(input: {
+    accountId: string;
+    ruleId: string;
+    enabled: boolean;
+  }): Promise<HermesRuleDto>;
   draftHermesRule(input: {
     accountId: string;
     command: string;
@@ -2362,6 +2372,37 @@ export function createEmailHubApi(
           body: JSON.stringify({
             accountId: input.accountId,
             candidateId: input.candidateId,
+          }),
+        },
+      );
+    },
+
+    listHermesRules(input) {
+      const params = new URLSearchParams();
+      params.set("accountId", input.accountId);
+      if (typeof input.enabled === "boolean") {
+        params.set("enabled", String(input.enabled));
+      }
+      if (input.limit !== undefined) {
+        params.set("limit", String(input.limit));
+      }
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/rules?${params.toString()}`,
+      );
+    },
+
+    updateHermesRule(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/rules/${encodePath(input.ruleId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            accountId: input.accountId,
+            enabled: input.enabled,
           }),
         },
       );

@@ -433,4 +433,48 @@ describe("postgres Hermes rule store", () => {
       "COMMIT",
     ]);
   });
+
+  it("updates rule enabled state by account and rule id", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "rule_codes",
+              account_id: "account_1",
+              candidate_id: "candidate_codes",
+              title: "启用验证码智能分组",
+              rule_type: "content_label",
+              condition: { anyKeywords: ["验证码", "otp"] },
+              action: { type: "apply_label", labelId: "label_codes" },
+              confidence: "0.900",
+              enabled: false,
+              created_at: "2026-06-13T10:10:00.000Z",
+              approved_at: "2026-06-13T10:10:00.000Z",
+            },
+          ],
+        };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    const result = await store.updateRuleEnabled({
+      accountId: "account_1",
+      ruleId: "rule_codes",
+      enabled: false,
+    });
+
+    expect(queries[0].text).toMatch(/UPDATE hermes_rules/i);
+    expect(queries[0].text).toMatch(/SET enabled = \$3/i);
+    expect(queries[0].text).toMatch(/WHERE account_id = \$1/i);
+    expect(queries[0].text).toMatch(/AND id = \$2/i);
+    expect(queries[0].values).toEqual(["account_1", "rule_codes", false]);
+    expect(result).toMatchObject({
+      id: "rule_codes",
+      accountId: "account_1",
+      enabled: false,
+    });
+  });
 });

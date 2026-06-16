@@ -526,6 +526,62 @@ describe("Hermes rule learning service", () => {
     });
   });
 
+  it("disables and restores approved rules without deleting them", async () => {
+    const store = createInMemoryHermesRuleStore({
+      rules: [
+        {
+          id: "rule_codes",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelId: "label_codes",
+            labelName: "验证码",
+          },
+          confidence: 0.9,
+          enabled: true,
+          createdAt: "2026-06-13T10:10:00.000Z",
+          approvedAt: "2026-06-13T10:10:00.000Z",
+        },
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      createId: nextId([]),
+      now: () => "2026-06-13T10:20:00.000Z",
+    });
+
+    await expect(
+      service.updateRuleEnabled({
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        enabled: false,
+      }),
+    ).resolves.toMatchObject({
+      id: "rule_codes",
+      enabled: false,
+    });
+    await expect(
+      store.listRules({ accountId: "account_1", enabled: false, limit: 10 }),
+    ).resolves.toMatchObject({
+      items: [{ id: "rule_codes", enabled: false }],
+    });
+
+    await expect(
+      service.updateRuleEnabled({
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        enabled: true,
+      }),
+    ).resolves.toMatchObject({
+      id: "rule_codes",
+      enabled: true,
+    });
+  });
+
   it("does not approve a candidate that already left shadow mode", async () => {
     const store = createInMemoryHermesRuleStore({
       candidates: [

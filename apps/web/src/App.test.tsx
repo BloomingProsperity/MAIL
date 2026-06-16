@@ -1039,6 +1039,60 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("访问密钥已清除。")).toBeTruthy();
   });
 
+  it("lets users pause and restore Hermes rules from Settings", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    expect(within(rulePanel).getByText("启用验证码智能分组")).toBeTruthy();
+    expect(within(rulePanel).getByText(/内容标签/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/应用标签 验证码/)).toBeTruthy();
+    await waitFor(() => {
+      expect(api.listHermesRules).toHaveBeenCalledWith({
+        accountId: "account_1",
+        limit: 50,
+      });
+    });
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Disable Hermes rule 启用验证码智能分组",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.updateHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        enabled: false,
+      });
+    });
+    expect(await screen.findByText("Hermes 规则已停用：启用验证码智能分组。")).toBeTruthy();
+    expect(
+      within(rulePanel).getByRole("button", {
+        name: "Enable Hermes rule 启用验证码智能分组",
+      }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Enable Hermes rule 启用验证码智能分组",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.updateHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        enabled: true,
+      });
+    });
+    expect(await screen.findByText("Hermes 规则已恢复：启用验证码智能分组。")).toBeTruthy();
+  });
+
   it("lets users review, edit, and delete Hermes memories from Settings", async () => {
     const api = createApiFixture();
 
@@ -6393,6 +6447,52 @@ function createApiFixture(): EmailHubApi {
         },
       ],
     } satisfies HermesActionPlanConfirmationDto)),
+    listHermesRules: vi.fn(async () => ({
+      items: [
+        {
+          id: "rule_codes",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "verification", "otp"] },
+          action: {
+            type: "apply_label",
+            labelId: "label_code",
+            labelName: "验证码",
+            labelColor: "blue",
+            applyToHistory: true,
+            providerWriteback: false,
+            requiresConfirmation: false,
+          },
+          confidence: 0.9,
+          enabled: true,
+          createdAt: "2026-06-13T10:02:00.000Z",
+          approvedAt: "2026-06-13T10:02:00.000Z",
+        },
+      ],
+    })),
+    updateHermesRule: vi.fn(async (input) => ({
+      id: input.ruleId,
+      accountId: input.accountId,
+      candidateId: "candidate_codes",
+      title: "启用验证码智能分组",
+      ruleType: "content_label",
+      condition: { anyKeywords: ["验证码", "verification", "otp"] },
+      action: {
+        type: "apply_label",
+        labelId: "label_code",
+        labelName: "验证码",
+        labelColor: "blue",
+        applyToHistory: true,
+        providerWriteback: false,
+        requiresConfirmation: false,
+      },
+      confidence: 0.9,
+      enabled: input.enabled,
+      createdAt: "2026-06-13T10:02:00.000Z",
+      approvedAt: "2026-06-13T10:02:00.000Z",
+    } satisfies HermesRuleDto)),
     draftHermesRule: vi.fn(async () => ({
       candidates: [
         {

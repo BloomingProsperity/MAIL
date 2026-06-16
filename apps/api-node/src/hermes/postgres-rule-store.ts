@@ -479,6 +479,32 @@ export function createPostgresHermesRuleStore(
       return { items: result.rows.map(ruleFromRow) };
     },
 
+    async updateRuleEnabled(input) {
+      const result = await client.query<RuleRow>(
+        `
+          UPDATE hermes_rules
+          SET enabled = $3
+          WHERE account_id = $1
+            AND id = $2
+          RETURNING
+            id,
+            account_id,
+            candidate_id,
+            title,
+            rule_type,
+            condition,
+            action,
+            confidence,
+            enabled,
+            created_at,
+            approved_at
+        `,
+        [input.accountId, input.ruleId, input.enabled],
+      );
+
+      return result.rows[0] ? ruleFromRow(result.rows[0]) : undefined;
+    },
+
     async upsertSavedView(input) {
       await client.query(
         `

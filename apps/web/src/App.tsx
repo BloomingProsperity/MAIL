@@ -51,6 +51,7 @@ import type {
   HermesProviderCatalogItem,
   HermesProviderProbeMissing,
   HermesRuleCandidateDto,
+  HermesRuleDto,
   HermesRuleHistoryBackfillDto,
   HermesRuleSimulationDto,
   HermesRuntimeMode,
@@ -6274,6 +6275,33 @@ function formatHermesMemoryLayer(layer: string) {
   return labels[layer] ?? layer;
 }
 
+function formatHermesRuleType(ruleType: string) {
+  const labels: Record<string, string> = {
+    content_label: "内容标签",
+    sender_priority: "发件人优先级",
+    sender_feed: "Feed 分类",
+  };
+  return labels[ruleType] ?? ruleType;
+}
+
+function formatHermesRuleAction(action: Record<string, unknown>) {
+  if (action.type === "apply_label") {
+    const labelName =
+      typeof action.labelName === "string" && action.labelName.trim()
+        ? action.labelName.trim()
+        : "标签";
+    return `应用标签 ${labelName}`;
+  }
+
+  if (action.type === "classify_sender") {
+    return typeof action.bucket === "string"
+      ? `分类到 ${action.bucket}`
+      : "发件人分类";
+  }
+
+  return typeof action.type === "string" ? action.type : "规则动作";
+}
+
 function formatHermesMemoryContent(content: Record<string, unknown>) {
   return JSON.stringify(content, null, 2);
 }
@@ -7444,7 +7472,7 @@ function SettingsPage(props: { api?: EmailHubApi; accountId: string }) {
 
         <div className="settings-detail">
           {activeSection === "hermes" ? (
-            <HermesRuntimeSettingsPanel api={props.api} />
+            <HermesRuntimeSettingsPanel api={props.api} accountId={props.accountId} />
           ) : null}
           {activeSection === "todo" ? (
             <TodoPage api={props.api} accountId={props.accountId} embedded />
@@ -7470,7 +7498,7 @@ function SettingsPage(props: { api?: EmailHubApi; accountId: string }) {
   );
 }
 
-function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi }) {
+function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId: string }) {
   const abilities = [
     "线程总结",
     "写回复",
@@ -7906,7 +7934,144 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi }) {
         ))}
       </div>
 
+      <HermesRuleManagerPanel api={props.api} accountId={props.accountId} />
       <HermesMemoryManagerPanel api={props.api} />
+    </section>
+  );
+}
+
+function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId: string }) {
+  const previewRules: HermesRuleDto[] = [
+    {
+      id: "preview_rule_codes",
+      accountId: props.accountId,
+      candidateId: "preview_candidate_codes",
+      title: "启用验证码智能分组",
+      ruleType: "content_label",
+      condition: { anyKeywords: ["验证码", "verification", "otp"] },
+      action: {
+        type: "apply_label",
+        labelId: "preview_label_codes",
+        labelName: "验证码",
+        providerWriteback: false,
+      },
+      confidence: 0.9,
+      enabled: true,
+      createdAt: "2026-06-15T08:00:00.000Z",
+      approvedAt: "2026-06-15T08:00:00.000Z",
+    },
+  ];
+  const [rules, setRules] = useState<HermesRuleDto[]>([]);
+  const [ruleNotice, setRuleNotice] = useState("正在读取 Hermes 规则...");
+  const [busyRuleId, setBusyRuleId] = useState("");
+
+  async function loadRules() {
+    if (!props.api) {
+      setRules(previewRules);
+      setRuleNotice("本地预览规则，连接后会读取真实 Hermes 规则。");
+      return;
+    }
+
+    setRuleNotice("正在读取 Hermes 规则...");
+    try {
+      const page = await props.api.listHermesRules({
+        accountId: props.accountId,
+        limit: 50,
+      });
+      setRules(page.items);
+      setRuleNotice(
+        page.items.length === 0
+          ? "当前账号还没有 Hermes 规则。"
+          : `已读取 ${page.items.length} 条 Hermes 规则。`,
+      );
+    } catch {
+      setRules([]);
+      setRuleNotice("Hermes 规则暂时不可用。");
+    }
+  }
+
+  useEffect(() => {
+    void loadRules();
+    // Rules are refreshed by explicit button and after toggles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.accountId, props.api]);
+
+  async function setRuleEnabled(rule: HermesRuleDto, enabled: boolean) {
+    if (!props.api) {
+      setRules((current) =>
+        current.map((item) =>
+          item.id === rule.id ? { ...item, enabled } : item,
+        ),
+      );
+      setRuleNotice(enabled ? "预览规则已恢复。" : "预览规则已停用。");
+      return;
+    }
+
+    setBusyRuleId(rule.id);
+    setRuleNotice(enabled ? "正在恢复 Hermes 规则..." : "正在停用 Hermes 规则...");
+    try {
+      const updated = await props.api.updateHermesRule({
+        accountId: props.accountId,
+        ruleId: rule.id,
+        enabled,
+      });
+      setRules((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setRuleNotice(
+        enabled
+          ? `Hermes 规则已恢复：${updated.title}。`
+          : `Hermes 规则已停用：${updated.title}。`,
+      );
+    } catch {
+      setRuleNotice("Hermes 规则更新失败。");
+    } finally {
+      setBusyRuleId("");
+    }
+  }
+
+  return (
+    <section className="settings-subpanel" aria-label="Hermes 规则管理">
+      <header className="settings-panel-head">
+        <div>
+          <h3>规则管理</h3>
+          <p>查看 Hermes 已启用或停用的规则；停用后只影响后续自动分类。</p>
+        </div>
+        <button className="ghost-button" type="button" onClick={() => void loadRules()}>
+          刷新规则
+        </button>
+      </header>
+
+      <div className="backend-notice compact" role="status">
+        {ruleNotice}
+      </div>
+
+      <div className="task-list">
+        {rules.map((rule) => (
+          <div className="task-row" key={rule.id}>
+            <Sparkles size={19} />
+            <div>
+              <strong>{rule.title}</strong>
+              <span>
+                {formatHermesRuleType(rule.ruleType)} ·{" "}
+                {formatHermesRuleAction(rule.action)} ·{" "}
+                {rule.enabled ? "已启用" : "已停用"} ·{" "}
+                {Math.round(rule.confidence * 100)}%
+              </span>
+            </div>
+            <div className="task-actions">
+              <button
+                type="button"
+                aria-label={`${rule.enabled ? "Disable" : "Enable"} Hermes rule ${rule.title}`}
+                disabled={busyRuleId === rule.id}
+                onClick={() => void setRuleEnabled(rule, !rule.enabled)}
+              >
+                {rule.enabled ? "停用" : "恢复"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

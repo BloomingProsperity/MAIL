@@ -253,6 +253,116 @@ describe("Hermes rule routes", () => {
     ]);
   });
 
+  it("updates an enabled rule without approving another candidate", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async updateRuleEnabled(input: unknown) {
+        calls.push(input);
+        return {
+          id: "rule_codes",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: { type: "apply_label", labelId: "label_codes" },
+          confidence: 0.9,
+          enabled: false,
+          createdAt: "2026-06-13T10:10:00.000Z",
+          approvedAt: "2026-06-13T10:10:00.000Z",
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/hermes/rules/rule_codes`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ accountId: "account_1", enabled: false }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          id: "rule_codes",
+          enabled: false,
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        enabled: false,
+      },
+    ]);
+  });
+
+  it("returns 404 when updating a missing Hermes rule", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async updateRuleEnabled(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/rules/missing_rule`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ accountId: "account_1", enabled: false }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({ error: "rule_not_found" });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        ruleId: "missing_rule",
+        enabled: false,
+      },
+    ]);
+  });
+
+  it("rejects invalid Hermes rule updates before hitting the service", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async updateRuleEnabled(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/hermes/rules/rule_codes`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ accountId: "account_1", enabled: "false" }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_rule_request",
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
   it("rejects invalid rule requests before hitting the service", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {
