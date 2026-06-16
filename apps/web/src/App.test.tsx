@@ -1102,6 +1102,88 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("Hermes 规则已恢复：启用验证码智能分组。")).toBeTruthy();
   });
 
+  it("lets users draft, simulate, and approve Hermes rules from Settings", async () => {
+    const api = createApiFixture();
+    const command = "帮我创建一个验证码分组规则";
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.change(within(rulePanel).getByLabelText("Hermes rule command"), {
+      target: { value: command },
+    });
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
+
+    await waitFor(() => {
+      expect(api.draftHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        command,
+      });
+    });
+    expect(within(rulePanel).getByText(/关键词 验证码、verification、otp/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Simulate Hermes rule 启用验证码智能分组",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.simulateHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        sampleLimit: 25,
+      });
+    });
+    expect(within(rulePanel).getByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Approve Hermes rule 启用验证码智能分组",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.approveHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      });
+    });
+    expect(await screen.findByText("Hermes 规则已启用：启用验证码智能分组。")).toBeTruthy();
+    expect(
+      within(rulePanel).getByRole("button", {
+        name: "Approve Hermes rule 启用验证码智能分组",
+      }).textContent,
+    ).toContain("已启用");
+  });
+
+  it("requires rule simulation before approving a Hermes rule draft", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
+    expect(await within(rulePanel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Approve Hermes rule 启用验证码智能分组",
+      }),
+    );
+
+    expect(
+      await screen.findByText("请先运行 shadow simulation，再确认启用规则。"),
+    ).toBeTruthy();
+    expect(api.approveHermesRule).not.toHaveBeenCalled();
+  });
+
   it("does not query account-scoped Hermes settings with the preview account when no backend account exists", async () => {
     const api = createApiFixture();
     vi.mocked(api.listSyncCenterAccounts).mockResolvedValue({ items: [] });

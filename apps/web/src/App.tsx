@@ -6239,6 +6239,29 @@ function formatHermesRuleAction(action: Record<string, unknown>) {
   return typeof action.type === "string" ? action.type : "规则动作";
 }
 
+function formatHermesRuleCondition(condition: Record<string, unknown>) {
+  const keywords = condition.anyKeywords;
+  if (Array.isArray(keywords)) {
+    const visibleKeywords = keywords
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .slice(0, 4)
+      .map((item) => item.trim());
+    if (visibleKeywords.length > 0) {
+      return `关键词 ${visibleKeywords.join("、")}`;
+    }
+  }
+
+  if (typeof condition.senderEmail === "string" && condition.senderEmail.trim()) {
+    return `发件人 ${condition.senderEmail.trim()}`;
+  }
+
+  if (typeof condition.domain === "string" && condition.domain.trim()) {
+    return `域名 ${condition.domain.trim()}`;
+  }
+
+  return "条件已生成";
+}
+
 function formatHermesAuditTitle(event: HermesAuditLogEntryDto) {
   return event.skillTitle?.trim() || formatHermesAuditSkillId(event.skillId);
 }
@@ -8029,9 +8052,40 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       approvedAt: "2026-06-15T08:00:00.000Z",
     },
   ];
+  const previewCandidates: HermesRuleCandidateDto[] = [
+    {
+      id: "preview_candidate_codes",
+      accountId: props.accountId ?? PREVIEW_ACCOUNT_ID,
+      title: "启用验证码智能分组",
+      ruleType: "content_label",
+      condition: { anyKeywords: ["验证码", "verification", "otp"] },
+      action: {
+        type: "apply_label",
+        labelName: "验证码",
+        labelColor: "blue",
+        providerWriteback: false,
+        applyToHistory: true,
+        requiresConfirmation: true,
+      },
+      confidence: 0.9,
+      status: "shadow",
+      evidenceMessageIds: [],
+      createdAt: "2026-06-15T08:00:00.000Z",
+    },
+  ];
   const [rules, setRules] = useState<HermesRuleDto[]>([]);
   const [ruleNotice, setRuleNotice] = useState("正在读取 Hermes 规则...");
   const [busyRuleId, setBusyRuleId] = useState("");
+  const [draftCommand, setDraftCommand] = useState(
+    "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
+  );
+  const [candidateDrafts, setCandidateDrafts] = useState<
+    HermesRuleCandidateDto[]
+  >([]);
+  const [candidateSimulations, setCandidateSimulations] = useState<
+    Record<string, HermesRuleSimulationDto>
+  >({});
+  const [ruleDraftBusy, setRuleDraftBusy] = useState("");
 
   async function loadRules() {
     if (!props.api) {
@@ -8109,6 +8163,153 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
     }
   }
 
+  async function draftRuleFromCommand() {
+    const command = draftCommand.trim();
+    if (!command) {
+      setRuleNotice("请输入要让 Hermes 创建的规则。");
+      return;
+    }
+
+    if (!props.api) {
+      setCandidateDrafts(previewCandidates);
+      setCandidateSimulations({});
+      setRuleNotice("预览规则草案已生成，连接后会先影子模拟再确认启用。");
+      return;
+    }
+
+    if (!props.accountId) {
+      setRuleNotice("请先添加邮箱并完成同步，再让 Hermes 创建规则。");
+      return;
+    }
+
+    setRuleDraftBusy("draft");
+    setRuleNotice("Hermes 正在生成规则草案...");
+    try {
+      const result = await props.api.draftHermesRule({
+        accountId: props.accountId,
+        command,
+      });
+      setCandidateDrafts(result.candidates);
+      setCandidateSimulations({});
+      setRuleNotice(
+        result.candidates.length === 0
+          ? "Hermes 没有生成可用规则草案。"
+          : `Hermes 已生成 ${result.candidates.length} 条规则草案，请先模拟再确认。`,
+      );
+    } catch {
+      setCandidateDrafts([]);
+      setRuleNotice("Hermes 规则草案生成失败。");
+    } finally {
+      setRuleDraftBusy("");
+    }
+  }
+
+  async function simulateRuleCandidate(candidate: HermesRuleCandidateDto) {
+    if (!props.api) {
+      setCandidateSimulations((current) => ({
+        ...current,
+        [candidate.id]: {
+          id: "preview_rule_simulation",
+          accountId: candidate.accountId,
+          candidateId: candidate.id,
+          mode: "shadow",
+          matchedCount: 4,
+          sampleMessageIds: ["preview_message_1", "preview_message_2"],
+          actionPreview: candidate.action,
+          createdAt: new Date().toISOString(),
+        },
+      }));
+      setRuleNotice("预览影子模拟已完成：命中 4 封邮件。");
+      return;
+    }
+
+    if (!props.accountId) {
+      setRuleNotice("请先添加邮箱并完成同步，再模拟 Hermes 规则。");
+      return;
+    }
+
+    setRuleDraftBusy(`simulate:${candidate.id}`);
+    setRuleNotice("Hermes 正在影子模拟规则...");
+    try {
+      const simulation = await props.api.simulateHermesRule({
+        accountId: props.accountId,
+        candidateId: candidate.id,
+        sampleLimit: 25,
+      });
+      setCandidateSimulations((current) => ({
+        ...current,
+        [candidate.id]: simulation,
+      }));
+      setRuleNotice(
+        `Shadow simulation 已完成：命中 ${simulation.matchedCount} 封邮件。`,
+      );
+    } catch {
+      setRuleNotice("Hermes 规则影子模拟失败。");
+    } finally {
+      setRuleDraftBusy("");
+    }
+  }
+
+  async function approveRuleCandidate(candidate: HermesRuleCandidateDto) {
+    if (!candidateSimulations[candidate.id]) {
+      setRuleNotice("请先运行 shadow simulation，再确认启用规则。");
+      return;
+    }
+
+    if (!props.api) {
+      const previewRule: HermesRuleDto = {
+        ...previewRules[0],
+        id: "preview_rule_approved",
+        candidateId: candidate.id,
+        title: candidate.title,
+        ruleType: candidate.ruleType,
+        condition: candidate.condition,
+        action: {
+          ...candidate.action,
+          requiresConfirmation: false,
+        },
+        enabled: true,
+        approvedAt: new Date().toISOString(),
+      };
+      setRules((current) => [previewRule, ...current]);
+      setCandidateDrafts((current) =>
+        current.map((item) =>
+          item.id === candidate.id ? { ...item, status: "approved" } : item,
+        ),
+      );
+      setRuleNotice(`预览规则已启用：${candidate.title}。`);
+      return;
+    }
+
+    if (!props.accountId) {
+      setRuleNotice("请先添加邮箱并完成同步，再确认 Hermes 规则。");
+      return;
+    }
+
+    setRuleDraftBusy(`approve:${candidate.id}`);
+    setRuleNotice("正在确认启用 Hermes 规则...");
+    try {
+      const approvedRule = await props.api.approveHermesRule({
+        accountId: props.accountId,
+        candidateId: candidate.id,
+      });
+      setRules((current) => [
+        approvedRule,
+        ...current.filter((rule) => rule.id !== approvedRule.id),
+      ]);
+      setCandidateDrafts((current) =>
+        current.map((item) =>
+          item.id === candidate.id ? { ...item, status: "approved" } : item,
+        ),
+      );
+      setRuleNotice(`Hermes 规则已启用：${approvedRule.title}。`);
+    } catch {
+      setRuleNotice("Hermes 规则确认失败。");
+    } finally {
+      setRuleDraftBusy("");
+    }
+  }
+
   return (
     <section className="settings-subpanel" aria-label="Hermes 规则管理">
       <header className="settings-panel-head">
@@ -8123,6 +8324,87 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
 
       <div className="backend-notice compact" role="status">
         {ruleNotice}
+      </div>
+
+      <div className="rule-draft-workbench" aria-label="Hermes 规则草案工作台">
+        <label>
+          <span>自然语言规则</span>
+          <textarea
+            aria-label="Hermes rule command"
+            value={draftCommand}
+            onChange={(event) => setDraftCommand(event.target.value)}
+          />
+        </label>
+        <div className="inline-actions">
+          <button
+            className="primary-button"
+            type="button"
+            disabled={Boolean(ruleDraftBusy)}
+            onClick={() => void draftRuleFromCommand()}
+          >
+            生成规则草案
+          </button>
+        </div>
+        {candidateDrafts.length > 0 ? (
+          <div className="rule-candidate-list">
+            {candidateDrafts.map((candidate) => {
+              const simulation = candidateSimulations[candidate.id];
+              const isSimulating = ruleDraftBusy === `simulate:${candidate.id}`;
+              const isApproving = ruleDraftBusy === `approve:${candidate.id}`;
+              return (
+                <article className="rule-candidate-card" key={candidate.id}>
+                  <div className="hermes-memory-meta">
+                    <div>
+                      <strong>{candidate.title}</strong>
+                      <span>
+                        {formatHermesRuleType(candidate.ruleType)} ·{" "}
+                        {formatHermesRuleAction(candidate.action)} ·{" "}
+                        {formatHermesRuleCondition(candidate.condition)} ·{" "}
+                        {Math.round(candidate.confidence * 100)}% ·{" "}
+                        {candidate.status === "approved" ? "已启用" : "草案"}
+                      </span>
+                    </div>
+                    <span>{formatMailDate(candidate.createdAt)}</span>
+                  </div>
+                  {simulation ? (
+                    <p>
+                      Shadow simulation：命中 {simulation.matchedCount} 封邮件
+                      {simulation.sampleMessageIds.length > 0
+                        ? `，样本 ${simulation.sampleMessageIds.slice(0, 3).join("、")}`
+                        : ""}
+                    </p>
+                  ) : (
+                    <p>确认前必须先运行 shadow simulation，不会直接修改邮箱。</p>
+                  )}
+                  <div className="inline-actions">
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      disabled={Boolean(ruleDraftBusy)}
+                      aria-label={`Simulate Hermes rule ${candidate.title}`}
+                      onClick={() => void simulateRuleCandidate(candidate)}
+                    >
+                      {isSimulating ? "模拟中" : "模拟规则"}
+                    </button>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={Boolean(ruleDraftBusy) || candidate.status === "approved"}
+                      aria-label={`Approve Hermes rule ${candidate.title}`}
+                      onClick={() => void approveRuleCandidate(candidate)}
+                    >
+                      {isApproving
+                        ? "确认中"
+                        : candidate.status === "approved"
+                          ? "已启用"
+                          : "确认启用"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
 
       <div className="task-list">

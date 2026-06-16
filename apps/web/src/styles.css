@@ -2093,6 +2093,7 @@ h2 {
 
 .memory-filter-grid label,
 .audit-filter-grid label,
+.rule-draft-workbench label,
 .hermes-memory-card label {
   display: grid;
   gap: 6px;
@@ -2104,6 +2105,7 @@ h2 {
 .memory-filter-grid input,
 .audit-filter-grid input,
 .audit-filter-grid select,
+.rule-draft-workbench textarea,
 .hermes-memory-card input,
 .hermes-memory-card textarea {
   width: 100%;
@@ -2133,9 +2135,43 @@ h2 {
   line-height: 1.5;
 }
 
+.rule-draft-workbench {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--bg-panel);
+}
+
+.rule-draft-workbench textarea {
+  min-height: 88px;
+  resize: vertical;
+  padding: 10px;
+  line-height: 1.5;
+}
+
+.rule-candidate-list {
+  display: grid;
+  gap: 10px;
+}
+
+.rule-candidate-card {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 10px;
+}
+
+.rule-candidate-card p {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .memory-filter-grid input:focus,
 .audit-filter-grid input:focus,
 .audit-filter-grid select:focus,
+.rule-draft-workbench textarea:focus,
 .hermes-memory-card input:focus,
 .hermes-memory-card textarea:focus {
   border-color: var(--primary-border);
