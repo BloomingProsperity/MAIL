@@ -1344,6 +1344,60 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByText(/Sensitive translated body/)).toBeNull();
   });
 
+  it("summarizes Hermes search audit actions with safe fields", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listHermesAuditLog).mockResolvedValue({
+      items: [
+        {
+          id: "audit_search_1",
+          eventType: "hermes.skill.email_search_qa",
+          skillRunId: "run_search_1",
+          skillId: "email_search_qa",
+          skillTitle: "Search mail with Hermes",
+          readMessageIds: ["message_1", "message_2"],
+          memoryIds: ["memory_1"],
+          action: {
+            skillId: "email_search_qa",
+            accountId: "account_1",
+            mailboxId: "mailbox_inbox",
+            searchQuery: "signed contract",
+            searchPlan: {
+              filters: [
+                { field: "hasAttachment", operator: "eq", value: true, label: "有附件" },
+                { field: "sender", operator: "contains", value: "Lina", label: "发件人包含 Lina" },
+              ],
+            },
+            language: "zh-CN",
+            limit: 5,
+          },
+          input: {
+            question: "Private user question that must stay hidden.",
+          },
+          output: {
+            answerText: "Private answer that must stay hidden.",
+          },
+          createdAt: "2026-06-15T09:30:00.000Z",
+        },
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
+    expect(within(auditPanel).getByText("Search mail with Hermes")).toBeTruthy();
+    expect(within(auditPanel).getByText(/搜索词 signed contract/)).toBeTruthy();
+    expect(within(auditPanel).getByText(/账号 account_1/)).toBeTruthy();
+    expect(within(auditPanel).getByText(/邮箱目录 mailbox_inbox/)).toBeTruthy();
+    expect(within(auditPanel).getByText(/搜索条件 有附件、发件人包含 Lina/)).toBeTruthy();
+    expect(within(auditPanel).getByText(/数量 5/)).toBeTruthy();
+    expect(screen.queryByText(/Private user question/)).toBeNull();
+    expect(screen.queryByText(/Private answer/)).toBeNull();
+  });
+
   it("filters Hermes audit events without saving runtime settings", async () => {
     const api = createApiFixture();
 

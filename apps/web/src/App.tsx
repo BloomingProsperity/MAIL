@@ -6326,6 +6326,7 @@ function formatHermesAuditTimestamp(value: string) {
 function formatHermesAuditAction(action: Record<string, unknown>) {
   const labels: Record<string, string> = {
     applyToHistory: "回填历史",
+    accountId: "账号",
     bucket: "分类",
     candidateId: "候选",
     currentBucket: "当前分类",
@@ -6334,6 +6335,8 @@ function formatHermesAuditAction(action: Record<string, unknown>) {
     labelId: "标签 ID",
     labelName: "标签",
     language: "语言",
+    limit: "数量",
+    mailboxId: "邮箱目录",
     memoryLayers: "记忆层",
     memoryScope: "记忆作用域",
     mode: "模式",
@@ -6343,6 +6346,8 @@ function formatHermesAuditAction(action: Record<string, unknown>) {
     ruleId: "规则",
     scenario: "场景",
     sendsDirectly: "直接发送",
+    searchPlan: "搜索条件",
+    searchQuery: "搜索词",
     skillId: "技能",
     sourceLanguage: "源语言",
     status: "状态",
@@ -6351,7 +6356,10 @@ function formatHermesAuditAction(action: Record<string, unknown>) {
   };
   const fields = Object.keys(labels);
   const parts = fields.flatMap((field) => {
-    const value = formatHermesAuditActionValue(action[field]);
+    const value =
+      field === "searchPlan"
+        ? formatHermesAuditSearchPlan(action[field])
+        : formatHermesAuditActionValue(action[field]);
     return value ? [`${labels[field]} ${value}`] : [];
   });
 
@@ -6382,6 +6390,42 @@ function formatHermesAuditActionValue(value: unknown): string | undefined {
       .slice(0, 3)
       .map(truncateHermesAuditValue);
     return items.length > 0 ? items.join("、") : undefined;
+  }
+
+  return undefined;
+}
+
+function formatHermesAuditSearchPlan(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const filters = Array.isArray(record.filters)
+    ? record.filters
+        .flatMap((filter) => {
+          if (!filter || typeof filter !== "object" || Array.isArray(filter)) {
+            return [];
+          }
+          const label = (filter as Record<string, unknown>).label;
+          return typeof label === "string" && label.trim()
+            ? [truncateHermesAuditValue(label.trim())]
+            : [];
+        })
+        .slice(0, 4)
+    : [];
+  if (filters.length > 0) {
+    return filters.join("、");
+  }
+
+  const quickFilters = Array.isArray(record.quickFilters)
+    ? record.quickFilters
+        .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+        .map((item) => item.trim())
+        .slice(0, 4)
+    : [];
+  if (quickFilters.length > 0) {
+    return quickFilters.join("、");
   }
 
   return undefined;
