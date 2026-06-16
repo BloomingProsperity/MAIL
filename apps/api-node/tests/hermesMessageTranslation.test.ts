@@ -104,6 +104,8 @@ describe("Hermes message translation service", () => {
   });
 
   it("uses cached translations for the same message body and language", async () => {
+    const persisted: unknown[] = [];
+    const ids = ["cache_run_1", "cache_audit_1"];
     const cached: HermesMessageTranslationRecord = {
       id: "translation_cache_1",
       accountId: "account_1",
@@ -120,7 +122,7 @@ describe("Hermes message translation service", () => {
     };
     const lookups: unknown[] = [];
     const service = createHermesMessageTranslationService({
-      createId: () => "unused",
+      createId: () => ids.shift() ?? "unexpected",
       store: {
         async getCachedTranslation(input) {
           lookups.push(input);
@@ -128,6 +130,11 @@ describe("Hermes message translation service", () => {
         },
         async saveTranslation() {
           throw new Error("cached translation should not be saved again");
+        },
+      },
+      runStore: {
+        async recordCompletedSkillRun(input) {
+          persisted.push(input);
         },
       },
       mailReadStore: {
@@ -162,10 +169,52 @@ describe("Hermes message translation service", () => {
       },
     ]);
     expect(result).toMatchObject({
-      skillRunId: "run_cached",
+      skillRunId: "cache_run_1",
+      auditEventId: "cache_audit_1",
       translatedText: "来自 HTML 的你好",
       cached: true,
     });
+    expect(persisted).toEqual([
+      {
+        run: {
+          id: "cache_run_1",
+          skillId: "translate_text",
+          skillTitle: "翻译邮件",
+          input: {
+            accountId: "account_1",
+            messageId: "message_1",
+            bodyHash: hashTranslationSource("Hello from HTML"),
+            sourceLanguage: "auto",
+            targetLanguage: "Chinese",
+            tone: "preserve original meaning and formatting",
+          },
+          output: {
+            cached: true,
+            translatedTextHash: expect.any(String),
+            translatedTextLength: "来自 HTML 的你好".length,
+            sourceLanguage: "auto",
+            targetLanguage: "Chinese",
+          },
+        },
+        auditEvent: {
+          id: "cache_audit_1",
+          eventType: "hermes.skill.translate_text",
+          skillRunId: "cache_run_1",
+          readMessageIds: ["message_1"],
+          memoryIds: [],
+          action: {
+            skillId: "translate_text",
+            cached: true,
+            targetLanguage: "Chinese",
+            sourceLanguage: "auto",
+            tone: "preserve original meaning and formatting",
+          },
+        },
+      },
+    ]);
+    expect((persisted[0] as any).run.output).not.toHaveProperty(
+      "translatedText",
+    );
   });
 
   it("returns undefined for a message outside the account scope", async () => {

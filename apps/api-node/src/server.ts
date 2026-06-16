@@ -399,6 +399,7 @@ if (configuredHermesService && config.mailReadStore) {
     mailReadStore: config.mailReadStore,
     translationService: configuredHermesService,
     store: hermesMessageTranslationStore,
+    runStore: hermesRunStore,
     createId: randomUUID,
   });
   config.hermesMessageSummaryService = createHermesMessageSummaryService({

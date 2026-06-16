@@ -1,6 +1,7 @@
 import type { MailReadStore } from "../mail-read/mail-read-store.js";
 import { hashMessageText, messageReadableText } from "./message-content.js";
 import type {
+  HermesRunStore,
   HermesTranslateResult,
   HermesTranslationService,
 } from "./translation.js";
@@ -71,6 +72,7 @@ export interface HermesMessageTranslationServiceOptions {
   mailReadStore: Pick<MailReadStore, "getMessage">;
   translationService: Pick<HermesTranslationService, "translate">;
   store?: HermesMessageTranslationStore;
+  runStore?: HermesRunStore;
   createId: () => string;
 }
 
@@ -120,7 +122,20 @@ export function createHermesMessageTranslationService(
       if (!normalized.forceRefresh && options.store) {
         const cached = await options.store.getCachedTranslation(lookup);
         if (cached) {
-          return recordToResult(cached, true);
+          const audit = await recordCachedTranslationRun(
+            options,
+            cached,
+            normalized,
+          );
+          return {
+            ...recordToResult(cached, true),
+            ...(audit
+              ? {
+                  skillRunId: audit.skillRunId,
+                  auditEventId: audit.auditEventId,
+                }
+              : {}),
+          };
         }
       }
 
@@ -163,9 +178,7 @@ export const messageTranslationText = messageReadableText;
 
 export const hashTranslationSource = hashMessageText;
 
-function normalizeInput(
-  input: HermesMessageTranslationInput,
-): Required<
+type NormalizedHermesMessageTranslationInput = Required<
   Pick<
     HermesMessageTranslationInput,
     "accountId" | "messageId" | "targetLanguage" | "sourceLanguage" | "tone"
@@ -174,7 +187,11 @@ function normalizeInput(
   Pick<
     HermesMessageTranslationInput,
     "memoryIds" | "memoryScope" | "memoryLayers" | "forceRefresh"
-  > {
+  >;
+
+function normalizeInput(
+  input: HermesMessageTranslationInput,
+): NormalizedHermesMessageTranslationInput {
   return {
     accountId: normalizeRequiredText(input.accountId),
     messageId: normalizeRequiredText(input.messageId),
@@ -188,6 +205,62 @@ function normalizeInput(
     ...(input.memoryLayers ? { memoryLayers: input.memoryLayers } : {}),
     ...(input.forceRefresh ? { forceRefresh: true } : {}),
   };
+}
+
+async function recordCachedTranslationRun(
+  options: HermesMessageTranslationServiceOptions,
+  record: HermesMessageTranslationRecord,
+  input: NormalizedHermesMessageTranslationInput,
+): Promise<{ skillRunId: string; auditEventId: string } | undefined> {
+  if (!options.runStore) {
+    return undefined;
+  }
+
+  const skillRunId = options.createId();
+  const auditEventId = options.createId();
+  await options.runStore.recordCompletedSkillRun({
+    run: {
+      id: skillRunId,
+      skillId: "translate_text",
+      skillTitle: "翻译邮件",
+      input: compactObject({
+        accountId: record.accountId,
+        messageId: record.messageId,
+        bodyHash: record.bodyHash,
+        sourceLanguage: record.sourceLanguage,
+        targetLanguage: record.targetLanguage,
+        tone: record.tone,
+        memoryIds: input.memoryIds,
+        memoryScope: input.memoryScope,
+        memoryLayers: input.memoryLayers,
+      }),
+      output: {
+        cached: true,
+        translatedTextHash: hashTranslationSource(record.translatedText),
+        translatedTextLength: record.translatedText.length,
+        sourceLanguage: record.sourceLanguage,
+        targetLanguage: record.targetLanguage,
+      },
+    },
+    auditEvent: {
+      id: auditEventId,
+      eventType: "hermes.skill.translate_text",
+      skillRunId,
+      readMessageIds: [record.messageId],
+      memoryIds: input.memoryIds ?? [],
+      action: compactObject({
+        skillId: "translate_text",
+        cached: true,
+        targetLanguage: record.targetLanguage,
+        sourceLanguage: record.sourceLanguage,
+        tone: record.tone,
+        memoryScope: input.memoryScope,
+        memoryLayers: input.memoryLayers,
+      }),
+    },
+  });
+
+  return { skillRunId, auditEventId };
 }
 
 function normalizeRequiredText(value: string): string {
@@ -218,4 +291,10 @@ function recordToResult(
     translatedText: record.translatedText,
     cached,
   };
+}
+
+function compactObject(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+  );
 }
