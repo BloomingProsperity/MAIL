@@ -41,6 +41,7 @@ import type {
   GatekeeperSenderDto,
   HermesEmailSearchQaResult,
   HermesActionPlanDto,
+  HermesAuditLogEntryDto,
   HermesFollowupTrackerResult,
   HermesMessageOrganizationResult,
   HermesMemoryDto,
@@ -1590,7 +1591,10 @@ export function App(props: AppProps = {}) {
           />
         ) : null}
         {activeView === "settings" ? (
-          <SettingsPage api={props.api} accountId={accountId} />
+          <SettingsPage
+            api={props.api}
+            accountId={props.api ? selectedAccountId : accountId}
+          />
         ) : null}
       </main>
 
@@ -6235,6 +6239,135 @@ function formatHermesRuleAction(action: Record<string, unknown>) {
   return typeof action.type === "string" ? action.type : "规则动作";
 }
 
+function formatHermesAuditTitle(event: HermesAuditLogEntryDto) {
+  return event.skillTitle?.trim() || formatHermesAuditSkillId(event.skillId);
+}
+
+function formatHermesAuditSkillId(skillId: string | undefined) {
+  if (!skillId) {
+    return "Hermes 操作";
+  }
+
+  const labels: Record<string, string> = {
+    action_item_extract: "待办提取",
+    action_plan: "执行计划",
+    email_search_qa: "搜索问答",
+    followup_tracker: "跟进识别",
+    label_suggest: "标签建议",
+    newsletter_cleanup: "订阅整理",
+    priority_triage: "优先级判断",
+    quick_reply: "快速回复",
+    reply_draft: "写回复",
+    rewrite_polish: "改写润色",
+    thread_summarize: "邮件总结",
+    translate_text: "邮件翻译",
+  };
+  return labels[skillId] ?? skillId;
+}
+
+function formatHermesAuditEventType(eventType: string) {
+  const labels: Record<string, string> = {
+    "hermes.action_plan.confirmed": "确认执行计划",
+    "hermes.action_plan.created": "生成执行计划",
+    "hermes.skill.action_item_extract": "运行待办提取",
+    "hermes.skill.email_search_qa": "运行搜索问答",
+    "hermes.skill.followup_tracker": "运行跟进识别",
+    "hermes.skill.label_suggest": "运行标签建议",
+    "hermes.skill.newsletter_cleanup": "运行订阅整理",
+    "hermes.skill.priority_triage": "运行优先级判断",
+    "hermes.skill.quick_reply": "运行快速回复",
+    "hermes.skill.reply_draft": "运行写回复",
+    "hermes.skill.rewrite_polish": "运行改写润色",
+    "hermes.skill.thread_summarize": "运行邮件总结",
+    "hermes.skill.translate_text": "运行邮件翻译",
+  };
+  return labels[eventType] ?? eventType;
+}
+
+function formatHermesAuditTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatHermesAuditAction(action: Record<string, unknown>) {
+  const labels: Record<string, string> = {
+    applyToHistory: "回填历史",
+    bucket: "分类",
+    candidateId: "候选",
+    currentBucket: "当前分类",
+    editable: "可编辑",
+    intent: "意图",
+    labelId: "标签 ID",
+    labelName: "标签",
+    language: "语言",
+    memoryLayers: "记忆层",
+    memoryScope: "记忆作用域",
+    mode: "模式",
+    planId: "计划",
+    providerWriteback: "写回服务商",
+    requiresUserConfirmation: "需确认",
+    ruleId: "规则",
+    scenario: "场景",
+    sendsDirectly: "直接发送",
+    skillId: "技能",
+    sourceLanguage: "源语言",
+    status: "状态",
+    targetLanguage: "目标语言",
+    type: "类型",
+  };
+  const fields = Object.keys(labels);
+  const parts = fields.flatMap((field) => {
+    const value = formatHermesAuditActionValue(action[field]);
+    return value ? [`${labels[field]} ${value}`] : [];
+  });
+
+  return parts.length > 0
+    ? `动作摘要：${parts.join(" · ")}`
+    : "动作摘要：无可展示字段";
+}
+
+function formatHermesAuditActionValue(value: unknown): string | undefined {
+  if (typeof value === "boolean") {
+    return value ? "是" : "否";
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? truncateHermesAuditValue(trimmed) : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const items = value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 3)
+      .map(truncateHermesAuditValue);
+    return items.length > 0 ? items.join("、") : undefined;
+  }
+
+  return undefined;
+}
+
+function truncateHermesAuditValue(value: string): string {
+  return value.length > 48 ? `${value.slice(0, 45)}...` : value;
+}
+
 function formatHermesMemoryContent(content: Record<string, unknown>) {
   return JSON.stringify(content, null, 2);
 }
@@ -7372,8 +7505,9 @@ function SearchPage(props: {
   );
 }
 
-function SettingsPage(props: { api?: EmailHubApi; accountId: string }) {
+function SettingsPage(props: { api?: EmailHubApi; accountId?: string }) {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("hermes");
+  const settingsAccountId = props.accountId ?? PREVIEW_ACCOUNT_ID;
 
   return (
     <section className="workspace-page page-scroll">
@@ -7408,10 +7542,10 @@ function SettingsPage(props: { api?: EmailHubApi; accountId: string }) {
             <HermesRuntimeSettingsPanel api={props.api} accountId={props.accountId} />
           ) : null}
           {activeSection === "todo" ? (
-            <TodoPage api={props.api} accountId={props.accountId} embedded />
+            <TodoPage api={props.api} accountId={settingsAccountId} embedded />
           ) : null}
           {activeSection === "gatekeeper" ? (
-            <GatekeeperSettingsPanel api={props.api} accountId={props.accountId} />
+            <GatekeeperSettingsPanel api={props.api} accountId={settingsAccountId} />
           ) : null}
           {activeSection === "aliases" ? (
             <DomainAliasSettingsPanel api={props.api} mode="aliases" />
@@ -7431,7 +7565,7 @@ function SettingsPage(props: { api?: EmailHubApi; accountId: string }) {
   );
 }
 
-function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId: string }) {
+function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: string }) {
   const abilities = [
     "线程总结",
     "写回复",
@@ -7869,15 +8003,16 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId: strin
 
       <HermesRuleManagerPanel api={props.api} accountId={props.accountId} />
       <HermesMemoryManagerPanel api={props.api} />
+      <HermesAuditLogPanel api={props.api} accountId={props.accountId} />
     </section>
   );
 }
 
-function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId: string }) {
+function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }) {
   const previewRules: HermesRuleDto[] = [
     {
       id: "preview_rule_codes",
-      accountId: props.accountId,
+      accountId: props.accountId ?? PREVIEW_ACCOUNT_ID,
       candidateId: "preview_candidate_codes",
       title: "启用验证码智能分组",
       ruleType: "content_label",
@@ -7902,6 +8037,12 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId: string })
     if (!props.api) {
       setRules(previewRules);
       setRuleNotice("本地预览规则，连接后会读取真实 Hermes 规则。");
+      return;
+    }
+
+    if (!props.accountId) {
+      setRules([]);
+      setRuleNotice("请先添加邮箱并完成同步，再查看 Hermes 规则。");
       return;
     }
 
@@ -7937,6 +8078,11 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId: string })
         ),
       );
       setRuleNotice(enabled ? "预览规则已恢复。" : "预览规则已停用。");
+      return;
+    }
+
+    if (!props.accountId) {
+      setRuleNotice("请先添加邮箱并完成同步，再更新 Hermes 规则。");
       return;
     }
 
@@ -8297,6 +8443,181 @@ function HermesMemoryManagerPanel(props: { api?: EmailHubApi }) {
             </article>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+function HermesAuditLogPanel(props: { api?: EmailHubApi; accountId?: string }) {
+  const previewAuditEvents: HermesAuditLogEntryDto[] = [
+    {
+      id: "preview_audit_translate",
+      eventType: "hermes.skill.translate_text",
+      skillRunId: "preview_run_translate",
+      skillId: "translate_text",
+      skillTitle: "邮件翻译",
+      readMessageIds: ["preview_message"],
+      memoryIds: ["preview_translation_preference"],
+      action: {
+        skillId: "translate_text",
+        targetLanguage: "zh-CN",
+        memoryScope: "global",
+      },
+      createdAt: "2026-06-15T09:30:00.000Z",
+    },
+  ];
+  const [events, setEvents] = useState<HermesAuditLogEntryDto[]>([]);
+  const [skillFilter, setSkillFilter] = useState("");
+  const [messageIdFilter, setMessageIdFilter] = useState("");
+  const [memoryIdFilter, setMemoryIdFilter] = useState("");
+  const [limitText, setLimitText] = useState("50");
+  const [auditNotice, setAuditNotice] = useState("正在读取 Hermes 审计日志...");
+  const [auditBusy, setAuditBusy] = useState(false);
+
+  async function loadAuditEvents() {
+    const limit = Number.parseInt(limitText, 10);
+    const safeLimit = Number.isInteger(limit) && limit >= 1 ? Math.min(limit, 100) : 50;
+
+    if (!props.api) {
+      setEvents(previewAuditEvents);
+      setAuditNotice("本地预览审计日志，连接后会读取真实 Hermes 读信和操作记录。");
+      return;
+    }
+
+    if (!props.accountId) {
+      setEvents([]);
+      setAuditNotice("请先添加邮箱并完成同步，再查看 Hermes 审计日志。");
+      return;
+    }
+
+    setAuditBusy(true);
+    setAuditNotice("正在读取 Hermes 审计日志...");
+    try {
+      const page = await props.api.listHermesAuditLog({
+        accountId: props.accountId,
+        ...(skillFilter.trim() ? { skillId: skillFilter.trim() } : {}),
+        ...(messageIdFilter.trim()
+          ? { messageId: messageIdFilter.trim() }
+          : {}),
+        ...(memoryIdFilter.trim() ? { memoryId: memoryIdFilter.trim() } : {}),
+        limit: safeLimit,
+      });
+      setEvents(page.items);
+      setAuditNotice(
+        page.items.length === 0
+          ? "没有匹配的 Hermes 审计事件。"
+          : `已读取 ${page.items.length} 条 Hermes 审计事件。`,
+      );
+    } catch {
+      setEvents([]);
+      setAuditNotice("Hermes 审计日志暂时不可用。");
+    } finally {
+      setAuditBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadAuditEvents();
+    // Filters are applied by the explicit refresh button to avoid reloading while typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.accountId, props.api]);
+
+  return (
+    <section className="settings-subpanel" aria-label="Hermes 审计日志">
+      <header className="settings-panel-head">
+        <div>
+          <h3>审计日志</h3>
+          <p>查看 Hermes 最近读取邮件、使用记忆和生成操作计划的记录。</p>
+        </div>
+        <button
+          className="ghost-button"
+          type="button"
+          disabled={auditBusy}
+          onClick={() => void loadAuditEvents()}
+        >
+          刷新审计
+        </button>
+      </header>
+
+      <div className="audit-filter-grid">
+        <label>
+          <span>技能</span>
+          <select
+            aria-label="Hermes audit skill filter"
+            value={skillFilter}
+            onChange={(event) => setSkillFilter(event.target.value)}
+          >
+            <option value="">全部技能</option>
+            <option value="email_search_qa">搜索问答</option>
+            <option value="translate_text">翻译</option>
+            <option value="thread_summarize">总结</option>
+            <option value="reply_draft">写回复</option>
+            <option value="quick_reply">快速回复</option>
+            <option value="priority_triage">优先级</option>
+            <option value="label_suggest">标签建议</option>
+            <option value="newsletter_cleanup">订阅整理</option>
+            <option value="action_item_extract">待办提取</option>
+            <option value="followup_tracker">跟进识别</option>
+            <option value="rewrite_polish">改写润色</option>
+            <option value="action_plan">执行计划</option>
+          </select>
+        </label>
+        <label>
+          <span>邮件 ID</span>
+          <input
+            aria-label="Hermes audit message filter"
+            value={messageIdFilter}
+            onChange={(event) => setMessageIdFilter(event.target.value)}
+            placeholder="message_..."
+          />
+        </label>
+        <label>
+          <span>记忆 ID</span>
+          <input
+            aria-label="Hermes audit memory filter"
+            value={memoryIdFilter}
+            onChange={(event) => setMemoryIdFilter(event.target.value)}
+            placeholder="memory_..."
+          />
+        </label>
+        <label>
+          <span>数量</span>
+          <input
+            aria-label="Hermes audit limit"
+            inputMode="numeric"
+            value={limitText}
+            onChange={(event) => setLimitText(event.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="backend-notice compact" role="status">
+        {auditNotice}
+      </div>
+
+      <div className="task-list hermes-audit-list">
+        {events.map((event) => (
+          <div
+            className="task-row"
+            key={event.id}
+            aria-label={`Hermes audit event ${event.id}`}
+          >
+            <Sparkles size={19} />
+            <div>
+              <strong>{formatHermesAuditTitle(event)}</strong>
+              <span>
+                {formatHermesAuditEventType(event.eventType)} ·{" "}
+                {formatHermesAuditTimestamp(event.createdAt)} · 读取{" "}
+                {event.readMessageIds.length} 封邮件 · 使用{" "}
+                {event.memoryIds.length} 条记忆
+              </span>
+              <span>{formatHermesAuditAction(event.action)}</span>
+            </div>
+          </div>
+        ))}
+        {events.length === 0 ? (
+          <div className="empty-search">没有 Hermes 审计事件。</div>
+        ) : null}
       </div>
     </section>
   );

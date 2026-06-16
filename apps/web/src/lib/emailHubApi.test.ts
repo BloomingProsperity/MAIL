@@ -792,6 +792,50 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("lists Hermes audit events with scoped filters", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        items: [
+          {
+            id: "audit_1",
+            eventType: "hermes.skill.translate_text",
+            skillRunId: "run_translate_1",
+            skillId: "translate_text",
+            skillTitle: "邮件翻译",
+            readMessageIds: ["message_1"],
+            memoryIds: ["memory_translation"],
+            action: {
+              skillId: "translate_text",
+              targetLanguage: "zh-CN",
+              memoryScope: "global",
+            },
+            createdAt: "2026-06-15T09:30:00.000Z",
+          },
+        ],
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const page = await api.listHermesAuditLog({
+      accountId: " account_1 ",
+      skillId: " translate_text ",
+      messageId: " message_1 ",
+      memoryId: " memory_translation ",
+      limit: 150,
+    });
+
+    expect(page.items[0]).toMatchObject({
+      id: "audit_1",
+      skillId: "translate_text",
+      readMessageIds: ["message_1"],
+      memoryIds: ["memory_translation"],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/audit-log?accountId=account_1&skillId=translate_text&messageId=message_1&memoryId=memory_translation&limit=150",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("posts Spark done and undo actions through the backend action route", async () => {
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>
       jsonResponse({

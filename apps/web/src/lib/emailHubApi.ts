@@ -354,6 +354,28 @@ export interface HermesMemoryUpdateInput {
   confidence?: number;
 }
 
+export interface HermesAuditLogEntryDto {
+  id: string;
+  eventType: string;
+  skillRunId?: string;
+  skillId?: string;
+  skillTitle?: string;
+  readMessageIds: string[];
+  memoryIds: string[];
+  action: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface HermesAuditLogListInput {
+  accountId?: string;
+  skillId?: string;
+  messageId?: string;
+  memoryId?: string;
+  limit?: number;
+}
+
 export interface HermesEmailSearchQaInput {
   accountId: string;
   mailboxId?: string;
@@ -1666,6 +1688,9 @@ export interface EmailHubApi {
   listHermesMemories(input?: HermesMemoryListInput): Promise<Page<HermesMemoryDto>>;
   updateHermesMemory(input: HermesMemoryUpdateInput): Promise<HermesMemoryDto>;
   deleteHermesMemory(input: { id: string }): Promise<void>;
+  listHermesAuditLog(
+    input?: HermesAuditLogListInput,
+  ): Promise<Page<HermesAuditLogEntryDto>>;
   searchMailWithHermes(
     input: HermesEmailSearchQaInput,
   ): Promise<HermesEmailSearchQaResult>;
@@ -2422,6 +2447,23 @@ export function createEmailHubApi(
         baseUrl,
         `/api/hermes/memories/${encodePath(input.id)}`,
         { method: "DELETE" },
+      );
+    },
+
+    listHermesAuditLog(input = {}) {
+      const params = new URLSearchParams();
+      appendParam(params, "accountId", input.accountId?.trim() || undefined);
+      appendParam(params, "skillId", input.skillId?.trim() || undefined);
+      appendParam(params, "messageId", input.messageId?.trim() || undefined);
+      appendParam(params, "memoryId", input.memoryId?.trim() || undefined);
+      if (input.limit !== undefined) {
+        params.set("limit", String(input.limit));
+      }
+      const query = params.toString();
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/audit-log${query ? `?${query}` : ""}`,
       );
     },
 

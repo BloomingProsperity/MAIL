@@ -1102,6 +1102,26 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("Hermes 规则已恢复：启用验证码智能分组。")).toBeTruthy();
   });
 
+  it("does not query account-scoped Hermes settings with the preview account when no backend account exists", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listSyncCenterAccounts).mockResolvedValue({ items: [] });
+
+    render(<App api={api} />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    expect(
+      await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 规则。"),
+    ).toBeTruthy();
+    expect(
+      await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 审计日志。"),
+    ).toBeTruthy();
+    expect(api.listHermesRules).not.toHaveBeenCalled();
+    expect(api.listHermesAuditLog).not.toHaveBeenCalled();
+  });
+
   it("lets users review, edit, and delete Hermes memories from Settings", async () => {
     const api = createApiFixture();
 
@@ -1168,6 +1188,68 @@ describe("Email Hub first UI baseline", () => {
       expect(api.listHermesMemories).toHaveBeenLastCalledWith({
         layer: "procedural_memory",
         scope: "sender:team@example.com",
+        limit: 100,
+      });
+    });
+    expect(api.updateHermesRuntimeSettings).not.toHaveBeenCalled();
+  });
+
+  it("shows Hermes audit events from Settings without exposing raw skill payloads", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
+    expect(within(auditPanel).getByText("邮件翻译")).toBeTruthy();
+    expect(within(auditPanel).getByText(/运行邮件翻译/)).toBeTruthy();
+    expect(within(auditPanel).getByText(/读取 1 封邮件/)).toBeTruthy();
+    expect(within(auditPanel).getByText(/使用 1 条记忆/)).toBeTruthy();
+    expect(within(auditPanel).getByText(/目标语言 zh-CN/)).toBeTruthy();
+    await waitFor(() => {
+      expect(api.listHermesAuditLog).toHaveBeenCalledWith({
+        accountId: "account_1",
+        limit: 50,
+      });
+    });
+    expect(screen.queryByText(/Raw private body/)).toBeNull();
+    expect(screen.queryByText(/Sensitive translated body/)).toBeNull();
+  });
+
+  it("filters Hermes audit events without saving runtime settings", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
+    expect(within(auditPanel).getByText("邮件翻译")).toBeTruthy();
+
+    fireEvent.change(within(auditPanel).getByLabelText("Hermes audit skill filter"), {
+      target: { value: "translate_text" },
+    });
+    fireEvent.change(within(auditPanel).getByLabelText("Hermes audit message filter"), {
+      target: { value: " message_1 " },
+    });
+    fireEvent.change(within(auditPanel).getByLabelText("Hermes audit memory filter"), {
+      target: { value: " memory_translation " },
+    });
+    fireEvent.change(within(auditPanel).getByLabelText("Hermes audit limit"), {
+      target: { value: "150" },
+    });
+    fireEvent.click(within(auditPanel).getByRole("button", { name: "刷新审计" }));
+
+    await waitFor(() => {
+      expect(api.listHermesAuditLog).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        skillId: "translate_text",
+        messageId: "message_1",
+        memoryId: "memory_translation",
         limit: 100,
       });
     });
@@ -5719,6 +5801,31 @@ function createApiFixture(): EmailHubApi {
       updatedAt: "2026-06-14T10:00:00.000Z",
     })),
     deleteHermesMemory: vi.fn(async () => undefined),
+    listHermesAuditLog: vi.fn(async () => ({
+      items: [
+        {
+          id: "audit_translate_1",
+          eventType: "hermes.skill.translate_text",
+          skillRunId: "run_translate_1",
+          skillId: "translate_text",
+          skillTitle: "邮件翻译",
+          readMessageIds: ["message_1"],
+          memoryIds: ["memory_translation"],
+          action: {
+            skillId: "translate_text",
+            targetLanguage: "zh-CN",
+            memoryScope: "global",
+          },
+          input: {
+            threadText: "Raw private body that must stay out of Settings.",
+          },
+          output: {
+            translatedText: "Sensitive translated body that must stay hidden.",
+          },
+          createdAt: "2026-06-15T09:30:00.000Z",
+        },
+      ],
+    })),
     previewAccountCsv: vi.fn(async () => ({
       summary: {
         totalRows: 3,

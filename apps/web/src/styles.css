@@ -2085,7 +2085,14 @@ h2 {
   gap: 10px;
 }
 
+.audit-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) repeat(2, minmax(160px, 1fr)) 96px;
+  gap: 10px;
+}
+
 .memory-filter-grid label,
+.audit-filter-grid label,
 .hermes-memory-card label {
   display: grid;
   gap: 6px;
@@ -2095,6 +2102,8 @@ h2 {
 }
 
 .memory-filter-grid input,
+.audit-filter-grid input,
+.audit-filter-grid select,
 .hermes-memory-card input,
 .hermes-memory-card textarea {
   width: 100%;
@@ -2108,6 +2117,8 @@ h2 {
 }
 
 .memory-filter-grid input,
+.audit-filter-grid input,
+.audit-filter-grid select,
 .hermes-memory-card input {
   height: 36px;
   padding: 0 10px;
@@ -2123,10 +2134,20 @@ h2 {
 }
 
 .memory-filter-grid input:focus,
+.audit-filter-grid input:focus,
+.audit-filter-grid select:focus,
 .hermes-memory-card input:focus,
 .hermes-memory-card textarea:focus {
   border-color: var(--primary-border);
   box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.hermes-audit-list .task-row > div {
+  min-width: 0;
+}
+
+.hermes-audit-list .task-row span {
+  white-space: normal;
 }
 
 .hermes-memory-list {
@@ -2799,6 +2820,7 @@ h2 {
   .add-mail-form,
   .custom-server-grid,
   .import-transfer-grid,
+  .audit-filter-grid,
   .skill-grid {
     grid-template-columns: 1fr;
   }
