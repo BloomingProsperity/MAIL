@@ -1000,6 +1000,150 @@ describe("Hermes routes", () => {
     });
   });
 
+  it("tracks follow-up for a selected account message through the message-scoped route", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageFollowupTrackerService = {
+      async trackMessageFollowup(input: unknown) {
+        calls.push(input);
+        return {
+          skillRunId: "run_message_followup_1",
+          skillId: "followup_tracker",
+          accountId: "account_1",
+          messageId: "message_1",
+          status: "waiting_on_them",
+          followupNeeded: true,
+          owner: "them",
+          confidence: 0.88,
+          dueAt: "2026-06-17T09:00:00.000Z",
+          nextAction: "Check whether Lina replied",
+          reasons: ["we asked for confirmation and no reply yet"],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/followup-track`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              language: "zh-CN",
+              memoryScope: "sender:client@example.com",
+              memoryLayers: ["contact_memory", "procedural_memory"],
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(await response.json()).toEqual({
+          skillRunId: "run_message_followup_1",
+          skillId: "followup_tracker",
+          accountId: "account_1",
+          messageId: "message_1",
+          status: "waiting_on_them",
+          followupNeeded: true,
+          owner: "them",
+          confidence: 0.88,
+          dueAt: "2026-06-17T09:00:00.000Z",
+          nextAction: "Check whether Lina replied",
+          reasons: ["we asked for confirmation and no reply yet"],
+        });
+      },
+      { hermesMessageFollowupTrackerService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        messageId: "message_1",
+        language: "zh-CN",
+        memoryScope: "sender:client@example.com",
+        memoryLayers: ["contact_memory", "procedural_memory"],
+      },
+    ]);
+  });
+
+  it("rejects message-scoped follow-up requests that provide client-side mail context", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageFollowupTrackerService = {
+      async trackMessageFollowup(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/followup-track`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              subject: "Client supplied subject",
+              threadText: "Client supplied body must be rejected.",
+              participants: ["me@example.com"],
+              readMessageIds: ["message_1"],
+            }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_message_followup_request",
+        });
+      },
+      { hermesMessageFollowupTrackerService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
+  it("returns 404 when message-scoped Hermes follow-up cannot read the message", async () => {
+    const hermesMessageFollowupTrackerService = {
+      async trackMessageFollowup() {
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/missing/followup-track`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ language: "zh-CN" }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({ error: "message_not_found" });
+      },
+      { hermesMessageFollowupTrackerService },
+    );
+  });
+
+  it("returns 503 when message-scoped Hermes follow-up is not wired", async () => {
+    await withApi(async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/accounts/account_1/messages/message_1/followup-track`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ language: "zh-CN" }),
+        },
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "hermes_message_followup_unavailable",
+      });
+    });
+  });
+
   it("confirms an explicit Hermes translation preference", async () => {
     const calls: unknown[] = [];
     const hermesTranslationPreferenceService = {

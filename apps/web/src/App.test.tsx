@@ -12,6 +12,7 @@ import type {
   HermesEmailSearchQaResult,
   HermesFollowupTrackerResult,
   HermesLabelSuggestResult,
+  HermesMessageFollowupTrackerResult,
   HermesMessageQuickReplyResult,
   HermesMessageOrganizationResult,
   HermesMessageReplyDraftResult,
@@ -4021,13 +4022,19 @@ describe("Email Hub first UI baseline", () => {
     );
 
     expect(await screen.findByText("Check whether Lina replied")).toBeTruthy();
-    expect(api.trackFollowup).toHaveBeenCalledWith({
-      subject: "Live subject",
-      threadText: "Live body from backend",
-      userEmail: "me@example.com",
-      participants: ["me@example.com", "client@example.com"],
-      readMessageIds: ["message_1"],
+    expect(api.trackMessageFollowup).toHaveBeenCalledWith({
+      accountId: "account_1",
+      messageId: "message_1",
+      language: "zh-CN",
+      memoryScope: "sender:client@example.com",
+      memoryLayers: [
+        "contact_memory",
+        "procedural_memory",
+        "semantic_profile",
+        "writing_style_profile",
+      ],
     });
+    expect(api.trackFollowup).not.toHaveBeenCalled();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Confirm Hermes follow-up" }),
@@ -6187,6 +6194,19 @@ function createApiFixture(): EmailHubApi {
       nextAction: "Check whether Lina replied",
       reasons: ["we asked for confirmation and no reply yet"],
     } satisfies HermesFollowupTrackerResult)),
+    trackMessageFollowup: vi.fn(async (input) => ({
+      skillRunId: "run_followup_1",
+      skillId: "followup_tracker",
+      accountId: input.accountId,
+      messageId: input.messageId,
+      status: "waiting_on_them",
+      followupNeeded: true,
+      owner: "them",
+      confidence: 0.86,
+      dueAt: "2026-06-14T09:00:00.000Z",
+      nextAction: "Check whether Lina replied",
+      reasons: ["we asked for confirmation and no reply yet"],
+    } satisfies HermesMessageFollowupTrackerResult)),
     draftReply: vi.fn(async () => ({
       skillRunId: "run_reply_1",
       skillId: "reply_draft",

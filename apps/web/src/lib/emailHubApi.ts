@@ -1471,6 +1471,12 @@ export interface HermesFollowupTrackerResult {
   sourceQuote?: string;
 }
 
+export interface HermesMessageFollowupTrackerResult
+  extends HermesFollowupTrackerResult {
+  accountId: string;
+  messageId: string;
+}
+
 export interface HermesTranslateTextResult {
   skillRunId: string;
   auditEventId?: string;
@@ -1819,6 +1825,14 @@ export interface EmailHubApi {
     memoryScope?: string;
     memoryLayers?: string[];
   }): Promise<HermesFollowupTrackerResult>;
+  trackMessageFollowup(input: {
+    accountId: string;
+    messageId: string;
+    language?: string;
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+  }): Promise<HermesMessageFollowupTrackerResult>;
   translateText(input: {
     text: string;
     targetLanguage: string;
@@ -2869,6 +2883,25 @@ export function createEmailHubApi(
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });
+    },
+
+    trackMessageFollowup(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/messages/${encodePath(input.messageId)}/followup-track`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            cleanObject({
+              language: input.language,
+              memoryIds: input.memoryIds,
+              memoryScope: input.memoryScope,
+              memoryLayers: input.memoryLayers,
+            }),
+          ),
+        },
+      );
     },
 
     translateText(input) {

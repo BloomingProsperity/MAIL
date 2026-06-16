@@ -1367,12 +1367,17 @@ export function App(props: AppProps = {}) {
     }
 
     try {
-      const suggestion = await props.api.trackFollowup({
-        subject: selectedMail.subject,
-        threadText: selectedDetail?.bodyText ?? selectedMail.preview,
-        userEmail: "me@example.com",
-        participants: ["me@example.com", selectedMail.email],
-        readMessageIds: [selectedMail.id],
+      const suggestion = await props.api.trackMessageFollowup({
+        accountId: selectedMail.accountId,
+        messageId: selectedMail.id,
+        language: "zh-CN",
+        memoryScope: `sender:${selectedMail.email}`,
+        memoryLayers: [
+          "contact_memory",
+          "procedural_memory",
+          "semantic_profile",
+          "writing_style_profile",
+        ],
       });
       if (!suggestion.followupNeeded || !suggestion.dueAt) {
         setHermesFollowUpSuggestion(undefined);

@@ -47,6 +47,7 @@ import { createHermesMessageTranslationService } from "./hermes/message-translat
 import { createHermesMessageSummaryService } from "./hermes/message-summary.js";
 import { createHermesMessageReplyService } from "./hermes/message-replies.js";
 import { createHermesMessageOrganizationService } from "./hermes/message-organization.js";
+import { createHermesMessageFollowupTrackerService } from "./hermes/message-followups.js";
 import { createHermesRuleService } from "./hermes/rules.js";
 import { createHermesTranslationPreferenceService } from "./hermes/translation-preferences.js";
 import { getHermesSkills } from "./hermes/skills.js";
@@ -419,6 +420,12 @@ if (configuredHermesService && config.mailReadStore) {
       newsletterCleanupService: configuredHermesService,
       actionItemExtractService: configuredHermesService,
       labelService: config.labelService,
+      now: () => new Date().toISOString(),
+    });
+  config.hermesMessageFollowupTrackerService =
+    createHermesMessageFollowupTrackerService({
+      mailReadStore: config.mailReadStore,
+      followupTrackerService: configuredHermesService,
       now: () => new Date().toISOString(),
     });
 }

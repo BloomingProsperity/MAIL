@@ -1555,6 +1555,58 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs Hermes follow-up tracking through the message-scoped backend route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          skillRunId: "run_message_followup_1",
+          skillId: "followup_tracker",
+          accountId: "account_1",
+          messageId: "message_1",
+          status: "waiting_on_them",
+          followupNeeded: true,
+          owner: "them",
+          confidence: 0.86,
+          dueAt: "2026-06-14T09:00:00.000Z",
+          nextAction: "Check whether Lina replied",
+          reasons: ["we asked for confirmation and no reply yet"],
+        },
+        202,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.trackMessageFollowup({
+      accountId: "account_1",
+      messageId: "message_1",
+      language: "zh-CN",
+      memoryScope: "sender:lina@example.com",
+      memoryLayers: ["contact_memory", "procedural_memory"],
+    });
+
+    expect(result).toMatchObject({
+      skillRunId: "run_message_followup_1",
+      accountId: "account_1",
+      messageId: "message_1",
+      status: "waiting_on_them",
+      followupNeeded: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/messages/message_1/followup-track",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          language: "zh-CN",
+          memoryScope: "sender:lina@example.com",
+          memoryLayers: ["contact_memory", "procedural_memory"],
+        }),
+      }),
+    );
+    const body = (fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body;
+    expect(JSON.parse(body)).not.toHaveProperty("threadText");
+    expect(JSON.parse(body)).not.toHaveProperty("participants");
+  });
+
   it("runs Hermes reply draft through the backend skills route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(

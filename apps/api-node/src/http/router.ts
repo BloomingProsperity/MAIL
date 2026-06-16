@@ -102,6 +102,10 @@ import {
   type HermesMessageOrganizationService,
 } from "../hermes/message-organization.js";
 import {
+  InvalidHermesMessageFollowupRequestError,
+  type HermesMessageFollowupTrackerService,
+} from "../hermes/message-followups.js";
+import {
   InvalidHermesRuntimeConfigRequestError,
   type HermesRuntimeConfigService,
   type HermesRuntimeMode,
@@ -414,6 +418,7 @@ export interface ApiConfig {
   hermesMessageSummaryService?: HermesMessageSummaryService;
   hermesMessageReplyService?: HermesMessageReplyService;
   hermesMessageOrganizationService?: HermesMessageOrganizationService;
+  hermesMessageFollowupTrackerService?: HermesMessageFollowupTrackerService;
   hermesRuntimeConfigService?: HermesRuntimeConfigService;
   hermesProviderProbeService?: HermesProviderProbeService;
   hermesTranslationPreferenceService?: HermesTranslationPreferenceService;
@@ -1906,6 +1911,32 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
+      const messageFollowupRoute = parseHermesMessageFollowupRoute(request.url);
+      if (messageFollowupRoute && request.method === "POST") {
+        if (!config.hermesMessageFollowupTrackerService) {
+          writeJson(response, 503, {
+            error: "hermes_message_followup_unavailable",
+          });
+          return;
+        }
+
+        const result =
+          await config.hermesMessageFollowupTrackerService.trackMessageFollowup(
+            parseHermesMessageFollowupInput(
+              messageFollowupRoute.accountId,
+              messageFollowupRoute.messageId,
+              await readRequestBody(),
+            ),
+          );
+        if (!result) {
+          writeJson(response, 404, { error: "message_not_found" });
+          return;
+        }
+
+        writeJson(response, 202, result);
+        return;
+      }
+
       if (mailReadRoute && request.method === "GET") {
         if (!config.mailReadStore) {
           writeJson(response, 503, { error: "mail_read_unavailable" });
@@ -2601,6 +2632,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       }
 
       if (error instanceof InvalidHermesMessageOrganizationRequestError) {
+        writeJson(response, 400, { error: error.code });
+        return;
+      }
+
+      if (error instanceof InvalidHermesMessageFollowupRequestError) {
         writeJson(response, 400, { error: error.code });
         return;
       }
@@ -4496,6 +4532,28 @@ function parseHermesMessageOrganizationRoute(
   };
 }
 
+function parseHermesMessageFollowupRoute(
+  requestUrl: string | undefined,
+): { accountId: string; messageId: string } | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  const match =
+    /^\/api\/accounts\/([^/]+)\/messages\/([^/]+)\/followup-track$/.exec(
+      url.pathname,
+    );
+  if (!match) {
+    return undefined;
+  }
+
+  return {
+    accountId: decodeURIComponent(match[1]),
+    messageId: decodeURIComponent(match[2]),
+  };
+}
+
 function parseLimit(value: string | null): number {
   if (value === null) {
     return 50;
@@ -5159,6 +5217,59 @@ function parseHermesMessageOrganizationInput(
       ? { memoryScope: payload.memoryScope }
       : {}),
     ...parseOptionalHermesMessageOrganizationArray(
+      payload.memoryLayers,
+      "memoryLayers",
+    ),
+  };
+}
+
+function parseHermesMessageFollowupInput(
+  accountId: string,
+  messageId: string,
+  body: string,
+): {
+  accountId: string;
+  messageId: string;
+  language?: string;
+  memoryIds?: string[];
+  memoryScope?: string;
+  memoryLayers?: string[];
+} {
+  const payload = JSON.parse(body) as {
+    subject?: unknown;
+    threadText?: unknown;
+    userEmail?: unknown;
+    participants?: unknown;
+    now?: unknown;
+    readMessageIds?: unknown;
+    language?: unknown;
+    memoryIds?: unknown;
+    memoryScope?: unknown;
+    memoryLayers?: unknown;
+  };
+  if (!isNonEmptyString(accountId) || !isNonEmptyString(messageId)) {
+    throw new InvalidHermesMessageFollowupRequestError();
+  }
+  if (
+    payload.subject !== undefined ||
+    payload.threadText !== undefined ||
+    payload.userEmail !== undefined ||
+    payload.participants !== undefined ||
+    payload.now !== undefined ||
+    payload.readMessageIds !== undefined
+  ) {
+    throw new InvalidHermesMessageFollowupRequestError();
+  }
+
+  return {
+    accountId,
+    messageId,
+    ...(isNonEmptyString(payload.language) ? { language: payload.language } : {}),
+    ...parseOptionalHermesMessageFollowupArray(payload.memoryIds, "memoryIds"),
+    ...(isNonEmptyString(payload.memoryScope)
+      ? { memoryScope: payload.memoryScope }
+      : {}),
+    ...parseOptionalHermesMessageFollowupArray(
       payload.memoryLayers,
       "memoryLayers",
     ),
@@ -6458,6 +6569,23 @@ function parseOptionalHermesMessageOrganizationArray(
     !value.every((item) => isNonEmptyString(item))
   ) {
     throw new InvalidHermesMessageOrganizationRequestError();
+  }
+
+  return { [key]: value };
+}
+
+function parseOptionalHermesMessageFollowupArray(
+  value: unknown,
+  key: "memoryIds" | "memoryLayers",
+): Partial<Record<"memoryIds" | "memoryLayers", string[]>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => isNonEmptyString(item))
+  ) {
+    throw new InvalidHermesMessageFollowupRequestError();
   }
 
   return { [key]: value };
