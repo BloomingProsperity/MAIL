@@ -12,6 +12,8 @@ import type {
   HermesEmailSearchQaResult,
   HermesFollowupTrackerResult,
   HermesLabelSuggestResult,
+  HermesMessageQuickReplyResult,
+  HermesMessageReplyDraftResult,
   HermesMessageSummaryResult,
   HermesMessageTranslationResult,
   HermesNewsletterCleanupResult,
@@ -2349,13 +2351,20 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     await waitFor(() => {
-      expect(api.draftReply).toHaveBeenCalledWith({
-        subject: "Live subject",
-        threadText: "Live body from backend",
+      expect(api.draftMessageReply).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
         instruction: "Draft a concise reply in my normal style.",
-        readMessageIds: ["message_1"],
+        memoryScope: "sender:client@example.com",
+        memoryLayers: [
+          "contact_memory",
+          "writing_style_profile",
+          "procedural_memory",
+          "semantic_profile",
+        ],
       });
     });
+    expect(api.draftReply).not.toHaveBeenCalled();
 
     expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
       "Hi,\n\nI can confirm this plan.",
@@ -2389,15 +2398,22 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     await waitFor(() => {
-      expect(api.quickReply).toHaveBeenCalledWith({
-        subject: "Live subject",
-        threadText: "Live body from backend",
+      expect(api.quickMessageReply).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
         scenario: "thanks",
         instruction: "Thank them warmly and keep the reply short.",
         tone: "warm professional",
-        readMessageIds: ["message_1"],
+        memoryScope: "sender:client@example.com",
+        memoryLayers: [
+          "contact_memory",
+          "writing_style_profile",
+          "procedural_memory",
+          "semantic_profile",
+        ],
       });
     });
+    expect(api.quickReply).not.toHaveBeenCalled();
     expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
       "Thanks, I will take a look.",
     );
@@ -6128,6 +6144,13 @@ function createApiFixture(): EmailHubApi {
       skillId: "reply_draft",
       draftText: "Hi,\n\nI can confirm this plan.",
     } satisfies HermesReplyDraftResult)),
+    draftMessageReply: vi.fn(async () => ({
+      skillRunId: "run_reply_1",
+      skillId: "reply_draft",
+      accountId: "account_1",
+      messageId: "message_1",
+      draftText: "Hi,\n\nI can confirm this plan.",
+    } satisfies HermesMessageReplyDraftResult)),
     quickReply: vi.fn(async () => ({
       skillRunId: "run_quick_1",
       skillId: "quick_reply",
@@ -6136,6 +6159,16 @@ function createApiFixture(): EmailHubApi {
       editable: true,
       sendsDirectly: false,
     } satisfies HermesQuickReplyResult)),
+    quickMessageReply: vi.fn(async () => ({
+      skillRunId: "run_quick_1",
+      skillId: "quick_reply",
+      accountId: "account_1",
+      messageId: "message_1",
+      scenario: "thanks",
+      draftText: "Thanks, I will take a look.",
+      editable: true,
+      sendsDirectly: false,
+    } satisfies HermesMessageQuickReplyResult)),
     rewritePolishDraft: vi.fn(async () => ({
       skillRunId: "run_rewrite_1",
       skillId: "rewrite_polish",

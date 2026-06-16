@@ -1506,6 +1506,11 @@ export interface HermesReplyDraftResult {
   draftText: string;
 }
 
+export interface HermesMessageReplyDraftResult extends HermesReplyDraftResult {
+  accountId: string;
+  messageId: string;
+}
+
 export type HermesQuickReplyScenario =
   | "confirm"
   | "decline"
@@ -1521,6 +1526,11 @@ export interface HermesQuickReplyResult {
   draftText: string;
   editable: boolean;
   sendsDirectly: boolean;
+}
+
+export interface HermesMessageQuickReplyResult extends HermesQuickReplyResult {
+  accountId: string;
+  messageId: string;
 }
 
 export type HermesRewritePolishAction =
@@ -1842,6 +1852,27 @@ export interface EmailHubApi {
     memoryLayers?: string[];
     forceRefresh?: boolean;
   }): Promise<HermesMessageSummaryResult>;
+  draftMessageReply(input: {
+    accountId: string;
+    messageId: string;
+    instruction?: string;
+    tone?: string;
+    language?: string;
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+  }): Promise<HermesMessageReplyDraftResult>;
+  quickMessageReply(input: {
+    accountId: string;
+    messageId: string;
+    scenario: HermesQuickReplyScenario;
+    instruction?: string;
+    tone?: string;
+    language?: string;
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+  }): Promise<HermesMessageQuickReplyResult>;
   draftReply(input: {
     subject?: string;
     threadText: string;
@@ -2863,6 +2894,49 @@ export function createEmailHubApi(
               memoryScope: input.memoryScope,
               memoryLayers: input.memoryLayers,
               forceRefresh: input.forceRefresh,
+            }),
+          ),
+        },
+      );
+    },
+
+    draftMessageReply(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/messages/${encodePath(input.messageId)}/reply-draft`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            cleanObject({
+              instruction: input.instruction,
+              tone: input.tone,
+              language: input.language,
+              memoryIds: input.memoryIds,
+              memoryScope: input.memoryScope,
+              memoryLayers: input.memoryLayers,
+            }),
+          ),
+        },
+      );
+    },
+
+    quickMessageReply(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/messages/${encodePath(input.messageId)}/quick-reply`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            cleanObject({
+              scenario: input.scenario,
+              instruction: input.instruction,
+              tone: input.tone,
+              language: input.language,
+              memoryIds: input.memoryIds,
+              memoryScope: input.memoryScope,
+              memoryLayers: input.memoryLayers,
             }),
           ),
         },

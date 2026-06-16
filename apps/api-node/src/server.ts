@@ -45,6 +45,7 @@ import { createHermesActionPlanService } from "./hermes/action-plan.js";
 import { createHermesAuditLogService } from "./hermes/audit-log.js";
 import { createHermesMessageTranslationService } from "./hermes/message-translation.js";
 import { createHermesMessageSummaryService } from "./hermes/message-summary.js";
+import { createHermesMessageReplyService } from "./hermes/message-replies.js";
 import { createHermesRuleService } from "./hermes/rules.js";
 import { createHermesTranslationPreferenceService } from "./hermes/translation-preferences.js";
 import { getHermesSkills } from "./hermes/skills.js";
@@ -403,6 +404,11 @@ if (configuredHermesService && config.mailReadStore) {
     summaryService: configuredHermesService,
     store: hermesMessageSummaryStore,
     createId: randomUUID,
+  });
+  config.hermesMessageReplyService = createHermesMessageReplyService({
+    mailReadStore: config.mailReadStore,
+    replyDraftService: configuredHermesService,
+    quickReplyService: configuredHermesService,
   });
 }
 

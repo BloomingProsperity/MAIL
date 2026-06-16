@@ -1594,6 +1594,51 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs Hermes reply draft through the message-scoped backend route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          skillRunId: "run_message_reply_1",
+          skillId: "reply_draft",
+          accountId: "account_1",
+          messageId: "message_1",
+          draftText: "Hi Lina,\n\nI can confirm the launch plan.",
+        },
+        202,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.draftMessageReply({
+      accountId: "account_1",
+      messageId: "message_1",
+      instruction: "Confirm politely.",
+      memoryScope: "sender:client@example.com",
+      memoryLayers: ["contact_memory", "writing_style_profile"],
+    });
+
+    expect(result).toEqual({
+      skillRunId: "run_message_reply_1",
+      skillId: "reply_draft",
+      accountId: "account_1",
+      messageId: "message_1",
+      draftText: "Hi Lina,\n\nI can confirm the launch plan.",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/messages/message_1/reply-draft",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          instruction: "Confirm politely.",
+          memoryScope: "sender:client@example.com",
+          memoryLayers: ["contact_memory", "writing_style_profile"],
+        }),
+      }),
+    );
+    const body = (fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body;
+    expect(JSON.parse(body)).not.toHaveProperty("threadText");
+  });
+
   it("runs Hermes email search QA through the backend skills route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(
@@ -2258,6 +2303,57 @@ describe("emailHubApi", () => {
         }),
       }),
     );
+  });
+
+  it("runs Hermes quick reply through the message-scoped backend route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          skillRunId: "run_message_quick_1",
+          skillId: "quick_reply",
+          accountId: "account_1",
+          messageId: "message_1",
+          scenario: "thanks",
+          draftText: "Thanks, I will take a look.",
+          editable: true,
+          sendsDirectly: false,
+        },
+        202,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.quickMessageReply({
+      accountId: "account_1",
+      messageId: "message_1",
+      scenario: "thanks",
+      instruction: "Thank them briefly.",
+      tone: "warm professional",
+    });
+
+    expect(result).toEqual({
+      skillRunId: "run_message_quick_1",
+      skillId: "quick_reply",
+      accountId: "account_1",
+      messageId: "message_1",
+      scenario: "thanks",
+      draftText: "Thanks, I will take a look.",
+      editable: true,
+      sendsDirectly: false,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/messages/message_1/quick-reply",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          scenario: "thanks",
+          instruction: "Thank them briefly.",
+          tone: "warm professional",
+        }),
+      }),
+    );
+    const body = (fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body;
+    expect(JSON.parse(body)).not.toHaveProperty("threadText");
   });
 
   it("runs Hermes rewrite and polish through the backend skills route", async () => {

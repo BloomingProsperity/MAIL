@@ -604,6 +604,245 @@ describe("Hermes routes", () => {
     });
   });
 
+  it("drafts a reply for a selected account message through the message-scoped route", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageReplyService = {
+      async draftMessageReply(input: unknown) {
+        calls.push(input);
+        return {
+          skillRunId: "run_message_reply_1",
+          auditEventId: "audit_message_reply_1",
+          skillId: "reply_draft",
+          accountId: "account_1",
+          messageId: "message_1",
+          draftText: "Hi,\n\nI can confirm this today.",
+        };
+      },
+      async quickMessageReply() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/reply-draft`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              instruction: "Confirm politely.",
+              tone: "warm professional",
+              language: "English",
+              memoryIds: ["memory_1"],
+              memoryScope: "sender:client@example.com",
+              memoryLayers: ["writing_style_profile"],
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(await response.json()).toEqual({
+          skillRunId: "run_message_reply_1",
+          auditEventId: "audit_message_reply_1",
+          skillId: "reply_draft",
+          accountId: "account_1",
+          messageId: "message_1",
+          draftText: "Hi,\n\nI can confirm this today.",
+        });
+      },
+      { hermesMessageReplyService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        messageId: "message_1",
+        instruction: "Confirm politely.",
+        tone: "warm professional",
+        language: "English",
+        memoryIds: ["memory_1"],
+        memoryScope: "sender:client@example.com",
+        memoryLayers: ["writing_style_profile"],
+      },
+    ]);
+  });
+
+  it("quick replies to a selected account message through the message-scoped route", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageReplyService = {
+      async draftMessageReply() {
+        throw new Error("not used");
+      },
+      async quickMessageReply(input: unknown) {
+        calls.push(input);
+        return {
+          skillRunId: "run_message_quick_1",
+          skillId: "quick_reply",
+          accountId: "account_1",
+          messageId: "message_1",
+          scenario: "thanks",
+          draftText: "Thanks, I will take a look.",
+          editable: true,
+          sendsDirectly: false,
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/quick-reply`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              scenario: "thanks",
+              instruction: "Thank them briefly.",
+              tone: "warm professional",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(await response.json()).toEqual({
+          skillRunId: "run_message_quick_1",
+          skillId: "quick_reply",
+          accountId: "account_1",
+          messageId: "message_1",
+          scenario: "thanks",
+          draftText: "Thanks, I will take a look.",
+          editable: true,
+          sendsDirectly: false,
+        });
+      },
+      { hermesMessageReplyService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        messageId: "message_1",
+        scenario: "thanks",
+        instruction: "Thank them briefly.",
+        tone: "warm professional",
+      },
+    ]);
+  });
+
+  it("returns 404 when message-scoped Hermes reply cannot read the message", async () => {
+    const hermesMessageReplyService = {
+      async draftMessageReply() {
+        return undefined;
+      },
+      async quickMessageReply() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/missing/reply-draft`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ instruction: "Reply politely." }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({ error: "message_not_found" });
+      },
+      { hermesMessageReplyService },
+    );
+  });
+
+  it("rejects message-scoped reply requests that provide client-side mail text", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageReplyService = {
+      async draftMessageReply(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+      async quickMessageReply() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/reply-draft`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              threadText: "Client supplied body must be rejected.",
+              readMessageIds: ["message_1"],
+            }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_message_reply_request",
+        });
+      },
+      { hermesMessageReplyService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
+  it("rejects invalid message-scoped quick reply scenarios", async () => {
+    const hermesMessageReplyService = {
+      async draftMessageReply() {
+        throw new Error("not used");
+      },
+      async quickMessageReply() {
+        throw new Error("invalid request should not hit Hermes");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/quick-reply`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ scenario: "send_now" }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_message_reply_request",
+        });
+      },
+      { hermesMessageReplyService },
+    );
+  });
+
+  it("returns 503 when message-scoped Hermes replies are not wired", async () => {
+    await withApi(async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/accounts/account_1/messages/message_1/reply-draft`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ instruction: "Reply politely." }),
+        },
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "hermes_message_reply_unavailable",
+      });
+    });
+  });
+
   it("confirms an explicit Hermes translation preference", async () => {
     const calls: unknown[] = [];
     const hermesTranslationPreferenceService = {

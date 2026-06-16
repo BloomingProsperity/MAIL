@@ -2796,26 +2796,26 @@ function MailWorkspace(props: {
       return;
     }
 
-    const threadText = (props.selectedDetail?.bodyText ?? props.selectedMail.preview).trim();
-    if (!threadText) {
-      setComposeNotice("这封邮件还没有可用于生成回复的正文。");
-      return;
-    }
-
     setComposeBusy(true);
     try {
       const [seed, result] = await Promise.all([
         props.api.createComposeSeed({
-          accountId: props.accountId,
+          accountId: props.selectedMail.accountId,
           messageId: props.selectedMail.id,
           mode: "reply",
           ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
         }),
-        props.api.draftReply({
-          subject: props.selectedMail.subject,
-          threadText,
+        props.api.draftMessageReply({
+          accountId: props.selectedMail.accountId,
+          messageId: props.selectedMail.id,
           instruction: "Draft a concise reply in my normal style.",
-          readMessageIds: [props.selectedMail.id],
+          memoryScope: `sender:${props.selectedMail.email}`,
+          memoryLayers: [
+            "contact_memory",
+            "writing_style_profile",
+            "procedural_memory",
+            "semantic_profile",
+          ],
         }),
       ]);
       applySeedToCompose(seed, {
@@ -2839,28 +2839,28 @@ function MailWorkspace(props: {
       return;
     }
 
-    const threadText = (props.selectedDetail?.bodyText ?? props.selectedMail.preview).trim();
-    if (!threadText) {
-      setComposeNotice("这封邮件还没有可用于快速回复的正文。");
-      return;
-    }
-
     setComposeBusy(true);
     try {
       const [seed, result] = await Promise.all([
         props.api.createComposeSeed({
-          accountId: props.accountId,
+          accountId: props.selectedMail.accountId,
           messageId: props.selectedMail.id,
           mode: "reply",
           ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
         }),
-        props.api.quickReply({
-          subject: props.selectedMail.subject,
-          threadText,
+        props.api.quickMessageReply({
+          accountId: props.selectedMail.accountId,
+          messageId: props.selectedMail.id,
           scenario: action.scenario,
           instruction: action.instruction,
           tone: "warm professional",
-          readMessageIds: [props.selectedMail.id],
+          memoryScope: `sender:${props.selectedMail.email}`,
+          memoryLayers: [
+            "contact_memory",
+            "writing_style_profile",
+            "procedural_memory",
+            "semantic_profile",
+          ],
         }),
       ]);
       applySeedToCompose(seed, {
