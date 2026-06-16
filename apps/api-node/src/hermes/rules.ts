@@ -1,3 +1,8 @@
+import {
+  findBuiltInSavedView,
+  type SavedViewDefinition,
+} from "../mail-navigation/saved-views.js";
+
 export type HermesRuleCandidateStatus = "shadow" | "approved" | "dismissed";
 export type HermesRuleRunMode = "shadow" | "active";
 export type HermesRuleFeedbackAction =
@@ -68,6 +73,11 @@ export interface SuggestHermesRulesInput {
   minEvidenceCount?: number;
 }
 
+export interface DraftHermesRuleInput {
+  accountId: string;
+  command: string;
+}
+
 export interface ListHermesRuleCandidatesInput {
   accountId: string;
   status?: HermesRuleCandidateStatus;
@@ -122,9 +132,13 @@ export interface HermesRuleStore {
     approvedAt: string;
   }): Promise<HermesRule | undefined>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
+  upsertSavedView(input: SavedViewDefinition): Promise<void>;
 }
 
 export interface HermesRuleService {
+  draftRule(
+    input: DraftHermesRuleInput,
+  ): Promise<{ candidates: HermesRuleCandidate[] }>;
   suggestRules(
     input: SuggestHermesRulesInput,
   ): Promise<{ candidates: HermesRuleCandidate[] }>;
@@ -204,6 +218,35 @@ export function createHermesRuleService(
       return { candidates };
     },
 
+    async draftRule(input) {
+      const accountId = requireString(input.accountId);
+      const command = requireLongText(input.command);
+      const draft = savedViewDraftForCommand(command);
+      const candidate: HermesRuleCandidate = {
+        id: options.createId(),
+        accountId,
+        title: draft.title,
+        ruleType: "content_saved_view",
+        condition: {
+          anyKeywords: draft.savedView.keywords,
+        },
+        action: {
+          type: "ensure_saved_view",
+          savedView: draft.savedView,
+          applyToHistory: false,
+          requiresConfirmation: true,
+        },
+        confidence: draft.confidence,
+        status: "shadow",
+        evidenceMessageIds: [],
+        createdAt: options.now(),
+      };
+
+      return {
+        candidates: [await options.store.createRuleCandidate(candidate)],
+      };
+    },
+
     async listRuleCandidates(input) {
       return options.store.listRuleCandidates({
         accountId: requireString(input.accountId),
@@ -242,12 +285,18 @@ export function createHermesRuleService(
     },
 
     async approveRule(input) {
-      return options.store.approveRuleCandidate({
+      const rule = await options.store.approveRuleCandidate({
         accountId: requireString(input.accountId),
         candidateId: requireString(input.candidateId),
         ruleId: options.createId(),
         approvedAt: options.now(),
       });
+      const savedView = rule ? savedViewFromRuleAction(rule.action) : undefined;
+      if (savedView && !findBuiltInSavedView(savedView.id)) {
+        await options.store.upsertSavedView(savedView);
+      }
+
+      return rule;
     },
 
     async listRules(input) {
@@ -265,6 +314,7 @@ interface InMemoryHermesRuleStoreSeed {
   candidates?: HermesRuleCandidate[];
   rules?: HermesRule[];
   messages?: Array<HermesRuleMessageMatch & { accountId?: string }>;
+  savedViews?: SavedViewDefinition[];
 }
 
 export function createInMemoryHermesRuleStore(
@@ -274,6 +324,7 @@ export function createInMemoryHermesRuleStore(
   const candidates = [...(seed.candidates ?? [])];
   const rules = [...(seed.rules ?? [])];
   const messages = [...(seed.messages ?? [])];
+  const savedViews = [...(seed.savedViews ?? [])];
   const runs: HermesRuleSimulation[] = [];
 
   return {
@@ -313,6 +364,27 @@ export function createInMemoryHermesRuleStore(
     },
 
     async listCandidateMatches(input) {
+      const keywords = candidateKeywords(input.candidate);
+      if (keywords.length > 0) {
+        return messages
+          .filter(
+            (message) =>
+              (message.accountId ?? input.accountId) === input.accountId &&
+              keywords.some((keyword) =>
+                [
+                  message.senderEmail,
+                  message.subject ?? "",
+                  message.currentBucket ?? "",
+                ]
+                  .join(" ")
+                  .toLowerCase()
+                  .includes(keyword.toLowerCase()),
+              ),
+          )
+          .slice(0, input.limit)
+          .map(({ accountId: _accountId, ...message }) => ({ ...message }));
+      }
+
       const senderEmail =
         typeof input.candidate.condition.senderEmail === "string"
           ? input.candidate.condition.senderEmail.toLowerCase()
@@ -375,6 +447,15 @@ export function createInMemoryHermesRuleStore(
       };
     },
 
+    async upsertSavedView(input) {
+      const index = savedViews.findIndex((view) => view.id === input.id);
+      if (index >= 0) {
+        savedViews[index] = { ...input, keywords: [...input.keywords] };
+        return;
+      }
+      savedViews.push({ ...input, keywords: [...input.keywords] });
+    },
+
     listRuns() {
       return runs.map((run) => ({ ...run }));
     },
@@ -411,6 +492,150 @@ function groupBehaviors(behaviors: HermesRuleObservedBehavior[]): Array<{
   }
 
   return Array.from(groups.values());
+}
+
+function savedViewDraftForCommand(command: string): {
+  title: string;
+  savedView: SavedViewDefinition;
+  confidence: number;
+} {
+  const normalized = command.toLowerCase();
+  const builtInCodes = findBuiltInSavedView("codes");
+  if (
+    builtInCodes &&
+    /验证码|驗證碼|动态码|安全码|otp|verification|security code|one-time code/i.test(
+      command,
+    )
+  ) {
+    return {
+      title: "启用验证码智能分组",
+      savedView: builtInCodes,
+      confidence: 0.9,
+    };
+  }
+
+  const label = extractRequestedGroupLabel(command);
+  if (!label) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  const keywords = uniqueStrings([
+    label,
+    ...extractQuotedTerms(command),
+    ...extractContainsTerms(command),
+  ]).slice(0, 12);
+  return {
+    title: `创建${label}智能分组`,
+    savedView: {
+      id: `hermes_${stableTextId(label)}`,
+      label,
+      tone: "blue",
+      kind: "keyword",
+      keywords,
+    },
+    confidence: normalized.includes("规则") ? 0.78 : 0.7,
+  };
+}
+
+function savedViewFromRuleAction(
+  action: Record<string, unknown>,
+): SavedViewDefinition | undefined {
+  if (action.type !== "ensure_saved_view") {
+    return undefined;
+  }
+  const savedView = action.savedView;
+  if (!savedView || typeof savedView !== "object" || Array.isArray(savedView)) {
+    return undefined;
+  }
+
+  const record = savedView as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    typeof record.label !== "string" ||
+    !isTone(record.tone) ||
+    (record.kind !== "keyword" && record.kind !== "message_fact")
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: record.id,
+    label: record.label,
+    tone: record.tone,
+    kind: record.kind,
+    keywords: Array.isArray(record.keywords)
+      ? record.keywords.filter((item): item is string => typeof item === "string")
+      : [],
+  };
+}
+
+function candidateKeywords(candidate: HermesRuleCandidate): string[] {
+  const fromCondition = candidate.condition.anyKeywords;
+  if (Array.isArray(fromCondition)) {
+    return uniqueStrings(
+      fromCondition.filter((item): item is string => typeof item === "string"),
+    );
+  }
+
+  const savedView = savedViewFromRuleAction(candidate.action);
+  return savedView ? savedView.keywords : [];
+}
+
+function extractRequestedGroupLabel(command: string): string | undefined {
+  const match = /([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 _/-]{0,24})(?:分组|分类|标签)/u.exec(
+    command,
+  );
+  const raw = match?.[1] ?? "";
+  const cleaned = raw
+    .replace(/^(帮我|帮忙|创建|新增|添加|新建|左侧|右侧|加|一个|一条|规则|邮件|所有|账号|里的|里面|的)+/u, "")
+    .trim();
+  if (cleaned.length < 2 || cleaned.length > 24) {
+    return undefined;
+  }
+  return cleaned;
+}
+
+function extractQuotedTerms(command: string): string[] {
+  return Array.from(command.matchAll(/[“"']([^“"']{2,40})[”"']/g)).map(
+    (match) => match[1].trim(),
+  );
+}
+
+function extractContainsTerms(command: string): string[] {
+  const match = /(?:包含|含有|关键词|关键字|是)([\p{Script=Han}A-Za-z0-9 _/-]{2,40})(?:的|邮件|时|就|，|。|$)/u.exec(
+    command,
+  );
+  return match?.[1] ? [match[1].trim()] : [];
+}
+
+function stableTextId(value: string): string {
+  const ascii = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (ascii) {
+    return ascii.slice(0, 40);
+  }
+  return Array.from(value)
+    .map((char) => char.codePointAt(0)?.toString(16) ?? "")
+    .filter(Boolean)
+    .slice(0, 8)
+    .join("_");
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    const key = normalized.toLowerCase();
+    if (normalized && !seen.has(key)) {
+      seen.add(key);
+      result.push(normalized);
+    }
+  }
+  return result;
 }
 
 function candidateDraftFor(
@@ -494,6 +719,30 @@ function requireString(value: unknown): string {
   }
 
   return value;
+}
+
+function requireLongText(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new InvalidHermesRuleRequestError();
+  }
+  const trimmed = value.trim();
+  if (trimmed.length < 2 || trimmed.length > 500) {
+    throw new InvalidHermesRuleRequestError();
+  }
+  if (/[\u0000-\u001F\u007F]/.test(trimmed)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+  return trimmed;
+}
+
+function isTone(value: unknown): value is SavedViewDefinition["tone"] {
+  return (
+    value === "coral" ||
+    value === "blue" ||
+    value === "green" ||
+    value === "yellow" ||
+    value === "purple"
+  );
 }
 
 function positiveInteger(value: unknown, min: number, max: number): number {

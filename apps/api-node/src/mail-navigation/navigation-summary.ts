@@ -12,6 +12,12 @@ export interface QuickCategoryCount {
   count: number;
 }
 
+export interface QuickCategoryDefinition {
+  id: string;
+  label: string;
+  tone: MailNavigationTone;
+}
+
 export interface ProviderGroupSummary {
   id: string;
   label: string;
@@ -33,6 +39,7 @@ export interface MailNavigationSummary {
 export interface MailNavigationStore {
   listProviderCounts(): Promise<ProviderCount[]>;
   listQuickCategoryCounts(): Promise<QuickCategoryCount[]>;
+  listQuickCategories?(): Promise<QuickCategoryDefinition[]>;
 }
 
 export interface MailNavigationSummaryService {
@@ -80,25 +87,49 @@ export function createMailNavigationSummaryService(
 ): MailNavigationSummaryService {
   return {
     async getSummary() {
-      const [providerCounts, quickCategoryCounts] = await Promise.all([
-        store.listProviderCounts(),
-        store.listQuickCategoryCounts(),
-      ]);
+      const [providerCounts, quickCategoryCounts, dynamicCategories] =
+        await Promise.all([
+          store.listProviderCounts(),
+          store.listQuickCategoryCounts(),
+          store.listQuickCategories
+            ? store.listQuickCategories()
+            : Promise.resolve([]),
+        ]);
       const quickCountsById = new Map(
         quickCategoryCounts.map((item) => [item.id, item.count]),
       );
+      const quickCategories = mergeQuickCategories(dynamicCategories);
 
       return {
         providerGroups: groupProviderCounts(providerCounts),
-        quickCategories: getBuiltInSavedViews().map((view) => ({
-          id: view.id,
-          label: view.label,
-          tone: view.tone,
-          count: quickCountsById.get(view.id) ?? 0,
+        quickCategories: quickCategories.map((category) => ({
+          id: category.id,
+          label: category.label,
+          tone: category.tone,
+          count: quickCountsById.get(category.id) ?? 0,
         })),
       };
     },
   };
+}
+
+function mergeQuickCategories(
+  dynamicCategories: QuickCategoryDefinition[],
+): QuickCategoryDefinition[] {
+  const categories = new Map<string, QuickCategoryDefinition>();
+  for (const view of getBuiltInSavedViews()) {
+    categories.set(view.id, {
+      id: view.id,
+      label: view.label,
+      tone: view.tone,
+    });
+  }
+  for (const category of dynamicCategories) {
+    if (!categories.has(category.id)) {
+      categories.set(category.id, category);
+    }
+  }
+  return [...categories.values()];
 }
 
 function groupProviderCounts(counts: ProviderCount[]): ProviderGroupSummary[] {

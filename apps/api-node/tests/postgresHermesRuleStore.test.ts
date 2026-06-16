@@ -147,6 +147,93 @@ describe("postgres Hermes rule store", () => {
     ]);
   });
 
+  it("matches content saved-view candidates with keyword search", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              message_id: "message_1",
+              sender_email: "login@example.com",
+              subject: "Your OTP code",
+              received_at: "2026-06-13T10:00:00.000Z",
+              current_bucket: "P5 Transactions",
+              current_score: "60",
+            },
+          ],
+        };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    const result = await store.listCandidateMatches({
+      accountId: "account_1",
+      candidate: {
+        id: "candidate_codes",
+        accountId: "account_1",
+        title: "启用验证码智能分组",
+        ruleType: "content_saved_view",
+        condition: { anyKeywords: ["验证码", "otp"] },
+        action: { type: "ensure_saved_view" },
+        confidence: 0.9,
+        status: "shadow",
+        evidenceMessageIds: [],
+        createdAt: "2026-06-13T10:00:00.000Z",
+      },
+      limit: 10,
+    });
+
+    expect(queries[0].text).toMatch(/unnest\(\$2::text\[\]\)/i);
+    expect(queries[0].text).toMatch(/search_documents\.raw_text/i);
+    expect(queries[0].values).toEqual([
+      "account_1",
+      ["验证码", "otp"],
+      10,
+    ]);
+    expect(result).toEqual([
+      {
+        messageId: "message_1",
+        senderEmail: "login@example.com",
+        subject: "Your OTP code",
+        receivedAt: "2026-06-13T10:00:00.000Z",
+        currentBucket: "P5 Transactions",
+        currentScore: 60,
+      },
+    ]);
+  });
+
+  it("upserts Hermes saved views when a custom rule is approved", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    await store.upsertSavedView({
+      id: "hermes_contract",
+      label: "合同",
+      tone: "blue",
+      kind: "keyword",
+      keywords: ["合同", "contract"],
+    });
+
+    expect(queries[0].text).toMatch(/INSERT INTO saved_views/i);
+    expect(queries[0].text).toMatch(/ON CONFLICT \(id\) DO UPDATE/i);
+    expect(queries[0].values).toEqual([
+      "hermes_contract",
+      "合同",
+      "blue",
+      "keyword",
+      ["合同", "contract"],
+      {},
+    ]);
+  });
+
   it("approves candidates in one transaction and creates an enabled rule", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

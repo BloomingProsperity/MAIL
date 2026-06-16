@@ -42,6 +42,61 @@ afterEach(async () => {
 });
 
 describe("Hermes rule routes", () => {
+  it("drafts a rule candidate from a natural-language Hermes command", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async draftRule(input: unknown) {
+        calls.push(input);
+        return {
+          candidates: [
+            {
+              id: "candidate_codes",
+              accountId: "account_1",
+              title: "启用验证码智能分组",
+              ruleType: "content_saved_view",
+              condition: { anyKeywords: ["验证码", "verification", "otp"] },
+              action: {
+                type: "ensure_saved_view",
+                savedView: { id: "codes", label: "验证码" },
+                requiresConfirmation: true,
+              },
+              confidence: 0.9,
+              status: "shadow",
+              evidenceMessageIds: [],
+              createdAt: "2026-06-13T10:00:00.000Z",
+            },
+          ],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/hermes/rules/draft`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            accountId: "account_1",
+            command: "帮我创建一个验证码分组规则",
+          }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          candidates: [{ id: "candidate_codes", ruleType: "content_saved_view" }],
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        command: "帮我创建一个验证码分组规则",
+      },
+    ]);
+  });
+
   it("suggests shadow rules through the Hermes rule service", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {

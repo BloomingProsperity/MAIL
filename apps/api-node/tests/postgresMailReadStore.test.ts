@@ -652,6 +652,53 @@ describe("postgres mail read store", () => {
     ]);
   });
 
+  it("filters list messages by dynamic Hermes saved views", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("FROM saved_views")) {
+          return {
+            rows: [
+              {
+                id: "hermes_contract",
+                label: "合同",
+                tone: "blue",
+                kind: "keyword",
+                keywords: ["合同", "contract"],
+                match_config: {},
+              },
+            ],
+          };
+        }
+        return {
+          rows: [messageRow("message_contract", "2026-06-12T09:00:00.000Z")],
+        };
+      },
+    };
+
+    const store = createPostgresMailReadStore(client);
+
+    await store.listMessages({
+      accountId: "account_1",
+      limit: 10,
+      savedViewId: "hermes_contract",
+    });
+
+    expect(queries[0].text).toMatch(/FROM saved_views/i);
+    expect(queries[0].values).toEqual(["hermes_contract"]);
+    expect(queries[1].text).toMatch(/unnest\(\$4::text\[\]\)/i);
+    expect(queries[1].values).toEqual([
+      "account_1",
+      null,
+      null,
+      ["合同", "contract"],
+      null,
+      null,
+      11,
+    ]);
+  });
+
   it("rejects unknown saved view ids before querying", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {
@@ -670,7 +717,9 @@ describe("postgres mail read store", () => {
         savedViewId: "unknown",
       }),
     ).rejects.toThrow(/invalid mail saved view/i);
-    expect(queries).toEqual([]);
+    expect(queries).toHaveLength(1);
+    expect(queries[0].text).toMatch(/FROM saved_views/i);
+    expect(queries[0].values).toEqual(["unknown"]);
   });
 
   it("rejects malformed list cursors before querying", async () => {

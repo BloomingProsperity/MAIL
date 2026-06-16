@@ -1,4 +1,5 @@
 import { type PoolLike, type Queryable, withTransaction } from "../db/transaction.js";
+import type { SavedViewDefinition } from "../mail-navigation/saved-views.js";
 import type {
   HermesRule,
   HermesRuleCandidate,
@@ -172,6 +173,45 @@ export function createPostgresHermesRuleStore(
     },
 
     async listCandidateMatches(input) {
+      const keywords = candidateKeywords(input.candidate);
+      if (keywords.length > 0) {
+        const result = await client.query<MessageMatchRow>(
+          `
+            SELECT
+              messages.id AS message_id,
+              messages.from_email AS sender_email,
+              messages.subject,
+              messages.received_at,
+              message_classification.bucket AS current_bucket,
+              message_classification.priority_score AS current_score
+            FROM messages
+            JOIN message_state
+              ON message_state.message_id = messages.id
+            LEFT JOIN message_classification
+              ON message_classification.message_id = messages.id
+            LEFT JOIN search_documents
+              ON search_documents.message_id = messages.id
+            WHERE messages.account_id = $1
+              AND message_state.deleted_at IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM unnest($2::text[]) AS keyword
+                WHERE messages.subject ILIKE '%' || keyword || '%'
+                   OR messages.from_email ILIKE '%' || keyword || '%'
+                   OR COALESCE(messages.from_name, '') ILIKE '%' || keyword || '%'
+                   OR COALESCE(messages.snippet, '') ILIKE '%' || keyword || '%'
+                   OR COALESCE(search_documents.raw_text, '') ILIKE '%' || keyword || '%'
+                   OR COALESCE(message_classification.reasons::text, '') ILIKE '%' || keyword || '%'
+              )
+            ORDER BY messages.received_at DESC, messages.id DESC
+            LIMIT $3
+          `,
+          [input.accountId, keywords, input.limit],
+        );
+
+        return result.rows.map(messageMatchFromRow);
+      }
+
       const senderEmail =
         typeof input.candidate.condition.senderEmail === "string"
           ? input.candidate.condition.senderEmail
@@ -322,7 +362,57 @@ export function createPostgresHermesRuleStore(
 
       return { items: result.rows.map(ruleFromRow) };
     },
+
+    async upsertSavedView(input) {
+      await client.query(
+        `
+          INSERT INTO saved_views (
+            id,
+            label,
+            tone,
+            kind,
+            enabled,
+            keywords,
+            match_config,
+            sort_order,
+            source
+          )
+          VALUES ($1, $2, $3, $4, TRUE, $5, $6, 100, 'hermes')
+          ON CONFLICT (id) DO UPDATE
+          SET label = EXCLUDED.label,
+              tone = EXCLUDED.tone,
+              kind = EXCLUDED.kind,
+              enabled = TRUE,
+              keywords = EXCLUDED.keywords,
+              match_config = EXCLUDED.match_config,
+              source = 'hermes',
+              updated_at = now()
+        `,
+        [
+          input.id,
+          input.label,
+          input.tone,
+          input.kind,
+          input.keywords,
+          savedViewMatchConfig(input),
+        ],
+      );
+    },
   };
+}
+
+function candidateKeywords(candidate: HermesRuleCandidate): string[] {
+  const value = candidate.condition.anyKeywords;
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function savedViewMatchConfig(input: SavedViewDefinition): Record<string, unknown> {
+  return input.minAttachmentCount === undefined
+    ? {}
+    : { minAttachmentCount: input.minAttachmentCount };
 }
 
 async function loadCandidate(

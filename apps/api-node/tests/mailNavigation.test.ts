@@ -76,4 +76,39 @@ describe("mail navigation summary", () => {
       ]),
     );
   });
+
+  it("appends dynamic Hermes saved views after built-in categories", async () => {
+    const service = createMailNavigationSummaryService({
+      async listProviderCounts() {
+        return [];
+      },
+      async listQuickCategoryCounts() {
+        return [
+          { id: "codes", count: 18 },
+          { id: "hermes_contract", count: 3 },
+        ];
+      },
+      async listQuickCategories() {
+        return [
+          { id: "codes", label: "验证码覆盖", tone: "coral" },
+          { id: "hermes_contract", label: "合同", tone: "blue" },
+        ];
+      },
+    });
+
+    const summary = await service.getSummary();
+
+    expect(summary.quickCategories.find((item) => item.id === "codes")).toEqual({
+      id: "codes",
+      label: "验证码",
+      count: 18,
+      tone: "blue",
+    });
+    expect(summary.quickCategories.at(-1)).toEqual({
+      id: "hermes_contract",
+      label: "合同",
+      count: 3,
+      tone: "blue",
+    });
+  });
 });

@@ -1207,6 +1207,22 @@ h2 {
   background: var(--bg-panel);
 }
 
+.reader-translation-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.reader-translation-control select {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  min-height: 30px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  padding: 0 8px;
+  font-weight: 700;
+}
+
 .toolbar-button.danger {
   color: var(--primary-hover);
 }
@@ -1285,12 +1301,25 @@ h2 {
   gap: 7px;
 }
 
+.hermes-apply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .hermes-action-list {
   margin: 0;
   padding-left: 18px;
   color: var(--text-main);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.hermes-action-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
 }
 
 .hermes-action-list li + li {

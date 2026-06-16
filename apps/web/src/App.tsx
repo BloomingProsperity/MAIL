@@ -49,6 +49,8 @@ import type {
   HermesQuickReplyScenario,
   HermesProviderCatalogItem,
   HermesProviderProbeMissing,
+  HermesRuleCandidateDto,
+  HermesRuleSimulationDto,
   HermesRuntimeMode,
   HermesRuntimeUpdateChannel,
   HermesRuntimeUpdatePolicy,
@@ -115,10 +117,19 @@ const PREVIEW_ATTACHMENT_ROWS = [
   { name: "Q2_合作方案_最终版.pdf", size: "1.2 MB" },
   { name: "报价明细表.xlsx", size: "320 KB" },
 ];
+const READER_TRANSLATION_LANGUAGES = [
+  { value: "Chinese", label: "中文" },
+  { value: "English", label: "English" },
+  { value: "Japanese", label: "日本語" },
+  { value: "Korean", label: "한국어" },
+  { value: "Spanish", label: "Español" },
+  { value: "French", label: "Français" },
+] as const;
 
 type ComposeAutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
 type ReaderHermesBusy = "summary" | "translation" | "organize";
 type SmartInboxBusyAction = "" | "bulk_done" | SmartInboxFeedbackAction;
+type ReaderActionResult = boolean | Promise<boolean>;
 
 interface ReaderHermesOrganizationResult {
   priority: HermesPriorityTriageResult;
@@ -126,6 +137,20 @@ interface ReaderHermesOrganizationResult {
   newsletter: HermesNewsletterCleanupResult;
   actionItems: HermesActionItemExtractResult;
 }
+
+type HermesOrganizationApplyAction =
+  | {
+      id: string;
+      label: string;
+      kind: "smart_inbox";
+      action: SmartInboxFeedbackAction;
+    }
+  | {
+      id: string;
+      label: string;
+      kind: "mail";
+      action: Extract<MailAction, "archive">;
+    };
 
 type PasswordReauthorizationFormState = {
   username: string;
@@ -560,6 +585,10 @@ export function App(props: AppProps = {}) {
   const [hermesDockResult, setHermesDockResult] = useState<
     HermesEmailSearchQaResult | undefined
   >();
+  const [hermesDockRuleCandidate, setHermesDockRuleCandidate] =
+    useState<HermesRuleCandidateDto | undefined>();
+  const [hermesDockRuleSimulation, setHermesDockRuleSimulation] =
+    useState<HermesRuleSimulationDto | undefined>();
   const [hermesDockBusy, setHermesDockBusy] = useState(false);
   const [workspaceFolders, setWorkspaceFolders] = useState<FolderItem[]>(folders);
   const [workspaceMail, setWorkspaceMail] = useState<MailItem[]>(
@@ -681,17 +710,23 @@ export function App(props: AppProps = {}) {
     setHermesPrompt(value);
     setHermesDockNotice(undefined);
     setHermesDockResult(undefined);
+    setHermesDockRuleCandidate(undefined);
+    setHermesDockRuleSimulation(undefined);
   }
 
   async function submitHermesDockPrompt(rawPrompt: string) {
     const question = rawPrompt.trim();
     if (!question) {
       setHermesDockResult(undefined);
+      setHermesDockRuleCandidate(undefined);
+      setHermesDockRuleSimulation(undefined);
       setHermesDockNotice("请输入要让 Hermes 查找或回答的问题。");
       return;
     }
 
     setHermesDockResult(undefined);
+    setHermesDockRuleCandidate(undefined);
+    setHermesDockRuleSimulation(undefined);
     if (!props.api) {
       setHermesDockNotice("连接后 Hermes 会搜索已同步邮件并给出引用答案。");
       return;
@@ -704,6 +739,36 @@ export function App(props: AppProps = {}) {
     }
 
     setHermesDockBusy(true);
+    if (isHermesRuleCommand(question)) {
+      setHermesDockNotice("Hermes 正在读取邮箱环境并生成规则草案...");
+      try {
+        const draft = await props.api.draftHermesRule({
+          accountId: hermesAccountId,
+          command: question,
+        });
+        const candidate = draft.candidates[0];
+        if (!candidate) {
+          setHermesDockNotice("Hermes 没有生成可确认的规则草案。");
+          return;
+        }
+        const simulation = await props.api.simulateHermesRule({
+          accountId: hermesAccountId,
+          candidateId: candidate.id,
+          sampleLimit: 25,
+        });
+        setHermesDockRuleCandidate(candidate);
+        setHermesDockRuleSimulation(simulation);
+        setHermesDockNotice(
+          `Hermes 已生成规则草案，shadow simulation 命中 ${simulation.matchedCount} 封邮件。`,
+        );
+      } catch {
+        setHermesDockNotice("Hermes 规则草案暂时不可用。");
+      } finally {
+        setHermesDockBusy(false);
+      }
+      return;
+    }
+
     setHermesDockNotice("Hermes 正在搜索已同步邮件...");
     try {
       const result = await props.api.searchMailWithHermes({
@@ -721,6 +786,32 @@ export function App(props: AppProps = {}) {
       );
     } catch {
       setHermesDockNotice("Hermes 搜索暂时不可用。");
+    } finally {
+      setHermesDockBusy(false);
+    }
+  }
+
+  async function approveHermesDockRule() {
+    if (!props.api || !hermesDockRuleCandidate) {
+      return;
+    }
+
+    setHermesDockBusy(true);
+    setHermesDockNotice("正在启用 Hermes 规则...");
+    try {
+      const rule = await props.api.approveHermesRule({
+        accountId: hermesDockRuleCandidate.accountId,
+        candidateId: hermesDockRuleCandidate.id,
+      });
+      setHermesDockRuleCandidate({
+        ...hermesDockRuleCandidate,
+        status: "approved",
+        approvedAt: rule.approvedAt,
+      });
+      await refreshNavigationSummary();
+      setHermesDockNotice(`Hermes 规则已启用：${rule.title}`);
+    } catch {
+      setHermesDockNotice("Hermes 规则启用失败。");
     } finally {
       setHermesDockBusy(false);
     }
@@ -923,17 +1014,24 @@ export function App(props: AppProps = {}) {
     setFollowUpNotice(undefined);
   }, [activeMailId]);
 
-  async function applySelectedAction(action: MailAction) {
+  async function applySelectedAction(action: MailAction): Promise<boolean> {
     if (!props.api || !selectedMail) {
-      return;
+      setBackendNotice("连接服务后才能执行邮件操作。");
+      return false;
     }
 
-    const result = await props.api.applyMailAction({
-      accountId: selectedMail.accountId,
-      messageId: selectedMail.id,
-      action
-    });
-    applyActionResult(result);
+    try {
+      const result = await props.api.applyMailAction({
+        accountId: selectedMail.accountId,
+        messageId: selectedMail.id,
+        action
+      });
+      applyActionResult(result);
+      return true;
+    } catch {
+      setBackendNotice("邮件操作暂时不可用。");
+      return false;
+    }
   }
 
   async function undoDone() {
@@ -1050,10 +1148,12 @@ export function App(props: AppProps = {}) {
     }
   }
 
-  async function recordSmartInboxFeedback(action: SmartInboxFeedbackAction) {
+  async function recordSmartInboxFeedback(
+    action: SmartInboxFeedbackAction,
+  ): Promise<boolean> {
     if (!props.api || !selectedMail) {
       setBackendNotice("连接服务后才能训练 Smart Inbox。");
-      return;
+      return false;
     }
 
     setSmartInboxBusy(action);
@@ -1078,8 +1178,10 @@ export function App(props: AppProps = {}) {
         ),
       );
       setBackendNotice(`Smart Inbox 已学习：${smartInboxFeedbackLabel(action)}。`);
+      return true;
     } catch {
       setBackendNotice("Smart Inbox 反馈暂时不可用。");
+      return false;
     } finally {
       setSmartInboxBusy("");
     }
@@ -1241,20 +1343,20 @@ export function App(props: AppProps = {}) {
               onFolderChange={(id) => void loadMailbox(id)}
               onSavedViewChange={(id) => void loadSavedView(id)}
               onMailChange={setActiveMailId}
-              onDone={() => void applySelectedAction("done")}
-              onArchive={() => void applySelectedAction("archive")}
-              onTrash={() => void applySelectedAction("trash")}
+              onDone={() => applySelectedAction("done")}
+              onArchive={() => applySelectedAction("archive")}
+              onTrash={() => applySelectedAction("trash")}
               onToggleStar={() =>
-                void applySelectedAction(selectedMail.starred ? "unstar" : "star")
+                applySelectedAction(selectedMail.starred ? "unstar" : "star")
               }
               onToggleRead={() =>
-                void applySelectedAction(
+                applySelectedAction(
                   selectedMail.unread ? "mark_read" : "mark_unread",
                 )
               }
               onUndoDone={() => void undoDone()}
               onSmartInboxBucketDone={(bucket) => void applySmartInboxBucketDone(bucket)}
-              onSmartInboxFeedback={(action) => void recordSmartInboxFeedback(action)}
+              onSmartInboxFeedback={recordSmartInboxFeedback}
               onTrackFollowUp={() => void trackSelectedFollowUp()}
               onConfirmHermesFollowUp={() => void confirmHermesFollowUp()}
             />
@@ -1314,9 +1416,12 @@ export function App(props: AppProps = {}) {
         prompt={hermesPrompt}
         notice={hermesDockNotice}
         result={hermesDockResult}
+        ruleCandidate={hermesDockRuleCandidate}
+        ruleSimulation={hermesDockRuleSimulation}
         busy={hermesDockBusy}
         onPromptChange={updateHermesPrompt}
         onSubmit={(prompt) => void submitHermesDockPrompt(prompt)}
+        onApproveRule={() => void approveHermesDockRule()}
         onOpenSearch={launchGlobalSearch}
       />
     </div>
@@ -1533,14 +1638,14 @@ function MailWorkspace(props: {
   onFolderChange: (id: string) => void;
   onSavedViewChange: (id: string) => void;
   onMailChange: (id: string) => void;
-  onDone: () => void;
-  onArchive: () => void;
-  onTrash: () => void;
-  onToggleStar: () => void;
-  onToggleRead: () => void;
+  onDone: () => ReaderActionResult;
+  onArchive: () => ReaderActionResult;
+  onTrash: () => ReaderActionResult;
+  onToggleStar: () => ReaderActionResult;
+  onToggleRead: () => ReaderActionResult;
   onUndoDone: () => void;
   onSmartInboxBucketDone: (bucket: string) => void;
-  onSmartInboxFeedback: (action: SmartInboxFeedbackAction) => void;
+  onSmartInboxFeedback: (action: SmartInboxFeedbackAction) => ReaderActionResult;
   onTrackFollowUp: () => void;
   onConfirmHermesFollowUp: () => void;
 }) {
@@ -1605,12 +1710,17 @@ function MailWorkspace(props: {
   const [readerHermesNotice, setReaderHermesNotice] = useState("");
   const [readerHermesBusy, setReaderHermesBusy] =
     useState<ReaderHermesBusy | undefined>();
+  const [readerTranslationTarget, setReaderTranslationTarget] = useState("Chinese");
+  const [readerTranslationPreferenceBusy, setReaderTranslationPreferenceBusy] =
+    useState(false);
   const [readerHermesSummary, setReaderHermesSummary] =
     useState<HermesThreadSummaryResult | undefined>();
   const [readerHermesTranslation, setReaderHermesTranslation] =
     useState<HermesTranslateTextResult | undefined>();
   const [readerHermesOrganization, setReaderHermesOrganization] =
     useState<ReaderHermesOrganizationResult | undefined>();
+  const [readerHermesApplyBusy, setReaderHermesApplyBusy] =
+    useState<string | undefined>();
   const [rescheduleTimes, setRescheduleTimes] = useState<Record<string, string>>(
     {},
   );
@@ -1670,6 +1780,8 @@ function MailWorkspace(props: {
     setReaderHermesTranslation(undefined);
     setReaderHermesOrganization(undefined);
     setReaderHermesBusy(undefined);
+    setReaderHermesApplyBusy(undefined);
+    setReaderTranslationPreferenceBusy(false);
   }, [props.selectedMail.id]);
 
   useEffect(() => {
@@ -1774,6 +1886,12 @@ function MailWorkspace(props: {
   const detailAttachments = props.selectedDetail?.attachments;
   const previewAttachments = props.api ? [] : PREVIEW_ATTACHMENT_ROWS;
   const readerBodyText = messageReaderText(props.selectedDetail, props.selectedMail);
+  const readerHermesApplyActions = readerHermesOrganization
+    ? hermesOrganizationApplyActions(readerHermesOrganization)
+    : [];
+  const readerHermesUnsupportedActionCount = readerHermesOrganization
+    ? hermesOrganizationUnsupportedActionCount(readerHermesOrganization)
+    : 0;
 
   useEffect(() => {
     if (composeAutosaveTimerRef.current !== undefined) {
@@ -2240,10 +2358,15 @@ function MailWorkspace(props: {
     try {
       const result = await props.api.translateText({
         text,
-        targetLanguage: "Chinese",
+        targetLanguage: readerTranslationTarget,
         tone: "preserve original meaning and formatting",
         readMessageIds: [props.selectedMail.id],
-        memoryScope: "global",
+        memoryScope: `sender:${props.selectedMail.email}`,
+        memoryLayers: [
+          "contact_memory",
+          "procedural_memory",
+          "semantic_profile",
+        ],
       });
       if (readerHermesRequestRef.current !== requestId) {
         return;
@@ -2260,6 +2383,29 @@ function MailWorkspace(props: {
       if (readerHermesRequestRef.current === requestId) {
         setReaderHermesBusy(undefined);
       }
+    }
+  }
+
+  async function rememberReaderTranslationPreference() {
+    if (!props.api || !readerHermesTranslation) {
+      setReaderHermesNotice("需要先翻译一次，才能保存翻译习惯。");
+      return;
+    }
+
+    setReaderTranslationPreferenceBusy(true);
+    try {
+      await props.api.confirmTranslationPreference({
+        mode: "always",
+        sourceLanguage: readerHermesTranslation.sourceLanguage || "auto",
+        targetLanguage: readerHermesTranslation.targetLanguage,
+        memoryScope: `sender:${props.selectedMail.email}`,
+        reason: `Reader translation preference for ${props.selectedMail.email}`,
+      });
+      setReaderHermesNotice("Hermes 已记住这个翻译习惯。");
+    } catch {
+      setReaderHermesNotice("Hermes 翻译习惯暂时无法保存。");
+    } finally {
+      setReaderTranslationPreferenceBusy(false);
     }
   }
 
@@ -2352,6 +2498,70 @@ function MailWorkspace(props: {
       if (readerHermesRequestRef.current === requestId) {
         setReaderHermesBusy(undefined);
       }
+    }
+  }
+
+  async function applyHermesOrganizationSuggestion(
+    action: HermesOrganizationApplyAction,
+  ) {
+    if (readerHermesApplyBusy) {
+      return;
+    }
+
+    setReaderHermesApplyBusy(action.id);
+    setReaderHermesNotice(`正在应用 Hermes 建议：${action.label}...`);
+
+    const applied =
+      action.kind === "mail"
+        ? await props.onArchive()
+        : await props.onSmartInboxFeedback(action.action);
+
+    setReaderHermesApplyBusy(undefined);
+    setReaderHermesNotice(
+      applied
+        ? `Hermes 建议已应用：${action.label}。`
+        : `Hermes 建议应用失败：${action.label}。`,
+    );
+  }
+
+  async function createHermesActionItemFollowUp(
+    item: ReaderHermesOrganizationResult["actionItems"]["items"][number],
+    index: number,
+  ) {
+    if (readerHermesApplyBusy) {
+      return;
+    }
+
+    if (!props.api) {
+      setReaderHermesNotice("连接服务后才能创建 Hermes 待办提醒。");
+      return;
+    }
+
+    if (!item.dueAt) {
+      setReaderHermesNotice("Hermes 待办缺少明确时间，暂不自动创建提醒。");
+      return;
+    }
+
+    const busyId = hermesActionItemApplyId(item, index);
+    setReaderHermesApplyBusy(busyId);
+    setReaderHermesNotice(`正在创建 Hermes 待办提醒：${item.title}...`);
+
+    try {
+      const followUp = await props.api.createFollowUp({
+        accountId: props.selectedMail.accountId,
+        messageId: props.selectedMail.id,
+        dueAt: item.dueAt,
+        kind: "manual",
+        title: item.title,
+        note: formatHermesActionItemNote(item),
+        source: "hermes_followup",
+        hermesSkillRunId: readerHermesOrganization?.actionItems.skillRunId,
+      });
+      setReaderHermesNotice(`Hermes 待办提醒已创建：${followUp.title ?? item.title}。`);
+    } catch {
+      setReaderHermesNotice("Hermes 待办提醒创建失败。");
+    } finally {
+      setReaderHermesApplyBusy(undefined);
     }
   }
 
@@ -3486,7 +3696,7 @@ function MailWorkspace(props: {
                   type="button"
                   aria-label="Smart Inbox mark selected important"
                   disabled={smartInboxDisabled}
-                  onClick={() => props.onSmartInboxFeedback("mark_important")}
+                  onClick={() => void props.onSmartInboxFeedback("mark_important")}
                 >
                   重要
                 </button>
@@ -3495,7 +3705,9 @@ function MailWorkspace(props: {
                   type="button"
                   aria-label="Smart Inbox move selected to newsletters"
                   disabled={smartInboxDisabled}
-                  onClick={() => props.onSmartInboxFeedback("move_to_newsletters")}
+                  onClick={() =>
+                    void props.onSmartInboxFeedback("move_to_newsletters")
+                  }
                 >
                   订阅
                 </button>
@@ -3504,7 +3716,7 @@ function MailWorkspace(props: {
                   type="button"
                   aria-label="Smart Inbox move selected to feed"
                   disabled={smartInboxDisabled}
-                  onClick={() => props.onSmartInboxFeedback("move_to_feed")}
+                  onClick={() => void props.onSmartInboxFeedback("move_to_feed")}
                 >
                   Feed
                 </button>
@@ -3574,7 +3786,7 @@ function MailWorkspace(props: {
               className="toolbar-button"
               type="button"
               aria-label="Done selected message"
-              onClick={props.onDone}
+              onClick={() => void props.onDone()}
             >
               Done
             </button>
@@ -3586,7 +3798,7 @@ function MailWorkspace(props: {
                   ? "Unstar selected message"
                   : "Star selected message"
               }
-              onClick={props.onToggleStar}
+              onClick={() => void props.onToggleStar()}
             >
               {props.selectedMail.starred ? "取消星标" : "星标"}
             </button>
@@ -3598,7 +3810,7 @@ function MailWorkspace(props: {
                   ? "Mark selected message as read"
                   : "Mark selected message as unread"
               }
-              onClick={props.onToggleRead}
+              onClick={() => void props.onToggleRead()}
             >
               {props.selectedMail.unread ? "标已读" : "标未读"}
             </button>
@@ -3619,15 +3831,29 @@ function MailWorkspace(props: {
             >
               Hermes 总结
             </button>
-            <button
-              className="toolbar-button"
-              type="button"
-              aria-label="Ask Hermes to translate selected message"
-              disabled={Boolean(readerHermesBusy)}
-              onClick={() => void askHermesForReaderTranslation()}
-            >
-              翻译中文
-            </button>
+            <div className="reader-translation-control">
+              <select
+                aria-label="Hermes translation target language"
+                value={readerTranslationTarget}
+                disabled={Boolean(readerHermesBusy)}
+                onChange={(event) => setReaderTranslationTarget(event.target.value)}
+              >
+                {READER_TRANSLATION_LANGUAGES.map((language) => (
+                  <option key={language.value} value={language.value}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="toolbar-button"
+                type="button"
+                aria-label="Ask Hermes to translate selected message"
+                disabled={Boolean(readerHermesBusy)}
+                onClick={() => void askHermesForReaderTranslation()}
+              >
+                翻译
+              </button>
+            </div>
             <button
               className="toolbar-button"
               type="button"
@@ -3641,7 +3867,7 @@ function MailWorkspace(props: {
               className="toolbar-button"
               type="button"
               aria-label="Archive selected message"
-              onClick={props.onArchive}
+              onClick={() => void props.onArchive()}
             >
               归档
             </button>
@@ -3649,7 +3875,7 @@ function MailWorkspace(props: {
               className="toolbar-button danger"
               type="button"
               aria-label="Trash selected message"
-              onClick={props.onTrash}
+              onClick={() => void props.onTrash()}
             >
               删除
             </button>
@@ -3739,12 +3965,30 @@ function MailWorkspace(props: {
             ) : null}
 
             {readerHermesTranslation ? (
-              <div className="reason-box hermes-reader-result" role="status">
+              <div
+                className="reason-box hermes-reader-result hermes-translation-result"
+                role="status"
+                aria-label="Hermes 邮件翻译"
+              >
                 <div>
                   <Sparkles size={18} />
-                  <strong>Hermes 翻译</strong>
+                  <strong>
+                    Hermes 翻译 ·{" "}
+                    {translationLanguageLabel(readerHermesTranslation.targetLanguage)}
+                  </strong>
                 </div>
                 <p>{readerHermesTranslation.translatedText}</p>
+                <div className="hermes-apply-actions">
+                  <button
+                    className="tiny-button"
+                    type="button"
+                    aria-label="Remember Hermes translation preference"
+                    disabled={readerTranslationPreferenceBusy}
+                    onClick={() => void rememberReaderTranslationPreference()}
+                  >
+                    {readerTranslationPreferenceBusy ? "保存中" : "记住这个翻译习惯"}
+                  </button>
+                </div>
               </div>
             ) : null}
 
@@ -3799,18 +4043,62 @@ function MailWorkspace(props: {
                       .join("，")}
                   </p>
                 ) : null}
+                {readerHermesApplyActions.length > 0 ? (
+                  <div
+                    className="hermes-apply-actions"
+                    aria-label="Hermes 可执行整理动作"
+                  >
+                    {readerHermesApplyActions.map((action) => (
+                      <button
+                        key={action.id}
+                        className="tiny-button"
+                        type="button"
+                        aria-label={`Apply Hermes organization action ${action.label}`}
+                        disabled={Boolean(readerHermesApplyBusy)}
+                        onClick={() => void applyHermesOrganizationSuggestion(action)}
+                      >
+                        {readerHermesApplyBusy === action.id ? "应用中" : action.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {readerHermesUnsupportedActionCount > 0 ? (
+                  <p>
+                    还有 {readerHermesUnsupportedActionCount} 条建议需要标签、稍后或退订能力，当前仅展示不执行。
+                  </p>
+                ) : null}
                 {readerHermesOrganization.actionItems.items.length > 0 ? (
                   <ul className="hermes-action-list">
-                    {readerHermesOrganization.actionItems.items.map((item) => (
-                      <li key={`${item.title}-${item.dueAt ?? item.dueText ?? ""}`}>
-                        <strong>{item.title}</strong>
-                        {item.owner ? ` · ${item.owner}` : ""}
-                        {item.dueText ?? item.dueAt
-                          ? ` · ${item.dueText ?? formatMailDate(item.dueAt!)}`
-                          : ""}
-                        {item.priority ? ` · ${item.priority}` : ""}
-                      </li>
-                    ))}
+                    {readerHermesOrganization.actionItems.items.map((item, index) => {
+                      const applyId = hermesActionItemApplyId(item, index);
+                      return (
+                        <li key={hermesActionItemKey(item, index)}>
+                          <span>
+                            <strong>{item.title}</strong>
+                            {item.owner ? ` · ${item.owner}` : ""}
+                            {item.dueText ?? item.dueAt
+                              ? ` · ${item.dueText ?? formatMailDate(item.dueAt!)}`
+                              : ""}
+                            {item.priority ? ` · ${item.priority}` : ""}
+                          </span>
+                          {item.dueAt ? (
+                            <button
+                              className="tiny-button"
+                              type="button"
+                              aria-label={`Create Hermes action item follow-up ${item.title}`}
+                              disabled={Boolean(readerHermesApplyBusy)}
+                              onClick={() =>
+                                void createHermesActionItemFollowUp(item, index)
+                              }
+                            >
+                              {readerHermesApplyBusy === applyId
+                                ? "创建中"
+                                : "创建提醒"}
+                            </button>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <p>待办：未发现明确待办。</p>
@@ -3943,6 +4231,112 @@ function formatSendIdentity(identity: MailSendIdentityDto): string {
       : []),
   ];
   return markers.length > 0 ? `${label} · ${markers.join(" · ")}` : label;
+}
+
+function translationLanguageLabel(value: string): string {
+  return (
+    READER_TRANSLATION_LANGUAGES.find((language) => language.value === value)?.label ??
+    value
+  );
+}
+
+function hermesOrganizationApplyActions(
+  result: ReaderHermesOrganizationResult,
+): HermesOrganizationApplyAction[] {
+  const actions = new Map<string, HermesOrganizationApplyAction>();
+  const add = (action: HermesOrganizationApplyAction) => {
+    if (!actions.has(action.id)) {
+      actions.set(action.id, action);
+    }
+  };
+
+  for (const action of result.labels.actions) {
+    if (action.type === "archive") {
+      add({ id: "mail:archive", kind: "mail", action: "archive", label: "归档" });
+    }
+    if (action.type === "move_to_feed") {
+      add({
+        id: "smart_inbox:move_to_feed",
+        kind: "smart_inbox",
+        action: "move_to_feed",
+        label: "移到 Feed",
+      });
+    }
+    if (action.type === "mark_important") {
+      add({
+        id: "smart_inbox:mark_important",
+        kind: "smart_inbox",
+        action: "mark_important",
+        label: "标为重要",
+      });
+    }
+  }
+
+  for (const action of result.newsletter.actions) {
+    if (action.type === "archive") {
+      add({ id: "mail:archive", kind: "mail", action: "archive", label: "归档" });
+    }
+    if (action.type === "move_to_feed") {
+      add({
+        id: "smart_inbox:move_to_feed",
+        kind: "smart_inbox",
+        action: "move_to_feed",
+        label: "移到 Feed",
+      });
+    }
+    if (action.type === "mark_not_important") {
+      add({
+        id: "smart_inbox:mark_not_important",
+        kind: "smart_inbox",
+        action: "mark_not_important",
+        label: "降低优先级",
+      });
+    }
+  }
+
+  return [...actions.values()];
+}
+
+function hermesOrganizationUnsupportedActionCount(
+  result: ReaderHermesOrganizationResult,
+): number {
+  const unsupportedLabelActions = result.labels.actions.filter(
+    (action) =>
+      action.type === "apply_label" ||
+      action.type === "snooze" ||
+      action.type === "keep_in_inbox",
+  ).length;
+  const unsupportedNewsletterActions = result.newsletter.actions.filter(
+    (action) => action.type === "unsubscribe_later" || action.type === "keep_in_inbox",
+  ).length;
+  return unsupportedLabelActions + unsupportedNewsletterActions;
+}
+
+function hermesActionItemKey(
+  item: ReaderHermesOrganizationResult["actionItems"]["items"][number],
+  index: number,
+): string {
+  return `${index}:${item.title}:${item.dueAt ?? item.dueText ?? ""}`;
+}
+
+function hermesActionItemApplyId(
+  item: ReaderHermesOrganizationResult["actionItems"]["items"][number],
+  index: number,
+): string {
+  return `followup:${hermesActionItemKey(item, index)}`;
+}
+
+function formatHermesActionItemNote(
+  item: ReaderHermesOrganizationResult["actionItems"]["items"][number],
+): string {
+  return [
+    item.owner ? `Owner: ${item.owner}` : undefined,
+    item.priority ? `Priority: ${item.priority}` : undefined,
+    item.status ? `Status: ${item.status}` : undefined,
+    item.sourceQuote ? `Source: ${item.sourceQuote}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function formatHermesLabelAction(
@@ -8514,9 +8908,12 @@ function HermesDock(props: {
   prompt: string;
   notice?: string;
   result?: HermesEmailSearchQaResult;
+  ruleCandidate?: HermesRuleCandidateDto;
+  ruleSimulation?: HermesRuleSimulationDto;
   busy: boolean;
   onPromptChange: (value: string) => void;
   onSubmit: (prompt: string) => void;
+  onApproveRule: () => void;
   onOpenSearch: (query: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -8548,6 +8945,10 @@ function HermesDock(props: {
   }
 
   const result = props.result;
+  const ruleCandidate = props.ruleCandidate;
+  const ruleSavedView = ruleCandidate
+    ? hermesRuleSavedView(ruleCandidate.action)
+    : undefined;
 
   return (
     <section
@@ -8628,6 +9029,34 @@ function HermesDock(props: {
               </button>
             </div>
           ) : null}
+          {ruleCandidate ? (
+            <div className="dock-result" aria-label="Hermes 规则草案">
+              <div className="dock-result-head">
+                <strong>Hermes 规则草案</strong>
+                <span>{ruleCandidate.status === "approved" ? "已启用" : "待确认"}</span>
+              </div>
+              <p>{ruleCandidate.title}</p>
+              {ruleSavedView ? (
+                <p>
+                  左侧分组：{ruleSavedView.label} · 关键词{" "}
+                  {ruleSavedView.keywords.slice(0, 5).join("，")}
+                </p>
+              ) : null}
+              {props.ruleSimulation ? (
+                <p>
+                  Shadow simulation：命中 {props.ruleSimulation.matchedCount} 封邮件
+                </p>
+              ) : null}
+              <button
+                className="dock-action"
+                type="button"
+                disabled={props.busy || ruleCandidate.status === "approved"}
+                onClick={props.onApproveRule}
+              >
+                {ruleCandidate.status === "approved" ? "已启用" : "启用规则"}
+              </button>
+            </div>
+          ) : null}
         </>
       )}
     </section>
@@ -8685,6 +9114,34 @@ function mapMessageDtoToMailItem(message: MessageListItemDto): MailItem {
     score: message.classification.priorityScore,
     reasons: message.classification.reasons,
     searchPreview: message.searchPreview?.text,
+  };
+}
+
+function isHermesRuleCommand(value: string): boolean {
+  return /规则|分组|分类|标签|filter|rule/i.test(value);
+}
+
+function hermesRuleSavedView(
+  action: Record<string, unknown>,
+): { id: string; label: string; keywords: string[] } | undefined {
+  if (action.type !== "ensure_saved_view") {
+    return undefined;
+  }
+  const savedView = action.savedView;
+  if (!savedView || typeof savedView !== "object" || Array.isArray(savedView)) {
+    return undefined;
+  }
+
+  const record = savedView as Record<string, unknown>;
+  if (typeof record.id !== "string" || typeof record.label !== "string") {
+    return undefined;
+  }
+  return {
+    id: record.id,
+    label: record.label,
+    keywords: Array.isArray(record.keywords)
+      ? record.keywords.filter((keyword): keyword is string => typeof keyword === "string")
+      : [],
   };
 }
 

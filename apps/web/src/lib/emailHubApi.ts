@@ -396,6 +396,48 @@ export interface HermesEmailSearchQaResult {
   matches: HermesEmailSearchQaMatch[];
 }
 
+export type HermesRuleCandidateStatus = "shadow" | "approved" | "dismissed";
+export type HermesRuleRunMode = "shadow" | "active";
+
+export interface HermesRuleCandidateDto {
+  id: string;
+  accountId: string;
+  title: string;
+  ruleType: string;
+  condition: Record<string, unknown>;
+  action: Record<string, unknown>;
+  confidence: number;
+  status: HermesRuleCandidateStatus;
+  evidenceMessageIds: string[];
+  createdAt: string;
+  approvedAt?: string;
+}
+
+export interface HermesRuleDto {
+  id: string;
+  accountId: string;
+  candidateId?: string;
+  title: string;
+  ruleType: string;
+  condition: Record<string, unknown>;
+  action: Record<string, unknown>;
+  confidence: number;
+  enabled: boolean;
+  createdAt: string;
+  approvedAt?: string;
+}
+
+export interface HermesRuleSimulationDto {
+  id: string;
+  accountId: string;
+  candidateId: string;
+  mode: HermesRuleRunMode;
+  matchedCount: number;
+  sampleMessageIds: string[];
+  actionPreview: Record<string, unknown>;
+  createdAt: string;
+}
+
 export type HermesPriorityLevel = "low" | "medium" | "high";
 export type HermesPriorityBucket =
   | "P0 Pinned"
@@ -1262,6 +1304,12 @@ export interface HermesTranslateTextResult {
   translatedText: string;
 }
 
+export type HermesTranslationPreferenceMode = "always" | "never";
+
+export interface HermesTranslationPreferenceResult {
+  memory: HermesMemoryDto;
+}
+
 export type HermesThreadSummaryMode = "short" | "detailed" | "action_points";
 
 export interface HermesThreadSummaryResult {
@@ -1404,6 +1452,19 @@ export interface EmailHubApi {
   searchMailWithHermes(
     input: HermesEmailSearchQaInput,
   ): Promise<HermesEmailSearchQaResult>;
+  draftHermesRule(input: {
+    accountId: string;
+    command: string;
+  }): Promise<{ candidates: HermesRuleCandidateDto[] }>;
+  simulateHermesRule(input: {
+    accountId: string;
+    candidateId: string;
+    sampleLimit?: number;
+  }): Promise<HermesRuleSimulationDto>;
+  approveHermesRule(input: {
+    accountId: string;
+    candidateId: string;
+  }): Promise<HermesRuleDto>;
   triagePriorityWithHermes(
     input: HermesPriorityTriageInput,
   ): Promise<HermesPriorityTriageResult>;
@@ -1524,6 +1585,13 @@ export interface EmailHubApi {
     memoryScope?: string;
     memoryLayers?: string[];
   }): Promise<HermesTranslateTextResult>;
+  confirmTranslationPreference(input: {
+    mode: HermesTranslationPreferenceMode;
+    sourceLanguage: string;
+    targetLanguage?: string;
+    memoryScope?: string;
+    reason?: string;
+  }): Promise<HermesTranslationPreferenceResult>;
   summarizeThread(input: {
     subject?: string;
     threadText: string;
@@ -2031,6 +2099,42 @@ export function createEmailHubApi(
       });
     },
 
+    draftHermesRule(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/rules/draft", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    simulateHermesRule(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/rules/${encodePath(input.candidateId)}/simulate`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            cleanObject({
+              accountId: input.accountId,
+              sampleLimit: input.sampleLimit,
+            }),
+          ),
+        },
+      );
+    },
+
+    approveHermesRule(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/rules/${encodePath(input.candidateId)}/approve`,
+        {
+          method: "POST",
+          body: JSON.stringify({ accountId: input.accountId }),
+        },
+      );
+    },
+
     triagePriorityWithHermes(input) {
       return request(fetchImpl, baseUrl, "/api/hermes/skills/priority_triage/run", {
         method: "POST",
@@ -2359,6 +2463,13 @@ export function createEmailHubApi(
 
     translateText(input) {
       return request(fetchImpl, baseUrl, "/api/hermes/skills/translate_text/run", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    confirmTranslationPreference(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/translation-preferences", {
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });

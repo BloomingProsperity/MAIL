@@ -7,6 +7,58 @@ import {
 } from "../src/hermes/rules";
 
 describe("Hermes rule learning service", () => {
+  it("drafts a safe saved-view rule from a mailbox rule command", async () => {
+    const store = createInMemoryHermesRuleStore({
+      messages: [
+        message("msg_1", "login@example.com", "Your OTP verification code"),
+        message("msg_2", "client@example.com", "Contract update"),
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      createId: nextId(["candidate_codes", "run_1"]),
+      now: () => "2026-06-13T10:00:00.000Z",
+    });
+
+    const draft = await service.draftRule({
+      accountId: "account_1",
+      command: "帮我创建一个规则，左侧加一个验证码分组，验证码邮件都进这个分组",
+    });
+
+    expect(draft.candidates).toEqual([
+      expect.objectContaining({
+        id: "candidate_codes",
+        accountId: "account_1",
+        title: "启用验证码智能分组",
+        ruleType: "content_saved_view",
+        condition: {
+          anyKeywords: expect.arrayContaining(["验证码", "verification", "otp"]),
+        },
+        action: expect.objectContaining({
+          type: "ensure_saved_view",
+          savedView: expect.objectContaining({
+            id: "codes",
+            label: "验证码",
+            keywords: expect.arrayContaining(["验证码", "verification", "otp"]),
+          }),
+          requiresConfirmation: true,
+        }),
+        status: "shadow",
+      }),
+    ]);
+
+    await expect(
+      service.simulateRule({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        sampleLimit: 10,
+      }),
+    ).resolves.toMatchObject({
+      matchedCount: 1,
+      sampleMessageIds: ["msg_1"],
+    });
+  });
+
   it("suggests a shadow sender rule after repeated user feedback", async () => {
     const store = createInMemoryHermesRuleStore({
       observedBehaviors: [

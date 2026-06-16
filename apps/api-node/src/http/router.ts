@@ -1403,6 +1403,14 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        if (hermesRuleRoute.action === "draft" && request.method === "POST") {
+          const result = await config.hermesRuleService.draftRule(
+            parseHermesRuleDraftInput(await readRequestBody()),
+          );
+          writeJson(response, 200, result);
+          return;
+        }
+
         if (hermesRuleRoute.action === "suggest" && request.method === "POST") {
           const result = await config.hermesRuleService.suggestRules(
             parseHermesRuleSuggestInput(await readRequestBody()),
@@ -3027,6 +3035,7 @@ function parseHermesRuleRoute(
   requestUrl: string | undefined,
 ):
   | { action: "list" }
+  | { action: "draft" }
   | { action: "suggest" }
   | { action: "simulate"; candidateId: string }
   | { action: "approve"; candidateId: string }
@@ -3038,6 +3047,9 @@ function parseHermesRuleRoute(
   const url = new URL(requestUrl, "http://localhost");
   if (url.pathname === "/api/hermes/rules") {
     return { action: "list" };
+  }
+  if (url.pathname === "/api/hermes/rules/draft") {
+    return { action: "draft" };
   }
   if (url.pathname === "/api/hermes/rules/suggest") {
     return { action: "suggest" };
@@ -5168,6 +5180,32 @@ function parseHermesRuleSuggestInput(body: string): {
       2,
       20,
     ),
+  };
+}
+
+function parseHermesRuleDraftInput(body: string): {
+  accountId: string;
+  command: string;
+} {
+  const payload = JSON.parse(body) as {
+    accountId?: unknown;
+    command?: unknown;
+  };
+  if (!isNonEmptyString(payload.accountId) || typeof payload.command !== "string") {
+    throw new InvalidHermesRuleRequestError();
+  }
+  const command = payload.command.trim();
+  if (
+    command.length < 2 ||
+    command.length > 500 ||
+    /[\u0000-\u001F\u007F]/.test(command)
+  ) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return {
+    accountId: payload.accountId,
+    command,
   };
 }
 

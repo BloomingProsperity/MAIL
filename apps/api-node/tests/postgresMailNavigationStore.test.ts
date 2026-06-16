@@ -26,10 +26,10 @@ describe("Postgres mail navigation store", () => {
   });
 
   it("counts saved views from searchable text and lightweight message facts", async () => {
-    const queries: string[] = [];
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
     const store = createPostgresMailNavigationStore({
-      async query(text: string) {
-        queries.push(text);
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
         return {
           rows: [
             { id: "codes", count: "2" },
@@ -43,10 +43,38 @@ describe("Postgres mail navigation store", () => {
       { id: "codes", count: 2 },
       { id: "receipts", count: 1 },
     ]);
-    expect(queries[0]).toMatch(/FROM messages/i);
-    expect(queries[0]).toMatch(/verification|验证码|otp/i);
-    expect(queries[0]).toMatch(/invoice|发票|账单|receipt/i);
-    expect(queries[0]).toMatch(/needs_reply|待回复|reply/i);
-    expect(queries[0]).toMatch(/large_attachments|attachment_count/i);
+    expect(queries[0].text).toMatch(/FROM messages/i);
+    expect(queries[0].text).toMatch(/verification|验证码|otp/i);
+    expect(queries[0].text).toMatch(/invoice|发票|账单|receipt/i);
+    expect(queries[0].text).toMatch(/saved_views/i);
+    expect(queries[0].text).toMatch(/needs_reply|待回复|reply/i);
+    expect(queries[0].text).toMatch(/large_attachments|attachment_count/i);
+    expect(queries[0].values).toEqual([
+      [
+        "codes",
+        "receipts",
+        "meetings",
+        "travel",
+        "shipping",
+        "notifications",
+        "newsletters",
+        "needs_reply",
+        "large_attachments",
+      ],
+    ]);
+  });
+
+  it("lists dynamic saved views for navigation", async () => {
+    const store = createPostgresMailNavigationStore({
+      async query() {
+        return {
+          rows: [{ id: "hermes_contract", label: "合同", tone: "blue" }],
+        };
+      },
+    });
+
+    await expect(store.listQuickCategories?.()).resolves.toEqual([
+      { id: "hermes_contract", label: "合同", tone: "blue" },
+    ]);
   });
 });

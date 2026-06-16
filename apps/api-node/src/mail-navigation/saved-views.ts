@@ -2,7 +2,7 @@ import type { MailNavigationTone } from "./navigation-summary.js";
 
 export type SavedViewKind = "keyword" | "message_fact";
 
-export interface BuiltInSavedView {
+export interface SavedViewDefinition {
   id: string;
   label: string;
   tone: MailNavigationTone;
@@ -10,6 +10,8 @@ export interface BuiltInSavedView {
   keywords: string[];
   minAttachmentCount?: number;
 }
+
+export interface BuiltInSavedView extends SavedViewDefinition {}
 
 const BUILT_IN_SAVED_VIEWS: BuiltInSavedView[] = [
   {
@@ -162,6 +164,10 @@ export function getBuiltInSavedViews(): BuiltInSavedView[] {
     ...view,
     keywords: [...view.keywords],
   }));
+}
+
+export function getBuiltInSavedViewIds(): string[] {
+  return BUILT_IN_SAVED_VIEWS.map((view) => view.id);
 }
 
 export function findBuiltInSavedView(

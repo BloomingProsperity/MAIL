@@ -15,7 +15,11 @@ import type {
   HermesQuickReplyResult,
   HermesReplyDraftResult,
   HermesRewritePolishResult,
+  HermesRuleCandidateDto,
+  HermesRuleDto,
+  HermesRuleSimulationDto,
   HermesThreadSummaryResult,
+  HermesTranslationPreferenceResult,
   HermesTranslateTextResult,
   MailNavigationSummaryDto,
   MailEngineHealthDto,
@@ -160,6 +164,49 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("drafts, simulates, and approves a Hermes mailbox rule from the compact dock", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: {
+        value: "帮我创建一个规则，左侧加一个验证码分组，验证码邮件都进这个分组",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    await waitFor(() => {
+      expect(api.draftHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        command: "帮我创建一个规则，左侧加一个验证码分组，验证码邮件都进这个分组",
+      });
+    });
+    expect(api.searchMailWithHermes).not.toHaveBeenCalled();
+    expect(api.simulateHermesRule).toHaveBeenCalledWith({
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+      sampleLimit: 25,
+    });
+
+    const draft = await screen.findByLabelText("Hermes 规则草案");
+    expect(within(draft).getByText("启用验证码智能分组")).toBeTruthy();
+    expect(within(draft).getByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+
+    fireEvent.click(within(draft).getByRole("button", { name: "启用规则" }));
+
+    await waitFor(() => {
+      expect(api.approveHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      });
+    });
+    expect(api.getMailNavigationSummary).toHaveBeenCalled();
+    expect(await screen.findByText("Hermes 规则已启用：启用验证码智能分组")).toBeTruthy();
+  });
+
   it("does not call Hermes mail search QA for an empty dock prompt", async () => {
     const api = createApiFixture();
 
@@ -228,10 +275,60 @@ describe("Email Hub first UI baseline", () => {
         targetLanguage: "Chinese",
         tone: "preserve original meaning and formatting",
         readMessageIds: ["message_1"],
-        memoryScope: "global",
+        memoryScope: "sender:client@example.com",
+        memoryLayers: [
+          "contact_memory",
+          "procedural_memory",
+          "semantic_profile",
+        ],
       });
     });
     expect(await screen.findByText("你好，请确认发布计划。")).toBeTruthy();
+  });
+
+  it("translates reader mail to the selected target language and saves a Hermes preference", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Hermes translation target language" }),
+      { target: { value: "English" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to translate selected message",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.translateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetLanguage: "English",
+          memoryScope: "sender:client@example.com",
+        }),
+      );
+    });
+    const translation = await screen.findByLabelText("Hermes 邮件翻译");
+    expect(within(translation).getByText("Hello, please confirm the launch plan.")).toBeTruthy();
+
+    fireEvent.click(
+      within(translation).getByRole("button", {
+        name: "Remember Hermes translation preference",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.confirmTranslationPreference).toHaveBeenCalledWith({
+        mode: "always",
+        sourceLanguage: "auto",
+        targetLanguage: "English",
+        memoryScope: "sender:client@example.com",
+        reason: "Reader translation preference for client@example.com",
+      });
+    });
+    expect(await screen.findByText("Hermes 已记住这个翻译习惯。")).toBeTruthy();
   });
 
   it("runs Hermes organization skills from the message reader", async () => {
@@ -291,6 +388,225 @@ describe("Email Hub first UI baseline", () => {
     expect(within(result).getByText(/标签： 客户/)).toBeTruthy();
     expect(within(result).getByText(/订阅判断：personal · 88%/)).toBeTruthy();
     expect(within(result).getByText(/Confirm launch schedule/)).toBeTruthy();
+  });
+
+  it("does not execute Hermes organization suggestions before explicit confirmation", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.suggestLabelsWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_labels_confirm",
+      skillId: "label_suggest",
+      labels: [{ name: "客户", confidence: 0.92, reason: "client thread" }],
+      actions: [
+        { type: "mark_important", reason: "deadline today" },
+        { type: "apply_label", label: "客户", reason: "high confidence" },
+      ],
+    });
+    vi.mocked(api.cleanupNewsletterWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_newsletter_confirm",
+      skillId: "newsletter_cleanup",
+      isNewsletter: true,
+      confidence: 0.9,
+      senderCategory: "newsletter",
+      reasons: ["list sender"],
+      actions: [
+        { type: "move_to_feed", reason: "newsletter sender" },
+        { type: "unsubscribe_later", unsubscribeUrl: "https://example.com/off" },
+      ],
+    });
+    vi.mocked(api.extractActionItemsWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_actions_confirm",
+      skillId: "action_item_extract",
+      items: [
+        {
+          title: "Confirm launch schedule",
+          owner: "me",
+          dueAt: "2026-06-14T09:00:00.000Z",
+          priority: "high",
+          status: "open",
+        },
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    vi.mocked(api.applyMailAction).mockClear();
+    vi.mocked(api.recordSmartInboxFeedback).mockClear();
+    vi.mocked(api.createFollowUp).mockClear();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to organize selected message",
+      }),
+    );
+
+    const result = await screen.findByLabelText("Hermes 整理建议");
+    expect(
+      within(result).getByRole("button", {
+        name: "Apply Hermes organization action 标为重要",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(result).getByRole("button", {
+        name: "Apply Hermes organization action 移到 Feed",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(result).getByRole("button", {
+        name: "Create Hermes action item follow-up Confirm launch schedule",
+      }),
+    ).toBeTruthy();
+    expect(within(result).getByText(/还有 2 条建议/)).toBeTruthy();
+    expect(api.applyMailAction).not.toHaveBeenCalled();
+    expect(api.recordSmartInboxFeedback).not.toHaveBeenCalled();
+    expect(api.createFollowUp).not.toHaveBeenCalled();
+  });
+
+  it("applies safe Hermes organization suggestions through existing backend actions", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.suggestLabelsWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_labels_apply",
+      skillId: "label_suggest",
+      labels: [],
+      actions: [
+        { type: "mark_important", reason: "deadline today" },
+        { type: "archive", reason: "cleanup" },
+      ],
+    });
+    vi.mocked(api.cleanupNewsletterWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_newsletter_apply",
+      skillId: "newsletter_cleanup",
+      isNewsletter: false,
+      confidence: 0.8,
+      senderCategory: "personal",
+      reasons: [],
+      actions: [{ type: "mark_not_important", reason: "low value" }],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    vi.mocked(api.applyMailAction).mockClear();
+    vi.mocked(api.recordSmartInboxFeedback).mockClear();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to organize selected message",
+      }),
+    );
+    await screen.findByLabelText("Hermes 整理建议");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Apply Hermes organization action 标为重要",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.recordSmartInboxFeedback).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        action: "mark_important",
+      });
+    });
+    expect(await screen.findByText("Hermes 建议已应用：标为重要。")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Apply Hermes organization action 归档",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.applyMailAction).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        action: "archive",
+      });
+    });
+  });
+
+  it("creates explicit follow-ups from dated Hermes action items", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.extractActionItemsWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_actions_due",
+      skillId: "action_item_extract",
+      items: [
+        {
+          title: "Confirm launch schedule",
+          owner: "me",
+          dueAt: "2026-06-14T09:00:00.000Z",
+          priority: "high",
+          status: "open",
+          sourceQuote: "please confirm today",
+        },
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to organize selected message",
+      }),
+    );
+    await screen.findByLabelText("Hermes 整理建议");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Create Hermes action item follow-up Confirm launch schedule",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.createFollowUp).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        dueAt: "2026-06-14T09:00:00.000Z",
+        kind: "manual",
+        title: "Confirm launch schedule",
+        note: expect.stringContaining("Owner: me"),
+        source: "hermes_followup",
+        hermesSkillRunId: "run_actions_due",
+      });
+    });
+  });
+
+  it("shows a safe Hermes organization apply failure without leaking backend details", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.cleanupNewsletterWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_newsletter_fail",
+      skillId: "newsletter_cleanup",
+      isNewsletter: false,
+      confidence: 0.7,
+      senderCategory: "personal",
+      reasons: [],
+      actions: [{ type: "mark_not_important", reason: "low value" }],
+    });
+    vi.mocked(api.recordSmartInboxFeedback).mockRejectedValueOnce(
+      new ApiRequestError(500, "internal_error", {
+        error: "internal_error",
+        detail: "postgres leaked token hermes-secret",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to organize selected message",
+      }),
+    );
+    await screen.findByLabelText("Hermes 整理建议");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Apply Hermes organization action 降低优先级",
+      }),
+    );
+
+    expect(await screen.findByText("Hermes 建议应用失败：降低优先级。")).toBeTruthy();
+    const pageText = document.body.textContent ?? "";
+    expect(pageText).not.toContain("internal_error");
+    expect(pageText).not.toContain("hermes-secret");
   });
 
   it("shows a reader-level Hermes error without replacing the message body", async () => {
@@ -5646,6 +5962,72 @@ function createApiFixture(): EmailHubApi {
         },
       ],
     } satisfies HermesEmailSearchQaResult)),
+    draftHermesRule: vi.fn(async () => ({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_saved_view",
+          condition: {
+            anyKeywords: ["验证码", "verification", "otp"],
+          },
+          action: {
+            type: "ensure_saved_view",
+            savedView: {
+              id: "codes",
+              label: "验证码",
+              tone: "blue",
+              kind: "keyword",
+              keywords: ["验证码", "verification", "otp"],
+            },
+            applyToHistory: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+        },
+      ],
+    } satisfies { candidates: HermesRuleCandidateDto[] })),
+    simulateHermesRule: vi.fn(async (input) => ({
+      id: "run_rule_1",
+      accountId: input.accountId,
+      candidateId: input.candidateId,
+      mode: "shadow",
+      matchedCount: 4,
+      sampleMessageIds: ["message_1", "message_2"],
+      actionPreview: {
+        type: "ensure_saved_view",
+        savedView: {
+          id: "codes",
+          label: "验证码",
+          keywords: ["验证码", "verification", "otp"],
+        },
+      },
+      createdAt: "2026-06-13T10:01:00.000Z",
+    } satisfies HermesRuleSimulationDto)),
+    approveHermesRule: vi.fn(async (input) => ({
+      id: "rule_codes",
+      accountId: input.accountId,
+      candidateId: input.candidateId,
+      title: "启用验证码智能分组",
+      ruleType: "content_saved_view",
+      condition: { anyKeywords: ["验证码", "verification", "otp"] },
+      action: {
+        type: "ensure_saved_view",
+        savedView: {
+          id: "codes",
+          label: "验证码",
+          keywords: ["验证码", "verification", "otp"],
+        },
+      },
+      confidence: 0.9,
+      enabled: true,
+      createdAt: "2026-06-13T10:02:00.000Z",
+      approvedAt: "2026-06-13T10:02:00.000Z",
+    } satisfies HermesRuleDto)),
     triagePriorityWithHermes: vi.fn(async () => ({
       skillRunId: "run_priority_1",
       skillId: "priority_triage",
@@ -5685,13 +6067,32 @@ function createApiFixture(): EmailHubApi {
         },
       ],
     } satisfies HermesActionItemExtractResult)),
-    translateText: vi.fn(async () => ({
+    translateText: vi.fn(async (input) => ({
       skillRunId: "run_translate_1",
       skillId: "translate_text",
       sourceLanguage: "auto",
-      targetLanguage: "Chinese",
-      translatedText: "你好，请确认发布计划。",
+      targetLanguage: input.targetLanguage,
+      translatedText:
+        input.targetLanguage === "English"
+          ? "Hello, please confirm the launch plan."
+          : "你好，请确认发布计划。",
     } satisfies HermesTranslateTextResult)),
+    confirmTranslationPreference: vi.fn(async (input) => ({
+      memory: {
+        id: "memory_translation_1",
+        layer: "procedural_memory" as const,
+        scope: input.memoryScope ?? "global",
+        confidence: 0.92,
+        content: {
+          source: "translation_preference",
+          mode: input.mode,
+          sourceLanguage: input.sourceLanguage,
+          targetLanguage: input.targetLanguage,
+        },
+        createdAt: "2026-06-13T10:00:00.000Z",
+        updatedAt: "2026-06-13T10:00:00.000Z",
+      },
+    } satisfies HermesTranslationPreferenceResult)),
     summarizeThread: vi.fn(async () => ({
       skillRunId: "run_summary_1",
       skillId: "thread_summarize",

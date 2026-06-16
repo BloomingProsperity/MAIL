@@ -19,7 +19,7 @@ import {
 } from "./cursor.js";
 import {
   findBuiltInSavedView,
-  type BuiltInSavedView,
+  type SavedViewDefinition,
 } from "../mail-navigation/saved-views.js";
 
 export interface QueryResult<Row extends Record<string, unknown>> {
@@ -83,6 +83,15 @@ interface AttachmentDownloadRow extends Record<string, unknown> {
   byte_size: string | number;
 }
 
+interface SavedViewRow extends Record<string, unknown> {
+  id: string;
+  label: string;
+  tone: SavedViewDefinition["tone"];
+  kind: SavedViewDefinition["kind"];
+  keywords?: unknown;
+  match_config?: Record<string, unknown> | null;
+}
+
 export function createPostgresMailReadStore(
   client: Queryable,
 ): MailReadStore {
@@ -140,7 +149,7 @@ export function createPostgresMailReadStore(
         throw new InvalidMailReadCursorError();
       }
       const q = input.q?.trim() ? input.q.trim() : null;
-      const savedView = resolveSavedView(input.savedViewId);
+      const savedView = await resolveSavedView(client, input.savedViewId);
       const values: unknown[] = [input.accountId ?? null, input.mailboxId ?? null, q];
       const quickFilterSql = appendQuickFilters(values, input);
       const savedViewSql = appendSavedViewFilter(values, savedView);
@@ -529,16 +538,30 @@ function buildHavingClause(clauses: string[]): string {
   return conditions.length > 0 ? `HAVING ${conditions.join("\n AND ")}` : "";
 }
 
-function resolveSavedView(
+async function resolveSavedView(
+  client: Queryable,
   savedViewId: string | undefined,
-): BuiltInSavedView | undefined {
+): Promise<SavedViewDefinition | undefined> {
   if (!savedViewId) {
     return undefined;
   }
 
   const savedView = findBuiltInSavedView(savedViewId);
   if (!savedView) {
-    throw new InvalidMailSavedViewError();
+    const result = await client.query<SavedViewRow>(
+      `
+        SELECT id, label, tone, kind, keywords, match_config
+        FROM saved_views
+        WHERE id = $1
+          AND enabled = TRUE
+        LIMIT 1
+      `,
+      [savedViewId],
+    );
+    if (!result.rows[0]) {
+      throw new InvalidMailSavedViewError();
+    }
+    return savedViewFromRow(result.rows[0]);
   }
 
   return savedView;
@@ -546,7 +569,7 @@ function resolveSavedView(
 
 function appendSavedViewFilter(
   values: unknown[],
-  savedView: BuiltInSavedView | undefined,
+  savedView: SavedViewDefinition | undefined,
 ): SavedViewSql {
   if (!savedView) {
     return { whereClause: "", havingClause: "" };
@@ -578,6 +601,27 @@ function appendSavedViewFilter(
     `,
     havingClause: "",
   };
+}
+
+function savedViewFromRow(row: SavedViewRow): SavedViewDefinition {
+  const minAttachmentCount = readMinAttachmentCount(row.match_config);
+  return {
+    id: row.id,
+    label: row.label,
+    tone: row.tone,
+    kind: row.kind,
+    keywords: toStringArray(row.keywords),
+    ...(minAttachmentCount === undefined ? {} : { minAttachmentCount }),
+  };
+}
+
+function readMinAttachmentCount(
+  matchConfig: Record<string, unknown> | null | undefined,
+): number | undefined {
+  const value = matchConfig?.minAttachmentCount;
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
 }
 
 function rowToMailbox(row: MailboxRow): MailboxDto {
