@@ -150,6 +150,78 @@ describe("postgres account onboarding store", () => {
     });
   });
 
+  it("finds an existing connected account by email and provider", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "22222222-2222-2222-2222-222222222222",
+              email: "support@qq.com",
+              provider: "qq",
+              auth_method: "password",
+              display_name: "Support",
+              sync_state: "syncing",
+              engine_provider: "emailengine",
+            },
+          ],
+        };
+      },
+    };
+
+    const store = createPostgresAccountOnboardingStore(client);
+    const account = await store.findAccountByEmailProvider!({
+      email: "support@qq.com",
+      provider: "qq",
+    });
+
+    expect(queries[0].text).toMatch(/FROM connected_accounts/i);
+    expect(queries[0].values).toEqual(["support@qq.com", "qq"]);
+    expect(account).toEqual({
+      id: "22222222-2222-2222-2222-222222222222",
+      email: "support@qq.com",
+      provider: "qq",
+      authMethod: "password",
+      displayName: "Support",
+      syncState: "syncing",
+      engineProvider: "emailengine",
+    });
+  });
+
+  it("reserves a canonical account id before EmailEngine registration", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              account_id: "22222222-2222-2222-2222-222222222222",
+            },
+          ],
+        };
+      },
+    };
+
+    const store = createPostgresAccountOnboardingStore(client);
+    const accountId = await store.reserveAccountIdForEmailProvider!({
+      email: "support@qq.com",
+      provider: "qq",
+      proposedAccountId: "99999999-9999-9999-9999-999999999999",
+    });
+
+    expect(queries[0].text).toMatch(/account_onboarding_account_keys/i);
+    expect(queries[0].text).toMatch(/ON CONFLICT \(email, provider\)/i);
+    expect(queries[0].values).toEqual([
+      "support@qq.com",
+      "qq",
+      "99999999-9999-9999-9999-999999999999",
+    ]);
+    expect(accountId).toBe("22222222-2222-2222-2222-222222222222");
+  });
+
   it("completes onboarding and enqueues initial sync in one transaction", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     let released = false;
@@ -230,7 +302,7 @@ describe("postgres account onboarding store", () => {
     const result = await store.completeTaskAndEnqueueInitialSync!({
       taskId: "11111111-1111-1111-1111-111111111111",
       account: {
-        id: "22222222-2222-2222-2222-222222222222",
+        id: "99999999-9999-9999-9999-999999999999",
         email: "support@qq.com",
         provider: "qq",
         authMethod: "password",
@@ -239,7 +311,7 @@ describe("postgres account onboarding store", () => {
         engineProvider: "emailengine",
       },
       initialSync: {
-        accountId: "22222222-2222-2222-2222-222222222222",
+        accountId: "99999999-9999-9999-9999-999999999999",
         provider: "qq",
         engineProvider: "emailengine",
         sourceTaskId: "11111111-1111-1111-1111-111111111111",
@@ -253,6 +325,15 @@ describe("postgres account onboarding store", () => {
       expect.stringMatching(/INSERT INTO sync_jobs/i),
       "COMMIT",
     ]);
+    const syncInsert = queries.find((query) =>
+      /INSERT INTO sync_jobs/i.test(query.text),
+    );
+    expect(syncInsert?.values?.[2]).toBe(
+      "22222222-2222-2222-2222-222222222222",
+    );
+    expect(syncInsert?.values?.[5]).toBe(
+      "job:initial-sync:22222222-2222-2222-2222-222222222222",
+    );
     expect(released).toBe(true);
     expect(result).toEqual({
       task: {

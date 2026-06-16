@@ -46,6 +46,56 @@ export function createPostgresAccountOnboardingStore(
 
       return mapTask(result.rows[0]);
     },
+    async reserveAccountIdForEmailProvider(input) {
+      const result = await client.query(
+        `
+          WITH existing_account AS (
+            SELECT id
+            FROM connected_accounts
+            WHERE email = $1 AND provider = $2
+            LIMIT 1
+          ),
+          reserved_account AS (
+            INSERT INTO account_onboarding_account_keys (
+              email,
+              provider,
+              account_id
+            )
+            VALUES (
+              $1,
+              $2,
+              COALESCE((SELECT id FROM existing_account), $3::uuid)
+            )
+            ON CONFLICT (email, provider)
+            DO UPDATE SET updated_at = now()
+            RETURNING account_id
+          )
+          SELECT account_id
+          FROM reserved_account
+        `,
+        [input.email, input.provider, input.proposedAccountId],
+      );
+
+      const row = result.rows[0];
+      if (!row) {
+        throw new Error("account id reservation returned no rows");
+      }
+
+      return String(row.account_id);
+    },
+    async findAccountByEmailProvider(input) {
+      const result = await client.query(
+        `
+          SELECT id, email, provider, auth_method, display_name, sync_state, engine_provider
+          FROM connected_accounts
+          WHERE email = $1 AND provider = $2
+          LIMIT 1
+        `,
+        [input.email, input.provider],
+      );
+
+      return result.rows[0] ? mapAccount(result.rows[0]) : undefined;
+    },
     async completeTask(input) {
       return completeTask(client, input);
     },
@@ -56,10 +106,21 @@ export function createPostgresAccountOnboardingStore(
 
       return withTransaction(client, async (tx) => {
         const completed = await completeTask(tx, input);
-        const syncJob = await enqueueInitialSyncJob(tx, input.initialSync, {
-          createId: options.createId!,
-          now: options.now,
-        });
+        if (!completed.account) {
+          throw new Error("completed onboarding did not return an account");
+        }
+
+        const syncJob = await enqueueInitialSyncJob(
+          tx,
+          {
+            ...input.initialSync,
+            accountId: completed.account.id,
+          },
+          {
+            createId: options.createId!,
+            now: options.now,
+          },
+        );
 
         return {
           ...completed,

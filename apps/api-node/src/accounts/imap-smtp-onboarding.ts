@@ -73,6 +73,15 @@ export interface AccountOnboardingService {
 
 export interface AccountOnboardingStore {
   createTask(input: OnboardingTask): Promise<OnboardingTask>;
+  reserveAccountIdForEmailProvider?(input: {
+    email: string;
+    provider: string;
+    proposedAccountId: string;
+  }): Promise<string>;
+  findAccountByEmailProvider?(input: {
+    email: string;
+    provider: string;
+  }): Promise<ConnectedAccount | undefined>;
   completeTask(input: {
     taskId: string;
     account: ConnectedAccount;
@@ -167,7 +176,20 @@ export function createImapSmtpOnboardingService(
         providerPresetOverrides: options.providerPresetOverrides,
       });
       const taskId = options.createId();
-      const accountId = options.createId();
+      const proposedAccountId = options.createId();
+      const accountId =
+        (await options.store.reserveAccountIdForEmailProvider?.({
+          email: input.email,
+          provider: settings.provider,
+          proposedAccountId,
+        })) ??
+        (
+          await options.store.findAccountByEmailProvider?.({
+            email: input.email,
+            provider: settings.provider,
+          })
+        )?.id ??
+        proposedAccountId;
 
       await options.store.createTask({
         id: taskId,
@@ -220,7 +242,10 @@ export function createImapSmtpOnboardingService(
           });
 
           const syncJob = await options.bootstrapSyncJobs?.enqueueInitialSync(
-            initialSync,
+            {
+              ...initialSync,
+              accountId: result.account?.id ?? initialSync.accountId,
+            },
           );
           result = {
             ...result,
@@ -575,19 +600,63 @@ const IMAP_SMTP_PROVIDER_PRESETS: Record<string, ImapSmtpProviderPreset> = {
 export function createInMemoryAccountOnboardingStore(): InMemoryAccountOnboardingStore {
   const tasks: OnboardingTask[] = [];
   const accounts: ConnectedAccount[] = [];
+  const accountKeys: Array<{
+    email: string;
+    provider: string;
+    accountId: string;
+  }> = [];
 
   return {
     async createTask(input) {
       tasks.push({ ...input });
       return { ...input };
     },
+    async findAccountByEmailProvider(input) {
+      const account = accounts.find(
+        (item) =>
+          item.email === input.email && item.provider === input.provider,
+      );
+      return account ? { ...account } : undefined;
+    },
+    async reserveAccountIdForEmailProvider(input) {
+      const existingKey = accountKeys.find(
+        (key) => key.email === input.email && key.provider === input.provider,
+      );
+      if (existingKey) {
+        return existingKey.accountId;
+      }
+
+      const existingAccount = accounts.find(
+        (account) =>
+          account.email === input.email && account.provider === input.provider,
+      );
+      const accountId = existingAccount?.id ?? input.proposedAccountId;
+      accountKeys.push({
+        email: input.email,
+        provider: input.provider,
+        accountId,
+      });
+      return accountId;
+    },
     async completeTask(input) {
       const task = findTask(tasks, input.taskId);
       task.status = "completed";
-      accounts.push({ ...input.account });
+      const existingAccount = accounts.find(
+        (account) =>
+          account.email === input.account.email &&
+          account.provider === input.account.provider,
+      );
+      if (existingAccount) {
+        existingAccount.displayName = input.account.displayName;
+        existingAccount.syncState = input.account.syncState;
+        existingAccount.engineProvider = input.account.engineProvider;
+      } else {
+        accounts.push({ ...input.account });
+      }
+      const account = existingAccount ?? input.account;
       return {
         task: publicTask(task),
-        account: { ...input.account },
+        account: { ...account },
       };
     },
     async failTask(input) {

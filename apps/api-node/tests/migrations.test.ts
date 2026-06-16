@@ -421,4 +421,14 @@ describe("mail engine runtime migration", () => {
     expect(sql).toMatch(/provider_send_identities_account_verified_idx/i);
     expect(sql).toMatch(/provider_send_identities_account_email_idx/i);
   });
+
+  it("adds stable account id reservations for idempotent onboarding", async () => {
+    const sql = await readMigrationFile("0039_account_onboarding_account_keys.sql");
+
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS account_onboarding_account_keys/i);
+    expect(sql).toMatch(/PRIMARY KEY \(email, provider\)/i);
+    expect(sql).toMatch(/account_id UUID NOT NULL UNIQUE/i);
+    expect(sql).toMatch(/FROM connected_accounts/i);
+    expect(sql).toMatch(/ON CONFLICT \(email, provider\) DO NOTHING/i);
+  });
 });

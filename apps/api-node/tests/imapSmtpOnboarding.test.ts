@@ -452,6 +452,142 @@ describe("IMAP/SMTP onboarding service", () => {
     });
   });
 
+  it("reuses the existing local account id before updating EmailEngine credentials", async () => {
+    const registrations: Array<{ accountId: string; displayName?: string }> = [];
+    const syncJobs: Array<{ accountId: string; idempotencyKey: string }> = [];
+    const store = createInMemoryAccountOnboardingStore();
+    const service = createImapSmtpOnboardingService({
+      store,
+      createId: (() => {
+        const ids = ["task_1", "acc_existing", "task_2", "acc_unused"];
+        return () => ids.shift() ?? "extra";
+      })(),
+      bootstrapSyncJobs: {
+        async enqueueInitialSync(input) {
+          syncJobs.push({
+            accountId: input.accountId,
+            idempotencyKey: `job:initial-sync:${input.accountId}`,
+          });
+          return {
+            id: `job_${syncJobs.length}`,
+            jobType: "sync_account",
+            accountId: input.accountId,
+            idempotencyKey: `job:initial-sync:${input.accountId}`,
+            status: "queued",
+            createdAt: "2026-06-16T00:00:00.000Z",
+          };
+        },
+      },
+      emailEngineAccounts: {
+        async registerImapSmtpAccount(input) {
+          registrations.push({
+            accountId: input.accountId,
+            displayName: input.displayName,
+          });
+          return { account: input.accountId, state: "syncing" };
+        },
+      },
+    });
+
+    await service.onboardImapSmtp({
+      email: "support@qq.com",
+      provider: "qq",
+      displayName: "Support",
+      secret: "first-auth-code",
+    });
+    const result = await service.onboardImapSmtp({
+      email: "support@qq.com",
+      provider: "qq",
+      displayName: "Support Updated",
+      secret: "rotated-auth-code",
+    });
+
+    expect(registrations).toEqual([
+      { accountId: "acc_existing", displayName: "Support" },
+      { accountId: "acc_existing", displayName: "Support Updated" },
+    ]);
+    expect(syncJobs).toEqual([
+      {
+        accountId: "acc_existing",
+        idempotencyKey: "job:initial-sync:acc_existing",
+      },
+      {
+        accountId: "acc_existing",
+        idempotencyKey: "job:initial-sync:acc_existing",
+      },
+    ]);
+    expect(store.listAccounts()).toEqual([
+      expect.objectContaining({
+        id: "acc_existing",
+        email: "support@qq.com",
+        provider: "qq",
+        displayName: "Support Updated",
+      }),
+    ]);
+    expect(result.account).toMatchObject({
+      id: "acc_existing",
+      displayName: "Support Updated",
+    });
+    expect(result.syncJob).toMatchObject({
+      accountId: "acc_existing",
+      idempotencyKey: "job:initial-sync:acc_existing",
+    });
+  });
+
+  it("shares the reserved account id across concurrent duplicate onboarding", async () => {
+    const registrations: Array<{ accountId: string; displayName?: string }> = [];
+    const store = createInMemoryAccountOnboardingStore();
+    let releaseFirstRegistration: () => void = () => {};
+    let markFirstRegistrationStarted: () => void = () => {};
+    const firstRegistrationStarted = new Promise<void>((resolve) => {
+      markFirstRegistrationStarted = resolve;
+    });
+    const service = createImapSmtpOnboardingService({
+      store,
+      createId: (() => {
+        const ids = ["task_1", "acc_canonical", "task_2", "acc_unused"];
+        return () => ids.shift() ?? "extra";
+      })(),
+      emailEngineAccounts: {
+        async registerImapSmtpAccount(input) {
+          registrations.push({
+            accountId: input.accountId,
+            displayName: input.displayName,
+          });
+          if (registrations.length === 1) {
+            markFirstRegistrationStarted();
+            await new Promise<void>((release) => {
+              releaseFirstRegistration = release;
+            });
+          }
+          return { account: input.accountId, state: "syncing" };
+        },
+      },
+    });
+
+    const first = service.onboardImapSmtp({
+      email: "support@qq.com",
+      provider: "qq",
+      displayName: "First",
+      secret: "first-auth-code",
+    });
+    await firstRegistrationStarted;
+    const second = service.onboardImapSmtp({
+      email: "support@qq.com",
+      provider: "qq",
+      displayName: "Second",
+      secret: "second-auth-code",
+    });
+    await second;
+    releaseFirstRegistration();
+    await first;
+
+    expect(registrations).toEqual([
+      { accountId: "acc_canonical", displayName: "First" },
+      { accountId: "acc_canonical", displayName: "Second" },
+    ]);
+  });
+
   it("uses deployment Proton Bridge host overrides for registration and connection tests", async () => {
     const registrations: unknown[] = [];
     const verifications: unknown[] = [];
