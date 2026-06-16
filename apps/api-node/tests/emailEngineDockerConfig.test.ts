@@ -122,6 +122,30 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN=false");
   });
 
+  it("provides a strict production compose overlay for EmailEngine readiness", async () => {
+    const envExample = await readProjectFile(".env.example");
+    const readme = await readProjectFile("README.md");
+    const prodCompose = await readProjectFile("infra", "docker-compose.prod.yml");
+    const api = serviceSection(prodCompose, "api");
+    const worker = serviceSection(prodCompose, "worker");
+
+    expect(api).toContain("/api/mail-engine/health");
+    expect(api).toContain(
+      "body.ok && body.readiness?.status === 'ready' ? 0 : 1",
+    );
+    expect(worker).toContain('WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN: "true"');
+    expect(worker).not.toContain(
+      "${WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN:-false}",
+    );
+    expect(envExample).toContain(
+      "infra/docker-compose.prod.yml sets this to true",
+    );
+    expect(readme).toContain("-f infra/docker-compose.prod.yml");
+    expect(readme).toContain("readiness.status=ready");
+    expect(readme).toContain("missing EmailEngine tokens");
+    expect(readme).toContain("default webhook secret");
+  });
+
   it("shares compose attachment blobs between API and worker with cleanup controls", async () => {
     const compose = await readProjectFile("infra", "docker-compose.yml");
     const envExample = await readProjectFile(".env.example");
@@ -239,7 +263,9 @@ describe("EmailEngine Docker configuration", () => {
 
 function serviceSection(compose: string, serviceName: string): string {
   const match = compose.match(
-    new RegExp(`\\n  ${serviceName}:\\n([\\s\\S]*?)(?=\\n  [a-z0-9-]+:\\n|\\nvolumes:)`),
+    new RegExp(
+      `\\n  ${serviceName}:\\n([\\s\\S]*?)(?=\\n  [a-z0-9-]+:\\n|\\nvolumes:|$)`,
+    ),
   );
 
   if (!match) {

@@ -1,0 +1,16 @@
+services:
+  api:
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8080/api/mail-engine/health').then(async r=>{ if(!r.ok) process.exit(1); const body=await r.json(); process.exit(body.ok && body.readiness?.status === 'ready' ? 0 : 1); }).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+  worker:
+    environment:
+      WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN: "true"

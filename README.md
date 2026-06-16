@@ -257,6 +257,18 @@ Run the compose command from the repository root. The compose file lives under
 `infra/`, so `--env-file .env` is required to interpolate the root `.env`
 values for EmailEngine tokens, webhook secrets, and host port bindings.
 
+For production-style self-hosting, add the strict overlay:
+
+```powershell
+docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.prod.yml up --build -d
+```
+
+The production overlay changes API container health to require
+`/api/mail-engine/health` with `readiness.status=ready`, and forces the worker to
+require both `EMAILENGINE_ACCESS_TOKEN` and `EENGINE_PREPARED_TOKEN`. A stack with
+missing EmailEngine tokens, rejected API auth, missing prepared token, or the
+default webhook secret will stay unhealthy instead of appearing launched.
+
 Default entry points:
 
 - Web: http://127.0.0.1:5173

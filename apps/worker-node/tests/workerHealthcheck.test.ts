@@ -130,6 +130,52 @@ describe("worker healthcheck", () => {
     expect(JSON.stringify(health)).not.toContain("raw-secret-token");
   });
 
+  it("fails strict EmailEngine health when the prepared Docker token is missing", async () => {
+    const health = await checkWorkerHealth({
+      env: {
+        DATABASE_URL: "postgres://emailhub:secret@postgres:5432/emailhub",
+        EMAILENGINE_ACCESS_TOKEN: "raw-secret-token",
+        WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN: "true",
+      },
+      createPool: () => pool(),
+    });
+
+    expect(health).toMatchObject({
+      ok: false,
+      checks: {
+        database: "ok",
+        emailEngineAccessToken: "configured",
+        emailEnginePreparedToken: "missing",
+      },
+      missing: ["EENGINE_PREPARED_TOKEN"],
+      warnings: ["EENGINE_PREPARED_TOKEN"],
+    });
+    expect(JSON.stringify(health)).not.toContain("raw-secret-token");
+  });
+
+  it("fails strict EmailEngine health when the raw API token is missing", async () => {
+    const health = await checkWorkerHealth({
+      env: {
+        DATABASE_URL: "postgres://emailhub:secret@postgres:5432/emailhub",
+        EENGINE_PREPARED_TOKEN: "prepared-secret-token",
+        WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN: "true",
+      },
+      createPool: () => pool(),
+    });
+
+    expect(health).toMatchObject({
+      ok: false,
+      checks: {
+        database: "ok",
+        emailEngineAccessToken: "missing",
+        emailEnginePreparedToken: "configured",
+      },
+      missing: ["EMAILENGINE_ACCESS_TOKEN"],
+      warnings: ["EMAILENGINE_ACCESS_TOKEN"],
+    });
+    expect(JSON.stringify(health)).not.toContain("prepared-secret-token");
+  });
+
   it("passes strict EmailEngine health when raw and prepared tokens are configured", async () => {
     const health = await checkWorkerHealth({
       env: {
