@@ -65,16 +65,17 @@ describe("GreenMail SMTP smoke delivery", () => {
 
 describe("real EmailEngine webhook smoke", () => {
   it("onboards a GreenMail account, delivers a message, and waits for message_upserted diagnostics", async () => {
+    let diagnosticsCalls = 0;
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       const requestUrl = String(url);
       if (
         requestUrl ===
         "http://127.0.0.1:8080/api/diagnostics/events?service=email-hub-api&event=emailengine_webhook_ingested&accountId=acc_1&lane=sync&limit=50"
       ) {
-        const attempts = fetchImpl.mock.calls.length;
+        diagnosticsCalls += 1;
         return jsonResponse({
           items:
-            attempts === 1
+            diagnosticsCalls === 1
               ? [
                   {
                     id: "evt_sync_requested",
@@ -151,7 +152,60 @@ describe("real EmailEngine webhook smoke", () => {
         });
       }
 
-      throw new Error(`unexpected diagnostics URL ${requestUrl}`);
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/accounts/acc_1/messages?limit=10&q=unique_1&qScope=subject"
+      ) {
+        return jsonResponse({
+          items: [
+            {
+              id: "message_read_1",
+              accountId: "acc_1",
+              subject: "[EmailHub Real Webhook Smoke] unique_1",
+              from: { email: "emailhub-smoke@example.com" },
+              receivedAt: "2026-06-15T10:00:04.000Z",
+              unread: true,
+              starred: false,
+              mailboxIds: ["inbox"],
+              attachmentCount: 0,
+              classification: {
+                bucket: "P4 FYI / Updates",
+                priorityScore: 0,
+                reasons: [],
+              },
+            },
+          ],
+        });
+      }
+
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/accounts/acc_1/messages/message_read_1"
+      ) {
+        return jsonResponse({
+          id: "message_read_1",
+          accountId: "acc_1",
+          subject: "[EmailHub Real Webhook Smoke] unique_1",
+          from: { email: "emailhub-smoke@example.com" },
+          to: ["support@example.com"],
+          cc: [],
+          receivedAt: "2026-06-15T10:00:04.000Z",
+          snippet: "Email Hub real webhook smoke. uniqueId=unique_1",
+          bodyText: "Email Hub real webhook smoke.\nuniqueId=unique_1",
+          unread: true,
+          starred: false,
+          mailboxIds: ["inbox"],
+          attachmentCount: 0,
+          attachments: [],
+          classification: {
+            bucket: "P4 FYI / Updates",
+            priorityScore: 0,
+            reasons: [],
+          },
+        });
+      }
+
+      throw new Error(`unexpected smoke URL ${requestUrl}`);
     });
     const runOnboarding = vi.fn(async () => ({
       email: "support@example.com",
@@ -226,12 +280,175 @@ describe("real EmailEngine webhook smoke", () => {
       accountId: "acc_1",
       initialSyncJobId: "job_initial",
       deliveredMessageId: "<emailhub-real-webhook-unique_1@emailhub-smoke.local>",
+      deliveryObservation: "message_upserted_webhook",
       diagnosticEventId: "evt_message",
+      diagnosticEventKind: "message_upserted",
+      readModelMessageId: "message_read_1",
+      readModelSubject: "[EmailHub Real Webhook Smoke] unique_1",
+      readModelReceivedAt: "2026-06-15T10:00:04.000Z",
       webhookSyncJobId: "job_webhook",
     });
   });
 
-  it("fails loudly when EmailEngine never emits message_upserted diagnostics", async () => {
+  it("accepts a bootstrap sync read model delivery when EmailEngine does not emit message_upserted", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/diagnostics/events?service=email-hub-api&event=emailengine_webhook_ingested&accountId=acc_1&lane=sync&limit=50"
+      ) {
+        return jsonResponse({
+          items: [
+            {
+              id: "evt_sync_requested",
+              occurredAt: "2026-06-15T10:00:02.000Z",
+              service: "email-hub-api",
+              level: "info",
+              accountId: "acc_1",
+              lane: "sync",
+              event: "emailengine_webhook_ingested",
+              jobId: "job_sync",
+              context: {
+                duplicate: false,
+                mailEngineEventId: "mail_event_sync",
+                mailEngineEventKind: "sync_requested",
+                mailEngineIdempotencyKey: "emailengine:acc_1:event-id:sync",
+                syncJobId: "job_sync",
+                syncJobType: "sync_account",
+              },
+            },
+          ],
+        });
+      }
+
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/accounts/acc_1/messages?limit=10&q=unique_1&qScope=subject"
+      ) {
+        return jsonResponse({
+          items: [
+            {
+              id: "message_read_1",
+              accountId: "acc_1",
+              subject: "[EmailHub Real Webhook Smoke] unique_1",
+              receivedAt: "2026-06-15T10:00:04.000Z",
+            },
+          ],
+        });
+      }
+
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/accounts/acc_1/messages/message_read_1"
+      ) {
+        return jsonResponse({
+          id: "message_read_1",
+          accountId: "acc_1",
+          subject: "[EmailHub Real Webhook Smoke] unique_1",
+          bodyText: "Email Hub real webhook smoke.\nuniqueId=unique_1",
+        });
+      }
+
+      throw new Error(`unexpected smoke URL ${requestUrl}`);
+    });
+
+    const result = await runEmailEngineRealWebhookSmoke({
+      apiBaseUrl: "http://127.0.0.1:8080",
+      payload: {
+        email: "support@example.com",
+        provider: "custom_domain",
+        imap: {
+          host: "greenmail-test",
+          port: 3143,
+          secure: false,
+          username: "support@example.com",
+          secret: "smoke-secret",
+        },
+        smtp: {
+          host: "greenmail-test",
+          port: 3025,
+          secure: false,
+          username: "support@example.com",
+          secret: "smoke-secret",
+        },
+      },
+      deliverySmtp: {
+        host: "127.0.0.1",
+        port: 3025,
+      },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      runOnboarding: async () => ({
+        email: "support@example.com",
+        provider: "custom_domain",
+        accountId: "acc_1",
+        syncJobId: "job_initial",
+        syncJobStatus: "queued",
+      }),
+      sendMessage: async (input) => ({
+        host: input.host,
+        port: input.port,
+        to: input.to,
+        messageId: `<${input.messageId}>`,
+      }),
+      createUniqueId: () => "unique_1",
+      now: () => new Date("2026-06-15T10:00:01.000Z"),
+      delayMs: async () => {},
+      pollAttempts: 1,
+      pollMs: 1,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        deliveryObservation: "read_model_sync",
+        diagnosticEventId: "evt_sync_requested",
+        diagnosticEventKind: "sync_requested",
+        readModelMessageId: "message_read_1",
+        webhookSyncJobId: "job_sync",
+      }),
+    );
+  });
+
+  it("fails loudly when the read model has no current EmailEngine webhook diagnostic", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/diagnostics/events?service=email-hub-api&event=emailengine_webhook_ingested&accountId=acc_1&lane=sync&limit=50"
+      ) {
+        return jsonResponse({ items: [] });
+      }
+
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/accounts/acc_1/messages?limit=10&q=unique_1&qScope=subject"
+      ) {
+        return jsonResponse({
+          items: [
+            {
+              id: "message_read_1",
+              accountId: "acc_1",
+              subject: "[EmailHub Real Webhook Smoke] unique_1",
+              receivedAt: "2026-06-15T10:00:04.000Z",
+            },
+          ],
+        });
+      }
+
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/accounts/acc_1/messages/message_read_1"
+      ) {
+        return jsonResponse({
+          id: "message_read_1",
+          accountId: "acc_1",
+          subject: "[EmailHub Real Webhook Smoke] unique_1",
+          bodyText: "Email Hub real webhook smoke.\nuniqueId=unique_1",
+        });
+      }
+
+      throw new Error(`unexpected smoke URL ${requestUrl}`);
+    });
+
     await expect(
       runEmailEngineRealWebhookSmoke({
         apiBaseUrl: "http://127.0.0.1:8080",
@@ -257,7 +474,7 @@ describe("real EmailEngine webhook smoke", () => {
           host: "127.0.0.1",
           port: 3025,
         },
-        fetchImpl: async () => jsonResponse({ items: [] }),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
         runOnboarding: async () => ({
           email: "support@example.com",
           provider: "custom_domain",
@@ -272,12 +489,220 @@ describe("real EmailEngine webhook smoke", () => {
           messageId: `<${input.messageId}>`,
         }),
         createUniqueId: () => "unique_1",
+        now: () => new Date("2026-06-15T10:00:01.000Z"),
         delayMs: async () => {},
         pollAttempts: 2,
         pollMs: 1,
       }),
     ).rejects.toThrow(
-      "EmailEngine real webhook smoke did not observe message_upserted for acc_1 after 2 diagnostics polls",
+      "EmailEngine real webhook smoke did not observe a current EmailEngine webhook diagnostic for acc_1 after 2 diagnostics polls",
+    );
+  });
+
+  it("fails loudly when the delivered message never reaches the mail read model", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/diagnostics/events?service=email-hub-api&event=emailengine_webhook_ingested&accountId=acc_1&lane=sync&limit=50"
+      ) {
+        return jsonResponse({
+          items: [
+            {
+              id: "evt_message",
+              occurredAt: "2026-06-15T10:00:03.000Z",
+              service: "email-hub-api",
+              level: "info",
+              accountId: "acc_1",
+              lane: "sync",
+              event: "emailengine_webhook_ingested",
+              jobId: "job_webhook",
+              context: {
+                duplicate: false,
+                mailEngineEventId: "mail_event_1",
+                mailEngineEventKind: "message_upserted",
+                mailEngineIdempotencyKey: "emailengine:acc_1:messageNew:abc",
+                rfcMessageId:
+                  "<emailhub-real-webhook-unique_1@emailhub-smoke.local>",
+                syncJobId: "job_webhook",
+                syncJobType: "sync_account",
+              },
+            },
+          ],
+        });
+      }
+
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/accounts/acc_1/messages?limit=10&q=unique_1&qScope=subject"
+      ) {
+        return jsonResponse({ items: [] });
+      }
+
+      throw new Error(`unexpected smoke URL ${requestUrl}`);
+    });
+
+    await expect(
+      runEmailEngineRealWebhookSmoke({
+        apiBaseUrl: "http://127.0.0.1:8080",
+        payload: {
+          email: "support@example.com",
+          provider: "custom_domain",
+          imap: {
+            host: "greenmail-test",
+            port: 3143,
+            secure: false,
+            username: "support@example.com",
+            secret: "smoke-secret",
+          },
+          smtp: {
+            host: "greenmail-test",
+            port: 3025,
+            secure: false,
+            username: "support@example.com",
+            secret: "smoke-secret",
+          },
+        },
+        deliverySmtp: {
+          host: "127.0.0.1",
+          port: 3025,
+        },
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        runOnboarding: async () => ({
+          email: "support@example.com",
+          provider: "custom_domain",
+          accountId: "acc_1",
+          syncJobId: "job_initial",
+          syncJobStatus: "queued",
+        }),
+        sendMessage: async (input) => ({
+          host: input.host,
+          port: input.port,
+          to: input.to,
+          messageId: `<${input.messageId}>`,
+        }),
+        createUniqueId: () => "unique_1",
+        now: () => new Date("2026-06-15T10:00:01.000Z"),
+        delayMs: async () => {},
+        pollAttempts: 2,
+        pollMs: 1,
+      }),
+    ).rejects.toThrow(
+      "EmailEngine real webhook smoke did not observe [EmailHub Real Webhook Smoke] unique_1 in the mail read model for acc_1 after 2 polls",
+    );
+  });
+
+  it("rejects read model details that do not match the delivered smoke message", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/diagnostics/events?service=email-hub-api&event=emailengine_webhook_ingested&accountId=acc_1&lane=sync&limit=50"
+      ) {
+        return jsonResponse({
+          items: [
+            {
+              id: "evt_message",
+              occurredAt: "2026-06-15T10:00:03.000Z",
+              service: "email-hub-api",
+              level: "info",
+              accountId: "acc_1",
+              lane: "sync",
+              event: "emailengine_webhook_ingested",
+              jobId: "job_webhook",
+              context: {
+                duplicate: false,
+                mailEngineEventId: "mail_event_1",
+                mailEngineEventKind: "message_upserted",
+                mailEngineIdempotencyKey: "emailengine:acc_1:messageNew:abc",
+                rfcMessageId:
+                  "<emailhub-real-webhook-unique_1@emailhub-smoke.local>",
+                syncJobId: "job_webhook",
+                syncJobType: "sync_account",
+              },
+            },
+          ],
+        });
+      }
+
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/accounts/acc_1/messages?limit=10&q=unique_1&qScope=subject"
+      ) {
+        return jsonResponse({
+          items: [
+            {
+              id: "message_read_1",
+              accountId: "acc_1",
+              subject: "[EmailHub Real Webhook Smoke] unique_1",
+              receivedAt: "2026-06-15T10:00:04.000Z",
+            },
+          ],
+        });
+      }
+
+      if (
+        requestUrl ===
+        "http://127.0.0.1:8080/api/accounts/acc_1/messages/message_read_1"
+      ) {
+        return jsonResponse({
+          id: "message_read_1",
+          accountId: "acc_1",
+          subject: "[EmailHub Real Webhook Smoke] unique_1",
+          bodyText: "different delivered message",
+        });
+      }
+
+      throw new Error(`unexpected smoke URL ${requestUrl}`);
+    });
+
+    await expect(
+      runEmailEngineRealWebhookSmoke({
+        apiBaseUrl: "http://127.0.0.1:8080",
+        payload: {
+          email: "support@example.com",
+          provider: "custom_domain",
+          imap: {
+            host: "greenmail-test",
+            port: 3143,
+            secure: false,
+            username: "support@example.com",
+            secret: "smoke-secret",
+          },
+          smtp: {
+            host: "greenmail-test",
+            port: 3025,
+            secure: false,
+            username: "support@example.com",
+            secret: "smoke-secret",
+          },
+        },
+        deliverySmtp: {
+          host: "127.0.0.1",
+          port: 3025,
+        },
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        runOnboarding: async () => ({
+          email: "support@example.com",
+          provider: "custom_domain",
+          accountId: "acc_1",
+          syncJobId: "job_initial",
+          syncJobStatus: "queued",
+        }),
+        sendMessage: async (input) => ({
+          host: input.host,
+          port: input.port,
+          to: input.to,
+          messageId: `<${input.messageId}>`,
+        }),
+        createUniqueId: () => "unique_1",
+        now: () => new Date("2026-06-15T10:00:01.000Z"),
+        delayMs: async () => {},
+        pollAttempts: 1,
+        pollMs: 1,
+      }),
+    ).rejects.toThrow(
+      "EmailEngine real webhook smoke did not observe [EmailHub Real Webhook Smoke] unique_1 in the mail read model for acc_1 after 1 polls",
     );
   });
 });

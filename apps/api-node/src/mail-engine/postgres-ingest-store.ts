@@ -147,7 +147,7 @@ async function insertEvent(
       event.providerUid,
       event.providerPath,
       event.resourceKey,
-      event.resourceIdentity,
+      event.resourceIdentity ?? {},
       event.providerEventName,
       event.idempotencyKey,
       input.rawPayload,

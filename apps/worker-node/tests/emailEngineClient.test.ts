@@ -28,6 +28,33 @@ describe("EmailEngine client", () => {
     expect(mailboxes).toEqual([{ path: "INBOX", name: "Inbox" }]);
   });
 
+  it("unwraps EmailEngine mailbox list responses from the production mailboxes envelope", async () => {
+    const client = createEmailEngineClient({
+      baseUrl: "http://emailengine:3000",
+      accessToken: "secret-token",
+      fetchImpl: async () =>
+        Response.json({
+          mailboxes: [
+            {
+              path: "INBOX",
+              delimiter: ".",
+              name: "INBOX",
+              specialUse: "\\Inbox",
+            },
+          ],
+        }),
+    });
+
+    await expect(client.listMailboxes("acc_1")).resolves.toEqual([
+      {
+        path: "INBOX",
+        delimiter: ".",
+        name: "INBOX",
+        specialUse: "\\Inbox",
+      },
+    ]);
+  });
+
   it("gets message details with textType all without marking seen", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const client = createEmailEngineClient({

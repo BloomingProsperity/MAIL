@@ -28,6 +28,84 @@ const event: NormalizedMailEngineEvent = {
 };
 
 describe("postgres ingest store", () => {
+  it("stores account-level events with an empty resource identity instead of null", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+
+        if (text.includes("INSERT INTO mail_engine_events")) {
+          return {
+            rows: [
+              {
+                id: "event_account_added",
+                source: "emailengine_webhook",
+                kind: "sync_requested",
+                account_id: "acc_1",
+                mailbox_id: null,
+                provider_message_id: null,
+                provider_thread_id: null,
+                provider_email_id: null,
+                rfc_message_id: null,
+                provider_uid: null,
+                provider_path: null,
+                resource_key: null,
+                resource_identity: {},
+                idempotency_key: "emailengine:acc_1:event-id:evt_account_added",
+                raw_payload: { event: "accountAdded" },
+                received_at: "2026-06-16T02:31:08.000Z",
+              },
+            ],
+          };
+        }
+
+        if (text.includes("INSERT INTO sync_jobs")) {
+          return {
+            rows: [
+              {
+                id: "job_account_added",
+                job_type: "sync_account",
+                account_id: "acc_1",
+                mailbox_id: null,
+                trigger_event_id: "event_account_added",
+                status: "queued",
+                idempotency_key:
+                  "job:emailengine:acc_1:event-id:evt_account_added",
+                created_at: "2026-06-16T02:31:08.000Z",
+              },
+            ],
+          };
+        }
+
+        return { rows: [] };
+      },
+    };
+
+    const store = createPostgresMailEngineIngestStore(client);
+    const result = await store.ingestWebhook({
+      events: [
+        {
+          source: "emailengine_webhook",
+          kind: "sync_requested",
+          accountId: "acc_1",
+          idempotencyKey: "emailengine:acc_1:event-id:evt_account_added",
+        },
+      ],
+      rawPayload: { event: "accountAdded" },
+    });
+
+    expect(queries[0].values).toContainEqual({});
+    expect(result.events[0]).toMatchObject({
+      id: "event_account_added",
+      kind: "sync_requested",
+      duplicate: false,
+    });
+    expect(result.syncJobs[0]).toMatchObject({
+      id: "job_account_added",
+      jobType: "sync_account",
+    });
+  });
+
   it("inserts a new mail engine event and queues a sync job", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

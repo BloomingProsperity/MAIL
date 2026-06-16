@@ -332,7 +332,7 @@ function messageRefValues(input: UpsertMessageRefInput): unknown[] {
     identity.provider === "imap" ? identity.uidvalidity : undefined,
     identity.provider === "imap" ? identity.uid : undefined,
     identity.provider === "imap" ? identity.modseq : undefined,
-    providerMessageIdAliasesFor(identity),
+    JSON.stringify(providerMessageIdAliasesFor(identity)),
     input.rawRef ?? {},
   ];
 }

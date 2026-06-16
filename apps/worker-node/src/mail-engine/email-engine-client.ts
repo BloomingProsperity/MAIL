@@ -188,9 +188,11 @@ export function createEmailEngineClient(
   }
 
   return {
-    listMailboxes(accountId) {
-      return request<unknown[]>(
-        `/account/${encodeURIComponent(accountId)}/mailboxes`,
+    async listMailboxes(accountId) {
+      return readMailboxesResponse(
+        await request<unknown>(
+          `/account/${encodeURIComponent(accountId)}/mailboxes`,
+        ),
       );
     },
 
@@ -360,6 +362,23 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function readMailboxesResponse(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  const record = asRecord(value);
+  if (Array.isArray(record.mailboxes)) {
+    return record.mailboxes;
+  }
+
+  if (Array.isArray(record.items)) {
+    return record.items;
+  }
+
+  return [];
 }
 
 function compactObject<T extends Record<string, unknown>>(value: T): T {

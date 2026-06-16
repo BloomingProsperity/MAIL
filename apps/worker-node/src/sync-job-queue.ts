@@ -105,14 +105,8 @@ export function createInMemorySyncJobQueue(
     },
 
     async claimNext(input) {
-      const candidate = jobs
-        .map((job, index) => ({ index, job }))
-        .filter(
-          ({ job }) =>
-          canClaim(job, input.now) &&
-          !hasActiveSameAccountJob(jobs, job, input.now),
-        )
-        .sort((left, right) => compareClaimOrder(left.job, right.job))[0];
+      const activeAccounts = activeAccountIds(jobs, input.now);
+      const candidate = findClaimCandidate(jobs, activeAccounts, input.now);
       if (!candidate) {
         return undefined;
       }
@@ -172,6 +166,47 @@ export function createInMemorySyncJobQueue(
   };
 }
 
+function findClaimCandidate(
+  jobs: SyncJobRecord[],
+  activeAccounts: Set<string>,
+  now: Date,
+): { index: number; job: SyncJobRecord } | undefined {
+  let candidate: { index: number; job: SyncJobRecord } | undefined;
+
+  for (const [index, job] of jobs.entries()) {
+    if (!canClaim(job, now)) {
+      continue;
+    }
+
+    if (job.accountId && activeAccounts.has(job.accountId)) {
+      continue;
+    }
+
+    if (!candidate || compareClaimOrder(job, candidate.job) < 0) {
+      candidate = { index, job };
+    }
+  }
+
+  return candidate;
+}
+
+function activeAccountIds(jobs: SyncJobRecord[], now: Date): Set<string> {
+  const activeAccounts = new Set<string>();
+
+  for (const job of jobs) {
+    if (
+      job.accountId &&
+      job.status === "running" &&
+      !!job.leaseExpiresAt &&
+      Date.parse(job.leaseExpiresAt) > now.getTime()
+    ) {
+      activeAccounts.add(job.accountId);
+    }
+  }
+
+  return activeAccounts;
+}
+
 function compareClaimOrder(left: SyncJobRecord, right: SyncJobRecord): number {
   return (
     compareTimestamp(left.notBefore, right.notBefore) ||
@@ -198,25 +233,6 @@ function canClaim(job: SyncJobRecord, now: Date): boolean {
     job.status === "running" &&
     !!job.leaseExpiresAt &&
     Date.parse(job.leaseExpiresAt) <= now.getTime()
-  );
-}
-
-function hasActiveSameAccountJob(
-  jobs: SyncJobRecord[],
-  candidate: SyncJobRecord,
-  now: Date,
-): boolean {
-  if (!candidate.accountId) {
-    return false;
-  }
-
-  return jobs.some(
-    (job) =>
-      job.id !== candidate.id &&
-      job.accountId === candidate.accountId &&
-      job.status === "running" &&
-      !!job.leaseExpiresAt &&
-      Date.parse(job.leaseExpiresAt) > now.getTime(),
   );
 }
 

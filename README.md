@@ -313,10 +313,18 @@ npm run smoke:emailengine-real-webhook
 ```
 
 This first onboards the GreenMail account through the public API, then delivers a
-unique message to GreenMail from the host, and finally polls
-`/api/diagnostics/events` until it sees `emailengine_webhook_ingested` with
-`mailEngineEventKind: "message_upserted"` and the same `Message-ID` for that
-account.
+unique message to GreenMail from the host, and finally polls both
+`/api/diagnostics/events` and `/api/accounts/:accountId/messages`. The smoke
+passes only when a current `emailengine_webhook_ingested` diagnostic exists for
+the account and the exact smoke subject has reached the local mail read model.
+When the message detail exposes `bodyText`, `bodyHtml`, or `snippet`, the smoke
+also requires that text to contain the unique smoke id. If EmailEngine emits a
+matching `message_upserted` event, the result is reported as
+`message_upserted_webhook`; if the message arrives through the initial
+sync/read-model path, it is reported as `read_model_sync`. By default this smoke
+uses a unique `emailhub-smoke-<uuid>@example.com` mailbox so repeated runs do not
+reuse old onboarding or sync-center state; set `EMAILHUB_SMOKE_MAIL_EMAIL` when
+you need a fixed mailbox.
 
 `/health` checks API readiness plus a Postgres `SELECT 1`; EmailEngine
 capability and launch diagnostics remain at `/api/mail-engine/health`.

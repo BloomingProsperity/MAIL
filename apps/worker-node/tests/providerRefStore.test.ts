@@ -232,6 +232,7 @@ describe("provider ref store", () => {
     expect(queries[0].text).toMatch(/provider_message_refs\.provider_message_id/i);
     expect(queries[0].text).toMatch(/EXCLUDED\.provider_message_id/i);
     expect(queries[0].values).toContain("ee_msg_new");
+    expect(queries[0].values?.[17]).toBe(JSON.stringify(["ee_msg_new"]));
   });
 
   it("falls back to provider message id conflict for EmailEngine refs without emailId", async () => {

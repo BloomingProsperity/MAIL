@@ -1,9 +1,13 @@
+import { randomUUID } from "node:crypto";
+
 import { buildImapSmtpOnboardingSmokePayload } from "./accounts/imap-smtp-onboarding-smoke.js";
 import { runEmailEngineRealWebhookSmoke } from "./mail-engine/real-webhook-smoke.js";
 
 const apiBaseUrl =
   process.env.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080";
-const email = process.env.EMAILHUB_SMOKE_MAIL_EMAIL ?? "support@example.com";
+const email =
+  process.env.EMAILHUB_SMOKE_MAIL_EMAIL ??
+  `emailhub-smoke-${randomUUID()}@example.com`;
 const provider = process.env.EMAILHUB_SMOKE_MAIL_PROVIDER ?? "custom_domain";
 const displayName =
   process.env.EMAILHUB_SMOKE_MAIL_DISPLAY_NAME ?? "Smoke Mailbox";
