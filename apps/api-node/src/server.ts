@@ -115,6 +115,7 @@ config.logger = logger;
 config.diagnosticsLogStore = diagnosticsLogStore;
 config.mailEngineHealthProbe = createEmailEngineHealthProbe({
   baseUrl: config.emailEngineUrl,
+  accessToken: emailEngineAccessToken,
 });
 config.databaseHealthCheck = async () => {
   if (!pool) {
@@ -231,7 +232,12 @@ if (pool) {
       const http =
         (await config.mailEngineHealthProbe?.check().catch(() => ({
           http: "unavailable" as const,
+          auth: "skipped" as const,
         }))) ?? { http: "skipped" as const };
+      const apiAuthOk =
+        !("auth" in http) ||
+        http.auth === "ok" ||
+        http.auth === "skipped";
       const urlConfigured = config.emailEngineUrl.trim().length > 0;
       const accessTokenConfigured =
         config.emailEngineAccessTokenConfigured === true;
@@ -243,6 +249,7 @@ if (pool) {
       const ok =
         urlConfigured &&
         http.http === "ok" &&
+        apiAuthOk &&
         accessTokenConfigured &&
         webhookSecretConfigured &&
         !webhookSecretDefault;
@@ -263,6 +270,12 @@ if (pool) {
           ...(webhookSecretConfigured && webhookSecretDefault
             ? ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"]
             : []),
+          ...(accessTokenConfigured && "auth" in http && http.auth === "unauthorized"
+            ? ["EMAILENGINE_ACCESS_TOKEN_REJECTED"]
+            : []),
+          ...(accessTokenConfigured && "auth" in http && http.auth === "unavailable"
+            ? ["EMAILENGINE_API_AUTH_UNAVAILABLE"]
+            : []),
           ...((accessTokenConfigured &&
             config.emailEnginePreparedTokenConfigured === false)
             ? ["EENGINE_PREPARED_TOKEN_MISSING"]
@@ -275,9 +288,9 @@ if (pool) {
             : "EmailEngine 配置未完全就绪，Hermes 涉及邮箱写回的操作会受限。",
         },
         capabilities: {
-          imapSmtpOnboarding: accessTokenConfigured,
-          attachmentDownload: accessTokenConfigured,
-          send: accessTokenConfigured,
+          imapSmtpOnboarding: accessTokenConfigured && apiAuthOk,
+          attachmentDownload: accessTokenConfigured && apiAuthOk,
+          send: accessTokenConfigured && apiAuthOk,
         },
       };
     },

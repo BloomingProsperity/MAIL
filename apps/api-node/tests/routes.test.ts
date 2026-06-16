@@ -296,6 +296,7 @@ describe("API routes", () => {
           url: "configured",
           http: "skipped",
           accessToken: "missing",
+          apiAuth: "skipped",
           webhookSecret: "custom",
         },
         capabilities: {
@@ -334,11 +335,12 @@ describe("API routes", () => {
           ok: true,
           detail: "adapter boundary ready: http://emailengine:3000",
           checks: {
-            url: "configured",
-            http: "ok",
-            accessToken: "configured",
-            webhookSecret: "custom",
-          },
+          url: "configured",
+          http: "ok",
+          accessToken: "configured",
+          apiAuth: "ok",
+          webhookSecret: "custom",
+        },
           capabilities: {
             urlConfigured: true,
             accessTokenConfigured: true,
@@ -359,7 +361,12 @@ describe("API routes", () => {
         emailEngineAccessTokenConfigured: true,
         mailEngineHealthProbe: {
           async check() {
-            return { http: "ok", statusCode: 200 };
+            return {
+              http: "ok",
+              statusCode: 200,
+              auth: "ok",
+              authStatusCode: 200,
+            };
           },
         },
         accountOnboardingService: {
@@ -381,6 +388,106 @@ describe("API routes", () => {
           },
           async sendDraft() {
             throw new Error("not used");
+          },
+        },
+      },
+    );
+  });
+
+  it("degrades EmailEngine readiness when the configured access token is rejected", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/mail-engine/health`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          provider: "emailengine",
+          ok: false,
+          checks: {
+            http: "ok",
+            accessToken: "configured",
+            apiAuth: "unauthorized",
+          },
+          capabilities: {
+            imapSmtpOnboarding: false,
+            attachmentDownload: false,
+            send: false,
+          },
+          warnings: ["EMAILENGINE_ACCESS_TOKEN_REJECTED"],
+          readiness: {
+            status: "degraded",
+            setupActions: [
+              {
+                code: "replace_emailengine_access_token",
+                label: "更新 EmailEngine 访问令牌",
+                env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+                effect:
+                  "EmailEngine 拒绝当前访问令牌，添加邮箱、附件下载、发信和同步任务会失败。",
+              },
+            ],
+          },
+        });
+      },
+      {
+        emailEngineAccessTokenConfigured: true,
+        mailEngineHealthProbe: {
+          async check() {
+            return {
+              http: "ok",
+              statusCode: 200,
+              auth: "unauthorized",
+              authStatusCode: 401,
+              authError: "emailengine_token_rejected",
+            };
+          },
+        },
+        accountOnboardingService: {},
+        attachmentDownloadService: {},
+        mailComposeService: {},
+      },
+    );
+  });
+
+  it("degrades EmailEngine readiness when the authenticated API probe fails", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/mail-engine/health`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          provider: "emailengine",
+          ok: false,
+          checks: {
+            http: "ok",
+            accessToken: "configured",
+            apiAuth: "unavailable",
+          },
+          warnings: ["EMAILENGINE_API_AUTH_UNAVAILABLE"],
+          readiness: {
+            status: "degraded",
+            setupActions: [
+              {
+                code: "check_emailengine_api_auth",
+                label: "检查 EmailEngine API 认证接口",
+                env: ["EMAILENGINE_URL", "EMAILENGINE_ACCESS_TOKEN"],
+                effect:
+                  "API 当前无法通过 EmailEngine 认证接口，添加邮箱、附件下载、发信和同步任务会失败。",
+              },
+            ],
+          },
+        });
+      },
+      {
+        emailEngineAccessTokenConfigured: true,
+        mailEngineHealthProbe: {
+          async check() {
+            return {
+              http: "ok",
+              statusCode: 200,
+              auth: "unavailable",
+              authStatusCode: 502,
+              authError: "emailengine_auth_not_ok",
+            };
           },
         },
       },

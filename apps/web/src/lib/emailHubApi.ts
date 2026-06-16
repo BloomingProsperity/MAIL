@@ -1209,6 +1209,7 @@ export interface MailEngineHealthDto {
     url: "configured" | "missing";
     http: "ok" | "unavailable" | "skipped";
     accessToken: "configured" | "missing";
+    apiAuth?: "ok" | "unauthorized" | "unavailable" | "skipped";
     preparedToken?: "configured" | "missing";
     webhookSecret: "custom" | "default" | "missing";
   };

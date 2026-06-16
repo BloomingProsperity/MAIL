@@ -5705,6 +5705,14 @@ function MailEngineReadinessPanel(props: { health: MailEngineHealthDto }) {
         </p>
         <p>
           <strong>
+            {formatMailEngineApiAuthStatus(
+              props.health.checks?.apiAuth ?? "skipped",
+            )}
+          </strong>
+          <span>认证探测</span>
+        </p>
+        <p>
+          <strong>
             {props.health.capabilities.imapSmtpOnboarding ? "可用" : "不可用"}
           </strong>
           <span>邮箱接入</span>
@@ -5738,6 +5746,24 @@ function formatMailEngineHttpStatus(
 
   if (status === "unavailable") {
     return "不可达";
+  }
+
+  return "未探测";
+}
+
+function formatMailEngineApiAuthStatus(
+  status: NonNullable<MailEngineHealthDto["checks"]>["apiAuth"],
+): string {
+  if (status === "ok") {
+    return "可用";
+  }
+
+  if (status === "unauthorized") {
+    return "被拒绝";
+  }
+
+  if (status === "unavailable") {
+    return "不可用";
   }
 
   return "未探测";

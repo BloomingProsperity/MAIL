@@ -71,6 +71,7 @@ describe("emailHubApi", () => {
           url: "configured",
           http: "unavailable",
           accessToken: "missing",
+          apiAuth: "skipped",
           webhookSecret: "custom",
         },
         capabilities: {
@@ -107,6 +108,7 @@ describe("emailHubApi", () => {
       checks: {
         http: "unavailable",
         accessToken: "missing",
+        apiAuth: "skipped",
       },
       missing: ["EMAILENGINE_ACCESS_TOKEN"],
       readiness: {

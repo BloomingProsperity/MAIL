@@ -7647,6 +7647,7 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
     url: "configured" | "missing";
     http: "ok" | "unavailable" | "skipped";
     accessToken: "configured" | "missing";
+    apiAuth: "ok" | "unauthorized" | "unavailable" | "skipped";
     preparedToken?: "configured" | "missing";
     webhookSecret: "custom" | "default" | "missing";
   };
@@ -7681,19 +7682,32 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
   const probeResult = await checkEmailEngineRuntime(config, urlConfigured);
   const httpAvailable =
     probeResult.http === "ok" || probeResult.http === "skipped";
+  const apiAuth = accessTokenConfigured && "auth" in probeResult
+    ? probeResult.auth
+    : "skipped";
+  const apiAuthAvailable = apiAuth === "ok" || apiAuth === "skipped";
+  const tokenBackedServicesAvailable =
+    accessTokenConfigured && apiAuthAvailable;
   const capabilities = {
     urlConfigured,
     accessTokenConfigured,
     imapSmtpOnboarding:
-      accessTokenConfigured && Boolean(config.accountOnboardingService),
+      tokenBackedServicesAvailable && Boolean(config.accountOnboardingService),
     attachmentDownload:
-      accessTokenConfigured && Boolean(config.attachmentDownloadService),
-    send: accessTokenConfigured && Boolean(config.mailComposeService),
+      tokenBackedServicesAvailable &&
+      Boolean(config.attachmentDownloadService),
+    send: tokenBackedServicesAvailable && Boolean(config.mailComposeService),
   };
   const missing = getMissingEmailEngineConfiguration(config);
   const warnings = [
     ...(probeResult.http === "unavailable"
       ? ["EMAILENGINE_HTTP_UNAVAILABLE"]
+      : []),
+    ...(apiAuth === "unauthorized"
+      ? ["EMAILENGINE_ACCESS_TOKEN_REJECTED"]
+      : []),
+    ...(apiAuth === "unavailable"
+      ? ["EMAILENGINE_API_AUTH_UNAVAILABLE"]
       : []),
     ...(webhookSecretConfigured && webhookSecretUsesDefault
       ? ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"]
@@ -7733,6 +7747,28 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
           },
         ]
       : []),
+    ...(accessTokenConfigured && apiAuth === "unauthorized"
+      ? [
+          {
+            code: "replace_emailengine_access_token",
+            label: "更新 EmailEngine 访问令牌",
+            env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+            effect:
+              "EmailEngine 拒绝当前访问令牌，添加邮箱、附件下载、发信和同步任务会失败。",
+          },
+        ]
+      : []),
+    ...(accessTokenConfigured && apiAuth === "unavailable"
+      ? [
+          {
+            code: "check_emailengine_api_auth",
+            label: "检查 EmailEngine API 认证接口",
+            env: ["EMAILENGINE_URL", "EMAILENGINE_ACCESS_TOKEN"],
+            effect:
+              "API 当前无法通过 EmailEngine 认证接口，添加邮箱、附件下载、发信和同步任务会失败。",
+          },
+        ]
+      : []),
     ...(accessTokenConfigured && preparedTokenConfigured === false
       ? [
           {
@@ -7768,16 +7804,22 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
     urlConfigured &&
     accessTokenConfigured &&
     httpAvailable &&
+    apiAuthAvailable &&
     setupActions.length === 0;
 
   return {
     provider: "emailengine",
-    ok: urlConfigured && accessTokenConfigured && httpAvailable,
+    ok:
+      urlConfigured &&
+      accessTokenConfigured &&
+      httpAvailable &&
+      apiAuthAvailable,
     detail: `adapter boundary ready: ${config.emailEngineUrl}`,
     checks: {
       url: urlConfigured ? "configured" : "missing",
       http: probeResult.http,
       accessToken: accessTokenConfigured ? "configured" : "missing",
+      apiAuth,
       ...(typeof preparedTokenConfigured === "boolean"
         ? {
             preparedToken: preparedTokenConfigured ? "configured" : "missing",
@@ -7813,7 +7855,7 @@ async function checkEmailEngineRuntime(
   try {
     return await config.mailEngineHealthProbe.check();
   } catch {
-    return { http: "unavailable", error: "probe_failed" };
+    return { http: "unavailable", error: "probe_failed", auth: "skipped" };
   }
 }
 

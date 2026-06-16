@@ -3071,6 +3071,57 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
   });
 
+  it("surfaces rejected EmailEngine access tokens in Sync Center", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
+      provider: "emailengine",
+      ok: false,
+      detail: "adapter boundary ready: http://emailengine:3000",
+      checks: {
+        url: "configured",
+        http: "ok",
+        accessToken: "configured",
+        apiAuth: "unauthorized",
+        webhookSecret: "custom",
+      },
+      capabilities: {
+        urlConfigured: true,
+        accessTokenConfigured: true,
+        imapSmtpOnboarding: false,
+        attachmentDownload: false,
+        send: false,
+      },
+      missing: [],
+      warnings: ["EMAILENGINE_ACCESS_TOKEN_REJECTED"],
+      readiness: {
+        status: "degraded",
+        summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
+        setupActions: [
+          {
+            code: "replace_emailengine_access_token",
+            label: "更新 EmailEngine 访问令牌",
+            env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+            effect:
+              "EmailEngine 拒绝当前访问令牌，添加邮箱、附件下载、发信和同步任务会失败。",
+          },
+        ],
+      },
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+
+    expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
+    expect(screen.getByText("认证探测")).toBeTruthy();
+    expect(screen.getByText("被拒绝")).toBeTruthy();
+    expect(screen.getByText("更新 EmailEngine 访问令牌")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "EmailEngine 拒绝当前访问令牌，添加邮箱、附件下载、发信和同步任务会失败。",
+      ),
+    ).toBeTruthy();
+  });
+
   it("keeps EmailEngine readiness visible when older APIs omit runtime checks", async () => {
     const api = createApiFixture();
     vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
@@ -3098,7 +3149,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
     expect(screen.getByText("运行探测")).toBeTruthy();
-    expect(screen.getByText("未探测")).toBeTruthy();
+    expect(screen.getAllByText("未探测").length).toBeGreaterThanOrEqual(1);
   });
 
   it("starts OAuth reauthorization from Sync Center", async () => {
