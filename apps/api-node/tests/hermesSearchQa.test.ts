@@ -106,6 +106,7 @@ describe("Hermes email search QA service", () => {
         accountId: "00000000-0000-0000-0000-000000000001",
         mailboxId: "00000000-0000-0000-0000-000000000201",
         q: "launch reply",
+        qScopes: ["sender", "recipients", "subject", "body"],
         limit: 3,
         sort: "smart",
       },
@@ -123,6 +124,10 @@ describe("Hermes email search QA service", () => {
     expect(providerCalls[0].userPrompt).toContain(
       "Search question: Which launch emails need my reply?",
     );
+    expect(providerCalls[0].userPrompt).toContain("Interpreted search plan:");
+    expect(providerCalls[0].userPrompt).toContain(
+      "- scopes=sender, recipients, subject, body",
+    );
     expect(providerCalls[0].userPrompt).toContain(
       "Launch schedule confirmation",
     );
@@ -136,6 +141,19 @@ describe("Hermes email search QA service", () => {
       skillId: "email_search_qa",
       answerText: "Lina's launch email needs a reply today.",
       searchQuery: "launch reply",
+      searchPlan: {
+        searchQuery: "launch reply",
+        quickFilters: [],
+        qScopes: ["sender", "recipients", "subject", "body"],
+        filters: [],
+        listMessagesInput: {
+          q: "launch reply",
+          qScopes: ["sender", "recipients", "subject", "body"],
+        },
+        explanation: [
+          "使用问题中的关键词搜索发件人、收件人、主题和正文。",
+        ],
+      },
       citations: [
         {
           resultIndex: 1,
@@ -184,6 +202,19 @@ describe("Hermes email search QA service", () => {
             mailboxId: "00000000-0000-0000-0000-000000000201",
             question: "Which launch emails need my reply?",
             searchQuery: "launch reply",
+            searchPlan: {
+              searchQuery: "launch reply",
+              quickFilters: [],
+              qScopes: ["sender", "recipients", "subject", "body"],
+              filters: [],
+              listMessagesInput: {
+                q: "launch reply",
+                qScopes: ["sender", "recipients", "subject", "body"],
+              },
+              explanation: [
+                "使用问题中的关键词搜索发件人、收件人、主题和正文。",
+              ],
+            },
             language: "English",
             limit: 3,
             memoryScope: "global",
@@ -192,6 +223,19 @@ describe("Hermes email search QA service", () => {
           output: {
             answerText: "Lina's launch email needs a reply today.",
             searchQuery: "launch reply",
+            searchPlan: {
+              searchQuery: "launch reply",
+              quickFilters: [],
+              qScopes: ["sender", "recipients", "subject", "body"],
+              filters: [],
+              listMessagesInput: {
+                q: "launch reply",
+                qScopes: ["sender", "recipients", "subject", "body"],
+              },
+              explanation: [
+                "使用问题中的关键词搜索发件人、收件人、主题和正文。",
+              ],
+            },
             matchIds: ["00000000-0000-0000-0000-000000000101"],
             citations: [
               {
@@ -229,12 +273,117 @@ describe("Hermes email search QA service", () => {
             accountId: "00000000-0000-0000-0000-000000000001",
             mailboxId: "00000000-0000-0000-0000-000000000201",
             searchQuery: "launch reply",
+            searchPlan: {
+              searchQuery: "launch reply",
+              quickFilters: [],
+              qScopes: ["sender", "recipients", "subject", "body"],
+              filters: [],
+              listMessagesInput: {
+                q: "launch reply",
+                qScopes: ["sender", "recipients", "subject", "body"],
+              },
+              explanation: [
+                "使用问题中的关键词搜索发件人、收件人、主题和正文。",
+              ],
+            },
             language: "English",
             limit: 3,
           },
         },
       },
     ]);
+  });
+
+  it("plans natural-language search into structured mail filters", async () => {
+    const mailSearchCalls: unknown[] = [];
+    const service = createHermesEmailSearchQaService({
+      createId: () => "run_planned",
+      now: () => "2026-06-16T08:00:00.000Z",
+      textProvider: {
+        async complete() {
+          return "Alice sent the contract last week with an attachment.";
+        },
+      },
+      mailReadStore: {
+        async listMessages(input) {
+          mailSearchCalls.push(input);
+          return {
+            items: [
+              {
+                id: "00000000-0000-0000-0000-000000000201",
+                accountId: "00000000-0000-0000-0000-000000000001",
+                subject: "合同确认",
+                from: { email: "alice@example.com", name: "Alice" },
+                receivedAt: "2026-06-10T09:58:00.000Z",
+                snippet: "合同已作为附件发来。",
+                unread: true,
+                starred: false,
+                mailboxIds: [],
+                attachmentCount: 1,
+                classification: {
+                  bucket: "P2 Important",
+                  priorityScore: 82,
+                  reasons: ["Matched contract"],
+                },
+              },
+            ],
+          };
+        },
+        async listMailboxes() {
+          throw new Error("not used");
+        },
+        async getMessage() {
+          throw new Error("not used");
+        },
+        async getAttachmentDownload() {
+          throw new Error("not used");
+        },
+      },
+    });
+
+    const result = await service.searchMail({
+      accountId: "00000000-0000-0000-0000-000000000001",
+      question: "上周 Alice 带附件合同",
+      language: "zh-CN",
+    });
+
+    expect(mailSearchCalls).toEqual([
+      {
+        accountId: "00000000-0000-0000-0000-000000000001",
+        q: "合同",
+        quickFilters: ["attachments"],
+        qScopes: ["sender", "recipients", "subject", "body"],
+        senderQuery: "Alice",
+        receivedAfter: "2026-06-08T00:00:00.000Z",
+        receivedBefore: "2026-06-15T00:00:00.000Z",
+        hasAttachment: true,
+        limit: 5,
+        sort: "smart",
+      },
+    ]);
+    expect(result.searchPlan).toMatchObject({
+      searchQuery: "合同",
+      quickFilters: ["attachments"],
+      qScopes: ["sender", "recipients", "subject", "body"],
+      listMessagesInput: {
+        q: "合同",
+        quickFilters: ["attachments"],
+        qScopes: ["sender", "recipients", "subject", "body"],
+        senderQuery: "Alice",
+        receivedAfter: "2026-06-08T00:00:00.000Z",
+        receivedBefore: "2026-06-15T00:00:00.000Z",
+        hasAttachment: true,
+      },
+    });
+    expect(result.searchPlan.filters.map((filter) => filter.label)).toEqual([
+      "有附件",
+      "上周 起",
+      "上周 止",
+      "发件人包含 Alice",
+    ]);
+    expect(result.answerText).toBe(
+      "Alice sent the contract last week with an attachment.",
+    );
   });
 
   it("returns an empty citation list when no local messages match", async () => {

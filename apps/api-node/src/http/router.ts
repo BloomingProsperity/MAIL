@@ -1772,6 +1772,21 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
               ? { labelIds: mailReadRoute.labelIds }
               : {}),
             ...(mailReadRoute.tagMode ? { tagMode: mailReadRoute.tagMode } : {}),
+            ...(mailReadRoute.senderQuery
+              ? { senderQuery: mailReadRoute.senderQuery }
+              : {}),
+            ...(mailReadRoute.recipientQuery
+              ? { recipientQuery: mailReadRoute.recipientQuery }
+              : {}),
+            ...(mailReadRoute.receivedAfter
+              ? { receivedAfter: mailReadRoute.receivedAfter }
+              : {}),
+            ...(mailReadRoute.receivedBefore
+              ? { receivedBefore: mailReadRoute.receivedBefore }
+              : {}),
+            ...(typeof mailReadRoute.hasAttachment === "boolean"
+              ? { hasAttachment: mailReadRoute.hasAttachment }
+              : {}),
           });
           writeJson(response, 200, result);
           return;
@@ -4079,6 +4094,11 @@ function parseMailReadRoute(
       qScopes?: MailSearchScope[];
       labelIds?: string[];
       tagMode?: MailTagMode;
+      senderQuery?: string;
+      recipientQuery?: string;
+      receivedAfter?: string;
+      receivedBefore?: string;
+      hasAttachment?: boolean;
     }
   | { action: "get_message"; accountId: string; messageId: string }
   | undefined {
@@ -4126,6 +4146,23 @@ function parseMailReadRoute(
   const qScopes = parseMailSearchScopes(url.searchParams);
   const labelIds = parseMailLabelIds(url.searchParams);
   const tagMode = parseMailTagMode(url.searchParams.get("tagMode"));
+  const senderQuery = parseMailStructuredText(
+    url.searchParams.get("sender") ?? url.searchParams.get("from"),
+  );
+  const recipientQuery = parseMailStructuredText(
+    url.searchParams.get("recipient") ?? url.searchParams.get("to"),
+  );
+  const receivedAfter = parseMailDateBound(
+    url.searchParams.get("receivedAfter") ??
+      url.searchParams.get("after"),
+  );
+  const receivedBefore = parseMailDateBound(
+    url.searchParams.get("receivedBefore") ??
+      url.searchParams.get("before"),
+  );
+  const hasAttachment = parseOptionalMailBoolean(
+    url.searchParams.get("hasAttachment"),
+  );
   return {
     action: "list_messages",
     ...(accountId ? { accountId } : {}),
@@ -4139,6 +4176,11 @@ function parseMailReadRoute(
     ...(qScopes.length > 0 ? { qScopes } : {}),
     ...(labelIds.length > 0 ? { labelIds } : {}),
     ...(tagMode ? { tagMode } : {}),
+    ...(senderQuery ? { senderQuery } : {}),
+    ...(recipientQuery ? { recipientQuery } : {}),
+    ...(receivedAfter ? { receivedAfter } : {}),
+    ...(receivedBefore ? { receivedBefore } : {}),
+    ...(typeof hasAttachment === "boolean" ? { hasAttachment } : {}),
   };
 }
 
@@ -4232,6 +4274,53 @@ function parseMailTagMode(value: string | null): MailTagMode | undefined {
   const tagMode = value.trim().toLowerCase();
   if (tagMode === "any" || tagMode === "all") {
     return tagMode;
+  }
+
+  throw new InvalidMailReadRequestError();
+}
+
+function parseMailStructuredText(value: string | null): string | undefined {
+  if (!isNonEmptyString(value)) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length > 128 || /[\u0000-\u001F\u007F]/.test(trimmed)) {
+    throw new InvalidMailReadRequestError();
+  }
+
+  return trimmed;
+}
+
+function parseMailDateBound(value: string | null): string | undefined {
+  if (!isNonEmptyString(value)) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length > 40 || /[\u0000-\u001F\u007F]/.test(trimmed)) {
+    throw new InvalidMailReadRequestError();
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new InvalidMailReadRequestError();
+  }
+
+  return parsed.toISOString();
+}
+
+function parseOptionalMailBoolean(value: string | null): boolean | undefined {
+  if (!isNonEmptyString(value)) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0") {
+    return false;
   }
 
   throw new InvalidMailReadRequestError();

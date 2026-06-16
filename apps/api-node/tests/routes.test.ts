@@ -974,6 +974,44 @@ describe("API routes", () => {
     );
   });
 
+  it("passes structured search filters to the mail read store", async () => {
+    const calls: unknown[] = [];
+    const mailReadStore = {
+      async listMailboxes() {
+        throw new Error("not used");
+      },
+      async listMessages(input: unknown) {
+        calls.push(input);
+        return { items: [] };
+      },
+      async getMessage() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/messages?sender=Alice&recipient=legal%40example.com&receivedAfter=2026-06-08&receivedBefore=2026-06-15&hasAttachment=true`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ items: [] });
+        expect(calls).toEqual([
+          {
+            limit: 50,
+            senderQuery: "Alice",
+            recipientQuery: "legal@example.com",
+            receivedAfter: "2026-06-08T00:00:00.000Z",
+            receivedBefore: "2026-06-15T00:00:00.000Z",
+            hasAttachment: true,
+          },
+        ]);
+      },
+      { mailReadStore },
+    );
+  });
+
   it("rejects invalid mail read query parameters before hitting the store", async () => {
     const calls: unknown[] = [];
     const mailReadStore = {
@@ -1008,6 +1046,9 @@ describe("API routes", () => {
           "/api/accounts/account_1/messages?qScope=html",
           "/api/accounts/account_1/messages?tagMode=every",
           "/api/accounts/account_1/messages?labelId=not-a-uuid",
+          "/api/accounts/account_1/messages?sender=bad%00sender",
+          "/api/accounts/account_1/messages?receivedAfter=not-a-date",
+          "/api/accounts/account_1/messages?hasAttachment=maybe",
         ];
 
         for (const path of cases) {

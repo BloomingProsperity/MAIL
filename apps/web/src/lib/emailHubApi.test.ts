@@ -229,10 +229,15 @@ describe("emailHubApi", () => {
       qScopes: ["sender", "subject", "body"],
       labelIds: ["label_1", "label_2"],
       tagMode: "all",
+      senderQuery: "Alice",
+      recipientQuery: "legal@example.com",
+      receivedAfter: "2026-06-08T00:00:00.000Z",
+      receivedBefore: "2026-06-15T00:00:00.000Z",
+      hasAttachment: true,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/messages?limit=25&q=invoice&sort=smart&quickFilter=unread&quickFilter=attachments&qScope=sender&qScope=subject&qScope=body&labelId=label_1&labelId=label_2&tagMode=all",
+      "/api/messages?limit=25&q=invoice&sort=smart&quickFilter=unread&quickFilter=attachments&qScope=sender&qScope=subject&qScope=body&labelId=label_1&labelId=label_2&tagMode=all&sender=Alice&recipient=legal%40example.com&receivedAfter=2026-06-08T00%3A00%3A00.000Z&receivedBefore=2026-06-15T00%3A00%3A00.000Z&hasAttachment=true",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -1597,6 +1602,19 @@ describe("emailHubApi", () => {
           skillId: "email_search_qa",
           answerText: "The signed contract is in Lina's latest message.",
           searchQuery: "signed contract",
+          searchPlan: {
+            searchQuery: "signed contract",
+            quickFilters: [],
+            qScopes: ["sender", "recipients", "subject", "body"],
+            filters: [],
+            listMessagesInput: {
+              q: "signed contract",
+              qScopes: ["sender", "recipients", "subject", "body"],
+            },
+            explanation: [
+              "使用问题中的关键词搜索发件人、收件人、主题和正文。",
+            ],
+          },
           matches: [
             {
               id: "message_1",

@@ -10,6 +10,10 @@ import {
   usedHermesMemoryIds,
 } from "./memory-context.js";
 import type { HermesMemoryStore } from "./memory-store.js";
+import {
+  planHermesEmailSearch,
+  type HermesEmailSearchPlan,
+} from "./search-planner.js";
 import type { HermesRunStore, HermesTextProvider } from "./translation.js";
 
 export interface HermesEmailSearchQaInput {
@@ -61,6 +65,7 @@ export interface HermesEmailSearchQaResult {
   skillId: "email_search_qa";
   answerText: string;
   searchQuery: string;
+  searchPlan: HermesEmailSearchPlan;
   citations: HermesEmailSearchQaCitation[];
   matches: HermesEmailSearchQaMatch[];
 }
@@ -76,6 +81,7 @@ export interface HermesEmailSearchQaServiceOptions {
   runStore?: HermesRunStore;
   memoryStore?: Pick<HermesMemoryStore, "listMemories">;
   memoryLimit?: number;
+  now?: () => string;
 }
 
 const EMAIL_SEARCH_QA_SYSTEM_PROMPT =
@@ -102,7 +108,12 @@ export function createHermesEmailSearchQaService(
         throw new Error("question is required");
       }
 
-      const searchQuery = normalizeSearchQuery(input);
+      const searchPlan = planHermesEmailSearch({
+        question: input.question,
+        searchQuery: input.searchQuery,
+        now: options.now?.() ?? new Date().toISOString(),
+      });
+      const searchQuery = searchPlan.searchQuery;
       const limit = input.limit ?? DEFAULT_SEARCH_LIMIT;
       const memories = await loadHermesMemoryContext(input, {
         memoryStore: options.memoryStore,
@@ -112,7 +123,7 @@ export function createHermesEmailSearchQaService(
       const page = await options.mailReadStore.listMessages({
         accountId: input.accountId,
         ...(input.mailboxId ? { mailboxId: input.mailboxId } : {}),
-        q: searchQuery,
+        ...searchPlan.listMessagesInput,
         limit,
         sort: "smart",
       });
@@ -123,7 +134,12 @@ export function createHermesEmailSearchQaService(
           ? "No matching emails found."
           : await options.textProvider.complete({
               systemPrompt: EMAIL_SEARCH_QA_SYSTEM_PROMPT,
-              userPrompt: emailSearchQaUserPrompt(input, searchQuery, matches, memories),
+              userPrompt: emailSearchQaUserPrompt(
+                input,
+                searchPlan,
+                matches,
+                memories,
+              ),
             });
       const skillRunId = options.createId();
       const result: HermesEmailSearchQaResult = {
@@ -131,6 +147,7 @@ export function createHermesEmailSearchQaService(
         skillId: "email_search_qa",
         answerText,
         searchQuery,
+        searchPlan,
         citations,
         matches,
       };
@@ -150,6 +167,7 @@ export function createHermesEmailSearchQaService(
             mailboxId: input.mailboxId,
             question: input.question,
             searchQuery,
+            searchPlan,
             language: input.language,
             limit,
             memoryScope: input.memoryScope,
@@ -158,6 +176,7 @@ export function createHermesEmailSearchQaService(
           output: {
             answerText,
             searchQuery,
+            searchPlan,
             matchIds: matches.map((match) => match.id),
             citations,
           },
@@ -176,6 +195,7 @@ export function createHermesEmailSearchQaService(
             accountId: input.accountId,
             mailboxId: input.mailboxId,
             searchQuery,
+            searchPlan,
             language: input.language,
             limit,
           }),
@@ -185,11 +205,6 @@ export function createHermesEmailSearchQaService(
       return { ...result, auditEventId };
     },
   };
-}
-
-function normalizeSearchQuery(input: HermesEmailSearchQaInput): string {
-  const explicit = input.searchQuery?.trim();
-  return explicit && explicit.length > 0 ? explicit : input.question.trim();
 }
 
 function toSearchMatch(message: MessageListItemDto): HermesEmailSearchQaMatch {
@@ -225,20 +240,30 @@ function toSearchCitation(
 
 function emailSearchQaUserPrompt(
   input: HermesEmailSearchQaInput,
-  searchQuery: string,
+  searchPlan: HermesEmailSearchPlan,
   matches: HermesEmailSearchQaMatch[],
   memories: Awaited<ReturnType<typeof loadHermesMemoryContext>>,
 ): string {
   const lines = [
     `Search question: ${input.question}`,
-    `Search query: ${searchQuery}`,
+    `Search query: ${searchPlan.searchQuery}`,
     `Language: ${input.language ?? "match the user question"}`,
   ];
+  lines.push("Interpreted search plan:");
+  lines.push(...formatSearchPlan(searchPlan));
 
   appendHermesMemoryPromptSection(lines, memories);
   lines.push("", "Search results:");
   lines.push(...matches.map(formatSearchResult));
   return lines.join("\n");
+}
+
+function formatSearchPlan(plan: HermesEmailSearchPlan): string[] {
+  return [
+    `- query=${plan.searchQuery}`,
+    `- scopes=${plan.qScopes.join(", ")}`,
+    `- filters=${plan.filters.map((filter) => filter.label).join("; ") || "(none)"}`,
+  ];
 }
 
 function formatSearchResult(match: HermesEmailSearchQaMatch, index: number): string {
@@ -259,11 +284,11 @@ function formatSearchResult(match: HermesEmailSearchQaMatch, index: number): str
 }
 
 function compactObject(
-  value: Record<string, string | string[] | number | undefined>,
-): Record<string, string | string[] | number> {
+  value: Record<string, unknown>,
+): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
-  ) as Record<string, string | string[] | number>;
+  );
 }
 
 function uniqueStrings(values: string[]): string[] {

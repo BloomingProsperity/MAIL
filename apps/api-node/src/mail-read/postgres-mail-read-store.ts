@@ -152,17 +152,20 @@ export function createPostgresMailReadStore(
       const savedView = await resolveSavedView(client, input.savedViewId);
       const values: unknown[] = [input.accountId ?? null, input.mailboxId ?? null, q];
       const quickFilterSql = appendQuickFilters(values, input);
+      const structuredFilterSql = appendStructuredFilters(values, input);
       const savedViewSql = appendSavedViewFilter(values, savedView);
       const searchPreviewSql = buildSearchPreviewExpression(input.qScopes);
       const whereClause = [
         buildSearchClause(input.qScopes),
         quickFilterSql.whereClause,
+        structuredFilterSql.whereClause,
         savedViewSql.whereClause,
       ]
         .filter((clause) => clause.trim().length > 0)
         .join("\n");
       const havingClause = buildHavingClause([
         quickFilterSql.havingClause,
+        structuredFilterSql.havingClause,
         savedViewSql.havingClause,
       ]);
       const cursorStart = values.length + 1;
@@ -479,6 +482,65 @@ function appendQuickFilters(
 
   if (quickFilters.has("labels") || (input.labelIds?.length ?? 0) > 0) {
     whereClauses.push(appendLabelFilter(values, input));
+  }
+
+  return {
+    whereClause: whereClauses.join("\n"),
+    havingClause: havingClauses.join("\n AND "),
+  };
+}
+
+function appendStructuredFilters(
+  values: unknown[],
+  input: ListMessagesInput,
+): SavedViewSql {
+  const whereClauses: string[] = [];
+  const havingClauses: string[] = [];
+
+  if (input.senderQuery) {
+    const parameter = `$${values.length + 1}`;
+    values.push(input.senderQuery);
+    whereClauses.push(`
+            AND (
+              messages.from_email ILIKE '%' || ${parameter}::text || '%'
+              OR COALESCE(messages.from_name, '') ILIKE '%' || ${parameter}::text || '%'
+            )
+    `);
+  }
+
+  if (input.recipientQuery) {
+    const parameter = `$${values.length + 1}`;
+    values.push(input.recipientQuery);
+    whereClauses.push(`
+            AND (
+              messages.to_emails::text ILIKE '%' || ${parameter}::text || '%'
+              OR messages.cc_emails::text ILIKE '%' || ${parameter}::text || '%'
+            )
+    `);
+  }
+
+  if (input.receivedAfter) {
+    const parameter = `$${values.length + 1}`;
+    values.push(input.receivedAfter);
+    whereClauses.push(
+      `AND messages.received_at >= ${parameter}::timestamptz`,
+    );
+  }
+
+  if (input.receivedBefore) {
+    const parameter = `$${values.length + 1}`;
+    values.push(input.receivedBefore);
+    whereClauses.push(
+      `AND messages.received_at < ${parameter}::timestamptz`,
+    );
+  }
+
+  if (input.hasAttachment === true) {
+    havingClauses.push("COUNT(DISTINCT attachments.id) > 0");
+  }
+
+  if (input.hasAttachment === false) {
+    havingClauses.push("COUNT(DISTINCT attachments.id) = 0");
   }
 
   return {

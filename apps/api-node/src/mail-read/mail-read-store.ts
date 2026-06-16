@@ -84,6 +84,11 @@ export interface ListMessagesInput {
   qScopes?: MailSearchScope[];
   labelIds?: string[];
   tagMode?: MailTagMode;
+  senderQuery?: string;
+  recipientQuery?: string;
+  receivedAfter?: string;
+  receivedBefore?: string;
+  hasAttachment?: boolean;
 }
 
 export interface GetMessageInput {

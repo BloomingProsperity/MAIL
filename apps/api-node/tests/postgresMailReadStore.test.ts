@@ -194,6 +194,48 @@ describe("postgres mail read store", () => {
     });
   });
 
+  it("applies structured sender, recipient, date, and attachment filters", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [messageRow("message_contract", "2026-06-12T09:00:00.000Z")],
+        };
+      },
+    };
+
+    const store = createPostgresMailReadStore(client);
+    await store.listMessages({
+      accountId: "account_1",
+      limit: 10,
+      q: "contract",
+      senderQuery: "alice",
+      recipientQuery: "legal@example.com",
+      receivedAfter: "2026-06-08T00:00:00.000Z",
+      receivedBefore: "2026-06-15T00:00:00.000Z",
+      hasAttachment: true,
+    });
+
+    expect(queries[0].text).toMatch(/messages\.from_email ILIKE/i);
+    expect(queries[0].text).toMatch(/messages\.to_emails::text ILIKE/i);
+    expect(queries[0].text).toMatch(/messages\.received_at >= \$6::timestamptz/i);
+    expect(queries[0].text).toMatch(/messages\.received_at < \$7::timestamptz/i);
+    expect(queries[0].text).toMatch(/HAVING COUNT\(DISTINCT attachments\.id\) > 0/i);
+    expect(queries[0].values).toEqual([
+      "account_1",
+      null,
+      "contract",
+      "alice",
+      "legal@example.com",
+      "2026-06-08T00:00:00.000Z",
+      "2026-06-15T00:00:00.000Z",
+      null,
+      null,
+      11,
+    ]);
+  });
+
   it("lists Smart Inbox messages across all accounts when account id is omitted", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

@@ -186,6 +186,14 @@ interface ComposeDraftSignatureInput {
 interface SearchLaunch {
   query: string;
   requestId: number;
+  quickFilters?: MailQuickFilter[];
+  qScopes?: MailSearchScope[];
+  senderQuery?: string;
+  recipientQuery?: string;
+  receivedAfter?: string;
+  receivedBefore?: string;
+  hasAttachment?: boolean;
+  accountId?: string;
 }
 
 type AddMailProviderGroupId =
@@ -717,7 +725,10 @@ export function App(props: AppProps = {}) {
     await refreshLabels(connectedAccountId ?? selectedAccountId);
   }
 
-  function launchGlobalSearch(query: string) {
+  function launchGlobalSearch(
+    query: string,
+    options: Omit<SearchLaunch, "query" | "requestId"> = {},
+  ) {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) {
       return;
@@ -725,6 +736,7 @@ export function App(props: AppProps = {}) {
 
     setSearchLaunch((current) => ({
       query: trimmedQuery,
+      ...options,
       requestId: (current?.requestId ?? 0) + 1,
     }));
     setActiveView("search");
@@ -7041,6 +7053,11 @@ function SearchPage(props: {
     "subject",
     "body",
   ]);
+  const [senderQuery, setSenderQuery] = useState<string | undefined>();
+  const [recipientQuery, setRecipientQuery] = useState<string | undefined>();
+  const [receivedAfter, setReceivedAfter] = useState<string | undefined>();
+  const [receivedBefore, setReceivedBefore] = useState<string | undefined>();
+  const [hasAttachment, setHasAttachment] = useState<boolean | undefined>();
 
   function toggleQuickFilter(filter: MailQuickFilter) {
     setQuickFilters((current) =>
@@ -7058,7 +7075,10 @@ function SearchPage(props: {
     );
   }
 
-  async function executeSearch(rawQuery: string) {
+  async function executeSearch(
+    rawQuery: string,
+    launchOverride?: Omit<SearchLaunch, "query" | "requestId">,
+  ) {
     const trimmedQuery = rawQuery.trim();
     if (!trimmedQuery) {
       setResults([]);
@@ -7087,22 +7107,53 @@ function SearchPage(props: {
       return;
     }
 
+    const effectiveQuickFilters =
+      launchOverride?.quickFilters ?? quickFilters;
+    const effectiveQScopes = launchOverride?.qScopes ?? qScopes;
+    const effectiveSenderQuery =
+      launchOverride?.senderQuery ?? senderQuery;
+    const effectiveRecipientQuery =
+      launchOverride?.recipientQuery ?? recipientQuery;
+    const effectiveReceivedAfter =
+      launchOverride?.receivedAfter ?? receivedAfter;
+    const effectiveReceivedBefore =
+      launchOverride?.receivedBefore ?? receivedBefore;
+    const effectiveHasAttachment =
+      launchOverride?.hasAttachment ?? hasAttachment;
+    const effectiveSearchAllAccounts = launchOverride?.accountId
+      ? false
+      : searchAllAccounts;
+    const effectiveAccountId = launchOverride?.accountId ?? props.accountId;
+
     setNotice("正在搜索邮件...");
     try {
       const page = await props.api.listMessages({
-        ...(searchAllAccounts ? {} : { accountId: props.accountId }),
+        ...(effectiveSearchAllAccounts ? {} : { accountId: effectiveAccountId }),
         limit: 50,
         q: trimmedQuery,
         sort: "smart",
-        ...(quickFilters.length ? { quickFilters } : {}),
-        ...(qScopes.length ? { qScopes } : {}),
+        ...(effectiveQuickFilters.length
+          ? { quickFilters: effectiveQuickFilters }
+          : {}),
+        ...(effectiveQScopes.length ? { qScopes: effectiveQScopes } : {}),
+        ...(effectiveSenderQuery ? { senderQuery: effectiveSenderQuery } : {}),
+        ...(effectiveRecipientQuery
+          ? { recipientQuery: effectiveRecipientQuery }
+          : {}),
+        ...(effectiveReceivedAfter ? { receivedAfter: effectiveReceivedAfter } : {}),
+        ...(effectiveReceivedBefore
+          ? { receivedBefore: effectiveReceivedBefore }
+          : {}),
+        ...(typeof effectiveHasAttachment === "boolean"
+          ? { hasAttachment: effectiveHasAttachment }
+          : {}),
       });
       const mappedResults = page.items.map(mapMessageDtoToMailItem);
       setResults(mappedResults);
       setHasSearched(true);
       setNotice(
         mappedResults.length > 0
-          ? searchAllAccounts
+          ? effectiveSearchAllAccounts
             ? "已搜索所有邮箱。"
             : "已搜索当前邮箱。"
           : "没有找到匹配邮件。",
@@ -7125,7 +7176,22 @@ function SearchPage(props: {
     }
 
     setQuery(props.launch.query);
-    void executeSearch(props.launch.query);
+    setQuickFilters(props.launch.quickFilters ?? []);
+    setQScopes(props.launch.qScopes ?? [
+      "sender",
+      "recipients",
+      "subject",
+      "body",
+    ]);
+    setSenderQuery(props.launch.senderQuery);
+    setRecipientQuery(props.launch.recipientQuery);
+    setReceivedAfter(props.launch.receivedAfter);
+    setReceivedBefore(props.launch.receivedBefore);
+    setHasAttachment(props.launch.hasAttachment);
+    if (props.launch.accountId) {
+      setSearchAllAccounts(false);
+    }
+    void executeSearch(props.launch.query, props.launch);
   }, [props.launch?.requestId]);
 
   return (
@@ -9051,7 +9117,10 @@ function HermesDock(props: {
   onOpen: () => void;
   onSubmit: (prompt: string) => void;
   onApproveRule: () => void;
-  onOpenSearch: (query: string) => void;
+  onOpenSearch: (
+    query: string,
+    options?: Omit<SearchLaunch, "query" | "requestId">,
+  ) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [activityVersion, setActivityVersion] = useState(0);
@@ -9089,6 +9158,9 @@ function HermesDock(props: {
   const ruleCandidate = props.ruleCandidate;
   const rulePreview = ruleCandidate
     ? hermesRulePreview(ruleCandidate)
+    : undefined;
+  const searchLaunchOptions = result
+    ? searchLaunchFromHermesResult(result)
     : undefined;
 
   return (
@@ -9145,6 +9217,15 @@ function HermesDock(props: {
                 <strong>Hermes 搜索回答</strong>
                 <span>{result.searchQuery}</span>
               </div>
+              {result.searchPlan.filters.length > 0 ? (
+                <div className="dock-plan-steps" aria-label="Hermes 搜索条件">
+                  {result.searchPlan.filters.slice(0, 4).map((filter) => (
+                    <span key={`${filter.field}-${filter.label}`}>
+                      {filter.label}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <p>{result.answerText}</p>
               {result.citations.length > 0 ? (
                 <div className="dock-citations" aria-label="Hermes 引用邮件">
@@ -9154,7 +9235,12 @@ function HermesDock(props: {
                       type="button"
                       key={`${citation.messageId}-${citation.resultIndex}`}
                       aria-label={`Hermes citation ${citation.subject}`}
-                      onClick={() => props.onOpenSearch(result.searchQuery)}
+                      onClick={() =>
+                        props.onOpenSearch(
+                          result.searchQuery,
+                          searchLaunchOptions,
+                        )
+                      }
                     >
                       <span>{citation.subject}</span>
                       <small>
@@ -9168,7 +9254,9 @@ function HermesDock(props: {
               <button
                 className="dock-action"
                 type="button"
-                onClick={() => props.onOpenSearch(result.searchQuery)}
+                onClick={() =>
+                  props.onOpenSearch(result.searchQuery, searchLaunchOptions)
+                }
               >
                 同步到搜索页
               </button>
@@ -9237,6 +9325,29 @@ function HermesDock(props: {
       )}
     </section>
   );
+}
+
+function searchLaunchFromHermesResult(
+  result: HermesEmailSearchQaResult,
+): Omit<SearchLaunch, "query" | "requestId"> {
+  const planInput = result.searchPlan.listMessagesInput;
+  return {
+    ...(planInput.quickFilters ? { quickFilters: planInput.quickFilters } : {}),
+    ...(planInput.qScopes ? { qScopes: planInput.qScopes } : {}),
+    ...(planInput.senderQuery ? { senderQuery: planInput.senderQuery } : {}),
+    ...(planInput.recipientQuery
+      ? { recipientQuery: planInput.recipientQuery }
+      : {}),
+    ...(planInput.receivedAfter
+      ? { receivedAfter: planInput.receivedAfter }
+      : {}),
+    ...(planInput.receivedBefore
+      ? { receivedBefore: planInput.receivedBefore }
+      : {}),
+    ...(typeof planInput.hasAttachment === "boolean"
+      ? { hasAttachment: planInput.hasAttachment }
+      : {}),
+  };
 }
 
 function HermesWorkspaceContextBar(props: {

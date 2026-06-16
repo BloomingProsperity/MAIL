@@ -157,6 +157,7 @@ describe("Email Hub first UI baseline", () => {
       await screen.findByText("Lina mentioned the signed contract in the latest thread."),
     ).toBeTruthy();
     expect(within(screen.getByLabelText("Hermes 搜索回答")).getByText("Live subject")).toBeTruthy();
+    expect(within(screen.getByLabelText("Hermes 搜索条件")).getByText("有附件")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "同步到搜索页" }));
 
@@ -165,7 +166,9 @@ describe("Email Hub first UI baseline", () => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
         limit: 50,
         q: "signed contract",
+        quickFilters: ["attachments"],
         qScopes: ["sender", "recipients", "subject", "body"],
+        hasAttachment: true,
         sort: "smart",
       });
     });
@@ -6002,9 +6005,29 @@ function createApiFixture(): EmailHubApi {
     searchMailWithHermes: vi.fn(async () => ({
       skillRunId: "run_search_1",
       skillId: "email_search_qa",
-      answerText: "Lina mentioned the signed contract in the latest thread.",
-      searchQuery: "signed contract",
-      matches: [
+	      answerText: "Lina mentioned the signed contract in the latest thread.",
+	      searchQuery: "signed contract",
+	      searchPlan: {
+	        searchQuery: "signed contract",
+	        quickFilters: ["attachments"],
+	        qScopes: ["sender", "recipients", "subject", "body"],
+	        filters: [
+	          {
+	            field: "hasAttachment",
+	            operator: "eq",
+	            value: true,
+	            label: "有附件",
+	          },
+	        ],
+	        listMessagesInput: {
+	          q: "signed contract",
+	          quickFilters: ["attachments"],
+	          qScopes: ["sender", "recipients", "subject", "body"],
+	          hasAttachment: true,
+	        },
+	        explanation: ["限制为带附件的邮件。"],
+	      },
+	      matches: [
         {
           id: "message_1",
           accountId: "account_1",

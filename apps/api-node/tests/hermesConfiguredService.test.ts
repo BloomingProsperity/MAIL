@@ -335,6 +335,7 @@ describe("configured Hermes translation service", () => {
       {
         accountId: "00000000-0000-0000-0000-000000000001",
         q: "launch reply",
+        qScopes: ["sender", "recipients", "subject", "body"],
         limit: 5,
         sort: "smart",
       },

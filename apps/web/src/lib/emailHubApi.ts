@@ -397,12 +397,38 @@ export interface HermesEmailSearchQaCitation {
   reasons: string[];
 }
 
+export interface HermesEmailSearchPlanFilterDto {
+  field: string;
+  operator: "contains" | "gte" | "lt" | "eq";
+  value: string | boolean;
+  label: string;
+}
+
+export interface HermesEmailSearchPlanDto {
+  searchQuery: string;
+  quickFilters: MailQuickFilter[];
+  qScopes: MailSearchScope[];
+  filters: HermesEmailSearchPlanFilterDto[];
+  listMessagesInput: {
+    q?: string;
+    quickFilters?: MailQuickFilter[];
+    qScopes?: MailSearchScope[];
+    senderQuery?: string;
+    recipientQuery?: string;
+    receivedAfter?: string;
+    receivedBefore?: string;
+    hasAttachment?: boolean;
+  };
+  explanation: string[];
+}
+
 export interface HermesEmailSearchQaResult {
   skillRunId: string;
   auditEventId?: string;
   skillId: "email_search_qa";
   answerText: string;
   searchQuery: string;
+  searchPlan: HermesEmailSearchPlanDto;
   citations: HermesEmailSearchQaCitation[];
   matches: HermesEmailSearchQaMatch[];
 }
@@ -1508,6 +1534,11 @@ export interface EmailHubApi {
     qScopes?: MailSearchScope[];
     labelIds?: string[];
     tagMode?: MailTagMode;
+    senderQuery?: string;
+    recipientQuery?: string;
+    receivedAfter?: string;
+    receivedBefore?: string;
+    hasAttachment?: boolean;
   }): Promise<Page<MessageListItemDto>>;
   listLabels(input: {
     accountId: string;
@@ -2016,6 +2047,13 @@ export function createEmailHubApi(
       appendParams(params, "qScope", input.qScopes);
       appendParams(params, "labelId", input.labelIds);
       appendParam(params, "tagMode", input.tagMode);
+      appendParam(params, "sender", input.senderQuery?.trim() || undefined);
+      appendParam(params, "recipient", input.recipientQuery?.trim() || undefined);
+      appendParam(params, "receivedAfter", input.receivedAfter);
+      appendParam(params, "receivedBefore", input.receivedBefore);
+      if (typeof input.hasAttachment === "boolean") {
+        appendParam(params, "hasAttachment", String(input.hasAttachment));
+      }
       const path = input.accountId
         ? `/api/accounts/${encodePath(input.accountId)}/messages`
         : "/api/messages";
