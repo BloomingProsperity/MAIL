@@ -665,6 +665,18 @@ export function App(props: AppProps = {}) {
     setActiveView("search");
   }
 
+  function openSearchResult(mail: MailItem) {
+    setWorkspaceMail((current) => {
+      const resultKey = mailItemKey(mail);
+      const withoutResult = current.filter((item) => mailItemKey(item) !== resultKey);
+      return [mail, ...withoutResult];
+    });
+    setSelectedDetail(undefined);
+    setActiveFolder("search");
+    setActiveMailId(mailItemKey(mail));
+    setActiveView("mail");
+  }
+
   function updateHermesPrompt(value: string) {
     setHermesPrompt(value);
     setHermesDockNotice(undefined);
@@ -1290,6 +1302,7 @@ export function App(props: AppProps = {}) {
             api={props.api}
             accountId={selectedAccountId ?? selectedMail?.accountId ?? ""}
             launch={searchLaunch}
+            onOpenResult={openSearchResult}
           />
         ) : null}
         {activeView === "settings" ? (
@@ -6487,6 +6500,7 @@ function SearchPage(props: {
   api?: EmailHubApi;
   accountId: string;
   launch?: SearchLaunch;
+  onOpenResult: (mail: MailItem) => void;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MailItem[]>([]);
@@ -6671,13 +6685,19 @@ function SearchPage(props: {
         <div className="backend-notice" role="status">{notice}</div>
         {results.length > 0
           ? results.map((mail) => (
-              <div className="search-result" key={mail.id}>
+              <button
+                className="search-result"
+                key={mailItemKey(mail)}
+                type="button"
+                aria-label={`Open search result ${mail.subject}`}
+                onClick={() => props.onOpenResult(mail)}
+              >
                 <strong>{mail.subject}</strong>
                 <span>
                   {mail.searchPreview ?? mail.preview} · {mail.sender} · {mail.date}{" "}
                   {mail.time}
                 </span>
-              </div>
+              </button>
             ))
           : null}
         {hasSearched && results.length === 0 ? (

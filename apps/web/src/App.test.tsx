@@ -987,6 +987,117 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText(/Indexed body hit: signed contract/)).toBeTruthy();
   });
 
+  it("opens a cross-account search result in the shared mail reader", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items: input.q
+        ? [
+            {
+              id: "message_search",
+              accountId: "account_2",
+              subject: "Cross-account search result",
+              from: { email: "finance@example.com", name: "Finance" },
+              receivedAt: "2026-06-13T11:00:00.000Z",
+              snippet: "Matched invoice in another account",
+              unread: false,
+              starred: true,
+              mailboxIds: ["mailbox_inbox"],
+              attachmentCount: 1,
+              searchPreview: {
+                source: "indexed_text",
+                text: "Indexed attachment hit: Q3 invoice.",
+              },
+              classification: {
+                bucket: "P2 Important",
+                priorityScore: 88,
+                reasons: ["Matched search"],
+              },
+            },
+          ]
+        : [
+            {
+              id: "message_1",
+              accountId: "account_1",
+              subject: "Live subject",
+              from: { email: "client@example.com", name: "Live Client" },
+              receivedAt: "2026-06-13T10:00:00.000Z",
+              snippet: "Live snippet",
+              unread: true,
+              starred: false,
+              mailboxIds: ["mailbox_inbox"],
+              attachmentCount: 0,
+              classification: {
+                bucket: "P1 Urgent",
+                priorityScore: 96,
+                reasons: ["Direct to you"],
+              },
+            },
+          ],
+    }));
+    vi.mocked(api.getMessage).mockImplementation(async (input) => ({
+      id: input.messageId,
+      accountId: input.accountId,
+      subject:
+        input.messageId === "message_search"
+          ? "Cross-account search result"
+          : "Live subject",
+      from:
+        input.messageId === "message_search"
+          ? { email: "finance@example.com", name: "Finance" }
+          : { email: "client@example.com", name: "Live Client" },
+      receivedAt: "2026-06-13T11:00:00.000Z",
+      snippet:
+        input.messageId === "message_search"
+          ? "Matched invoice in another account"
+          : "Live snippet",
+      unread: false,
+      starred: input.messageId === "message_search",
+      mailboxIds: ["mailbox_inbox"],
+      attachmentCount: input.messageId === "message_search" ? 1 : 0,
+      classification: {
+        bucket: input.messageId === "message_search" ? "P2 Important" : "P1 Urgent",
+        priorityScore: input.messageId === "message_search" ? 88 : 96,
+        reasons:
+          input.messageId === "message_search"
+            ? ["Matched search"]
+            : ["Direct to you"],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText:
+        input.messageId === "message_search"
+          ? "Invoice details loaded from account 2"
+          : "Live body from backend",
+      attachments: [],
+    }));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
+    );
+    fireEvent.change(screen.getByLabelText("搜索邮件"), {
+      target: { value: "Q3 invoice" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
+
+    const result = await screen.findByRole("button", {
+      name: "Open search result Cross-account search result",
+    });
+    expect(within(result).getByText(/Indexed attachment hit/)).toBeTruthy();
+    fireEvent.click(result);
+
+    expect(await screen.findByRole("heading", { name: "Cross-account search result" })).toBeTruthy();
+    await waitFor(() => {
+      expect(api.getMessage).toHaveBeenLastCalledWith({
+        accountId: "account_2",
+        messageId: "message_search",
+      });
+    });
+    expect(await screen.findByText("Invoice details loaded from account 2")).toBeTruthy();
+  });
+
   it("lets search page remove recipients from the backend query scope", async () => {
     const api = createApiFixture();
 
