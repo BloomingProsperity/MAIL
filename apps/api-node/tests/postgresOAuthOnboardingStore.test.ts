@@ -92,6 +92,39 @@ describe("postgres OAuth onboarding store", () => {
     });
   });
 
+  it("reserves a canonical OAuth account id before EmailEngine registration", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              account_id: "22222222-2222-4222-8222-222222222222",
+            },
+          ],
+        };
+      },
+    };
+
+    const store = createPostgresOAuthOnboardingStore(client);
+    const accountId = await store.reserveAccountIdForEmailProvider!({
+      email: "me@gmail.com",
+      provider: "gmail",
+      proposedAccountId: "99999999-9999-4999-8999-999999999999",
+    });
+
+    expect(queries[0].text).toMatch(/account_onboarding_account_keys/i);
+    expect(queries[0].text).toMatch(/FROM connected_accounts/i);
+    expect(queries[0].text).toMatch(/ON CONFLICT \(email, provider\)/i);
+    expect(queries[0].values).toEqual([
+      "me@gmail.com",
+      "gmail",
+      "99999999-9999-4999-8999-999999999999",
+    ]);
+    expect(accountId).toBe("22222222-2222-4222-8222-222222222222");
+  });
+
   it("completes OAuth onboarding in one transaction without storing token in account credentials", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

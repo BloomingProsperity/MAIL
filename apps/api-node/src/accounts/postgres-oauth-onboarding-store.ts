@@ -39,6 +39,44 @@ export function createPostgresOAuthOnboardingStore(
       return mapTask(result.rows[0]);
     },
 
+    async reserveAccountIdForEmailProvider(input) {
+      const result = await client.query(
+        `
+          WITH existing_account AS (
+            SELECT id
+            FROM connected_accounts
+            WHERE email = $1 AND provider = $2
+            LIMIT 1
+          ),
+          reserved_account AS (
+            INSERT INTO account_onboarding_account_keys (
+              email,
+              provider,
+              account_id
+            )
+            VALUES (
+              $1,
+              $2,
+              COALESCE((SELECT id FROM existing_account), $3::uuid)
+            )
+            ON CONFLICT (email, provider)
+            DO UPDATE SET updated_at = now()
+            RETURNING account_id
+          )
+          SELECT account_id
+          FROM reserved_account
+        `,
+        [input.email, input.provider, input.proposedAccountId],
+      );
+
+      const row = result.rows[0];
+      if (!row) {
+        throw new Error("OAuth account id reservation returned no rows");
+      }
+
+      return String(row.account_id);
+    },
+
     async getSessionByState(state) {
       const result = await client.query(
         `

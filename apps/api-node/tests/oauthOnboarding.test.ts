@@ -192,6 +192,130 @@ describe("OAuth onboarding service", () => {
     ]);
   });
 
+  it("reuses the canonical account id when the same OAuth mailbox is connected again", async () => {
+    const store = createInMemoryOAuthOnboardingStore();
+    const bootstrapJobs: unknown[] = [];
+    const emailEngineRegistrations: unknown[] = [];
+    const providers = createOAuthProviderRegistry({
+      googleClientId: "google-client-id",
+      googleClientSecret: "google-client-secret",
+    });
+    const service = createOAuthOnboardingService({
+      store,
+      providers,
+      tokenClient: {
+        async exchangeCode(input) {
+          return {
+            accessToken: `access-token-${input.code}`,
+            refreshToken: `refresh-token-${input.code}`,
+            expiresIn: 3600,
+            tokenType: "Bearer",
+          };
+        },
+      },
+      profileClient: {
+        async getProfile() {
+          return { email: "me@gmail.com", displayName: "Me" };
+        },
+      },
+      emailEngineAccounts: {
+        async registerOAuthAccount(input: unknown) {
+          emailEngineRegistrations.push(input);
+          return { account: (input as { accountId: string }).accountId, state: "syncing" };
+        },
+      },
+      createId: (() => {
+        const ids = [
+          "task_1",
+          "state_1",
+          "acc_canonical",
+          "secret_1",
+          "task_2",
+          "state_2",
+          "acc_unused",
+          "secret_2",
+        ];
+        return () => ids.shift() ?? "extra";
+      })(),
+      bootstrapSyncJobs: {
+        async enqueueInitialSync(input: unknown) {
+          bootstrapJobs.push(input);
+          return {
+            id: `job_${bootstrapJobs.length}`,
+            jobType: "sync_account",
+            accountId: (input as { accountId: string }).accountId,
+            idempotencyKey: `job:initial-sync:${(input as { accountId: string }).accountId}`,
+            status: "queued",
+          };
+        },
+      },
+    });
+
+    await service.createAuthSession({
+      provider: "gmail",
+      redirectUri: "https://app.example.com/oauth/callback",
+    });
+    const first = await service.completeAuthCallback({
+      state: "state_1",
+      code: "code_1",
+    });
+    await service.createAuthSession({
+      provider: "gmail",
+      redirectUri: "https://app.example.com/oauth/callback",
+    });
+    const second = await service.completeAuthCallback({
+      state: "state_2",
+      code: "code_2",
+    });
+
+    expect(first.account?.id).toBe("acc_canonical");
+    expect(second.account?.id).toBe("acc_canonical");
+    expect(emailEngineRegistrations).toEqual([
+      {
+        accountId: "acc_canonical",
+        email: "me@gmail.com",
+        displayName: "Me",
+        provider: "gmail",
+      },
+      {
+        accountId: "acc_canonical",
+        email: "me@gmail.com",
+        displayName: "Me",
+        provider: "gmail",
+      },
+    ]);
+    expect(bootstrapJobs).toEqual([
+      {
+        accountId: "acc_canonical",
+        provider: "gmail",
+        engineProvider: "emailengine",
+        sourceTaskId: "task_1",
+      },
+      {
+        accountId: "acc_canonical",
+        provider: "gmail",
+        engineProvider: "emailengine",
+        sourceTaskId: "task_2",
+      },
+    ]);
+    expect(store.listAccounts()).toEqual([
+      expect.objectContaining({
+        id: "acc_canonical",
+        email: "me@gmail.com",
+        provider: "gmail",
+        engineProvider: "emailengine",
+      }),
+    ]);
+    expect(store.listCredentials()).toEqual([
+      {
+        accountId: "acc_canonical",
+        credentialKind: "google_oauth_refresh_token",
+        secretRef: "db:secret_2",
+      },
+    ]);
+    expect(JSON.stringify(store.listCredentials())).not.toContain("refresh-token");
+  });
+
   it("fails the task when the token response has no refresh token", async () => {
     const store = createInMemoryOAuthOnboardingStore();
     const service = createOAuthOnboardingService({

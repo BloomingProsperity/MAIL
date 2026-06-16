@@ -99,6 +99,11 @@ export interface OAuthOnboardingStore {
     task: OAuthOnboardingTask;
     session: OAuthSession;
   }): Promise<OAuthOnboardingTask>;
+  reserveAccountIdForEmailProvider?(input: {
+    email: string;
+    provider: OAuthProviderName;
+    proposedAccountId: string;
+  }): Promise<string>;
   getSessionByState(state: string): Promise<OAuthSession | undefined>;
   completeOAuthAccount(
     input: CompleteOAuthAccountInput,
@@ -204,7 +209,13 @@ export function createOAuthOnboardingService(
           provider,
           accessToken: token.accessToken,
         });
-        const accountId = options.createId();
+        const proposedAccountId = options.createId();
+        const accountId =
+          (await options.store.reserveAccountIdForEmailProvider?.({
+            email: profile.email,
+            provider: provider.provider,
+            proposedAccountId,
+          })) ?? proposedAccountId;
         const secretId = options.createId();
         const account = accountFromProfile({
           accountId,
@@ -288,12 +299,37 @@ export function createInMemoryOAuthOnboardingStore(): InMemoryOAuthOnboardingSto
   const credentials: OAuthAccountCredential[] = [];
   const providerSettings: OAuthProviderSettings[] = [];
   const storedSecrets: StoredSecret[] = [];
+  const accountKeys: Array<{
+    email: string;
+    provider: OAuthProviderName;
+    accountId: string;
+  }> = [];
 
   return {
     async createSession(input) {
       tasks.push({ ...input.task });
       sessions.push({ ...input.session });
       return { ...input.task };
+    },
+    async reserveAccountIdForEmailProvider(input) {
+      const existingKey = accountKeys.find(
+        (key) => key.email === input.email && key.provider === input.provider,
+      );
+      if (existingKey) {
+        return existingKey.accountId;
+      }
+
+      const existingAccount = accounts.find(
+        (account) =>
+          account.email === input.email && account.provider === input.provider,
+      );
+      const accountId = existingAccount?.id ?? input.proposedAccountId;
+      accountKeys.push({
+        email: input.email,
+        provider: input.provider,
+        accountId,
+      });
+      return accountId;
     },
     async getSessionByState(state) {
       const session = sessions.find((item) => item.state === state);
@@ -304,13 +340,39 @@ export function createInMemoryOAuthOnboardingStore(): InMemoryOAuthOnboardingSto
       task.status = "completed";
       task.email = input.taskEmail;
       task.errorMessage = undefined;
-      accounts.push({ ...input.account });
-      credentials.push({ ...input.credential });
-      providerSettings.push({ ...input.providerSettings });
-      storedSecrets.push({ ...input.secret });
+      const existingAccount = accounts.find(
+        (account) =>
+          account.email === input.account.email &&
+          account.provider === input.account.provider,
+      );
+      if (existingAccount) {
+        existingAccount.displayName = input.account.displayName;
+        existingAccount.syncState = input.account.syncState;
+        existingAccount.engineProvider = input.account.engineProvider;
+      } else {
+        accounts.push({ ...input.account });
+      }
+      upsertBy(
+        credentials,
+        input.credential,
+        (item) =>
+          item.accountId === input.credential.accountId &&
+          item.credentialKind === input.credential.credentialKind,
+      );
+      upsertBy(
+        providerSettings,
+        input.providerSettings,
+        (item) => item.accountId === input.providerSettings.accountId,
+      );
+      upsertBy(
+        storedSecrets,
+        input.secret,
+        (item) => item.secretRef === input.secret.secretRef,
+      );
+      const account = existingAccount ?? input.account;
       return {
         task: publicTask(task),
-        account: { ...input.account },
+        account: { ...account },
       };
     },
     async failTask(input) {
@@ -335,6 +397,20 @@ export function createInMemoryOAuthOnboardingStore(): InMemoryOAuthOnboardingSto
       return storedSecrets.map((secret) => ({ ...secret }));
     },
   };
+}
+
+function upsertBy<T>(
+  items: T[],
+  nextItem: T,
+  predicate: (item: T) => boolean,
+): void {
+  const index = items.findIndex(predicate);
+  if (index >= 0) {
+    items[index] = { ...nextItem };
+    return;
+  }
+
+  items.push({ ...nextItem });
 }
 
 function accountFromProfile(input: {
