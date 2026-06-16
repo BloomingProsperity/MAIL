@@ -1,6 +1,15 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { runSyncQueueStressCheck } from "../src/sync-queue-stress";
+
+const repoRoot = join(import.meta.dirname, "..", "..", "..");
+
+async function readProjectFile(...parts: string[]): Promise<string> {
+  return readFile(join(repoRoot, ...parts), "utf8");
+}
 
 describe("sync queue stress diagnostics", () => {
   it("drains a large multi-account backlog without duplicate claims or same-account overlap", async () => {
@@ -51,5 +60,30 @@ describe("sync queue stress diagnostics", () => {
 
     expect(result.ok).toBe(false);
     expect(result.duplicateClaims).toEqual(["job_acc_001_001"]);
+  });
+
+  it("exposes documented self-hosted stress gates from the root workspace", async () => {
+    const rootPackage = JSON.parse(await readProjectFile("package.json"));
+    const workerPackage = JSON.parse(
+      await readProjectFile("apps", "worker-node", "package.json"),
+    );
+    const readme = await readProjectFile("README.md");
+
+    expect(workerPackage.scripts["stress:sync-queue"]).toBe(
+      "node dist/sync-queue-stress.js",
+    );
+    expect(rootPackage.scripts["stress:sync-queue"]).toBe(
+      "npm run build:worker && npm run stress:sync-queue -w apps/worker-node --",
+    );
+    expect(rootPackage.scripts["stress:sync-queue:heavy"]).toContain(
+      "--accounts=64 --jobs-per-account=200 --workers=128 --work-delay-ms=1",
+    );
+    expect(rootPackage.scripts["stress:sync-queue:postgres"]).toBe(
+      "npm run test:worker:postgres",
+    );
+    expect(readme).toContain("npm run stress:sync-queue");
+    expect(readme).toContain("npm run stress:sync-queue:heavy");
+    expect(readme).toContain("npm run stress:sync-queue:postgres");
+    expect(readme).toContain("TEST_DATABASE_URL");
   });
 });

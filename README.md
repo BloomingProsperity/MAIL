@@ -350,6 +350,32 @@ capability and launch diagnostics remain at `/api/mail-engine/health`.
 Postgres, Redis, and EmailEngine are internal Docker services by default. Use
 `API_BIND` and `WEB_BIND` in `.env` to change the host bindings.
 
+### High-Load Validation
+
+Before calling a self-hosted EmailEngine-first build ready, run the sync queue
+stress gates from the repository root:
+
+```powershell
+npm run stress:sync-queue
+npm run stress:sync-queue:heavy
+```
+
+The default stress drains a multi-account backlog through the worker queue model.
+The heavy gate runs 12,800 sync jobs across 64 accounts and 128 simulated workers
+and fails if any job is duplicate-claimed or if same-account jobs overlap.
+
+When a disposable Postgres test database is available, also run the database
+concurrency gate:
+
+```powershell
+$env:TEST_DATABASE_URL = "postgres://emailhub_test:emailhub_test@127.0.0.1:55432/emailhub_sync_jobs_test"
+npm run stress:sync-queue:postgres
+```
+
+That Postgres gate uses the migration-backed test database and verifies the real
+`sync_jobs` claim query under overlapping workers, including expired lease
+reclaim behavior. Do not point `TEST_DATABASE_URL` at a production database.
+
 ## Logging
 
 API and worker services emit newline-delimited JSON logs. Set
