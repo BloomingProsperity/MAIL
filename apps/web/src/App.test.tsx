@@ -306,9 +306,17 @@ describe("Email Hub first UI baseline", () => {
     expect(api.listLabels).toHaveBeenCalledWith({ accountId: "account_1" });
     expect(
       await screen.findByText(
-        "Hermes 执行计划已完成：启用验证码智能分组，已回填 4 封历史邮件。",
+        "Hermes 执行计划已完成：启用验证码智能分组，已回填 4 封历史邮件。已打开验证码。",
       ),
     ).toBeTruthy();
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+        sort: "smart",
+        savedView: "codes",
+      });
+    });
     expect(within(plan).getByText(/历史回填：匹配 4 封，新增 4 个标签关联/)).toBeTruthy();
     expect(within(plan).getByText("用户习惯学习：已写入 procedural_memory")).toBeTruthy();
   });
@@ -1249,19 +1257,30 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Approve Hermes rule 启用验证码智能分组",
+        name: "Confirm Hermes action plan 启用验证码智能分组",
       }),
     );
     await waitFor(() => {
-      expect(api.approveHermesRule).toHaveBeenCalledWith({
+      expect(api.createHermesActionPlan).toHaveBeenCalledWith({
+        accountId: "account_1",
+        command,
+        sampleLimit: 25,
+      });
+      expect(api.confirmHermesActionPlan).toHaveBeenCalledWith({
+        planId: "plan_1",
         accountId: "account_1",
         candidateId: "candidate_codes",
       });
     });
-    expect(await screen.findByText("Hermes 规则已启用：启用验证码智能分组。")).toBeTruthy();
+    expect(api.approveHermesRule).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(
+        "Hermes 执行计划已完成：启用验证码智能分组，已回填 4 封历史邮件。",
+      ),
+    ).toBeTruthy();
     expect(
       within(rulePanel).getByRole("button", {
-        name: "Approve Hermes rule 启用验证码智能分组",
+        name: "Confirm Hermes action plan 启用验证码智能分组",
       }).textContent,
     ).toContain("已启用");
   });
@@ -1280,13 +1299,15 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Approve Hermes rule 启用验证码智能分组",
+        name: "Confirm Hermes action plan 启用验证码智能分组",
       }),
     );
 
     expect(
       await screen.findByText("请先运行 shadow simulation，再确认启用规则。"),
     ).toBeTruthy();
+    expect(api.createHermesActionPlan).not.toHaveBeenCalled();
+    expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
     expect(api.approveHermesRule).not.toHaveBeenCalled();
   });
 
@@ -6894,6 +6915,13 @@ function createApiFixture(): EmailHubApi {
           type: "apply_label",
           labelName: "验证码",
           labelColor: "blue",
+          savedView: {
+            id: "codes",
+            label: "验证码",
+            tone: "blue",
+            kind: "keyword",
+            keywords: ["验证码", "verification", "otp"],
+          },
           providerWriteback: false,
           applyToHistory: true,
           requiresConfirmation: true,
@@ -6914,6 +6942,13 @@ function createApiFixture(): EmailHubApi {
           type: "apply_label",
           labelName: "验证码",
           labelColor: "blue",
+          savedView: {
+            id: "codes",
+            label: "验证码",
+            tone: "blue",
+            kind: "keyword",
+            keywords: ["验证码", "verification", "otp"],
+          },
           providerWriteback: false,
         },
         createdAt: "2026-06-13T10:01:00.000Z",
@@ -6997,6 +7032,13 @@ function createApiFixture(): EmailHubApi {
           labelId: "label_code",
           labelName: "验证码",
           labelColor: "blue",
+          savedView: {
+            id: "codes",
+            label: "验证码",
+            tone: "blue",
+            kind: "keyword",
+            keywords: ["验证码", "verification", "otp"],
+          },
           applyToHistory: true,
           providerWriteback: false,
           requiresConfirmation: false,

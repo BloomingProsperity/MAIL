@@ -923,16 +923,24 @@ export function App(props: AppProps = {}) {
       });
       setHermesDockHistoryBackfill(confirmation.historyBackfill);
       setHermesDockLearnedMemory(confirmation.memory);
+      const target = hermesRuleNavigationTarget(rule);
       await refreshNavigationSummary();
       await refreshLabels(hermesDockRuleCandidate.accountId);
       await refreshHermesWorkspaceContext({
         accountId: hermesDockRuleCandidate.accountId,
         force: true,
       });
+      if (target?.kind === "savedView") {
+        await loadSavedView(target.id);
+        setActiveView("mail");
+      } else if (target?.kind === "label") {
+        await loadLabel(target.id);
+        setActiveView("mail");
+      }
       setHermesDockNotice(
         confirmation.historyBackfill
-          ? `Hermes 执行计划已完成：${rule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。`
-          : `Hermes 执行计划已完成：${rule.title}`,
+          ? `Hermes 执行计划已完成：${rule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。${target ? `已打开${target.label}。` : ""}`
+          : `Hermes 执行计划已完成：${rule.title}${target ? `，已打开${target.label}` : ""}。`,
       );
     } catch {
       setHermesDockNotice("Hermes 执行计划确认失败。");
@@ -8369,6 +8377,11 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       setRuleNotice("请先运行 shadow simulation，再确认启用规则。");
       return;
     }
+    const command = draftCommand.trim();
+    if (!command) {
+      setRuleNotice("请输入要让 Hermes 创建的规则。");
+      return;
+    }
 
     if (!props.api) {
       const previewRule: HermesRuleDto = {
@@ -8401,12 +8414,19 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
     }
 
     setRuleDraftBusy(`approve:${candidate.id}`);
-    setRuleNotice("正在确认启用 Hermes 规则...");
+    setRuleNotice("正在生成并确认 Hermes 执行计划...");
     try {
-      const approvedRule = await props.api.approveHermesRule({
+      const plan = await props.api.createHermesActionPlan({
         accountId: props.accountId,
-        candidateId: candidate.id,
+        command,
+        sampleLimit: 25,
       });
+      const confirmation = await props.api.confirmHermesActionPlan({
+        planId: plan.id,
+        accountId: props.accountId,
+        candidateId: plan.candidate.id,
+      });
+      const approvedRule = confirmation.rule;
       setRules((current) => [
         approvedRule,
         ...current.filter((rule) => rule.id !== approvedRule.id),
@@ -8416,9 +8436,13 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
           item.id === candidate.id ? { ...item, status: "approved" } : item,
         ),
       );
-      setRuleNotice(`Hermes 规则已启用：${approvedRule.title}。`);
+      setRuleNotice(
+        confirmation.historyBackfill
+          ? `Hermes 执行计划已完成：${approvedRule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。`
+          : `Hermes 执行计划已完成：${approvedRule.title}。`,
+      );
     } catch {
-      setRuleNotice("Hermes 规则确认失败。");
+      setRuleNotice("Hermes 执行计划确认失败。");
     } finally {
       setRuleDraftBusy("");
     }
@@ -8504,7 +8528,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
                       className="primary-button"
                       type="button"
                       disabled={Boolean(ruleDraftBusy) || candidate.status === "approved"}
-                      aria-label={`Approve Hermes rule ${candidate.title}`}
+                      aria-label={`Confirm Hermes action plan ${candidate.title}`}
                       onClick={() => void approveRuleCandidate(candidate)}
                     >
                       {isApproving
@@ -10485,10 +10509,30 @@ function hermesRulePreview(
   };
 }
 
+function hermesRuleNavigationTarget(
+  rule: HermesRuleDto,
+):
+  | { kind: "savedView"; id: string; label: string }
+  | { kind: "label"; id: string; label: string }
+  | undefined {
+  const savedView = hermesRuleSavedView(rule.action);
+  if (savedView?.id) {
+    return { kind: "savedView", id: savedView.id, label: savedView.label };
+  }
+
+  const labelId = rule.action.labelId;
+  const labelName = hermesRuleLabel(rule.action) ?? rule.title;
+  if (typeof labelId === "string" && labelId.trim()) {
+    return { kind: "label", id: labelId, label: labelName };
+  }
+
+  return undefined;
+}
+
 function hermesRuleSavedView(
   action: Record<string, unknown>,
-): { label: string; keywords: string[] } | undefined {
-  if (action.type !== "ensure_saved_view") {
+): { id?: string; label: string; keywords: string[] } | undefined {
+  if (action.type !== "ensure_saved_view" && action.type !== "apply_label") {
     return undefined;
   }
   const savedView = action.savedView;
@@ -10501,6 +10545,7 @@ function hermesRuleSavedView(
     return undefined;
   }
   return {
+    id: record.id,
     label: record.label,
     keywords: Array.isArray(record.keywords)
       ? record.keywords.filter((keyword): keyword is string => typeof keyword === "string")
