@@ -1436,6 +1436,44 @@ export interface MailSendIdentityCandidateDto extends MailSendIdentityDto {
   userTargetVerificationError?: string;
 }
 
+export type MailSendIdentityDiagnosticStatus =
+  | "ready"
+  | "needs_from_verification"
+  | "from_verification_failed"
+  | "target_verification_recommended"
+  | "target_verification_failed";
+
+export type MailSendIdentityDiagnosticCheckStatus =
+  | "pass"
+  | "warning"
+  | "fail"
+  | "info";
+
+export interface MailSendIdentityDiagnosticCheckDto {
+  id: string;
+  status: MailSendIdentityDiagnosticCheckStatus;
+  title: string;
+  detail: string;
+  action?: string;
+}
+
+export interface MailSendIdentityDiagnosticsDto {
+  accountId: string;
+  candidateId: string;
+  provider: "graph";
+  generatedAt: string;
+  from: MailAddressDto;
+  identityType: MailSendIdentityType;
+  status: MailSendIdentityDiagnosticStatus;
+  summary: string;
+  sendPath: "unavailable" | "me" | "users";
+  sentItemsBehavior: "unknown" | "signed_in_user" | "from_mailbox";
+  discoverySupported: false;
+  checks: MailSendIdentityDiagnosticCheckDto[];
+  nextActions: string[];
+  candidate: MailSendIdentityCandidateDto;
+}
+
 export interface MailSendIdentityPage {
   accountId: string;
   items: MailSendIdentityDto[];
@@ -2169,6 +2207,10 @@ export interface EmailHubApi {
     verified: boolean;
     errorCode?: string;
   }>;
+  diagnoseProviderSendIdentityCandidate(input: {
+    accountId: string;
+    candidateId: string;
+  }): Promise<MailSendIdentityDiagnosticsDto>;
   sendMailDraft(input: {
     accountId: string;
     draftId: string;
@@ -3374,6 +3416,14 @@ export function createEmailHubApi(
             targetMailbox: input.targetMailbox,
           }),
         },
+      );
+    },
+
+    diagnoseProviderSendIdentityCandidate(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/send-identities/provider-candidates/${encodePath(input.candidateId)}/diagnostics`,
       );
     },
 

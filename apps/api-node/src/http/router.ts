@@ -986,6 +986,21 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (
+          mailComposeRoute.action === "diagnose_send_identity_candidate" &&
+          request.method === "GET"
+        ) {
+          const result =
+            await config.mailComposeService.diagnoseProviderSendIdentityCandidate(
+              {
+                accountId: mailComposeRoute.accountId,
+                candidateId: mailComposeRoute.candidateId,
+              },
+            );
+          writeJson(response, 200, result);
+          return;
+        }
+
+        if (
           mailComposeRoute.action === "verify_send_identity_user_target" &&
           request.method === "POST"
         ) {
@@ -4373,6 +4388,11 @@ function parseMailComposeRoute(
       accountId: string;
       candidateId: string;
     }
+  | {
+      action: "diagnose_send_identity_candidate";
+      accountId: string;
+      candidateId: string;
+    }
   | { action: "upload_attachment"; accountId: string }
   | { action: "draft_collection"; accountId: string; limit?: number }
   | { action: "update_draft"; accountId: string; draftId: string }
@@ -4427,6 +4447,18 @@ function parseMailComposeRoute(
       action: "verify_send_identity_candidate",
       accountId: decodeURIComponent(verifySendIdentityCandidateMatch[1]),
       candidateId: decodeURIComponent(verifySendIdentityCandidateMatch[2]),
+    };
+  }
+
+  const diagnoseSendIdentityCandidateMatch =
+    /^\/api\/accounts\/([^/]+)\/send-identities\/provider-candidates\/([^/]+)\/diagnostics$/.exec(
+      url.pathname,
+    );
+  if (diagnoseSendIdentityCandidateMatch) {
+    return {
+      action: "diagnose_send_identity_candidate",
+      accountId: decodeURIComponent(diagnoseSendIdentityCandidateMatch[1]),
+      candidateId: decodeURIComponent(diagnoseSendIdentityCandidateMatch[2]),
     };
   }
 

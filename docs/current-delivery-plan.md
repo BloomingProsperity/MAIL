@@ -1,6 +1,6 @@
 # Current Delivery Plan
 
-Date: 2026-06-15
+Date: 2026-06-16
 
 ## Scope
 
@@ -110,7 +110,14 @@ with more than smoke-level tests.
   in the visible From header. Gmail
   authorization now explicitly includes `gmail.settings.basic`, and Outlook
   authorization plus refresh flows include `Mail.Send.Shared` for
-  shared-mailbox submissions when Exchange grants exist.
+  shared-mailbox submissions when Exchange grants exist. The compose API also
+  exposes a read-only Graph shared-sender diagnostics endpoint at
+  `/api/accounts/:accountId/send-identities/provider-candidates/:candidateId/diagnostics`.
+  It reports the verified From state, selected send path, Sent Items behavior,
+  explicit-candidate/discovery limitation, sanitized Graph rejection code, and
+  next operator actions without sending another test message. The compose panel
+  has a matching `诊断` action so users can inspect shared-mailbox readiness
+  before choosing a provider-native path.
 - Current threading status: reply and reply-all drafts now persist provider
   threading metadata on `email_drafts` before send. EmailEngine sends use its
   native `reference` object, Gmail native sends include both RFC 2822
@@ -123,7 +130,7 @@ with more than smoke-level tests.
   scheduled-send claims, so delayed replies keep threading after retries or
   process restarts.
 - Remaining gap: chunked/object-storage uploads for larger attachments,
-  admin-grade Graph shared-mailbox permission diagnostics/discovery, deeper
+  tenant-level Graph shared-mailbox discovery/admin permission inventory, deeper
   command semantics, and live high-volume IMAP/SMTP provider smoke tests still
   need focused backend slices before Native Engine can be promoted from parallel
   track to default path. Native provider APIs do not provide the same
@@ -182,6 +189,11 @@ with more than smoke-level tests.
   object content and `0..1` confidence before saving, updates records through
   `PATCH /api/hermes/memories/:id`, and requires a second click before
   permanent deletion through `DELETE /api/hermes/memories/:id`.
+- Current skill-governance status: Settings now exposes backend-owned Hermes
+  skill options for each built-in skill. Users can edit enabled state,
+  body-read permission, memory-write permission, confirmation requirement,
+  context character budget, and memory limit through the API instead of
+  changing code or environment variables.
 
 ### 4. Mail Organization
 
@@ -347,7 +359,7 @@ with more than smoke-level tests.
   silently dropping the file.
 - Remaining gap: the current compose panel is intentionally compact; rich
   editor, chunked/streaming uploads, provider-native large attachment sessions,
-  admin diagnostics for provider-native shared mailbox permissions, and deeper
+  tenant-level shared-mailbox discovery/admin permission inventory, and deeper
   Sent-folder parity checks are still separate slices.
 
 ## Product References
@@ -363,9 +375,9 @@ with more than smoke-level tests.
 ## Immediate Delivery Order
 
 1. Expand Compose into a full production editor: rich editor,
-   chunked/streaming uploads, provider-native large attachment sessions, admin
-   diagnostics for Graph shared-mailbox permissions, and writing-style feedback
-   for rewrite/polish through the single AI entry.
+   chunked/streaming uploads, provider-native large attachment sessions,
+   tenant-level Graph shared-mailbox discovery/admin inventory, and
+   writing-style feedback for rewrite/polish through the single AI entry.
 2. Harden Native IMAP/SMTP send with provider capability gating, live
    GreenMail/high-volume SMTP smoke, and tests around QQ/163/custom-domain
    recovery behavior.

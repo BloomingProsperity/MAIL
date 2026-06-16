@@ -4892,6 +4892,99 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("共享发件箱已启用")).toBeTruthy();
   });
 
+  it("shows Outlook shared sender diagnostics without leaking raw Graph details", async () => {
+    const api = createApiFixture();
+    const accountIdentity = {
+      id: "account:account_1",
+      accountId: "account_1",
+      from: { address: "work@demo.site", name: "Work" },
+      source: "account" as const,
+      isDefault: true,
+      verified: true,
+    };
+    const candidate = {
+      id: "provider:identity_candidate",
+      accountId: "account_1",
+      from: { address: "shared@example.com", name: "Shared" },
+      source: "provider_native" as const,
+      isDefault: false,
+      verified: true,
+      provider: "graph",
+      providerIdentityId: "shared@example.com",
+      identityType: "shared_mailbox" as const,
+      verificationState: "verified" as const,
+      enabled: true,
+      userTargetVerificationError: "ErrorAccessDenied",
+    };
+
+    vi.mocked(api.listSendIdentities).mockResolvedValue({
+      accountId: "account_1",
+      items: [accountIdentity],
+      candidates: [candidate],
+    });
+    vi.mocked(api.diagnoseProviderSendIdentityCandidate).mockResolvedValue({
+      accountId: "account_1",
+      candidateId: "provider:identity_candidate",
+      provider: "graph",
+      generatedAt: "2026-06-15T20:25:00.000Z",
+      from: { address: "shared@example.com", name: "Shared" },
+      identityType: "shared_mailbox",
+      status: "target_verification_failed",
+      summary:
+        "From 可用，但共享邮箱 Sent Items 路径验证失败：ErrorAccessDenied。",
+      sendPath: "me",
+      sentItemsBehavior: "signed_in_user",
+      discoverySupported: false,
+      checks: [
+        {
+          id: "explicit_candidate",
+          status: "info",
+          title: "显式共享发件人",
+          detail:
+            "Microsoft Graph 不能可靠枚举当前用户可用的共享邮箱，本候选项由用户显式添加。",
+        },
+        {
+          id: "sent_items_target",
+          status: "fail",
+          title: "共享邮箱 Sent Items",
+          detail: "Graph 未接受共享邮箱目标路径：ErrorAccessDenied。",
+          action: "验证共享邮箱目标路径",
+        },
+      ],
+      nextActions: [
+        "确认用户对共享邮箱具备 Full Access 或可用的 /users/{mailbox}/sendMail 权限。",
+      ],
+      candidate,
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Diagnose Outlook shared sender shared@example.com",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.diagnoseProviderSendIdentityCandidate).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "provider:identity_candidate",
+      });
+    });
+    expect(
+      await screen.findByLabelText(
+        "Outlook shared sender diagnostics shared@example.com",
+      ),
+    ).toBeTruthy();
+    expect(await screen.findByText("共享箱目标失败")).toBeTruthy();
+    expect(await screen.findByText(/Graph 未接受共享邮箱目标路径/)).toBeTruthy();
+    const pageText = document.body.textContent ?? "";
+    expect(pageText).not.toContain("raw Graph innerError");
+    expect(pageText).not.toContain("access-token");
+    expect(pageText).not.toContain("refresh-token");
+  });
+
   it("updates the saved composed draft instead of creating duplicates", async () => {
     const api = createApiFixture();
 
@@ -7701,6 +7794,59 @@ function createApiFixture(): EmailHubApi {
           userPrincipalName: input.targetMailbox,
         },
         sentItemsBehavior: "from_mailbox" as const,
+      },
+    })),
+    diagnoseProviderSendIdentityCandidate: vi.fn(async (input) => ({
+      accountId: input.accountId,
+      candidateId: input.candidateId,
+      provider: "graph" as const,
+      generatedAt: "2026-06-15T20:25:00.000Z",
+      from: { address: "shared@example.com", name: "Shared" },
+      identityType: "shared_mailbox" as const,
+      status: "target_verification_recommended" as const,
+      summary:
+        "From 可用；如果需要邮件进入共享邮箱 Sent Items，请继续验证目标邮箱。",
+      sendPath: "me" as const,
+      sentItemsBehavior: "signed_in_user" as const,
+      discoverySupported: false as const,
+      checks: [
+        {
+          id: "explicit_candidate",
+          status: "info" as const,
+          title: "显式共享发件人",
+          detail:
+            "Microsoft Graph 不能可靠枚举当前用户可用的共享邮箱，本候选项由用户显式添加。",
+        },
+        {
+          id: "from_permission",
+          status: "pass" as const,
+          title: "From 权限",
+          detail: "Graph 已接受 /me/sendMail 携带该 From 地址。",
+        },
+        {
+          id: "sent_items_target",
+          status: "warning" as const,
+          title: "共享邮箱 Sent Items",
+          detail:
+            "当前会走 /me/sendMail，发送副本保存在登录账号 Sent Items；可继续验证共享邮箱目标路径。",
+          action: "验证共享邮箱目标路径",
+        },
+      ],
+      nextActions: [
+        "如需共享邮箱 Sent Items 归档，输入目标邮箱并运行共享邮箱目标验证。",
+      ],
+      candidate: {
+        id: input.candidateId,
+        accountId: input.accountId,
+        from: { address: "shared@example.com", name: "Shared" },
+        source: "provider_native" as const,
+        isDefault: false,
+        verified: true,
+        provider: "graph",
+        providerIdentityId: "shared@example.com",
+        identityType: "shared_mailbox" as const,
+        verificationState: "verified" as const,
+        enabled: true,
       },
     })),
     createComposeSeed: vi.fn(async (input) => ({

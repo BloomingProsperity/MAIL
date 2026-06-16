@@ -527,6 +527,69 @@ describe("mail compose service", () => {
     });
   });
 
+  it("diagnoses Graph shared sender permissions without sending another test message", async () => {
+    const service = createMailComposeService({
+      store: createStore(),
+      createId: () => "unused",
+      now: () => new Date("2026-06-15T20:25:00.000Z"),
+      transports: {},
+      sendIdentityStore: {
+        async listSendIdentities() {
+          return [];
+        },
+        async getProviderSendIdentityCandidate(input) {
+          expect(input).toEqual({
+            accountId: "acc_1",
+            candidateId: "provider:identity_1",
+          });
+          return sendIdentityCandidate({
+            verificationState: "verified",
+            enabled: true,
+            verified: true,
+            sendMailTargetMode: "me",
+            userSendMailEligible: false,
+            userTargetVerificationError: "ErrorAccessDenied",
+          });
+        },
+      },
+      graphSendIdentityVerifier: {
+        async sendVerification() {
+          throw new Error("diagnostics must not send mail");
+        },
+        async sendUserTargetVerification() {
+          throw new Error("diagnostics must not send mail");
+        },
+      },
+    });
+
+    const diagnostics = await service.diagnoseProviderSendIdentityCandidate({
+      accountId: "acc_1",
+      candidateId: "provider:identity_1",
+    });
+
+    expect(diagnostics).toMatchObject({
+      accountId: "acc_1",
+      candidateId: "provider:identity_1",
+      provider: "graph",
+      generatedAt: "2026-06-15T20:25:00.000Z",
+      status: "target_verification_failed",
+      sendPath: "me",
+      sentItemsBehavior: "signed_in_user",
+      discoverySupported: false,
+      summary:
+        "From 可用，但共享邮箱 Sent Items 路径验证失败：ErrorAccessDenied。",
+      checks: [
+        { id: "explicit_candidate", status: "info" },
+        { id: "from_permission", status: "pass" },
+        { id: "sent_items_target", status: "fail" },
+      ],
+      nextActions: [
+        "确认用户对共享邮箱具备 Full Access 或可用的 /users/{mailbox}/sendMail 权限。",
+        "修正目标邮箱地址后重新验证共享邮箱目标路径。",
+      ],
+    });
+  });
+
   it("updates an existing draft without creating a replacement", async () => {
     const calls: unknown[] = [];
     const store = createStore({

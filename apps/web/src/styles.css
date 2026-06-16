@@ -674,6 +674,55 @@ h2 {
   min-width: 0;
 }
 
+.graph-diagnostics-box {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+  min-width: 0;
+  border-top: 1px solid var(--border-light);
+  padding-top: 6px;
+}
+
+.graph-diagnostics-box p,
+.graph-diagnostics-box li {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.graph-diagnostics-box ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.graph-diagnostic-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.graph-diagnostic-checks span {
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.graph-diagnostic-checks .diagnostic-pass {
+  border-color: var(--mint-bg);
+  color: var(--mint-text);
+}
+
+.graph-diagnostic-checks .diagnostic-warning,
+.graph-diagnostic-checks .diagnostic-fail {
+  border-color: var(--primary-border);
+  color: var(--primary-hover);
+}
+
 .compose-schedule-row {
   display: grid;
   grid-template-columns: minmax(180px, 260px);

@@ -77,6 +77,44 @@ export interface MailSendIdentityCandidate extends MailSendIdentity {
   userTargetVerificationError?: string;
 }
 
+export type MailSendIdentityDiagnosticStatus =
+  | "ready"
+  | "needs_from_verification"
+  | "from_verification_failed"
+  | "target_verification_recommended"
+  | "target_verification_failed";
+
+export type MailSendIdentityDiagnosticCheckStatus =
+  | "pass"
+  | "warning"
+  | "fail"
+  | "info";
+
+export interface MailSendIdentityDiagnosticCheck {
+  id: string;
+  status: MailSendIdentityDiagnosticCheckStatus;
+  title: string;
+  detail: string;
+  action?: string;
+}
+
+export interface MailSendIdentityDiagnostics {
+  accountId: string;
+  candidateId: string;
+  provider: "graph";
+  generatedAt: string;
+  from: MailAddress;
+  identityType: MailSendIdentityType;
+  status: MailSendIdentityDiagnosticStatus;
+  summary: string;
+  sendPath: "unavailable" | "me" | "users";
+  sentItemsBehavior: "unknown" | "signed_in_user" | "from_mailbox";
+  discoverySupported: false;
+  checks: MailSendIdentityDiagnosticCheck[];
+  nextActions: string[];
+  candidate: MailSendIdentityCandidate;
+}
+
 export type MailDraftStatus =
   | "draft"
   | "scheduled"
@@ -621,6 +659,10 @@ export interface MailComposeService {
     verified: boolean;
     errorCode?: string;
   }>;
+  diagnoseProviderSendIdentityCandidate(input: {
+    accountId: string;
+    candidateId: string;
+  }): Promise<MailSendIdentityDiagnostics>;
   createComposeSeed(input: MailComposeSeedInput): Promise<MailComposeSeed>;
   previewDraft(input: MailComposePreviewInput): Promise<MailComposePreview>;
   createDraft(input: CreateMailDraftInput): Promise<MailDraft>;
@@ -907,6 +949,31 @@ export function createMailComposeService(options: {
         candidate: verified,
         verified: true,
       };
+    },
+
+    async diagnoseProviderSendIdentityCandidate(input) {
+      assertNonEmpty(input.accountId);
+      assertNonEmpty(input.candidateId);
+      if (!options.sendIdentityStore?.getProviderSendIdentityCandidate) {
+        throw new InvalidMailComposeRequestError(
+          "provider send identity candidates are unavailable",
+        );
+      }
+
+      const candidate =
+        await options.sendIdentityStore.getProviderSendIdentityCandidate({
+          accountId: input.accountId,
+          candidateId: input.candidateId,
+        });
+      if (!candidate || candidate.provider !== "graph") {
+        throw new InvalidMailComposeRequestError("send identity candidate not found");
+      }
+
+      return buildGraphSendIdentityDiagnostics(
+        input.accountId,
+        candidate,
+        currentIso(options.now),
+      );
     },
 
     async createComposeSeed(input) {
@@ -2221,6 +2288,191 @@ function graphTargetMailboxMatches(
   }
 
   return existing.toLowerCase() === targetMailbox.toLowerCase();
+}
+
+function buildGraphSendIdentityDiagnostics(
+  accountId: string,
+  candidate: MailSendIdentityCandidate,
+  generatedAt: string,
+): MailSendIdentityDiagnostics {
+  const fromVerified =
+    candidate.verificationState === "verified" && candidate.enabled;
+  const targetVerified =
+    fromVerified &&
+    candidate.sendMailTargetMode === "users" &&
+    candidate.userSendMailEligible === true &&
+    Boolean(targetMailboxLabel(candidate));
+  const sendPath: MailSendIdentityDiagnostics["sendPath"] = !fromVerified
+    ? "unavailable"
+    : targetVerified
+      ? "users"
+      : "me";
+  const sentItemsBehavior: MailSendIdentityDiagnostics["sentItemsBehavior"] =
+    !fromVerified
+      ? "unknown"
+      : targetVerified
+        ? "from_mailbox"
+        : "signed_in_user";
+  const status = graphDiagnosticStatus(candidate, fromVerified, targetVerified);
+  const checks = graphDiagnosticChecks(candidate, fromVerified, targetVerified);
+  const nextActions = graphDiagnosticNextActions(
+    candidate,
+    fromVerified,
+    targetVerified,
+  );
+
+  return {
+    accountId,
+    candidateId: candidate.id,
+    provider: "graph",
+    generatedAt,
+    from: candidate.from,
+    identityType: candidate.identityType,
+    status,
+    summary: graphDiagnosticSummary(candidate, status),
+    sendPath,
+    sentItemsBehavior,
+    discoverySupported: false,
+    checks,
+    nextActions,
+    candidate,
+  };
+}
+
+function graphDiagnosticStatus(
+  candidate: MailSendIdentityCandidate,
+  fromVerified: boolean,
+  targetVerified: boolean,
+): MailSendIdentityDiagnosticStatus {
+  if (!fromVerified) {
+    return candidate.verificationState === "failed"
+      ? "from_verification_failed"
+      : "needs_from_verification";
+  }
+  if (targetVerified) {
+    return "ready";
+  }
+  if (candidate.userTargetVerificationError) {
+    return "target_verification_failed";
+  }
+  return "target_verification_recommended";
+}
+
+function graphDiagnosticSummary(
+  candidate: MailSendIdentityCandidate,
+  status: MailSendIdentityDiagnosticStatus,
+): string {
+  switch (status) {
+    case "ready":
+      return "共享发件人和共享邮箱 Sent Items 路径都已验证。";
+    case "from_verification_failed":
+      return `共享发件人验证失败：${safeGraphErrorLabel(
+        candidate.verificationError,
+      )}。`;
+    case "needs_from_verification":
+      return "共享发件人还未验证，暂时不能作为 From 使用。";
+    case "target_verification_failed":
+      return `From 可用，但共享邮箱 Sent Items 路径验证失败：${safeGraphErrorLabel(
+        candidate.userTargetVerificationError,
+      )}。`;
+    case "target_verification_recommended":
+      return "From 可用；如果需要邮件进入共享邮箱 Sent Items，请继续验证目标邮箱。";
+  }
+}
+
+function graphDiagnosticChecks(
+  candidate: MailSendIdentityCandidate,
+  fromVerified: boolean,
+  targetVerified: boolean,
+): MailSendIdentityDiagnosticCheck[] {
+  return [
+    {
+      id: "explicit_candidate",
+      status: "info",
+      title: "显式共享发件人",
+      detail:
+        "Microsoft Graph 不能可靠枚举当前用户可用的共享邮箱，本候选项由用户显式添加。",
+    },
+    {
+      id: "from_permission",
+      status: fromVerified
+        ? "pass"
+        : candidate.verificationState === "failed"
+          ? "fail"
+          : "warning",
+      title: "From 权限",
+      detail: fromVerified
+        ? "Graph 已接受 /me/sendMail 携带该 From 地址。"
+        : candidate.verificationState === "failed"
+          ? `Graph 拒绝该 From 地址：${safeGraphErrorLabel(
+              candidate.verificationError,
+            )}。`
+          : "需要先运行 From 验证，确认 Send As 或代表发送权限。",
+      ...(!fromVerified ? { action: "运行 From 验证" } : {}),
+    },
+    {
+      id: "sent_items_target",
+      status: targetVerified
+        ? "pass"
+        : candidate.userTargetVerificationError
+          ? "fail"
+          : fromVerified
+            ? "warning"
+            : "info",
+      title: "共享邮箱 Sent Items",
+      detail: targetVerified
+        ? `Graph 已接受 /users/${targetMailboxLabel(
+            candidate,
+          )}/sendMail，发送副本会进入共享邮箱。`
+        : candidate.userTargetVerificationError
+          ? `Graph 未接受共享邮箱目标路径：${safeGraphErrorLabel(
+              candidate.userTargetVerificationError,
+            )}。`
+          : fromVerified
+            ? "当前会走 /me/sendMail，发送副本保存在登录账号 Sent Items；可继续验证共享邮箱目标路径。"
+            : "From 验证完成后才能验证共享邮箱目标路径。",
+      ...(targetVerified ? {} : { action: "验证共享邮箱目标路径" }),
+    },
+  ];
+}
+
+function graphDiagnosticNextActions(
+  candidate: MailSendIdentityCandidate,
+  fromVerified: boolean,
+  targetVerified: boolean,
+): string[] {
+  if (!fromVerified) {
+    return candidate.verificationState === "failed"
+      ? [
+          "在 Microsoft 365 中确认 Send As 或代表发送权限。",
+          "等待权限生效后重新运行 From 验证。",
+        ]
+      : ["运行 From 验证。"];
+  }
+  if (targetVerified) {
+    return ["保持当前配置；发送时会优先使用已验证的共享邮箱目标路径。"];
+  }
+  if (candidate.userTargetVerificationError) {
+    return [
+      "确认用户对共享邮箱具备 Full Access 或可用的 /users/{mailbox}/sendMail 权限。",
+      "修正目标邮箱地址后重新验证共享邮箱目标路径。",
+    ];
+  }
+  return ["如需共享邮箱 Sent Items 归档，输入目标邮箱并运行共享邮箱目标验证。"];
+}
+
+function targetMailboxLabel(candidate: MailSendIdentityCandidate): string | undefined {
+  return candidate.targetMailbox?.userPrincipalName ?? candidate.targetMailbox?.userId;
+}
+
+function safeGraphErrorLabel(errorCode: string | undefined): string {
+  if (!errorCode) {
+    return "unknown_error";
+  }
+  const normalized = errorCode.trim();
+  return /^[A-Za-z0-9_.:-]{1,80}$/.test(normalized)
+    ? normalized
+    : "provider_rejected";
 }
 
 function isoNow(now: (() => Date) | undefined): string {

@@ -3274,6 +3274,63 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("reads Graph provider send identity diagnostics", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        accountId: "account_1",
+        candidateId: "provider:identity_1",
+        provider: "graph",
+        generatedAt: "2026-06-15T20:25:00.000Z",
+        from: { address: "team@example.com", name: "Team Inbox" },
+        identityType: "shared_mailbox",
+        status: "target_verification_failed",
+        summary:
+          "From 可用，但共享邮箱 Sent Items 路径验证失败：ErrorAccessDenied。",
+        sendPath: "me",
+        sentItemsBehavior: "signed_in_user",
+        discoverySupported: false,
+        checks: [
+          {
+            id: "explicit_candidate",
+            status: "info",
+            title: "显式共享发件人",
+            detail:
+              "Microsoft Graph 不能可靠枚举当前用户可用的共享邮箱，本候选项由用户显式添加。",
+          },
+        ],
+        nextActions: [
+          "确认用户对共享邮箱具备 Full Access 或可用的 /users/{mailbox}/sendMail 权限。",
+        ],
+        candidate: {
+          id: "provider:identity_1",
+          accountId: "account_1",
+          from: { address: "team@example.com", name: "Team Inbox" },
+          source: "provider_native",
+          isDefault: false,
+          verified: true,
+          provider: "graph",
+          providerIdentityId: "team@example.com",
+          identityType: "shared_mailbox",
+          verificationState: "verified",
+          enabled: true,
+        },
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const diagnostics = await api.diagnoseProviderSendIdentityCandidate({
+      accountId: "account_1",
+      candidateId: "provider:identity_1",
+    });
+
+    expect(diagnostics.status).toBe("target_verification_failed");
+    expect(diagnostics.discoverySupported).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/send-identities/provider-candidates/provider%3Aidentity_1/diagnostics",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("downloads message attachments as blobs with server filenames", async () => {
     const attachmentBlob = new Blob(["hello attachment"], { type: "text/plain" });
     const fetchMock = vi.fn(async () =>

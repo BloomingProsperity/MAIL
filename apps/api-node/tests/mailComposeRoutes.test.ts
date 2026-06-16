@@ -489,6 +489,98 @@ describe("mail compose routes", () => {
     );
   });
 
+  it("returns Graph provider send identity diagnostics through the compose service", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async listSendIdentities() {
+        throw new Error("not used");
+      },
+      async diagnoseProviderSendIdentityCandidate(input: unknown) {
+        calls.push(input);
+        return {
+          accountId: "acc_1",
+          candidateId: "provider:identity_1",
+          provider: "graph",
+          generatedAt: "2026-06-15T20:25:00.000Z",
+          from: { address: "team@example.com", name: "Team Inbox" },
+          identityType: "shared_mailbox",
+          status: "target_verification_failed",
+          summary:
+            "From 可用，但共享邮箱 Sent Items 路径验证失败：ErrorAccessDenied。",
+          sendPath: "me",
+          sentItemsBehavior: "signed_in_user",
+          discoverySupported: false,
+          checks: [
+            {
+              id: "explicit_candidate",
+              status: "info",
+              title: "显式共享发件人",
+              detail:
+                "Microsoft Graph 不能可靠枚举当前用户可用的共享邮箱，本候选项由用户显式添加。",
+            },
+            {
+              id: "sent_items_target",
+              status: "fail",
+              title: "共享邮箱 Sent Items",
+              detail: "Graph 未接受共享邮箱目标路径：ErrorAccessDenied。",
+              action: "验证共享邮箱目标路径",
+            },
+          ],
+          nextActions: [
+            "确认用户对共享邮箱具备 Full Access 或可用的 /users/{mailbox}/sendMail 权限。",
+          ],
+          candidate: {
+            id: "provider:identity_1",
+            accountId: "acc_1",
+            from: { address: "team@example.com", name: "Team Inbox" },
+            source: "provider_native",
+            isDefault: false,
+            verified: true,
+            provider: "graph",
+            providerIdentityId: "team@example.com",
+            identityType: "shared_mailbox",
+            verificationState: "verified",
+            enabled: true,
+            userTargetVerificationError: "ErrorAccessDenied",
+          },
+        };
+      },
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/send-identities/provider-candidates/${encodeURIComponent("provider:identity_1")}/diagnostics`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          accountId: "acc_1",
+          candidateId: "provider:identity_1",
+          status: "target_verification_failed",
+          discoverySupported: false,
+          checks: [
+            { id: "explicit_candidate", status: "info" },
+            { id: "sent_items_target", status: "fail" },
+          ],
+        });
+        expect(calls).toEqual([
+          {
+            accountId: "acc_1",
+            candidateId: "provider:identity_1",
+          },
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
   it("creates a draft through the compose service", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {

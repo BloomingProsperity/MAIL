@@ -81,6 +81,7 @@ import type {
   MailProviderCapabilityDto,
   MailSearchScope,
   MailSendIdentityCandidateDto,
+  MailSendIdentityDiagnosticsDto,
   MailSendIdentityDto,
   MailboxDto,
   MessageDetailDto,
@@ -1906,6 +1907,8 @@ function MailWorkspace(props: {
   const [graphTargetMailboxes, setGraphTargetMailboxes] = useState<
     Record<string, string>
   >({});
+  const [graphDiagnosticsByCandidate, setGraphDiagnosticsByCandidate] =
+    useState<Record<string, MailSendIdentityDiagnosticsDto>>({});
   const [composeTo, setComposeTo] = useState("");
   const [composeCc, setComposeCc] = useState("");
   const [composeBcc, setComposeBcc] = useState("");
@@ -2386,6 +2389,36 @@ function MailWorkspace(props: {
       }
     } catch {
       setComposeNotice("共享发件箱目标验证失败。");
+    } finally {
+      setComposeBusy(false);
+    }
+  }
+
+  async function diagnoseGraphSendIdentityCandidate(
+    candidate: MailSendIdentityCandidateDto,
+  ) {
+    if (!props.api) {
+      setComposeNotice("发件身份服务暂时不可用。");
+      return;
+    }
+
+    setComposeBusy(true);
+    try {
+      const diagnostics =
+        await props.api.diagnoseProviderSendIdentityCandidate({
+          accountId: props.accountId,
+          candidateId: candidate.id,
+        });
+      setGraphDiagnosticsByCandidate((current) => ({
+        ...current,
+        [candidate.id]: diagnostics,
+      }));
+      setSendIdentityCandidates((current) =>
+        upsertSendIdentityCandidate(current, diagnostics.candidate),
+      );
+      setComposeNotice(`共享发件人诊断完成：${diagnostics.summary}`);
+    } catch {
+      setComposeNotice("共享发件人诊断失败。");
     } finally {
       setComposeBusy(false);
     }
@@ -3419,71 +3452,114 @@ function MailWorkspace(props: {
             </div>
             {sendIdentityCandidates.length > 0 ? (
               <div className="provider-candidate-list">
-                {sendIdentityCandidates.map((candidate) => (
-                  <div className="provider-candidate-row" key={candidate.id}>
-                    <div className="provider-candidate-main">
-                      <span>
-                        {candidate.from.name
-                          ? `${candidate.from.name} <${candidate.from.address}>`
-                          : candidate.from.address}
-                      </span>
-                      <strong>{formatSendIdentityCandidateState(candidate)}</strong>
+                {sendIdentityCandidates.map((candidate) => {
+                  const diagnostics = graphDiagnosticsByCandidate[candidate.id];
+
+                  return (
+                    <div className="provider-candidate-row" key={candidate.id}>
+                      <div className="provider-candidate-main">
+                        <span>
+                          {candidate.from.name
+                            ? `${candidate.from.name} <${candidate.from.address}>`
+                            : candidate.from.address}
+                        </span>
+                        <strong>{formatSendIdentityCandidateState(candidate)}</strong>
+                      </div>
+                      <label className="provider-target-field">
+                        <span>目标邮箱</span>
+                        <input
+                          aria-label={`Outlook shared mailbox target ${candidate.from.address}`}
+                          value={
+                            graphTargetMailboxes[candidate.id] ??
+                            candidateTargetMailboxValue(candidate)
+                          }
+                          disabled={
+                            composeBusy ||
+                            candidate.verificationState !== "verified" ||
+                            !candidate.enabled
+                          }
+                          onChange={(event) =>
+                            setGraphTargetMailboxes((current) => ({
+                              ...current,
+                              [candidate.id]: event.target.value,
+                            }))
+                          }
+                          placeholder={candidate.from.address}
+                        />
+                      </label>
+                      <strong>{formatSendIdentityTargetState(candidate)}</strong>
+                      <div className="provider-candidate-actions">
+                        <button
+                          className="tiny-button"
+                          type="button"
+                          aria-label={`Verify Outlook shared sender ${candidate.from.address}`}
+                          disabled={
+                            composeBusy ||
+                            (candidate.verificationState === "verified" &&
+                              candidate.enabled)
+                          }
+                          onClick={() =>
+                            void verifyGraphSendIdentityCandidate(candidate)
+                          }
+                        >
+                          验证 From
+                        </button>
+                        <button
+                          className="tiny-button"
+                          type="button"
+                          aria-label={`Verify Outlook shared mailbox target ${candidate.from.address}`}
+                          disabled={
+                            composeBusy ||
+                            candidate.verificationState !== "verified" ||
+                            !candidate.enabled
+                          }
+                          onClick={() =>
+                            void verifyGraphSendIdentityUserTarget(candidate)
+                          }
+                        >
+                          验证共享箱
+                        </button>
+                        <button
+                          className="tiny-button"
+                          type="button"
+                          aria-label={`Diagnose Outlook shared sender ${candidate.from.address}`}
+                          disabled={composeBusy}
+                          onClick={() =>
+                            void diagnoseGraphSendIdentityCandidate(candidate)
+                          }
+                        >
+                          诊断
+                        </button>
+                      </div>
+                      {diagnostics ? (
+                        <div
+                          className="graph-diagnostics-box"
+                          aria-label={`Outlook shared sender diagnostics ${candidate.from.address}`}
+                        >
+                          <strong>
+                            {formatGraphDiagnosticsStatus(diagnostics.status)}
+                          </strong>
+                          <p>{diagnostics.summary}</p>
+                          <div className="graph-diagnostic-checks">
+                            {diagnostics.checks.map((check) => (
+                              <span
+                                key={check.id}
+                                className={`diagnostic-${check.status}`}
+                              >
+                                {check.title}：{check.detail}
+                              </span>
+                            ))}
+                          </div>
+                          <ul>
+                            {diagnostics.nextActions.map((action) => (
+                              <li key={action}>{action}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                     </div>
-                    <label className="provider-target-field">
-                      <span>目标邮箱</span>
-                      <input
-                        aria-label={`Outlook shared mailbox target ${candidate.from.address}`}
-                        value={
-                          graphTargetMailboxes[candidate.id] ??
-                          candidateTargetMailboxValue(candidate)
-                        }
-                        disabled={
-                          composeBusy ||
-                          candidate.verificationState !== "verified" ||
-                          !candidate.enabled
-                        }
-                        onChange={(event) =>
-                          setGraphTargetMailboxes((current) => ({
-                            ...current,
-                            [candidate.id]: event.target.value,
-                          }))
-                        }
-                        placeholder={candidate.from.address}
-                      />
-                    </label>
-                    <strong>{formatSendIdentityTargetState(candidate)}</strong>
-                    <div className="provider-candidate-actions">
-                      <button
-                        className="tiny-button"
-                        type="button"
-                        aria-label={`Verify Outlook shared sender ${candidate.from.address}`}
-                        disabled={
-                          composeBusy ||
-                          (candidate.verificationState === "verified" &&
-                            candidate.enabled)
-                        }
-                        onClick={() => void verifyGraphSendIdentityCandidate(candidate)}
-                      >
-                        验证 From
-                      </button>
-                      <button
-                        className="tiny-button"
-                        type="button"
-                        aria-label={`Verify Outlook shared mailbox target ${candidate.from.address}`}
-                        disabled={
-                          composeBusy ||
-                          candidate.verificationState !== "verified" ||
-                          !candidate.enabled
-                        }
-                        onClick={() =>
-                          void verifyGraphSendIdentityUserTarget(candidate)
-                        }
-                      >
-                        验证共享箱
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : null}
           </div>
@@ -4675,6 +4751,19 @@ function formatSendIdentityTargetState(
     return "可选目标邮箱";
   }
   return "先验证 From";
+}
+
+function formatGraphDiagnosticsStatus(
+  status: MailSendIdentityDiagnosticsDto["status"],
+): string {
+  const labels: Record<MailSendIdentityDiagnosticsDto["status"], string> = {
+    ready: "诊断通过",
+    needs_from_verification: "需要验证 From",
+    from_verification_failed: "From 权限失败",
+    target_verification_recommended: "建议验证共享箱",
+    target_verification_failed: "共享箱目标失败",
+  };
+  return labels[status];
 }
 
 function candidateTargetMailboxValue(
