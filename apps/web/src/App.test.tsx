@@ -156,7 +156,7 @@ describe("Email Hub first UI baseline", () => {
         question: "客户上次提到的合同是什么",
         language: "zh-CN",
         limit: 5,
-        memoryScope: "global",
+        memoryScope: "sender:client@example.com",
       });
     });
     expect(
@@ -170,11 +170,86 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByRole("heading", { name: "搜索" })).toBeTruthy();
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
         limit: 50,
         q: "signed contract",
         quickFilters: ["attachments"],
         qScopes: ["sender", "recipients", "subject", "body"],
         hasAttachment: true,
+        sort: "smart",
+      });
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "邮箱" }),
+    );
+    fireEvent.change(screen.getByLabelText("全局搜索邮件"), {
+      target: { value: "company policy" },
+    });
+    fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        limit: 50,
+        q: "company policy",
+        qScopes: ["sender", "recipients", "subject", "body"],
+        sort: "smart",
+      });
+    });
+  });
+
+  it("keeps Hermes dock search scoped when the selected inbox is empty", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockResolvedValue({ items: [] });
+    vi.mocked(api.searchMailWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_empty_search_1",
+      skillId: "email_search_qa",
+      answerText: "没有找到验证码邮件。",
+      searchQuery: "verification code",
+      searchPlan: {
+        searchQuery: "verification code",
+        quickFilters: [],
+        qScopes: ["sender", "recipients", "subject", "body"],
+        filters: [],
+        listMessagesInput: {
+          q: "verification code",
+          qScopes: ["sender", "recipients", "subject", "body"],
+        },
+        explanation: ["搜索验证码相关邮件。"],
+      },
+      matches: [],
+      citations: [],
+    } satisfies HermesEmailSearchQaResult);
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    expect(await screen.findByText("当前邮箱还没有已同步邮件。")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "查一下验证码邮件" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    await waitFor(() => {
+      expect(api.searchMailWithHermes).toHaveBeenCalledWith({
+        accountId: "account_1",
+        question: "查一下验证码邮件",
+        language: "zh-CN",
+        limit: 5,
+        memoryScope: "global",
+      });
+    });
+    expect(await screen.findByText("没有找到验证码邮件。")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "同步到搜索页" }));
+
+    expect(await screen.findByRole("heading", { name: "搜索" })).toBeTruthy();
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+        q: "verification code",
+        qScopes: ["sender", "recipients", "subject", "body"],
         sort: "smart",
       });
     });

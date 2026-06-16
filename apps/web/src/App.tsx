@@ -636,6 +636,8 @@ export function App(props: AppProps = {}) {
   const [hermesDockResult, setHermesDockResult] = useState<
     HermesEmailSearchQaResult | undefined
   >();
+  const [hermesDockSearchAccountId, setHermesDockSearchAccountId] =
+    useState<string | undefined>();
   const [hermesDockRuleCandidate, setHermesDockRuleCandidate] =
     useState<HermesRuleCandidateDto | undefined>();
   const [hermesDockRuleSimulation, setHermesDockRuleSimulation] =
@@ -841,6 +843,7 @@ export function App(props: AppProps = {}) {
     const question = rawPrompt.trim();
     if (!question) {
       setHermesDockResult(undefined);
+      setHermesDockSearchAccountId(undefined);
       setHermesDockActionPlan(undefined);
       setHermesDockHistoryBackfill(undefined);
       setHermesDockRuleCandidate(undefined);
@@ -850,6 +853,7 @@ export function App(props: AppProps = {}) {
     }
 
     setHermesDockResult(undefined);
+    setHermesDockSearchAccountId(undefined);
     setHermesDockActionPlan(undefined);
     setHermesDockHistoryBackfill(undefined);
     setHermesDockRuleCandidate(undefined);
@@ -894,14 +898,16 @@ export function App(props: AppProps = {}) {
 
     setHermesDockNotice("Hermes 正在搜索已同步邮件...");
     try {
+      const memoryInput = hermesSearchMemoryInput(selectedMail);
       const result = await props.api.searchMailWithHermes({
         accountId: hermesAccountId,
         question,
         language: "zh-CN",
         limit: 5,
-        memoryScope: "global",
+        ...memoryInput,
       });
       setHermesDockResult(result);
+      setHermesDockSearchAccountId(hermesAccountId);
       setHermesDockNotice(
         result.matches.length > 0
           ? `Hermes 已基于 ${result.matches.length} 封邮件回答。`
@@ -1602,6 +1608,7 @@ export function App(props: AppProps = {}) {
         prompt={hermesPrompt}
         notice={hermesDockNotice}
         result={hermesDockResult}
+        searchAccountId={hermesDockSearchAccountId}
         actionPlan={hermesDockActionPlan}
         ruleCandidate={hermesDockRuleCandidate}
         ruleSimulation={hermesDockRuleSimulation}
@@ -7371,13 +7378,6 @@ function SearchPage(props: {
       return;
     }
 
-    if (!searchAllAccounts && !props.accountId) {
-      setResults([]);
-      setHasSearched(true);
-      setNotice("请先选择一个邮箱，或切换为搜索所有邮箱。");
-      return;
-    }
-
     const effectiveQuickFilters =
       launchOverride?.quickFilters ?? quickFilters;
     const effectiveQScopes = launchOverride?.qScopes ?? qScopes;
@@ -7391,10 +7391,18 @@ function SearchPage(props: {
       launchOverride?.receivedBefore ?? receivedBefore;
     const effectiveHasAttachment =
       launchOverride?.hasAttachment ?? hasAttachment;
-    const effectiveSearchAllAccounts = launchOverride?.accountId
-      ? false
+    const hasLaunchOverride = launchOverride !== undefined;
+    const effectiveSearchAllAccounts = hasLaunchOverride
+      ? !launchOverride?.accountId
       : searchAllAccounts;
     const effectiveAccountId = launchOverride?.accountId ?? props.accountId;
+
+    if (!effectiveSearchAllAccounts && !effectiveAccountId) {
+      setResults([]);
+      setHasSearched(true);
+      setNotice("请先选择一个邮箱，或切换为搜索所有邮箱。");
+      return;
+    }
 
     setNotice("正在搜索邮件...");
     try {
@@ -7459,9 +7467,7 @@ function SearchPage(props: {
     setReceivedAfter(props.launch.receivedAfter);
     setReceivedBefore(props.launch.receivedBefore);
     setHasAttachment(props.launch.hasAttachment);
-    if (props.launch.accountId) {
-      setSearchAllAccounts(false);
-    }
+    setSearchAllAccounts(!props.launch.accountId);
     void executeSearch(props.launch.query, props.launch);
   }, [props.launch?.requestId]);
 
@@ -10029,6 +10035,7 @@ function HermesDock(props: {
   prompt: string;
   notice?: string;
   result?: HermesEmailSearchQaResult;
+  searchAccountId?: string;
   actionPlan?: HermesActionPlanDto;
   ruleCandidate?: HermesRuleCandidateDto;
   ruleSimulation?: HermesRuleSimulationDto;
@@ -10083,7 +10090,7 @@ function HermesDock(props: {
     ? hermesRulePreview(ruleCandidate)
     : undefined;
   const searchLaunchOptions = result
-    ? searchLaunchFromHermesResult(result)
+    ? searchLaunchFromHermesResult(result, props.searchAccountId)
     : undefined;
 
   return (
@@ -10258,9 +10265,11 @@ function HermesDock(props: {
 
 function searchLaunchFromHermesResult(
   result: HermesEmailSearchQaResult,
+  accountId?: string,
 ): Omit<SearchLaunch, "query" | "requestId"> {
   const planInput = result.searchPlan.listMessagesInput;
   return {
+    ...(accountId ? { accountId } : {}),
     ...(planInput.quickFilters ? { quickFilters: planInput.quickFilters } : {}),
     ...(planInput.qScopes ? { qScopes: planInput.qScopes } : {}),
     ...(planInput.senderQuery ? { senderQuery: planInput.senderQuery } : {}),
@@ -10276,6 +10285,18 @@ function searchLaunchFromHermesResult(
     ...(typeof planInput.hasAttachment === "boolean"
       ? { hasAttachment: planInput.hasAttachment }
       : {}),
+  };
+}
+
+function hermesSearchMemoryInput(
+  selectedMail: MailItem | undefined,
+): { memoryScope: string } {
+  if (!selectedMail?.email) {
+    return { memoryScope: "global" };
+  }
+
+  return {
+    memoryScope: `sender:${selectedMail.email}`,
   };
 }
 
