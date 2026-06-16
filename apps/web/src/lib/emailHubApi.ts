@@ -498,6 +498,72 @@ export interface HermesWorkspaceContextDto {
   unavailableModules: string[];
 }
 
+export type HermesActionPlanIntent = "create_mailbox_rule";
+export type HermesActionPlanStatus = "requires_confirmation" | "completed";
+
+export interface HermesActionPlanStepDto {
+  id: string;
+  title: string;
+  mode:
+    | "read_only"
+    | "draft"
+    | "shadow_simulation"
+    | "confirmation_required"
+    | "mutation";
+  status: "completed" | "requires_confirmation";
+  detail: string;
+  resource?: {
+    type: string;
+    id: string;
+  };
+}
+
+export interface HermesActionPlanSafetyDto {
+  requiresUserConfirmation: boolean;
+  providerWriteback: boolean;
+  appliesToHistory: boolean;
+  destructive: boolean;
+}
+
+export interface HermesActionPlanWorkspaceSummaryDto {
+  accountCount: number;
+  selectedAccountId?: string;
+  provider?: string;
+  quickCategoryCount?: number;
+  labelCount: number;
+  ruleCount: number;
+  pendingRuleCandidateCount: number;
+  unavailableModules: string[];
+}
+
+export interface HermesActionPlanDto {
+  id: string;
+  auditEventId?: string;
+  accountId: string;
+  command: string;
+  intent: HermesActionPlanIntent;
+  status: HermesActionPlanStatus;
+  createdAt: string;
+  candidate: HermesRuleCandidateDto;
+  simulation?: HermesRuleSimulationDto;
+  workspace: HermesActionPlanWorkspaceSummaryDto;
+  safety: HermesActionPlanSafetyDto;
+  steps: HermesActionPlanStepDto[];
+}
+
+export interface HermesActionPlanConfirmationDto {
+  id: string;
+  auditEventId?: string;
+  planId: string;
+  accountId: string;
+  candidateId: string;
+  status: "completed";
+  confirmedAt: string;
+  rule: HermesRuleDto;
+  safety: HermesActionPlanSafetyDto;
+  steps: HermesActionPlanStepDto[];
+}
+
 export type HermesPriorityLevel = "low" | "medium" | "high";
 export type HermesPriorityBucket =
   | "P0 Pinned"
@@ -1531,6 +1597,16 @@ export interface EmailHubApi {
     ruleLimit?: number;
     labelLimit?: number;
   }): Promise<HermesWorkspaceContextDto>;
+  createHermesActionPlan(input: {
+    accountId: string;
+    command: string;
+    sampleLimit?: number;
+  }): Promise<HermesActionPlanDto>;
+  confirmHermesActionPlan(input: {
+    planId: string;
+    accountId: string;
+    candidateId: string;
+  }): Promise<HermesActionPlanConfirmationDto>;
   draftHermesRule(input: {
     accountId: string;
     command: string;
@@ -2219,6 +2295,28 @@ export function createEmailHubApi(
         fetchImpl,
         baseUrl,
         `/api/hermes/workspace/context${query ? `?${query}` : ""}`,
+      );
+    },
+
+    createHermesActionPlan(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/action-plans", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    confirmHermesActionPlan(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/action-plans/${encodePath(input.planId)}/confirm`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            accountId: input.accountId,
+            candidateId: input.candidateId,
+          }),
+        },
       );
     },
 

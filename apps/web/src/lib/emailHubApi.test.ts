@@ -1969,6 +1969,126 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("creates and confirms Hermes action plans through backend routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "plan_1",
+          auditEventId: "audit_plan_1",
+          accountId: "account_1",
+          command: "帮我创建一个验证码分组规则",
+          intent: "create_mailbox_rule",
+          status: "requires_confirmation",
+          createdAt: "2026-06-16T08:00:00.000Z",
+          candidate: {
+            id: "candidate_codes",
+            accountId: "account_1",
+            title: "启用验证码智能分组",
+            ruleType: "content_label",
+            condition: { anyKeywords: ["验证码", "otp"] },
+            action: { type: "apply_label", labelName: "验证码" },
+            confidence: 0.9,
+            status: "shadow",
+            evidenceMessageIds: [],
+            createdAt: "2026-06-16T08:00:00.000Z",
+          },
+          simulation: {
+            id: "simulation_1",
+            accountId: "account_1",
+            candidateId: "candidate_codes",
+            mode: "shadow",
+            matchedCount: 3,
+            sampleMessageIds: ["message_1"],
+            actionPreview: { type: "apply_label", labelName: "验证码" },
+            createdAt: "2026-06-16T08:00:01.000Z",
+          },
+          workspace: {
+            accountCount: 1,
+            labelCount: 2,
+            ruleCount: 0,
+            pendingRuleCandidateCount: 0,
+            unavailableModules: [],
+          },
+          safety: {
+            requiresUserConfirmation: true,
+            providerWriteback: false,
+            appliesToHistory: false,
+            destructive: false,
+          },
+          steps: [],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "confirmation_1",
+          auditEventId: "audit_confirm_1",
+          planId: "plan_1",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          status: "completed",
+          confirmedAt: "2026-06-16T08:01:00.000Z",
+          rule: {
+            id: "rule_codes",
+            accountId: "account_1",
+            candidateId: "candidate_codes",
+            title: "启用验证码智能分组",
+            ruleType: "content_label",
+            condition: { anyKeywords: ["验证码", "otp"] },
+            action: { type: "apply_label", labelId: "label_codes" },
+            confidence: 0.9,
+            enabled: true,
+            createdAt: "2026-06-16T08:01:00.000Z",
+          },
+          safety: {
+            requiresUserConfirmation: false,
+            providerWriteback: false,
+            appliesToHistory: false,
+            destructive: false,
+          },
+          steps: [],
+        }),
+      );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const plan = await api.createHermesActionPlan({
+      accountId: "account_1",
+      command: "帮我创建一个验证码分组规则",
+      sampleLimit: 12,
+    });
+    const confirmation = await api.confirmHermesActionPlan({
+      planId: plan.id,
+      accountId: "account_1",
+      candidateId: plan.candidate.id,
+    });
+
+    expect(plan.auditEventId).toBe("audit_plan_1");
+    expect(confirmation.rule.id).toBe("rule_codes");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/hermes/action-plans",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          accountId: "account_1",
+          command: "帮我创建一个验证码分组规则",
+          sampleLimit: 12,
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/hermes/action-plans/plan_1/confirm",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+        }),
+      }),
+    );
+  });
+
   it("runs Hermes quick reply through the backend skills route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(

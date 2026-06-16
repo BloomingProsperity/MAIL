@@ -17,6 +17,7 @@ describe("Hermes registry", () => {
       "label_suggest",
       "newsletter_cleanup",
       "followup_tracker",
+      "action_plan",
       "rule_suggest",
       "memory_review"
     ]);

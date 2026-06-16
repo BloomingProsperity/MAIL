@@ -439,6 +439,9 @@ export function createInMemoryHermesRuleStore(
       if (!candidate) {
         return undefined;
       }
+      if (candidate.status !== "shadow") {
+        return undefined;
+      }
 
       candidate.status = "approved";
       candidate.approvedAt = input.approvedAt;

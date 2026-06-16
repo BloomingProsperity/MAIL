@@ -64,6 +64,10 @@ import {
   type HermesRuleService,
 } from "../hermes/rules.js";
 import {
+  InvalidHermesActionPlanRequestError,
+  type HermesActionPlanService,
+} from "../hermes/action-plan.js";
+import {
   InvalidHermesWorkspaceContextRequestError,
   type HermesWorkspaceContextService,
 } from "../hermes/workspace-context.js";
@@ -396,6 +400,7 @@ export interface ApiConfig {
   hermesFollowUpReminderService?: HermesFollowUpReminderService;
   hermesAuditLogService?: HermesAuditLogService;
   hermesRuleService?: HermesRuleService;
+  hermesActionPlanService?: HermesActionPlanService;
   hermesWorkspaceContextService?: HermesWorkspaceContextService;
   hermesMemoryStore?: HermesMemoryStore;
   hermesDraftFeedbackStore?: HermesDraftFeedbackStore;
@@ -1430,6 +1435,46 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
+      const hermesActionPlanRoute = parseHermesActionPlanRoute(request.url);
+      if (hermesActionPlanRoute) {
+        if (!config.hermesActionPlanService) {
+          writeJson(response, 503, {
+            error: "hermes_action_plans_unavailable",
+          });
+          return;
+        }
+
+        if (
+          hermesActionPlanRoute.action === "create" &&
+          request.method === "POST"
+        ) {
+          const result = await config.hermesActionPlanService.createPlan(
+            parseHermesActionPlanCreateInput(await readRequestBody()),
+          );
+          writeJson(response, 200, result);
+          return;
+        }
+
+        if (
+          hermesActionPlanRoute.action === "confirm" &&
+          request.method === "POST"
+        ) {
+          const result = await config.hermesActionPlanService.confirmPlan(
+            parseHermesActionPlanConfirmInput(
+              hermesActionPlanRoute.planId,
+              await readRequestBody(),
+            ),
+          );
+          if (!result) {
+            writeJson(response, 404, { error: "action_plan_target_not_found" });
+            return;
+          }
+
+          writeJson(response, 200, result);
+          return;
+        }
+      }
+
       const hermesRuleRoute = parseHermesRuleRoute(request.url);
       if (hermesRuleRoute) {
         if (!config.hermesRuleService) {
@@ -2332,6 +2377,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
+      if (error instanceof InvalidHermesActionPlanRequestError) {
+        writeJson(response, 400, { error: error.code });
+        return;
+      }
+
       if (error instanceof InvalidHermesWorkspaceContextRequestError) {
         writeJson(response, 400, { error: error.code });
         return;
@@ -3150,6 +3200,34 @@ function parseHermesRuleRoute(
   return {
     action: match[2] as "simulate" | "approve",
     candidateId: decodeURIComponent(match[1]),
+  };
+}
+
+function parseHermesActionPlanRoute(
+  requestUrl: string | undefined,
+):
+  | { action: "create" }
+  | { action: "confirm"; planId: string }
+  | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  if (url.pathname === "/api/hermes/action-plans") {
+    return { action: "create" };
+  }
+
+  const match = /^\/api\/hermes\/action-plans\/([^/]+)\/confirm$/.exec(
+    url.pathname,
+  );
+  if (!match) {
+    return undefined;
+  }
+
+  return {
+    action: "confirm",
+    planId: decodeURIComponent(match[1]),
   };
 }
 
@@ -5336,6 +5414,67 @@ function parseHermesRuleSuggestInput(body: string): {
   };
 }
 
+function parseHermesActionPlanCreateInput(body: string): {
+  accountId: string;
+  command: string;
+  sampleLimit?: number;
+} {
+  const payload = JSON.parse(body) as {
+    accountId?: unknown;
+    command?: unknown;
+    sampleLimit?: unknown;
+  };
+  if (!isNonEmptyString(payload.accountId) || typeof payload.command !== "string") {
+    throw new InvalidHermesActionPlanRequestError();
+  }
+  const command = payload.command.trim();
+  if (
+    command.length < 2 ||
+    command.length > 500 ||
+    /[\u0000-\u001F\u007F]/.test(command)
+  ) {
+    throw new InvalidHermesActionPlanRequestError();
+  }
+
+  return {
+    accountId: payload.accountId,
+    command,
+    ...parseOptionalHermesActionPlanInteger(
+      payload.sampleLimit,
+      "sampleLimit",
+      1,
+      100,
+    ),
+  };
+}
+
+function parseHermesActionPlanConfirmInput(
+  planId: string,
+  body: string,
+): {
+  planId: string;
+  accountId: string;
+  candidateId: string;
+} {
+  const payload = JSON.parse(body) as {
+    accountId?: unknown;
+    candidateId?: unknown;
+  };
+  if (
+    !isNonEmptyString(planId) ||
+    !isNonEmptyString(payload.accountId) ||
+    !isNonEmptyString(payload.candidateId)
+  ) {
+    throw new InvalidHermesActionPlanRequestError();
+  }
+
+  return {
+    planId,
+    accountId: payload.accountId,
+    candidateId: payload.candidateId,
+  };
+}
+
 function parseHermesRuleDraftInput(body: string): {
   accountId: string;
   command: string;
@@ -5406,6 +5545,26 @@ function parseHermesRuleApprovalInput(
     accountId: payload.accountId,
     candidateId,
   };
+}
+
+function parseOptionalHermesActionPlanInteger<
+  K extends string,
+>(
+  value: unknown,
+  key: K,
+  min: number,
+  max: number,
+): Partial<Record<K, number>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new InvalidHermesActionPlanRequestError();
+  }
+  if (value < min || value > max) {
+    throw new InvalidHermesActionPlanRequestError();
+  }
+  return { [key]: value } as Partial<Record<K, number>>;
 }
 
 function parseHermesRuleListInput(requestUrl: string | undefined): {

@@ -18,6 +18,7 @@ export function getHermesSkills(): HermesSkill[] {
     skill("newsletter_cleanup", "订阅清理", "classify", "识别订阅和营销邮件"),
     skill("followup_tracker", "跟进追踪", "read", "识别待回复和等待对方回复"),
     skill("translate_text", "翻译邮件", "read", "翻译邮件正文、选中文本或草稿，保留格式和语气"),
+    skill("action_plan", "执行计划", "learn", "把自然语言邮箱操作转成可确认计划"),
     skill("rule_suggest", "规则建议", "learn", "从重复行为生成候选规则"),
     skill("memory_review", "记忆管理", "learn", "查看、修改、删除偏好"),
   ];

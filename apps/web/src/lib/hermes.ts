@@ -81,6 +81,12 @@ export function getHermesSkills(): HermesSkill[] {
       mode: "read"
     },
     {
+      id: "action_plan",
+      title: "执行计划",
+      description: "把自然语言邮箱操作转成可确认计划。",
+      mode: "learn"
+    },
+    {
       id: "rule_suggest",
       title: "规则建议",
       description: "从重复行为中生成候选规则并影子运行。",

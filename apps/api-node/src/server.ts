@@ -38,6 +38,7 @@ import { createPostgresHermesMemoryStore } from "./hermes/postgres-memory-store.
 import { createPostgresHermesRuleStore } from "./hermes/postgres-rule-store.js";
 import { createPostgresHermesRunStore } from "./hermes/postgres-run-store.js";
 import { createPostgresHermesAuditLogStore } from "./hermes/postgres-audit-log-store.js";
+import { createHermesActionPlanService } from "./hermes/action-plan.js";
 import { createHermesAuditLogService } from "./hermes/audit-log.js";
 import { createHermesRuleService } from "./hermes/rules.js";
 import { createHermesTranslationPreferenceService } from "./hermes/translation-preferences.js";
@@ -91,6 +92,7 @@ const emailEngineAccessToken = process.env.EMAILENGINE_ACCESS_TOKEN;
 const providerPresetOverrides =
   readImapSmtpProviderPresetOverrides(process.env);
 const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : undefined;
+const hermesRunStore = pool ? createPostgresHermesRunStore(pool) : undefined;
 
 config.emailEngineAccessTokenConfigured =
   typeof emailEngineAccessToken === "string" &&
@@ -268,6 +270,13 @@ if (pool) {
     getSkills: getHermesSkills,
     now: () => new Date().toISOString(),
   });
+  config.hermesActionPlanService = createHermesActionPlanService({
+    ruleService: config.hermesRuleService,
+    workspaceContextService: config.hermesWorkspaceContextService,
+    runStore: hermesRunStore,
+    createId: randomUUID,
+    now: () => new Date().toISOString(),
+  });
   config.syncControlService = createSyncControlService({
     store: createPostgresSyncControlStore(pool),
     createId: randomUUID,
@@ -363,7 +372,7 @@ if (pool) {
 }
 
 config.hermesService = createConfiguredHermesTranslationService({
-  runStore: pool ? createPostgresHermesRunStore(pool) : undefined,
+  runStore: hermesRunStore,
   memoryStore: config.hermesMemoryStore,
   mailReadStore: config.mailReadStore,
   runtimeConfigService: config.hermesRuntimeConfigService,

@@ -41,6 +41,7 @@ import type {
   GatekeeperSenderDto,
   HermesEmailSearchQaResult,
   HermesActionItemExtractResult,
+  HermesActionPlanDto,
   HermesFollowupTrackerResult,
   HermesLabelSuggestResult,
   HermesNewsletterCleanupResult,
@@ -598,6 +599,8 @@ export function App(props: AppProps = {}) {
     useState<HermesRuleCandidateDto | undefined>();
   const [hermesDockRuleSimulation, setHermesDockRuleSimulation] =
     useState<HermesRuleSimulationDto | undefined>();
+  const [hermesDockActionPlan, setHermesDockActionPlan] =
+    useState<HermesActionPlanDto | undefined>();
   const [hermesWorkspaceContext, setHermesWorkspaceContext] =
     useState<HermesWorkspaceContextDto | undefined>();
   const [hermesWorkspaceContextLoading, setHermesWorkspaceContextLoading] =
@@ -743,6 +746,7 @@ export function App(props: AppProps = {}) {
     setHermesPrompt(value);
     setHermesDockNotice(undefined);
     setHermesDockResult(undefined);
+    setHermesDockActionPlan(undefined);
     setHermesDockRuleCandidate(undefined);
     setHermesDockRuleSimulation(undefined);
   }
@@ -789,6 +793,7 @@ export function App(props: AppProps = {}) {
     const question = rawPrompt.trim();
     if (!question) {
       setHermesDockResult(undefined);
+      setHermesDockActionPlan(undefined);
       setHermesDockRuleCandidate(undefined);
       setHermesDockRuleSimulation(undefined);
       setHermesDockNotice("请输入要让 Hermes 查找或回答的问题。");
@@ -796,6 +801,7 @@ export function App(props: AppProps = {}) {
     }
 
     setHermesDockResult(undefined);
+    setHermesDockActionPlan(undefined);
     setHermesDockRuleCandidate(undefined);
     setHermesDockRuleSimulation(undefined);
     if (!props.api) {
@@ -811,33 +817,25 @@ export function App(props: AppProps = {}) {
 
     setHermesDockBusy(true);
     if (isHermesRuleCommand(question)) {
-      setHermesDockNotice("Hermes 正在读取邮箱环境并生成规则草案...");
+      setHermesDockNotice("Hermes 正在生成可确认执行计划...");
       try {
         await refreshHermesWorkspaceContext({
           accountId: hermesAccountId,
           force: true,
         });
-        const draft = await props.api.draftHermesRule({
+        const plan = await props.api.createHermesActionPlan({
           accountId: hermesAccountId,
           command: question,
-        });
-        const candidate = draft.candidates[0];
-        if (!candidate) {
-          setHermesDockNotice("Hermes 没有生成可确认的规则草案。");
-          return;
-        }
-        const simulation = await props.api.simulateHermesRule({
-          accountId: hermesAccountId,
-          candidateId: candidate.id,
           sampleLimit: 25,
         });
-        setHermesDockRuleCandidate(candidate);
-        setHermesDockRuleSimulation(simulation);
+        setHermesDockActionPlan(plan);
+        setHermesDockRuleCandidate(plan.candidate);
+        setHermesDockRuleSimulation(plan.simulation);
         setHermesDockNotice(
-          `Hermes 已生成规则草案，shadow simulation 命中 ${simulation.matchedCount} 封邮件。`,
+          `Hermes 已生成执行计划，shadow simulation 命中 ${plan.simulation?.matchedCount ?? 0} 封邮件。`,
         );
       } catch {
-        setHermesDockNotice("Hermes 规则草案暂时不可用。");
+        setHermesDockNotice("Hermes 执行计划暂时不可用。");
       } finally {
         setHermesDockBusy(false);
       }
@@ -867,21 +865,27 @@ export function App(props: AppProps = {}) {
   }
 
   async function approveHermesDockRule() {
-    if (!props.api || !hermesDockRuleCandidate) {
+    if (!props.api || !hermesDockRuleCandidate || !hermesDockActionPlan) {
       return;
     }
 
     setHermesDockBusy(true);
-    setHermesDockNotice("正在启用 Hermes 规则...");
+    setHermesDockNotice("正在确认 Hermes 执行计划...");
     try {
-      const rule = await props.api.approveHermesRule({
+      const confirmation = await props.api.confirmHermesActionPlan({
+        planId: hermesDockActionPlan.id,
         accountId: hermesDockRuleCandidate.accountId,
         candidateId: hermesDockRuleCandidate.id,
       });
+      const rule = confirmation.rule;
       setHermesDockRuleCandidate({
         ...hermesDockRuleCandidate,
         status: "approved",
         approvedAt: rule.approvedAt,
+      });
+      setHermesDockActionPlan({
+        ...hermesDockActionPlan,
+        status: "completed",
       });
       await refreshNavigationSummary();
       await refreshLabels(hermesDockRuleCandidate.accountId);
@@ -889,9 +893,9 @@ export function App(props: AppProps = {}) {
         accountId: hermesDockRuleCandidate.accountId,
         force: true,
       });
-      setHermesDockNotice(`Hermes 规则已启用：${rule.title}`);
+      setHermesDockNotice(`Hermes 执行计划已完成：${rule.title}`);
     } catch {
-      setHermesDockNotice("Hermes 规则启用失败。");
+      setHermesDockNotice("Hermes 执行计划确认失败。");
     } finally {
       setHermesDockBusy(false);
     }
@@ -1530,6 +1534,7 @@ export function App(props: AppProps = {}) {
         prompt={hermesPrompt}
         notice={hermesDockNotice}
         result={hermesDockResult}
+        actionPlan={hermesDockActionPlan}
         ruleCandidate={hermesDockRuleCandidate}
         ruleSimulation={hermesDockRuleSimulation}
         workspaceContext={hermesWorkspaceContext}
@@ -9036,6 +9041,7 @@ function HermesDock(props: {
   prompt: string;
   notice?: string;
   result?: HermesEmailSearchQaResult;
+  actionPlan?: HermesActionPlanDto;
   ruleCandidate?: HermesRuleCandidateDto;
   ruleSimulation?: HermesRuleSimulationDto;
   workspaceContext?: HermesWorkspaceContextDto;
@@ -9079,6 +9085,7 @@ function HermesDock(props: {
   }
 
   const result = props.result;
+  const actionPlan = props.actionPlan;
   const ruleCandidate = props.ruleCandidate;
   const rulePreview = ruleCandidate
     ? hermesRulePreview(ruleCandidate)
@@ -9168,30 +9175,61 @@ function HermesDock(props: {
             </div>
           ) : null}
           {ruleCandidate ? (
-            <div className="dock-result" aria-label="Hermes 规则草案">
+            <div className="dock-result" aria-label="Hermes 执行计划">
               <div className="dock-result-head">
-                <strong>Hermes 规则草案</strong>
-                <span>{ruleCandidate.status === "approved" ? "已启用" : "待确认"}</span>
+                <strong>Hermes 执行计划</strong>
+                <span>
+                  {actionPlan?.status === "completed" ||
+                  ruleCandidate.status === "approved"
+                    ? "已完成"
+                    : "待确认"}
+                </span>
               </div>
               <p>{ruleCandidate.title}</p>
+              {actionPlan?.auditEventId ? (
+                <p>审计事件：{actionPlan.auditEventId}</p>
+              ) : null}
               {rulePreview ? (
                 <p>
                   左侧分组：{rulePreview.label} · 关键词{" "}
                   {rulePreview.keywords.slice(0, 5).join("，")}
                 </p>
               ) : null}
+              {actionPlan ? (
+                <div className="dock-plan-steps" aria-label="Hermes 执行步骤">
+                  {actionPlan.steps.slice(0, 4).map((step) => (
+                    <span key={step.id}>
+                      {step.status === "completed" ? "✓" : "·"} {step.title}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {props.ruleSimulation ? (
                 <p>
                   Shadow simulation：命中 {props.ruleSimulation.matchedCount} 封邮件
                 </p>
               ) : null}
+              {actionPlan ? (
+                <p>
+                  安全边界：{actionPlan.safety.providerWriteback ? "会写回服务商" : "不写回服务商"}
+                  {" · "}
+                  {actionPlan.safety.appliesToHistory ? "会处理历史邮件" : "不回填历史"}
+                </p>
+              ) : null}
               <button
                 className="dock-action"
                 type="button"
-                disabled={props.busy || ruleCandidate.status === "approved"}
+                disabled={
+                  props.busy ||
+                  ruleCandidate.status === "approved" ||
+                  actionPlan?.status === "completed"
+                }
                 onClick={props.onApproveRule}
               >
-                {ruleCandidate.status === "approved" ? "已启用" : "启用规则"}
+                {actionPlan?.status === "completed" ||
+                ruleCandidate.status === "approved"
+                  ? "已完成"
+                  : "确认计划"}
               </button>
             </div>
           ) : null}

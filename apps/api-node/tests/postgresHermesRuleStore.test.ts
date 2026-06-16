@@ -326,4 +326,48 @@ describe("postgres Hermes rule store", () => {
       },
     });
   });
+
+  it("does not approve a candidate that already left shadow mode", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("SELECT") && text.includes("FOR UPDATE")) {
+          return {
+            rows: [
+              {
+                id: "candidate_1",
+                account_id: "account_1",
+                title: "Prioritize client@example.com",
+                rule_type: "sender_priority",
+                condition: { senderEmail: "client@example.com" },
+                action: { type: "classify_sender", bucket: "P2 Important" },
+                confidence: "0.850",
+                status: "approved",
+                evidence_message_ids: ["message_1", "message_2"],
+                created_at: "2026-06-13T10:00:00.000Z",
+                approved_at: "2026-06-13T10:10:00.000Z",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    const result = await store.approveRuleCandidate({
+      accountId: "account_1",
+      candidateId: "candidate_1",
+      ruleId: "rule_1",
+      approvedAt: "2026-06-13T10:11:00.000Z",
+    });
+
+    expect(result).toBeUndefined();
+    expect(queries.map((query) => query.text.trim().split(/\s+/)[0])).toEqual([
+      "BEGIN",
+      "SELECT",
+      "COMMIT",
+    ]);
+  });
 });

@@ -369,6 +369,41 @@ describe("Hermes rule learning service", () => {
     });
   });
 
+  it("does not approve a candidate that already left shadow mode", async () => {
+    const store = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_1",
+          accountId: "account_1",
+          title: "Move newsletters to Feed",
+          ruleType: "sender_feed",
+          condition: { senderEmail: "news@example.com" },
+          action: { type: "classify_sender", bucket: "P6 Feed" },
+          confidence: 0.85,
+          status: "approved",
+          evidenceMessageIds: ["msg_1", "msg_2"],
+          createdAt: "2026-06-13T10:00:00.000Z",
+          approvedAt: "2026-06-13T10:10:00.000Z",
+        },
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      createId: nextId(["rule_1"]),
+      now: () => "2026-06-13T10:10:00.000Z",
+    });
+
+    await expect(
+      service.approveRule({
+        accountId: "account_1",
+        candidateId: "candidate_1",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      store.listRules({ accountId: "account_1", limit: 10 }),
+    ).resolves.toEqual({ items: [] });
+  });
+
   it("rejects invalid rule requests before touching the store", async () => {
     const store = createInMemoryHermesRuleStore();
     const service = createHermesRuleService({

@@ -10,6 +10,7 @@ VALUES
   ('label_suggest', '建议标签', TRUE),
   ('newsletter_cleanup', '订阅清理', TRUE),
   ('followup_tracker', '跟进识别', TRUE),
+  ('action_plan', '执行计划', TRUE),
   ('rule_suggest', '规则建议', TRUE),
   ('memory_review', '记忆管理', TRUE),
   ('translate_text', '翻译邮件', TRUE)

@@ -280,6 +280,9 @@ export function createPostgresHermesRuleStore(
         if (!candidate) {
           return undefined;
         }
+        if (candidate.status !== "shadow") {
+          return undefined;
+        }
 
         await tx.query(
           `
