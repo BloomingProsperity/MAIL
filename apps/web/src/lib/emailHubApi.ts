@@ -1543,14 +1543,32 @@ export interface CreateEmailHubApiOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface ApiErrorPayload {
+  error?: string;
+  provider?: string;
+  detail?: string;
+  requestId?: string;
+  diagnostics?: ImapSmtpConnectionDiagnostic[];
+}
+
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly provider?: string;
+  readonly detail?: string;
+  readonly requestId?: string;
+  readonly diagnostics?: ImapSmtpConnectionDiagnostic[];
+  readonly payload?: ApiErrorPayload;
 
-  constructor(status: number, code: string) {
+  constructor(status: number, code: string, payload?: ApiErrorPayload) {
     super(code);
     this.status = status;
     this.code = code;
+    this.provider = payload?.provider;
+    this.detail = payload?.detail;
+    this.requestId = payload?.requestId;
+    this.diagnostics = payload?.diagnostics;
+    this.payload = payload;
   }
 }
 
@@ -2414,10 +2432,12 @@ async function request<T>(
     },
   });
   const payload = await readJson(response);
+  const errorPayload = normalizeApiErrorPayload(payload);
   if (!response.ok) {
     throw new ApiRequestError(
       response.status,
-      typeof payload?.error === "string" ? payload.error : "request_failed",
+      errorPayload?.error ?? "request_failed",
+      errorPayload,
     );
   }
 
@@ -2432,9 +2452,11 @@ async function downloadBlob(
   const response = await fetchImpl(`${baseUrl}${path}`, { method: "GET" });
   if (!response.ok) {
     const payload = await readErrorPayload(response);
+    const errorPayload = normalizeApiErrorPayload(payload);
     throw new ApiRequestError(
       response.status,
-      typeof payload?.error === "string" ? payload.error : "request_failed",
+      errorPayload?.error ?? "request_failed",
+      errorPayload,
     );
   }
 
@@ -2468,6 +2490,74 @@ async function readErrorPayload(
   } catch {
     return undefined;
   }
+}
+
+function normalizeApiErrorPayload(
+  payload: Record<string, unknown> | undefined,
+): ApiErrorPayload | undefined {
+  if (!payload) {
+    return undefined;
+  }
+
+  const normalized: ApiErrorPayload = {};
+  if (typeof payload.error === "string") {
+    normalized.error = payload.error;
+  }
+  if (typeof payload.provider === "string") {
+    normalized.provider = payload.provider;
+  }
+  if (typeof payload.detail === "string") {
+    normalized.detail = payload.detail;
+  }
+  if (typeof payload.requestId === "string") {
+    normalized.requestId = payload.requestId;
+  }
+
+  const diagnostics = normalizeApiConnectionDiagnostics(payload.diagnostics);
+  if (diagnostics.length > 0) {
+    normalized.diagnostics = diagnostics;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function normalizeApiConnectionDiagnostics(
+  value: unknown,
+): ImapSmtpConnectionDiagnostic[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isApiConnectionDiagnostic)
+    .map((diagnostic) => ({
+      code: diagnostic.code,
+      provider: diagnostic.provider,
+      severity: diagnostic.severity,
+      affected: diagnostic.affected,
+      message: diagnostic.message,
+      recoveryAction: diagnostic.recoveryAction,
+    }));
+}
+
+function isApiConnectionDiagnostic(
+  value: unknown,
+): value is ImapSmtpConnectionDiagnostic {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const diagnostic = value as Record<string, unknown>;
+  return (
+    typeof diagnostic.code === "string" &&
+    typeof diagnostic.provider === "string" &&
+    diagnostic.severity === "action_required" &&
+    (diagnostic.affected === "account" ||
+      diagnostic.affected === "imap" ||
+      diagnostic.affected === "smtp") &&
+    typeof diagnostic.message === "string" &&
+    typeof diagnostic.recoveryAction === "string"
+  );
 }
 
 function parseContentDispositionFilename(header: string | null): string | undefined {

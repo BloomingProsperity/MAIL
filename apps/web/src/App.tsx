@@ -21,6 +21,7 @@ import {
   Star,
   Trash2
 } from "lucide-react";
+import { ApiRequestError } from "./lib/emailHubApi";
 import type {
   AttachmentDownload,
   AttachmentDto,
@@ -50,6 +51,7 @@ import type {
   HermesRuntimeVersionStatus,
   HermesThreadSummaryResult,
   HermesTranslateTextResult,
+  ImapSmtpConnectionDiagnostic,
   ImapSmtpConnectionTestResult,
   ImapSmtpOnboardingInput,
   AccountTransferPackage,
@@ -4988,6 +4990,83 @@ function parseReauthorizationPort(value: string) {
     : undefined;
 }
 
+function apiErrorConnectionDiagnostics(
+  error: unknown,
+): ImapSmtpConnectionDiagnostic[] {
+  if (!(error instanceof ApiRequestError)) {
+    return [];
+  }
+
+  return error.diagnostics?.filter(isImapSmtpConnectionDiagnostic) ?? [];
+}
+
+function isImapSmtpConnectionDiagnostic(
+  value: unknown,
+): value is ImapSmtpConnectionDiagnostic {
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.code === "string" &&
+    typeof value.provider === "string" &&
+    value.severity === "action_required" &&
+    (value.affected === "account" ||
+      value.affected === "imap" ||
+      value.affected === "smtp") &&
+    typeof value.message === "string" &&
+    typeof value.recoveryAction === "string"
+  );
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatConnectionDiagnosticTitle(
+  diagnostic: ImapSmtpConnectionDiagnostic,
+): string {
+  const labels: Record<string, string> = {
+    proton_bridge_unreachable: "Proton Bridge 未连接",
+    mail_server_unreachable: "邮箱服务连接不上",
+    mail_credentials_rejected: "授权信息被拒绝",
+    icloud_app_specific_password_required: "需要 Apple 专用密码",
+    qq_authorization_code_required: "需要 QQ 邮箱授权码",
+    netease_163_authorization_code_required: "需要 163 邮箱授权码",
+  };
+
+  return labels[diagnostic.code] ?? "重新授权需要处理";
+}
+
+function formatConnectionDiagnosticAction(
+  diagnostic: ImapSmtpConnectionDiagnostic,
+): string {
+  const labels: Record<string, string> = {
+    start_proton_bridge: "请启动 Proton Bridge 并保持登录后重试。",
+    check_mail_server_connection: "请检查收信/发信服务器、端口和网络后重试。",
+    check_mailbox_credentials: "请确认邮箱地址、用户名和授权码或专用密码。",
+    create_apple_app_specific_password: "请在 Apple ID 中创建 App 专用密码后重试。",
+    enable_qq_mail_authorization_code:
+      "请在 QQ 邮箱设置里开启服务并使用生成的授权码。",
+    enable_163_mail_authorization_code:
+      "请在 163 邮箱设置里开启客户端授权并使用生成的授权码。",
+  };
+
+  return labels[diagnostic.recoveryAction] ?? "请按邮箱服务商的授权要求处理后重试。";
+}
+
+function formatConnectionDiagnosticScope(
+  diagnostic: ImapSmtpConnectionDiagnostic,
+): string {
+  const labels: Record<ImapSmtpConnectionDiagnostic["affected"], string> = {
+    account: "账号",
+    imap: "收信",
+    smtp: "发信",
+  };
+
+  return labels[diagnostic.affected];
+}
+
 function formatDomainStatus(status: string) {
   const labels: Record<string, string> = {
     pending: "待确认",
@@ -5022,6 +5101,8 @@ function SyncCenterPage(props: {
   >([]);
   const [passwordReauthorizationForms, setPasswordReauthorizationForms] =
     useState<Record<string, PasswordReauthorizationFormState>>({});
+  const [reauthorizationDiagnostics, setReauthorizationDiagnostics] =
+    useState<Record<string, ImapSmtpConnectionDiagnostic[]>>({});
   const [busyAction, setBusyAction] = useState("");
   const [busyReauthorizationTaskId, setBusyReauthorizationTaskId] = useState("");
   const [diagnosticAccount, setDiagnosticAccount] =
@@ -5187,6 +5268,14 @@ function SyncCenterPage(props: {
     });
   }
 
+  function removeReauthorizationDiagnostics(task: ReauthorizationTaskDto) {
+    setReauthorizationDiagnostics((current) => {
+      const remaining = { ...current };
+      delete remaining[task.taskId];
+      return remaining;
+    });
+  }
+
   async function completePasswordReauthorization(
     event: FormEvent<HTMLFormElement>,
     task: ReauthorizationTaskDto,
@@ -5218,7 +5307,7 @@ function SyncCenterPage(props: {
       const smtpPort = parseReauthorizationPort(form.smtpPort);
       const endpointUsername = username || task.email;
       if (!imapHost || !smtpHost || !imapPort || !smtpPort) {
-        setNotice("请填写有效的 IMAP/SMTP 主机和端口。");
+        setNotice("请填写有效的收信/发信主机和端口。");
         return;
       }
 
@@ -5247,14 +5336,24 @@ function SyncCenterPage(props: {
         current.filter((item) => item.taskId !== task.taskId),
       );
       removePasswordReauthorizationForm(task);
+      removeReauthorizationDiagnostics(task);
       setNotice(`${result.account?.email ?? task.email} 已恢复同步。`);
       props.api
         .listSyncCenterAccounts()
         .then((page) => setAccounts(page.items))
         .catch(() => undefined);
-    } catch {
+    } catch (error) {
+      const diagnostics = apiErrorConnectionDiagnostics(error);
       clearPasswordReauthorizationSecret(task);
-      setNotice(`${task.email} 重新授权失败，请检查授权码和服务器设置。`);
+      setReauthorizationDiagnostics((current) => ({
+        ...current,
+        [task.taskId]: diagnostics,
+      }));
+      setNotice(
+        diagnostics.length > 0
+          ? `${task.email} 重新授权没有通过，请按提示处理。`
+          : `${task.email} 重新授权失败，请检查授权码和收发信服务器设置。`,
+      );
     } finally {
       setBusyReauthorizationTaskId("");
     }
@@ -5389,6 +5488,8 @@ function SyncCenterPage(props: {
           </div>
           {reauthorizations.map((task) => {
             const passwordForm = passwordReauthorizationForm(task);
+            const taskDiagnostics =
+              reauthorizationDiagnostics[task.taskId] ?? [];
             return (
               <div
                 className={`task-row ${task.authMethod === "password" ? "reauthorization-task-row" : ""}`}
@@ -5417,7 +5518,7 @@ function SyncCenterPage(props: {
                   </div>
                 ) : (
                   <form
-                    aria-label={`IMAP SMTP reauthorization for ${task.email}`}
+                    aria-label={`Mail server reauthorization for ${task.email}`}
                     className="reauthorization-form"
                     onSubmit={(event) =>
                       void completePasswordReauthorization(event, task)
@@ -5453,7 +5554,7 @@ function SyncCenterPage(props: {
                     </label>
                     <label className="reauthorization-toggle">
                       <input
-                        aria-label={`Use custom IMAP SMTP settings for ${task.email}`}
+                        aria-label={`Use custom receiving and sending settings for ${task.email}`}
                         checked={passwordForm.useCustomServers}
                         type="checkbox"
                         onChange={(event) =>
@@ -5462,14 +5563,14 @@ function SyncCenterPage(props: {
                           })
                         }
                       />
-                      <span>使用自定义 IMAP/SMTP</span>
+                      <span>使用自定义收发信服务</span>
                     </label>
                     {passwordForm.useCustomServers ? (
                       <div className="reauthorization-endpoints">
                         <label>
-                          <span>IMAP 主机</span>
+                          <span>收信主机</span>
                           <input
-                            aria-label={`IMAP host for ${task.email}`}
+                            aria-label={`Receiving host for ${task.email}`}
                             type="text"
                             value={passwordForm.imapHost}
                             onChange={(event) =>
@@ -5480,9 +5581,9 @@ function SyncCenterPage(props: {
                           />
                         </label>
                         <label>
-                          <span>IMAP 端口</span>
+                          <span>收信端口</span>
                           <input
-                            aria-label={`IMAP port for ${task.email}`}
+                            aria-label={`Receiving port for ${task.email}`}
                             inputMode="numeric"
                             type="text"
                             value={passwordForm.imapPort}
@@ -5495,7 +5596,7 @@ function SyncCenterPage(props: {
                         </label>
                         <label className="reauthorization-toggle">
                           <input
-                            aria-label={`IMAP secure for ${task.email}`}
+                            aria-label={`Receiving secure connection for ${task.email}`}
                             checked={passwordForm.imapSecure}
                             type="checkbox"
                             onChange={(event) =>
@@ -5504,12 +5605,12 @@ function SyncCenterPage(props: {
                               })
                             }
                           />
-                          <span>IMAP TLS</span>
+                          <span>收信安全连接</span>
                         </label>
                         <label>
-                          <span>SMTP 主机</span>
+                          <span>发信主机</span>
                           <input
-                            aria-label={`SMTP host for ${task.email}`}
+                            aria-label={`Sending host for ${task.email}`}
                             type="text"
                             value={passwordForm.smtpHost}
                             onChange={(event) =>
@@ -5520,9 +5621,9 @@ function SyncCenterPage(props: {
                           />
                         </label>
                         <label>
-                          <span>SMTP 端口</span>
+                          <span>发信端口</span>
                           <input
-                            aria-label={`SMTP port for ${task.email}`}
+                            aria-label={`Sending port for ${task.email}`}
                             inputMode="numeric"
                             type="text"
                             value={passwordForm.smtpPort}
@@ -5535,7 +5636,7 @@ function SyncCenterPage(props: {
                         </label>
                         <label className="reauthorization-toggle">
                           <input
-                            aria-label={`SMTP secure for ${task.email}`}
+                            aria-label={`Sending secure connection for ${task.email}`}
                             checked={passwordForm.smtpSecure}
                             type="checkbox"
                             onChange={(event) =>
@@ -5544,7 +5645,7 @@ function SyncCenterPage(props: {
                               })
                             }
                           />
-                          <span>SMTP TLS</span>
+                          <span>发信安全连接</span>
                         </label>
                       </div>
                     ) : null}
@@ -5557,6 +5658,29 @@ function SyncCenterPage(props: {
                     </button>
                   </form>
                 )}
+                {taskDiagnostics.length > 0 ? (
+                  <div
+                    className="reauthorization-diagnostics"
+                    role="status"
+                    aria-label={`Reauthorization diagnostics for ${task.email}`}
+                  >
+                    {taskDiagnostics.map((diagnostic) => (
+                      <div
+                        className="reauthorization-diagnostic-card"
+                        key={`${diagnostic.affected}:${diagnostic.code}`}
+                      >
+                        <div>
+                          <strong>{formatConnectionDiagnosticTitle(diagnostic)}</strong>
+                          <span>
+                            {formatProviderLabel(diagnostic.provider)} ·{" "}
+                            {formatConnectionDiagnosticScope(diagnostic)}
+                          </span>
+                        </div>
+                        <p>{formatConnectionDiagnosticAction(diagnostic)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             );
           })}

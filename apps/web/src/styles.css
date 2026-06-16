@@ -2197,6 +2197,48 @@ h2 {
   white-space: nowrap;
 }
 
+.reauthorization-diagnostics {
+  display: grid;
+  grid-column: 2 / -1;
+  gap: 8px;
+  width: 100%;
+}
+
+.reauthorization-diagnostic-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(213, 89, 75, 0.24);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(213, 89, 75, 0.08);
+}
+
+.reauthorization-diagnostic-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.reauthorization-diagnostic-card strong {
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.reauthorization-diagnostic-card span,
+.reauthorization-diagnostic-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.reauthorization-diagnostic-card p {
+  max-width: 420px;
+  text-align: right;
+}
+
 .sync-diagnostics-panel {
   margin-top: 12px;
 }
@@ -2610,6 +2652,15 @@ h2 {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .reauthorization-diagnostic-card {
+    flex-direction: column;
+  }
+
+  .reauthorization-diagnostic-card p {
+    max-width: none;
+    text-align: left;
   }
 
   .hermes-dock {

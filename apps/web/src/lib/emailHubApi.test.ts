@@ -2774,6 +2774,73 @@ describe("emailHubApi", () => {
       code: "mail_read_unavailable",
     } satisfies Partial<ApiRequestError>);
   });
+
+  it("keeps reauthorization error payloads narrow and typed", async () => {
+    const api = createEmailHubApi({
+      fetchImpl: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: "reauthorization_failed",
+            provider: "qq",
+            detail: "connection rejected after [redacted]",
+            requestId: "req_1",
+            submittedSecret: "qq-auth-code-secret",
+            diagnostics: [
+              {
+                code: "qq_authorization_code_required",
+                provider: "qq",
+                severity: "action_required",
+                affected: "account",
+                message: "Use [redacted] instead of password.",
+                recoveryAction: "enable_qq_mail_authorization_code",
+              },
+              {
+                code: "invalid_diagnostic",
+                provider: "qq",
+                affected: "account",
+                message: "missing required fields",
+              },
+            ],
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ) as any,
+    });
+
+    try {
+      await api.completeSyncCenterImapSmtpReauthorization({
+        taskId: "task_password_1",
+        username: "support@qq.com",
+        secret: "qq-auth-code-secret",
+      });
+      throw new Error("Expected request to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiRequestError);
+      const requestError = error as ApiRequestError;
+      expect(requestError).toMatchObject({
+        status: 400,
+        code: "reauthorization_failed",
+        provider: "qq",
+        detail: "connection rejected after [redacted]",
+        requestId: "req_1",
+      } satisfies Partial<ApiRequestError>);
+      expect(requestError.diagnostics).toEqual([
+        {
+          code: "qq_authorization_code_required",
+          provider: "qq",
+          severity: "action_required",
+          affected: "account",
+          message: "Use [redacted] instead of password.",
+          recoveryAction: "enable_qq_mail_authorization_code",
+        },
+      ]);
+      expect(requestError.payload).not.toHaveProperty("submittedSecret");
+      expect(JSON.stringify(requestError)).not.toContain("qq-auth-code-secret");
+    }
+  });
 });
 
 function jsonResponse(body: unknown, status = 200): Response {

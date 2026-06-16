@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { ApiRequestError } from "./lib/emailHubApi";
 import type {
   EmailHubApi,
   FollowUpDto,
@@ -1873,6 +1874,70 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByDisplayValue("new-auth-code")).toBeNull();
   });
 
+  it("shows safe recovery guidance when password reauthorization diagnostics fail", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listSyncCenterReauthorizations).mockResolvedValueOnce({
+      items: [
+        reauthorizationTaskFixture({
+          taskId: "task_password_1",
+          email: "password-reauth@qq.com",
+          provider: "qq",
+          authMethod: "password",
+          source: "account_transfer_import",
+          username: "password-reauth@qq.com",
+        }),
+      ],
+    });
+    vi.mocked(api.completeSyncCenterImapSmtpReauthorization).mockRejectedValueOnce(
+      new ApiRequestError(400, "reauthorization_failed", {
+        error: "reauthorization_failed",
+        provider: "qq",
+        diagnostics: [
+          {
+            code: "qq_authorization_code_required",
+            provider: "qq",
+            severity: "action_required",
+            affected: "account",
+            message: "Use qq-auth-code-secret instead of password.",
+            recoveryAction: "enable_qq_mail_authorization_code",
+          },
+        ],
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    expect(await screen.findByText("password-reauth@qq.com")).toBeTruthy();
+
+    fireEvent.change(
+      screen.getByLabelText("Reauthorization secret for password-reauth@qq.com"),
+      { target: { value: "qq-auth-code-secret" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Complete reauthorization for password-reauth@qq.com",
+      }),
+    );
+
+    expect(await screen.findByText("需要 QQ 邮箱授权码")).toBeTruthy();
+    expect(
+      screen.getByText("请在 QQ 邮箱设置里开启服务并使用生成的授权码。"),
+    ).toBeTruthy();
+    expect(
+      await screen.findByText("password-reauth@qq.com 重新授权没有通过，请按提示处理。"),
+    ).toBeTruthy();
+
+    const secretInput = screen.getByLabelText(
+      "Reauthorization secret for password-reauth@qq.com",
+    ) as HTMLInputElement;
+    await waitFor(() => {
+      expect(secretInput.value).toBe("");
+    });
+    expect(screen.queryByText("qq_authorization_code_required")).toBeNull();
+    expect(screen.queryByText("enable_qq_mail_authorization_code")).toBeNull();
+    expect(screen.queryByText("qq-auth-code-secret")).toBeNull();
+  });
+
   it("submits custom IMAP and SMTP settings for password reauthorization", async () => {
     const api = createApiFixture();
     vi.mocked(api.listSyncCenterReauthorizations).mockResolvedValueOnce({
@@ -1893,22 +1958,22 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("custom@example.com")).toBeTruthy();
 
     fireEvent.click(
-      screen.getByLabelText("Use custom IMAP SMTP settings for custom@example.com"),
+      screen.getByLabelText("Use custom receiving and sending settings for custom@example.com"),
     );
     fireEvent.change(
       screen.getByLabelText("Reauthorization secret for custom@example.com"),
       { target: { value: "domain-app-password" } },
     );
-    fireEvent.change(screen.getByLabelText("IMAP host for custom@example.com"), {
+    fireEvent.change(screen.getByLabelText("Receiving host for custom@example.com"), {
       target: { value: "imap.example.com" },
     });
-    fireEvent.change(screen.getByLabelText("SMTP host for custom@example.com"), {
+    fireEvent.change(screen.getByLabelText("Sending host for custom@example.com"), {
       target: { value: "smtp.example.com" },
     });
-    fireEvent.change(screen.getByLabelText("SMTP port for custom@example.com"), {
+    fireEvent.change(screen.getByLabelText("Sending port for custom@example.com"), {
       target: { value: "587" },
     });
-    fireEvent.click(screen.getByLabelText("SMTP secure for custom@example.com"));
+    fireEvent.click(screen.getByLabelText("Sending secure connection for custom@example.com"));
     fireEvent.click(
       screen.getByRole("button", {
         name: "Complete reauthorization for custom@example.com",
