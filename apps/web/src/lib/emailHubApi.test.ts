@@ -2653,7 +2653,16 @@ describe("emailHubApi", () => {
             },
             rows: [{ rowNumber: 2, status: "ready" }],
             createdTaskCount: 1,
-            tasks: [],
+            tasks: [
+              {
+                rowNumber: 2,
+                id: "task_csv_1",
+                email: "support@qq.com",
+                provider: "qq",
+                authMethod: "password",
+                status: "pending",
+              },
+            ],
           },
           202,
         ),
@@ -2662,7 +2671,13 @@ describe("emailHubApi", () => {
     const csv = "email,provider,auth_method,secret\nsupport@qq.com,qq,password,code";
 
     await api.previewAccountCsv({ csv });
-    await api.createAccountCsvImport({ csv });
+    const created = await api.createAccountCsvImport({ csv });
+
+    expect(created.tasks[0]).toMatchObject({
+      rowNumber: 2,
+      id: "task_csv_1",
+      email: "support@qq.com",
+    });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,

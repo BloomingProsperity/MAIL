@@ -96,6 +96,12 @@ type QuickReplyAction = {
 const MAX_COMPOSE_ATTACHMENTS = 20;
 const MAX_COMPOSE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const COMPOSE_AUTOSAVE_DELAY_MS = 2_000;
+const ACCOUNT_CSV_TEMPLATE = [
+  "email,provider,display_name,auth_method,username,secret,imap_host,imap_port,imap_security,smtp_host,smtp_port,smtp_security,labels,group,enabled,notes",
+  "owner@gmail.com,gmail,Owner,oauth,,,,,,,,,priority,personal,true,Log in with Google",
+  "support@qq.com,qq,Support,password,support@qq.com,mailbox-auth-code,,,,,,,support,team,true,Use mailbox authorization code",
+  "me@example.com,custom_domain,Personal domain,password,me@example.com,app-password,imap.example.com,993,tls,smtp.example.com,465,tls,personal,domain,true,Custom servers",
+].join("\n");
 const PREVIEW_ATTACHMENT_ROWS = [
   { name: "Q2_合作方案_最终版.pdf", size: "1.2 MB" },
   { name: "报价明细表.xlsx", size: "320 KB" },
@@ -3673,6 +3679,7 @@ function AddMailPage(props: {
   const [transferFileName, setTransferFileName] = useState("");
   const [bulkNotice, setBulkNotice] = useState("");
   const [bulkBusy, setBulkBusy] = useState("");
+  const [busyImportTaskId, setBusyImportTaskId] = useState("");
 
   useEffect(() => {
     if (!props.api) {
@@ -3919,6 +3926,56 @@ function AddMailPage(props: {
       setBulkNotice("导入任务创建失败，请检查 CSV 内容。");
     } finally {
       setBulkBusy("");
+    }
+  }
+
+  function downloadCsvTemplate() {
+    const downloaded = downloadTextFile(
+      "email-hub-account-import-template.csv",
+      ACCOUNT_CSV_TEMPLATE,
+      "text/csv;charset=utf-8",
+    );
+    setCsvImportText(ACCOUNT_CSV_TEMPLATE);
+    setCsvPreview(undefined);
+    setCsvImportResult(undefined);
+    setBulkNotice(
+      downloaded
+        ? "CSV 模板已下载，并已放入文本框，可直接改成你的账号。"
+        : "CSV 模板已放入文本框，可直接改成你的账号。",
+    );
+  }
+
+  async function startImportedOAuthTask(task: {
+    id: string;
+    email: string;
+    provider: string;
+    authMethod: string;
+  }) {
+    if (task.authMethod !== "oauth") {
+      props.onOpenSyncCenter?.();
+      return;
+    }
+    if (!props.api) {
+      setBulkNotice("连接服务后才能继续授权。");
+      return;
+    }
+
+    setBusyImportTaskId(task.id);
+    try {
+      const result = await props.api.startSyncCenterOAuthReauthorization({
+        taskId: task.id,
+        redirectUri: `${window.location.origin}/oauth/callback`,
+      });
+      storeOAuthPendingState(result.state, {
+        provider: result.provider,
+        returnTo: "add-mail",
+        createdAt: new Date().toISOString(),
+      });
+      props.oauthRedirect(result.authorizationUrl);
+    } catch {
+      setBulkNotice(`${task.email} 授权暂时无法开始，请稍后再试。`);
+    } finally {
+      setBusyImportTaskId("");
     }
   }
 
@@ -4225,7 +4282,7 @@ function AddMailPage(props: {
             <textarea
               aria-label="Account CSV import"
               value={csvImportText}
-              placeholder="email,provider,auth_method,secret,display_name,labels"
+              placeholder="email,provider,display_name,auth_method,username,secret,labels,group,enabled,notes"
               onChange={(event) => {
                 setCsvImportText(event.currentTarget.value);
                 setCsvPreview(undefined);
@@ -4285,6 +4342,14 @@ function AddMailPage(props: {
           <button
             className="ghost-button"
             type="button"
+            onClick={downloadCsvTemplate}
+          >
+            <Download size={16} />
+            下载 CSV 模板
+          </button>
+          <button
+            className="ghost-button"
+            type="button"
             disabled={bulkBusy === "csv-preview"}
             onClick={() => void previewCsvImport()}
           >
@@ -4330,10 +4395,19 @@ function AddMailPage(props: {
           <CsvImportPreviewTable
             result={csvPreview}
             createdTaskCount={csvImportResult?.createdTaskCount}
+            createdTasks={csvImportResult?.tasks}
+            busyTaskId={busyImportTaskId}
+            onOpenSyncCenter={props.onOpenSyncCenter}
+            onStartOAuthTask={(task) => void startImportedOAuthTask(task)}
           />
         ) : null}
         {transferImportResult ? (
-          <TransferImportResultPanel result={transferImportResult} />
+          <TransferImportResultPanel
+            result={transferImportResult}
+            busyTaskId={busyImportTaskId}
+            onOpenSyncCenter={props.onOpenSyncCenter}
+            onStartOAuthTask={(task) => void startImportedOAuthTask(task)}
+          />
         ) : null}
       </section>
 
@@ -4355,7 +4429,15 @@ function AddMailPage(props: {
 function CsvImportPreviewTable(props: {
   result: AccountImportPreview;
   createdTaskCount?: number;
+  createdTasks?: AccountImportCreateResult["tasks"];
+  busyTaskId?: string;
+  onOpenSyncCenter?: () => void;
+  onStartOAuthTask?: (task: AccountImportCreateResult["tasks"][number]) => void;
 }) {
+  const createdTasksByRow = new Map(
+    (props.createdTasks ?? []).map((task) => [task.rowNumber, task]),
+  );
+
   return (
     <section className="migration-result-panel" aria-label="CSV 导入预览结果">
       <div className="migration-summary-grid">
@@ -4392,23 +4474,46 @@ function CsvImportPreviewTable(props: {
               <th>授权</th>
               <th>状态</th>
               <th>问题</th>
+              <th>后续</th>
             </tr>
           </thead>
           <tbody>
-            {props.result.rows.map((row) => (
-              <tr key={row.rowNumber}>
-                <td>{row.rowNumber}</td>
-                <td>{row.email ?? "未填写"}</td>
-                <td>{row.provider ?? "未识别"}</td>
-                <td>{row.authMethod === "oauth" ? "网页登录" : "专用密码"}</td>
-                <td>
-                  <span className={`migration-status status-${row.status}`}>
-                    {formatCsvImportStatus(row.status)}
-                  </span>
-                </td>
-                <td>{formatCsvImportIssues(row)}</td>
-              </tr>
-            ))}
+            {props.result.rows.map((row) => {
+              const createdTask = createdTasksByRow.get(row.rowNumber);
+              return (
+                <tr key={row.rowNumber}>
+                  <td>{row.rowNumber}</td>
+                  <td>{row.email ?? "未填写"}</td>
+                  <td>{row.provider ? formatProviderLabel(row.provider) : "未识别"}</td>
+                  <td>{row.authMethod === "oauth" ? "网页登录" : "专用密码"}</td>
+                  <td>
+                    <span className={`migration-status status-${row.status}`}>
+                      {formatCsvImportStatus(row.status)}
+                    </span>
+                  </td>
+                  <td>{formatCsvImportIssues(row)}</td>
+                  <td>
+                    {createdTask?.authMethod === "oauth" ? (
+                      <button
+                        className="table-action-button"
+                        type="button"
+                        aria-label={`Continue authorization for row ${row.rowNumber} ${createdTask.email}`}
+                        disabled={props.busyTaskId === createdTask.id}
+                        onClick={() => props.onStartOAuthTask?.(createdTask)}
+                      >
+                        继续授权
+                      </button>
+                    ) : (
+                      formatCsvImportNextAction(
+                        row,
+                        props.createdTaskCount !== undefined,
+                        createdTask,
+                      )
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -4418,6 +4523,11 @@ function CsvImportPreviewTable(props: {
 
 function TransferImportResultPanel(props: {
   result: AccountTransferImportResult;
+  busyTaskId?: string;
+  onOpenSyncCenter?: () => void;
+  onStartOAuthTask?: (
+    task: AccountTransferImportResult["tasks"][number],
+  ) => void;
 }) {
   return (
     <section className="migration-result-panel" aria-label="账号迁移导入结果">
@@ -4431,18 +4541,79 @@ function TransferImportResultPanel(props: {
           <span>需要重新授权</span>
         </p>
       </div>
-      <div className="migration-task-list">
-        {props.result.tasks.map((task) => (
-          <p key={task.id}>
-            <strong>{task.email}</strong>
-            <span>
-              {task.provider} · {task.authMethod === "oauth" ? "网页登录" : "专用密码"} · {task.status}
-            </span>
-          </p>
-        ))}
-      </div>
+      <ImportAuthorizationTaskList
+        tasks={props.result.tasks}
+        busyTaskId={props.busyTaskId}
+        onOpenSyncCenter={props.onOpenSyncCenter}
+        onStartOAuthTask={props.onStartOAuthTask}
+      />
     </section>
   );
+}
+
+function ImportAuthorizationTaskList(props: {
+  tasks: Array<{
+    id: string;
+    email: string;
+    provider: string;
+    authMethod: string;
+    status: string;
+  }>;
+  busyTaskId?: string;
+  onOpenSyncCenter?: () => void;
+  onStartOAuthTask?: (task: {
+    id: string;
+    email: string;
+    provider: string;
+    authMethod: string;
+    status: string;
+  }) => void;
+}) {
+  return (
+    <div className="migration-task-list" aria-label="导入后续授权任务">
+      {props.tasks.map((task) => (
+        <article className="migration-task-card" key={task.id}>
+          <div>
+            <strong>{task.email}</strong>
+            <span>
+              {formatProviderLabel(task.provider)} ·{" "}
+              {task.authMethod === "oauth" ? "网页登录" : "专用密码"} ·{" "}
+              {formatImportTaskStatus(task.status)}
+            </span>
+          </div>
+          {task.authMethod === "oauth" ? (
+            <button
+              className="primary-button"
+              type="button"
+              aria-label={`Continue authorization for ${task.email}`}
+              disabled={props.busyTaskId === task.id}
+              onClick={() => props.onStartOAuthTask?.(task)}
+            >
+              继续授权
+            </button>
+          ) : (
+            <button
+              className="ghost-button"
+              type="button"
+              aria-label={`Open Sync Center for ${task.email}`}
+              onClick={() => props.onOpenSyncCenter?.()}
+            >
+              去同步中心
+            </button>
+          )}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function formatImportTaskStatus(status: string): string {
+  const labels: Record<string, string> = {
+    pending: "待处理",
+    completed: "已完成",
+    failed: "需处理",
+  };
+  return labels[status] ?? status;
 }
 
 function formatCsvImportStatus(status: AccountImportPreviewRow["status"]): string {
@@ -4455,6 +4626,27 @@ function formatCsvImportStatus(status: AccountImportPreviewRow["status"]): strin
 function formatCsvImportIssues(row: AccountImportPreviewRow): string {
   const issues = [...row.errors, ...row.warnings];
   return issues.length > 0 ? issues.join("；") : "无";
+}
+
+function formatCsvImportNextAction(
+  row: AccountImportPreviewRow,
+  tasksCreated: boolean,
+  createdTask?: AccountImportCreateResult["tasks"][number],
+): string {
+  if (row.status === "invalid") {
+    return "修正后再预览";
+  }
+  if (row.status === "disabled") {
+    return "已跳过";
+  }
+  if (row.status === "needs_oauth") {
+    return tasksCreated ? "等待授权任务" : "创建任务后授权";
+  }
+  if (createdTask) {
+    return "已创建任务";
+  }
+
+  return tasksCreated ? "无需操作" : "创建任务后接入";
 }
 
 async function readBrowserFileText(file: File): Promise<string> {
@@ -4471,6 +4663,18 @@ async function readBrowserFileText(file: File): Promise<string> {
 }
 
 function downloadJsonFile(filename: string, value: unknown): boolean {
+  return downloadTextFile(
+    filename,
+    JSON.stringify(value, null, 2),
+    "application/json",
+  );
+}
+
+function downloadTextFile(
+  filename: string,
+  text: string,
+  type: string,
+): boolean {
   if (
     typeof document === "undefined" ||
     typeof navigator === "undefined" ||
@@ -4481,9 +4685,7 @@ function downloadJsonFile(filename: string, value: unknown): boolean {
     return false;
   }
 
-  const blob = new Blob([JSON.stringify(value, null, 2)], {
-    type: "application/json",
-  });
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -4606,6 +4808,32 @@ function friendlyDiagnosticMessage(event: OperationalEventDto): string {
   return event.message ?? event.event;
 }
 
+function friendlySyncDiagnosticTitle(event: OperationalEventDto): string {
+  const labels: Record<string, string> = {
+    emailengine_webhook_ingested: "邮箱服务状态已更新",
+    sync_account_failed: "同步任务没有完成",
+    sync_account_dead_lettered: "同步任务多次失败",
+    reauthorization_imap_smtp_failed: "重新授权没有通过",
+    native_send_reauthorization_required: "发信权限需要重新授权",
+    smtp_send_reauthorization_required: "发信权限需要重新提交授权码",
+  };
+  return labels[event.event] ?? friendlyDiagnosticMessage(event);
+}
+
+function friendlySyncDiagnosticDetail(event: OperationalEventDto): string | undefined {
+  if (event.event === "emailengine_webhook_ingested") {
+    return "系统已收到邮箱服务回调，正在按本地同步状态处理。";
+  }
+  if (event.event === "reauthorization_imap_smtp_failed") {
+    return "请检查授权码、专用密码和自定义服务器设置后重新提交。";
+  }
+  if (event.event.includes("reauthorization_required")) {
+    return "请从上方重新授权入口恢复这个账号。";
+  }
+
+  return event.message;
+}
+
 function ProviderIcon(props: { provider: string; title: string; mark: string }) {
   const source = providerIconSources[props.provider];
 
@@ -4638,9 +4866,13 @@ function formatProviderLabel(provider: string) {
     outlook: "Outlook",
     icloud: "iCloud",
     proton: "Proton",
+    proton_bridge: "Proton Mail",
     qq: "QQ 邮箱",
     "163": "163 邮箱",
-    custom: "个人域名"
+    tencent_exmail: "腾讯企业邮箱",
+    custom: "个人域名",
+    custom_domain: "个人域名",
+    graph: "Outlook",
   };
   return labels[provider] ?? provider;
 }
@@ -4721,6 +4953,16 @@ function formatReauthorizationSource(source: string) {
     csv_import: "批量导入",
   };
   return labels[source] ?? source;
+}
+
+function formatOperationalEventLevel(level: OperationalEventDto["level"]) {
+  const labels: Record<OperationalEventDto["level"], string> = {
+    debug: "调试",
+    info: "信息",
+    warn: "提醒",
+    error: "错误",
+  };
+  return labels[level];
 }
 
 function createPasswordReauthorizationForm(
@@ -5360,12 +5602,14 @@ function SyncCenterPage(props: {
               {diagnosticEvents.map((event) => (
                 <div className="diagnostic-row sync-diagnostic-row" key={event.id}>
                   <div>
-                    <strong>{event.event}</strong>
+                    <strong>{friendlySyncDiagnosticTitle(event)}</strong>
                     <span>
-                      {event.service} · {event.level}
+                      {formatOperationalEventLevel(event.level)}
                       {event.jobId ? ` · ${event.jobId}` : ""}
                     </span>
-                    {event.message ? <p>{event.message}</p> : null}
+                    {friendlySyncDiagnosticDetail(event) ? (
+                      <p>{friendlySyncDiagnosticDetail(event)}</p>
+                    ) : null}
                   </div>
                   <span>{formatMailDate(event.occurredAt)}</span>
                 </div>

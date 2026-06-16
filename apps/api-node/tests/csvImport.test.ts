@@ -57,6 +57,26 @@ describe("account CSV import service", () => {
       disabled: 1,
       invalid: 1,
     });
+    expect(result.tasks).toEqual([
+      {
+        rowNumber: 2,
+        id: "task_password",
+        email: "support@qq.com",
+        provider: "qq",
+        authMethod: "password",
+        status: "pending",
+      },
+      {
+        rowNumber: 3,
+        id: "task_oauth",
+        email: "boss@gmail.com",
+        provider: "gmail",
+        authMethod: "oauth",
+        status: "pending",
+      },
+    ]);
+    expect(JSON.stringify(result.tasks)).not.toContain("payload");
+    expect(JSON.stringify(result.tasks)).not.toContain("imap-auth-code");
     expect(store.listTasks()).toEqual([
       {
         id: "task_password",

@@ -222,9 +222,13 @@ with more than smoke-level tests.
   reauthorization tasks submit a fresh authorization code or dedicated password
   directly against the task, with optional custom IMAP/SMTP endpoint overrides
   for personal domains and bridge deployments.
-- Remaining migration gap: CSV template download, row-specific OAuth start
-  actions, and richer sanitized provider diagnostics in the reauthorization UI
-  remain useful follow-up polish.
+  CSV import now also includes a downloadable template, a safe public task DTO
+  with source row numbers, and row-level "continue authorization" actions for
+  imported web-login rows. Sync diagnostics now default to user-facing titles
+  and recovery hints instead of raw operational event names.
+- Remaining migration gap: inline row editing/fix-and-retry for CSV previews,
+  richer sanitized provider diagnostics per failure code, and a less raw
+  primary UX for transfer JSON remain useful follow-up polish.
 
 ### 6. Frontend Wiring
 

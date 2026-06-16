@@ -748,6 +748,7 @@ export interface AccountImportPreviewRow {
 }
 
 export interface AccountImportTaskDto {
+  rowNumber: number;
   id: string;
   email: string;
   provider: string;

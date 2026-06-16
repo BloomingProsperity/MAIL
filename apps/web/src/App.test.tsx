@@ -1189,6 +1189,7 @@ describe("Email Hub first UI baseline", () => {
 
   it("previews CSV import and imports account transfer packages from Add Mail", async () => {
     const api = createApiFixture();
+    const oauthRedirect = vi.fn();
     const csv = "email,provider,auth_method,secret\nsupport@qq.com,qq,password,code";
     const transferPackage = {
       schemaVersion: 1 as const,
@@ -1204,10 +1205,23 @@ describe("Email Hub first UI baseline", () => {
       ],
     };
 
-    render(<App api={api} defaultAccountId="account_1" />);
+    render(
+      <App
+        api={api}
+        defaultAccountId="account_1"
+        oauthRedirect={oauthRedirect}
+      />,
+    );
     fireEvent.click(
       within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "下载 CSV 模板" }));
+    expect(
+      (await screen.findByLabelText("Account CSV import") as HTMLTextAreaElement)
+        .value,
+    ).toContain("email,provider,display_name,auth_method");
+    expect(await screen.findByText(/CSV 模板已放入文本框/)).toBeTruthy();
 
     fireEvent.change(await screen.findByLabelText("Account CSV import"), {
       target: { value: csv },
@@ -1226,6 +1240,23 @@ describe("Email Hub first UI baseline", () => {
       expect(api.createAccountCsvImport).toHaveBeenCalledWith({ csv });
     });
     expect(await screen.findByText(/已创建 2 个导入任务/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Continue authorization for row 3 owner@gmail.com",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.startSyncCenterOAuthReauthorization).toHaveBeenCalledWith({
+        taskId: "task_csv_2",
+        redirectUri: "http://localhost:3000/oauth/callback",
+      });
+    });
+    expect(oauthRedirect).toHaveBeenCalledWith(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
+    expect(sessionStorage.getItem("email-hub:oauth:state_1")).toContain(
+      '"returnTo":"add-mail"',
+    );
 
     fireEvent.click(
       await screen.findByLabelText("Select transfer account sync@example.com"),
@@ -1977,10 +2008,8 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText("同步诊断")).toBeTruthy();
-    expect(screen.getByText("emailengine_webhook_ingested")).toBeTruthy();
-    expect(
-      screen.getByText("EmailEngine webhook auth_failed ingested for account_1"),
-    ).toBeTruthy();
+    expect(screen.getByText("邮箱服务状态已更新")).toBeTruthy();
+    expect(screen.getByText("系统已收到邮箱服务回调，正在按本地同步状态处理。")).toBeTruthy();
   });
 
   it("switches the active mailbox account from Sync Center before loading mail and search", async () => {
@@ -4221,6 +4250,7 @@ function createApiFixture(): EmailHubApi {
       createdTaskCount: 2,
       tasks: [
         {
+          rowNumber: 2,
           id: "task_csv_1",
           email: "support@qq.com",
           provider: "qq",
@@ -4228,6 +4258,7 @@ function createApiFixture(): EmailHubApi {
           status: "pending",
         },
         {
+          rowNumber: 3,
           id: "task_csv_2",
           email: "owner@gmail.com",
           provider: "gmail",

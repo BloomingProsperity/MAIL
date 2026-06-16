@@ -1588,6 +1588,21 @@ h2 {
   color: var(--text-secondary);
 }
 
+.table-action-button {
+  border: 1px solid var(--primary-border);
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.table-action-button:hover {
+  background: var(--primary);
+  color: white;
+}
+
 .migration-status {
   display: inline-flex;
   border-radius: 999px;
@@ -1620,13 +1635,25 @@ h2 {
   gap: 8px;
 }
 
-.migration-task-list p {
-  display: grid;
-  gap: 2px;
+.migration-task-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   border: 1px solid var(--border-light);
   border-radius: 8px;
   padding: 8px;
   background: var(--bg-panel);
+}
+
+.migration-task-card > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.migration-task-card button {
+  flex: 0 0 auto;
 }
 
 .page-panel,
@@ -2533,6 +2560,11 @@ h2 {
 
   .transfer-account-picker > div:first-child {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .migration-task-card {
+    align-items: stretch;
     flex-direction: column;
   }
 

@@ -2246,6 +2246,7 @@ describe("API routes", () => {
           rows: [],
           tasks: [
             {
+              rowNumber: 2,
               id: "task_1",
               email: "support@qq.com",
               provider: "qq",
@@ -2278,6 +2279,7 @@ describe("API routes", () => {
           rows: [],
           tasks: [
             {
+              rowNumber: 2,
               id: "task_1",
               email: "support@qq.com",
               provider: "qq",

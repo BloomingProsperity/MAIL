@@ -43,9 +43,18 @@ export interface CsvImportPreviewResult {
   rows: CsvImportPreviewRow[];
 }
 
+export interface CsvImportCreatedTask {
+  rowNumber: number;
+  id: string;
+  email: string;
+  provider: string;
+  authMethod: string;
+  status: string;
+}
+
 export interface CsvImportCreateResult extends CsvImportPreviewResult {
   createdTaskCount: number;
-  tasks: OnboardingTask[];
+  tasks: CsvImportCreatedTask[];
 }
 
 export interface AccountCsvImportServiceOptions {
@@ -73,7 +82,7 @@ export function createAccountCsvImportService(
     },
     async createImport(input) {
       const rows = buildImportRows(input.csv, options);
-      const tasks: OnboardingTask[] = [];
+      const tasks: CsvImportCreatedTask[] = [];
 
       for (const row of rows) {
         if (!row.task) {
@@ -84,7 +93,14 @@ export function createAccountCsvImportService(
           ...row.task,
           id: options.createId(),
         });
-        tasks.push(task);
+        tasks.push({
+          rowNumber: row.preview.rowNumber,
+          id: task.id,
+          email: task.email,
+          provider: task.provider,
+          authMethod: task.authMethod,
+          status: task.status,
+        });
       }
 
       return {
