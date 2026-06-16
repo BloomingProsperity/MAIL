@@ -843,6 +843,163 @@ describe("Hermes routes", () => {
     });
   });
 
+  it("organizes a selected account message through the message-scoped route", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageOrganizationService = {
+      async organizeMessage(input: unknown) {
+        calls.push(input);
+        return {
+          accountId: "account_1",
+          messageId: "message_1",
+          priority: {
+            skillRunId: "run_priority_1",
+            skillId: "priority_triage",
+            priority: "high",
+            bucket: "P1 Urgent",
+            score: 94,
+            reasons: ["deadline today"],
+          },
+          labels: {
+            skillRunId: "run_labels_1",
+            skillId: "label_suggest",
+            labels: [{ name: "客户", confidence: 0.91 }],
+            actions: [{ type: "apply_label", label: "客户" }],
+          },
+          newsletter: {
+            skillRunId: "run_newsletter_1",
+            skillId: "newsletter_cleanup",
+            isNewsletter: false,
+            confidence: 0.88,
+            senderCategory: "personal",
+            reasons: ["direct conversation"],
+            actions: [{ type: "keep_in_inbox" }],
+          },
+          actionItems: {
+            skillRunId: "run_actions_1",
+            skillId: "action_item_extract",
+            items: [{ title: "Confirm launch schedule", owner: "me" }],
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/organize`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              language: "zh-CN",
+              memoryScope: "sender:client@example.com",
+              memoryLayers: ["contact_memory", "semantic_profile"],
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(await response.json()).toMatchObject({
+          accountId: "account_1",
+          messageId: "message_1",
+          priority: { skillRunId: "run_priority_1" },
+          labels: { skillRunId: "run_labels_1" },
+          newsletter: { skillRunId: "run_newsletter_1" },
+          actionItems: { skillRunId: "run_actions_1" },
+        });
+      },
+      { hermesMessageOrganizationService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        messageId: "message_1",
+        language: "zh-CN",
+        memoryScope: "sender:client@example.com",
+        memoryLayers: ["contact_memory", "semantic_profile"],
+      },
+    ]);
+  });
+
+  it("rejects message-scoped organization requests that provide client-side mail context", async () => {
+    const calls: unknown[] = [];
+    const hermesMessageOrganizationService = {
+      async organizeMessage(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/organize`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              threadText: "Client supplied body must be rejected.",
+              availableLabels: ["客户"],
+              currentBucket: "P1 Urgent",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_message_organization_request",
+        });
+      },
+      { hermesMessageOrganizationService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
+  it("returns 404 when message-scoped Hermes organization cannot read the message", async () => {
+    const hermesMessageOrganizationService = {
+      async organizeMessage() {
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/missing/organize`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ language: "zh-CN" }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({ error: "message_not_found" });
+      },
+      { hermesMessageOrganizationService },
+    );
+  });
+
+  it("returns 503 when message-scoped Hermes organization is not wired", async () => {
+    await withApi(async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/accounts/account_1/messages/message_1/organize`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ language: "zh-CN" }),
+        },
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "hermes_message_organization_unavailable",
+      });
+    });
+  });
+
   it("confirms an explicit Hermes translation preference", async () => {
     const calls: unknown[] = [];
     const hermesTranslationPreferenceService = {

@@ -751,6 +751,15 @@ export interface HermesActionItemExtractResult {
   items: HermesActionItem[];
 }
 
+export interface HermesMessageOrganizationResult {
+  accountId: string;
+  messageId: string;
+  priority: HermesPriorityTriageResult;
+  labels: HermesLabelSuggestResult;
+  newsletter: HermesNewsletterCleanupResult;
+  actionItems: HermesActionItemExtractResult;
+}
+
 export interface SyncCenterAccountDto {
   accountId: string;
   email: string;
@@ -1704,6 +1713,14 @@ export interface EmailHubApi {
   extractActionItemsWithHermes(
     input: HermesActionItemExtractInput,
   ): Promise<HermesActionItemExtractResult>;
+  organizeMessage(input: {
+    accountId: string;
+    messageId: string;
+    language?: string;
+    memoryIds?: string[];
+    memoryScope?: string;
+    memoryLayers?: string[];
+  }): Promise<HermesMessageOrganizationResult>;
   previewAccountCsv(input: { csv: string }): Promise<AccountImportPreview>;
   createAccountCsvImport(input: {
     csv: string;
@@ -2535,6 +2552,25 @@ export function createEmailHubApi(
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });
+    },
+
+    organizeMessage(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/accounts/${encodePath(input.accountId)}/messages/${encodePath(input.messageId)}/organize`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            cleanObject({
+              language: input.language,
+              memoryIds: input.memoryIds,
+              memoryScope: input.memoryScope,
+              memoryLayers: input.memoryLayers,
+            }),
+          ),
+        },
+      );
     },
 
     previewAccountCsv(input) {

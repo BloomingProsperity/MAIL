@@ -98,6 +98,10 @@ import {
   type HermesMessageReplyService,
 } from "../hermes/message-replies.js";
 import {
+  InvalidHermesMessageOrganizationRequestError,
+  type HermesMessageOrganizationService,
+} from "../hermes/message-organization.js";
+import {
   InvalidHermesRuntimeConfigRequestError,
   type HermesRuntimeConfigService,
   type HermesRuntimeMode,
@@ -409,6 +413,7 @@ export interface ApiConfig {
   hermesMessageTranslationService?: HermesMessageTranslationService;
   hermesMessageSummaryService?: HermesMessageSummaryService;
   hermesMessageReplyService?: HermesMessageReplyService;
+  hermesMessageOrganizationService?: HermesMessageOrganizationService;
   hermesRuntimeConfigService?: HermesRuntimeConfigService;
   hermesProviderProbeService?: HermesProviderProbeService;
   hermesTranslationPreferenceService?: HermesTranslationPreferenceService;
@@ -1873,6 +1878,34 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
+      const messageOrganizationRoute = parseHermesMessageOrganizationRoute(
+        request.url,
+      );
+      if (messageOrganizationRoute && request.method === "POST") {
+        if (!config.hermesMessageOrganizationService) {
+          writeJson(response, 503, {
+            error: "hermes_message_organization_unavailable",
+          });
+          return;
+        }
+
+        const result =
+          await config.hermesMessageOrganizationService.organizeMessage(
+            parseHermesMessageOrganizationInput(
+              messageOrganizationRoute.accountId,
+              messageOrganizationRoute.messageId,
+              await readRequestBody(),
+            ),
+          );
+        if (!result) {
+          writeJson(response, 404, { error: "message_not_found" });
+          return;
+        }
+
+        writeJson(response, 202, result);
+        return;
+      }
+
       if (mailReadRoute && request.method === "GET") {
         if (!config.mailReadStore) {
           writeJson(response, 503, { error: "mail_read_unavailable" });
@@ -2563,6 +2596,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       }
 
       if (error instanceof InvalidHermesMessageReplyRequestError) {
+        writeJson(response, 400, { error: error.code });
+        return;
+      }
+
+      if (error instanceof InvalidHermesMessageOrganizationRequestError) {
         writeJson(response, 400, { error: error.code });
         return;
       }
@@ -4436,6 +4474,28 @@ function parseHermesMessageQuickReplyRoute(
   };
 }
 
+function parseHermesMessageOrganizationRoute(
+  requestUrl: string | undefined,
+): { accountId: string; messageId: string } | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  const match =
+    /^\/api\/accounts\/([^/]+)\/messages\/([^/]+)\/organize$/.exec(
+      url.pathname,
+    );
+  if (!match) {
+    return undefined;
+  }
+
+  return {
+    accountId: decodeURIComponent(match[1]),
+    messageId: decodeURIComponent(match[2]),
+  };
+}
+
 function parseLimit(value: string | null): number {
   if (value === null) {
     return 50;
@@ -5037,6 +5097,68 @@ function parseHermesMessageQuickReplyInput(
       ? { memoryScope: payload.memoryScope }
       : {}),
     ...parseOptionalHermesMessageReplyArray(
+      payload.memoryLayers,
+      "memoryLayers",
+    ),
+  };
+}
+
+function parseHermesMessageOrganizationInput(
+  accountId: string,
+  messageId: string,
+  body: string,
+): {
+  accountId: string;
+  messageId: string;
+  language?: string;
+  memoryIds?: string[];
+  memoryScope?: string;
+  memoryLayers?: string[];
+} {
+  const payload = JSON.parse(body) as {
+    subject?: unknown;
+    threadText?: unknown;
+    senderEmail?: unknown;
+    currentBucket?: unknown;
+    currentScore?: unknown;
+    currentReasons?: unknown;
+    currentLabels?: unknown;
+    availableLabels?: unknown;
+    readMessageIds?: unknown;
+    language?: unknown;
+    memoryIds?: unknown;
+    memoryScope?: unknown;
+    memoryLayers?: unknown;
+  };
+  if (!isNonEmptyString(accountId) || !isNonEmptyString(messageId)) {
+    throw new InvalidHermesMessageOrganizationRequestError();
+  }
+  if (
+    payload.subject !== undefined ||
+    payload.threadText !== undefined ||
+    payload.senderEmail !== undefined ||
+    payload.currentBucket !== undefined ||
+    payload.currentScore !== undefined ||
+    payload.currentReasons !== undefined ||
+    payload.currentLabels !== undefined ||
+    payload.availableLabels !== undefined ||
+    payload.readMessageIds !== undefined
+  ) {
+    throw new InvalidHermesMessageOrganizationRequestError();
+  }
+
+  return {
+    accountId,
+    messageId,
+    ...(isNonEmptyString(payload.language) ? { language: payload.language } : {}),
+    ...parseOptionalHermesMessageOrganizationArray(
+      payload.memoryIds,
+      "memoryIds",
+    ),
+    ...(isNonEmptyString(payload.memoryScope)
+      ? { memoryScope: payload.memoryScope }
+      : {}),
+    ...parseOptionalHermesMessageOrganizationArray(
       payload.memoryLayers,
       "memoryLayers",
     ),
@@ -6319,6 +6441,23 @@ function parseOptionalHermesMessageReplyArray(
     !value.every((item) => isNonEmptyString(item))
   ) {
     throw new InvalidHermesMessageReplyRequestError();
+  }
+
+  return { [key]: value };
+}
+
+function parseOptionalHermesMessageOrganizationArray(
+  value: unknown,
+  key: "memoryIds" | "memoryLayers",
+): Partial<Record<"memoryIds" | "memoryLayers", string[]>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => isNonEmptyString(item))
+  ) {
+    throw new InvalidHermesMessageOrganizationRequestError();
   }
 
   return { [key]: value };

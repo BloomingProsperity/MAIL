@@ -46,6 +46,7 @@ import { createHermesAuditLogService } from "./hermes/audit-log.js";
 import { createHermesMessageTranslationService } from "./hermes/message-translation.js";
 import { createHermesMessageSummaryService } from "./hermes/message-summary.js";
 import { createHermesMessageReplyService } from "./hermes/message-replies.js";
+import { createHermesMessageOrganizationService } from "./hermes/message-organization.js";
 import { createHermesRuleService } from "./hermes/rules.js";
 import { createHermesTranslationPreferenceService } from "./hermes/translation-preferences.js";
 import { getHermesSkills } from "./hermes/skills.js";
@@ -410,6 +411,16 @@ if (configuredHermesService && config.mailReadStore) {
     replyDraftService: configuredHermesService,
     quickReplyService: configuredHermesService,
   });
+  config.hermesMessageOrganizationService =
+    createHermesMessageOrganizationService({
+      mailReadStore: config.mailReadStore,
+      priorityService: configuredHermesService,
+      labelSuggestService: configuredHermesService,
+      newsletterCleanupService: configuredHermesService,
+      actionItemExtractService: configuredHermesService,
+      labelService: config.labelService,
+      now: () => new Date().toISOString(),
+    });
 }
 
 const server = createServer(createApiHandler(config));

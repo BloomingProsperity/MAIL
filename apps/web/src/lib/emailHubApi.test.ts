@@ -1872,6 +1872,74 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs Hermes message organization through the message-scoped route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          accountId: "account_1",
+          messageId: "message_1",
+          priority: {
+            skillRunId: "run_priority_1",
+            skillId: "priority_triage",
+            priority: "high",
+            bucket: "P1 Urgent",
+            score: 94,
+            reasons: ["deadline today"],
+          },
+          labels: {
+            skillRunId: "run_labels_1",
+            skillId: "label_suggest",
+            labels: [{ name: "客户", confidence: 0.92 }],
+            actions: [{ type: "apply_label", label: "客户" }],
+          },
+          newsletter: {
+            skillRunId: "run_newsletter_1",
+            skillId: "newsletter_cleanup",
+            isNewsletter: false,
+            confidence: 0.88,
+            senderCategory: "personal",
+            reasons: ["direct conversation"],
+            actions: [{ type: "keep_in_inbox" }],
+          },
+          actionItems: {
+            skillRunId: "run_actions_1",
+            skillId: "action_item_extract",
+            items: [{ title: "Confirm launch schedule" }],
+          },
+        },
+        202,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.organizeMessage({
+      accountId: "account_1",
+      messageId: "message_1",
+      language: "zh-CN",
+      memoryScope: "sender:lina@example.com",
+      memoryLayers: ["contact_memory", "procedural_memory"],
+    });
+
+    expect(result.priority.bucket).toBe("P1 Urgent");
+    expect(result.labels.labels[0].name).toBe("客户");
+    expect(result.newsletter.senderCategory).toBe("personal");
+    expect(result.actionItems.items[0].title).toBe("Confirm launch schedule");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/account_1/messages/message_1/organize",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          language: "zh-CN",
+          memoryScope: "sender:lina@example.com",
+          memoryLayers: ["contact_memory", "procedural_memory"],
+        }),
+      }),
+    );
+    const body = (fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body;
+    expect(JSON.parse(body)).not.toHaveProperty("threadText");
+    expect(JSON.parse(body)).not.toHaveProperty("availableLabels");
+  });
+
   it("runs Hermes translation and thread summary through backend skill routes", async () => {
     const fetchMock = vi
       .fn()

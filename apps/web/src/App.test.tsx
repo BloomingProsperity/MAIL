@@ -13,6 +13,7 @@ import type {
   HermesFollowupTrackerResult,
   HermesLabelSuggestResult,
   HermesMessageQuickReplyResult,
+  HermesMessageOrganizationResult,
   HermesMessageReplyDraftResult,
   HermesMessageSummaryResult,
   HermesMessageTranslationResult,
@@ -402,44 +403,23 @@ describe("Email Hub first UI baseline", () => {
     );
 
     await waitFor(() => {
-      expect(api.triagePriorityWithHermes).toHaveBeenCalledWith(
-        expect.objectContaining({
-          subject: "Live subject",
-          threadText: "Live body from backend",
-          senderEmail: "client@example.com",
-          currentBucket: "P1 Urgent",
-          currentScore: 96,
-          currentReasons: ["Direct to you"],
-          language: "zh-CN",
-          readMessageIds: ["message_1"],
-          memoryScope: "sender:client@example.com",
-          memoryLayers: [
-            "contact_memory",
-            "procedural_memory",
-            "semantic_profile",
-            "writing_style_profile",
-          ],
-        }),
-      );
+      expect(api.organizeMessage).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        language: "zh-CN",
+        memoryScope: "sender:client@example.com",
+        memoryLayers: [
+          "contact_memory",
+          "procedural_memory",
+          "semantic_profile",
+          "writing_style_profile",
+        ],
+      });
     });
-    expect(api.suggestLabelsWithHermes).toHaveBeenCalledWith(
-      expect.objectContaining({
-        currentLabels: [],
-        availableLabels: ["客户", "验证码"],
-      }),
-    );
-    expect(api.cleanupNewsletterWithHermes).toHaveBeenCalledWith(
-      expect.objectContaining({
-        currentBucket: "P1 Urgent",
-        senderEmail: "client@example.com",
-      }),
-    );
-    expect(api.extractActionItemsWithHermes).toHaveBeenCalledWith(
-      expect.objectContaining({
-        subject: "Live subject",
-        readMessageIds: ["message_1"],
-      }),
-    );
+    expect(api.triagePriorityWithHermes).not.toHaveBeenCalled();
+    expect(api.suggestLabelsWithHermes).not.toHaveBeenCalled();
+    expect(api.cleanupNewsletterWithHermes).not.toHaveBeenCalled();
+    expect(api.extractActionItemsWithHermes).not.toHaveBeenCalled();
     const result = await screen.findByLabelText("Hermes 整理建议");
     expect(within(result).getByText(/P1 Urgent · 分数 94/)).toBeTruthy();
     expect(within(result).getByText(/标签： 客户/)).toBeTruthy();
@@ -449,40 +429,47 @@ describe("Email Hub first UI baseline", () => {
 
   it("does not execute Hermes organization suggestions before explicit confirmation", async () => {
     const api = createApiFixture();
-    vi.mocked(api.suggestLabelsWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_labels_confirm",
-      skillId: "label_suggest",
-      labels: [{ name: "客户", confidence: 0.92, reason: "client thread" }],
-      actions: [
-        { type: "mark_important", reason: "deadline today" },
-        { type: "apply_label", label: "客户", reason: "high confidence" },
-      ],
-    });
-    vi.mocked(api.cleanupNewsletterWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_newsletter_confirm",
-      skillId: "newsletter_cleanup",
-      isNewsletter: true,
-      confidence: 0.9,
-      senderCategory: "newsletter",
-      reasons: ["list sender"],
-      actions: [
-        { type: "move_to_feed", reason: "newsletter sender" },
-        { type: "unsubscribe_later", unsubscribeUrl: "https://example.com/off" },
-      ],
-    });
-    vi.mocked(api.extractActionItemsWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_actions_confirm",
-      skillId: "action_item_extract",
-      items: [
-        {
-          title: "Confirm launch schedule",
-          owner: "me",
-          dueAt: "2026-06-14T09:00:00.000Z",
-          priority: "high",
-          status: "open",
+    vi.mocked(api.organizeMessage).mockResolvedValueOnce(
+      hermesOrganizationResult({
+        labels: {
+          skillRunId: "run_labels_confirm",
+          skillId: "label_suggest",
+          labels: [{ name: "客户", confidence: 0.92, reason: "client thread" }],
+          actions: [
+            { type: "mark_important", reason: "deadline today" },
+            { type: "apply_label", label: "客户", reason: "high confidence" },
+          ],
         },
-      ],
-    });
+        newsletter: {
+          skillRunId: "run_newsletter_confirm",
+          skillId: "newsletter_cleanup",
+          isNewsletter: true,
+          confidence: 0.9,
+          senderCategory: "newsletter",
+          reasons: ["list sender"],
+          actions: [
+            { type: "move_to_feed", reason: "newsletter sender" },
+            {
+              type: "unsubscribe_later",
+              unsubscribeUrl: "https://example.com/off",
+            },
+          ],
+        },
+        actionItems: {
+          skillRunId: "run_actions_confirm",
+          skillId: "action_item_extract",
+          items: [
+            {
+              title: "Confirm launch schedule",
+              owner: "me",
+              dueAt: "2026-06-14T09:00:00.000Z",
+              priority: "high",
+              status: "open",
+            },
+          ],
+        },
+      }),
+    );
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
@@ -527,26 +514,30 @@ describe("Email Hub first UI baseline", () => {
 
   it("applies safe Hermes organization suggestions through existing backend actions", async () => {
     const api = createApiFixture();
-    vi.mocked(api.suggestLabelsWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_labels_apply",
-      skillId: "label_suggest",
-      labels: [],
-      actions: [
-        { type: "mark_important", reason: "deadline today" },
-        { type: "apply_label", label: "客户", reason: "high confidence" },
-        { type: "apply_label", label: "项目", reason: "new project thread" },
-        { type: "archive", reason: "cleanup" },
-      ],
-    });
-    vi.mocked(api.cleanupNewsletterWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_newsletter_apply",
-      skillId: "newsletter_cleanup",
-      isNewsletter: false,
-      confidence: 0.8,
-      senderCategory: "personal",
-      reasons: [],
-      actions: [{ type: "mark_not_important", reason: "low value" }],
-    });
+    vi.mocked(api.organizeMessage).mockResolvedValueOnce(
+      hermesOrganizationResult({
+        labels: {
+          skillRunId: "run_labels_apply",
+          skillId: "label_suggest",
+          labels: [],
+          actions: [
+            { type: "mark_important", reason: "deadline today" },
+            { type: "apply_label", label: "客户", reason: "high confidence" },
+            { type: "apply_label", label: "项目", reason: "new project thread" },
+            { type: "archive", reason: "cleanup" },
+          ],
+        },
+        newsletter: {
+          skillRunId: "run_newsletter_apply",
+          skillId: "newsletter_cleanup",
+          isNewsletter: false,
+          confidence: 0.8,
+          senderCategory: "personal",
+          reasons: [],
+          actions: [{ type: "mark_not_important", reason: "low value" }],
+        },
+      }),
+    );
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
@@ -631,20 +622,24 @@ describe("Email Hub first UI baseline", () => {
 
   it("creates explicit follow-ups from dated Hermes action items", async () => {
     const api = createApiFixture();
-    vi.mocked(api.extractActionItemsWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_actions_due",
-      skillId: "action_item_extract",
-      items: [
-        {
-          title: "Confirm launch schedule",
-          owner: "me",
-          dueAt: "2026-06-14T09:00:00.000Z",
-          priority: "high",
-          status: "open",
-          sourceQuote: "please confirm today",
+    vi.mocked(api.organizeMessage).mockResolvedValueOnce(
+      hermesOrganizationResult({
+        actionItems: {
+          skillRunId: "run_actions_due",
+          skillId: "action_item_extract",
+          items: [
+            {
+              title: "Confirm launch schedule",
+              owner: "me",
+              dueAt: "2026-06-14T09:00:00.000Z",
+              priority: "high",
+              status: "open",
+              sourceQuote: "please confirm today",
+            },
+          ],
         },
-      ],
-    });
+      }),
+    );
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
@@ -678,35 +673,39 @@ describe("Email Hub first UI baseline", () => {
 
   it("shows a safe Hermes organization apply failure without leaking backend details", async () => {
     const api = createApiFixture();
-    vi.mocked(api.triagePriorityWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_priority_fail",
-      skillId: "priority_triage",
-      priority: "medium",
-      bucket: "P2 Important",
-      score: 72,
-      reasons: ["needs review"],
-      explanation: "Review when possible.",
-    });
-    vi.mocked(api.suggestLabelsWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_labels_fail",
-      skillId: "label_suggest",
-      labels: [],
-      actions: [],
-    });
-    vi.mocked(api.cleanupNewsletterWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_newsletter_fail",
-      skillId: "newsletter_cleanup",
-      isNewsletter: false,
-      confidence: 0.7,
-      senderCategory: "personal",
-      reasons: [],
-      actions: [{ type: "mark_not_important", reason: "low value" }],
-    });
-    vi.mocked(api.extractActionItemsWithHermes).mockResolvedValueOnce({
-      skillRunId: "run_actions_fail",
-      skillId: "action_item_extract",
-      items: [],
-    });
+    vi.mocked(api.organizeMessage).mockResolvedValueOnce(
+      hermesOrganizationResult({
+        priority: {
+          skillRunId: "run_priority_fail",
+          skillId: "priority_triage",
+          priority: "medium",
+          bucket: "P2 Important",
+          score: 72,
+          reasons: ["needs review"],
+          explanation: "Review when possible.",
+        },
+        labels: {
+          skillRunId: "run_labels_fail",
+          skillId: "label_suggest",
+          labels: [],
+          actions: [],
+        },
+        newsletter: {
+          skillRunId: "run_newsletter_fail",
+          skillId: "newsletter_cleanup",
+          isNewsletter: false,
+          confidence: 0.7,
+          senderCategory: "personal",
+          reasons: [],
+          actions: [{ type: "mark_not_important", reason: "low value" }],
+        },
+        actionItems: {
+          skillRunId: "run_actions_fail",
+          skillId: "action_item_extract",
+          items: [],
+        },
+      }),
+    );
     vi.mocked(api.recordSmartInboxFeedback).mockRejectedValueOnce(
       new ApiRequestError(500, "internal_error", {
         error: "internal_error",
@@ -5308,6 +5307,55 @@ describe("Email Hub first UI baseline", () => {
   });
 });
 
+function hermesOrganizationResult(
+  overrides: Partial<HermesMessageOrganizationResult> = {},
+): HermesMessageOrganizationResult {
+  return {
+    accountId: "account_1",
+    messageId: "message_1",
+    priority: {
+      skillRunId: "run_priority_1",
+      skillId: "priority_triage",
+      priority: "high",
+      bucket: "P1 Urgent",
+      score: 94,
+      reasons: ["deadline today", "direct to you"],
+      explanation: "Needs a reply today.",
+    },
+    labels: {
+      skillRunId: "run_labels_1",
+      skillId: "label_suggest",
+      labels: [{ name: "客户", confidence: 0.92, reason: "client thread" }],
+      actions: [
+        { type: "apply_label", label: "客户", reason: "high confidence" },
+      ],
+    },
+    newsletter: {
+      skillRunId: "run_newsletter_1",
+      skillId: "newsletter_cleanup",
+      isNewsletter: false,
+      confidence: 0.88,
+      senderCategory: "personal",
+      reasons: ["direct conversation"],
+      actions: [{ type: "keep_in_inbox", reason: "needs reply" }],
+    },
+    actionItems: {
+      skillRunId: "run_actions_1",
+      skillId: "action_item_extract",
+      items: [
+        {
+          title: "Confirm launch schedule",
+          owner: "me",
+          dueText: "today",
+          priority: "high",
+          status: "open",
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
 function createApiFixture(): EmailHubApi {
   return {
     listMailboxes: vi.fn(async () => ({
@@ -6633,6 +6681,7 @@ function createApiFixture(): EmailHubApi {
         },
       ],
     } satisfies HermesActionItemExtractResult)),
+    organizeMessage: vi.fn(async () => hermesOrganizationResult()),
     translateText: vi.fn(async (input) => ({
       skillRunId: "run_translate_1",
       skillId: "translate_text",

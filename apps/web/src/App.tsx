@@ -40,12 +40,9 @@ import type {
   GatekeeperMode,
   GatekeeperSenderDto,
   HermesEmailSearchQaResult,
-  HermesActionItemExtractResult,
   HermesActionPlanDto,
   HermesFollowupTrackerResult,
-  HermesLabelSuggestResult,
-  HermesNewsletterCleanupResult,
-  HermesPriorityTriageResult,
+  HermesMessageOrganizationResult,
   HermesMemoryDto,
   HermesQuickReplyScenario,
   HermesProviderCatalogItem,
@@ -136,12 +133,7 @@ type ReaderHermesBusy = "summary" | "translation" | "organize";
 type SmartInboxBusyAction = "" | "bulk_done" | SmartInboxFeedbackAction;
 type ReaderActionResult = boolean | Promise<boolean>;
 
-interface ReaderHermesOrganizationResult {
-  priority: HermesPriorityTriageResult;
-  labels: HermesLabelSuggestResult;
-  newsletter: HermesNewsletterCleanupResult;
-  actionItems: HermesActionItemExtractResult;
-}
+type ReaderHermesOrganizationResult = HermesMessageOrganizationResult;
 
 type HermesOrganizationApplyAction =
   | {
@@ -2485,10 +2477,6 @@ function MailWorkspace(props: {
     }
   }
 
-  function currentReaderText(): string {
-    return messageReaderText(props.selectedDetail, props.selectedMail);
-  }
-
   async function askHermesForReaderSummary() {
     if (!props.api) {
       setReaderHermesNotice("Hermes 暂时不可用。");
@@ -2596,12 +2584,6 @@ function MailWorkspace(props: {
       return;
     }
 
-    const threadText = currentReaderText();
-    if (!threadText) {
-      setReaderHermesNotice("这封邮件还没有可用于整理的正文。");
-      return;
-    }
-
     const requestId = readerHermesRequestRef.current + 1;
     const memoryScope = `sender:${props.selectedMail.email}`;
     const memoryLayers = [
@@ -2610,65 +2592,24 @@ function MailWorkspace(props: {
       "semantic_profile",
       "writing_style_profile",
     ];
-    const readMessageIds = [props.selectedMail.id];
     readerHermesRequestRef.current = requestId;
     setReaderHermesBusy("organize");
     setReaderHermesNotice("Hermes 正在整理当前邮件...");
     try {
-      const [priority, labelsResult, newsletter, actionItems] = await Promise.all([
-        props.api.triagePriorityWithHermes({
-          subject: props.selectedMail.subject,
-          threadText,
-          senderEmail: props.selectedMail.email,
-          currentBucket: props.selectedMail.bucket,
-          currentScore: props.selectedMail.score,
-          currentReasons: props.selectedMail.reasons,
-          language: "zh-CN",
-          readMessageIds,
-          memoryScope,
-          memoryLayers,
-        }),
-        props.api.suggestLabelsWithHermes({
-          subject: props.selectedMail.subject,
-          threadText,
-          senderEmail: props.selectedMail.email,
-          currentLabels: [],
-          availableLabels: props.labels.map((label) => label.label),
-          language: "zh-CN",
-          readMessageIds,
-          memoryScope,
-          memoryLayers,
-        }),
-        props.api.cleanupNewsletterWithHermes({
-          subject: props.selectedMail.subject,
-          threadText,
-          senderEmail: props.selectedMail.email,
-          currentBucket: props.selectedMail.bucket,
-          language: "zh-CN",
-          readMessageIds,
-          memoryScope,
-          memoryLayers,
-        }),
-        props.api.extractActionItemsWithHermes({
-          subject: props.selectedMail.subject,
-          threadText,
-          language: "zh-CN",
-          now: new Date().toISOString(),
-          readMessageIds,
-          memoryScope,
-          memoryLayers,
-        }),
-      ]);
+      const organization = await props.api.organizeMessage({
+        accountId: props.selectedMail.accountId,
+        messageId: props.selectedMail.id,
+        language: "zh-CN",
+        memoryScope,
+        memoryLayers,
+      });
       if (readerHermesRequestRef.current !== requestId) {
         return;
       }
-      setReaderHermesOrganization({
-        priority,
-        labels: labelsResult,
-        newsletter,
-        actionItems,
-      });
-      setReaderHermesNotice(`Hermes 已整理：${priority.skillRunId}`);
+      setReaderHermesOrganization(organization);
+      setReaderHermesNotice(
+        `Hermes 已整理：${organization.priority.skillRunId}`,
+      );
     } catch {
       if (readerHermesRequestRef.current !== requestId) {
         return;
