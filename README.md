@@ -277,7 +277,9 @@ Invoke-RestMethod http://127.0.0.1:8080/api/mail-engine/health
 ```
 
 The response includes `readiness.status`, `missing`, `warnings`, and
-`readiness.setupActions`. Token and secret values are never returned. The web
+`readiness.setupActions`. It reports both the raw API token and the prepared
+Docker token so operators can catch a stack where Email Hub has a token but the
+EmailEngine container did not import it. Token and secret values are never returned. The web
 app also shows the same EmailEngine setup status in Add Mail and Sync Center so
 operators can see why onboarding, sync, attachment download, or send is not
 available.

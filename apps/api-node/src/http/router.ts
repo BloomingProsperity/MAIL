@@ -369,6 +369,7 @@ export interface ApiConfig {
   emailEngineUrl: string;
   emailEngineWebhookSecret: string;
   emailEngineAccessTokenConfigured?: boolean;
+  emailEnginePreparedTokenConfigured?: boolean;
   emailEngineWebhookSecretConfigured?: boolean;
   emailEngineWebhookSecretUsesDefault?: boolean;
   oauthProvidersConfigured?: MailProviderCapabilityOptions["oauthProvidersConfigured"];
@@ -1473,6 +1474,18 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       const attachmentRoute = parseAttachmentDownloadRoute(request.url);
       if (attachmentRoute && request.method === "GET") {
         if (!config.mailReadStore || !config.attachmentDownloadService) {
+          if (config.emailEngineAccessTokenConfigured !== true) {
+            writeJson(
+              response,
+              503,
+              buildEmailEngineConfigurationRequired(
+                config,
+                "attachment_download",
+              ),
+            );
+            return;
+          }
+
           writeJson(response, 503, { error: "attachment_download_unavailable" });
           return;
         }
@@ -6451,6 +6464,7 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
     url: "configured" | "missing";
     http: "ok" | "unavailable" | "skipped";
     accessToken: "configured" | "missing";
+    preparedToken?: "configured" | "missing";
     webhookSecret: "custom" | "default" | "missing";
   };
   capabilities: {
@@ -6475,6 +6489,7 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
 }> {
   const urlConfigured = config.emailEngineUrl.trim().length > 0;
   const accessTokenConfigured = config.emailEngineAccessTokenConfigured === true;
+  const preparedTokenConfigured = config.emailEnginePreparedTokenConfigured;
   const webhookSecretConfigured =
     config.emailEngineWebhookSecret.trim().length > 0;
   const webhookSecretUsesDefault =
@@ -6499,6 +6514,9 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
       : []),
     ...(webhookSecretConfigured && webhookSecretUsesDefault
       ? ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"]
+      : []),
+    ...(accessTokenConfigured && preparedTokenConfigured === false
+      ? ["EENGINE_PREPARED_TOKEN_MISSING"]
       : []),
   ];
   const setupActions = [
@@ -6529,6 +6547,16 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
             label: "设置 EmailEngine 访问令牌",
             env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
             effect: "添加邮箱、附件下载、发信和同步任务会失败。",
+          },
+        ]
+      : []),
+    ...(accessTokenConfigured && preparedTokenConfigured === false
+      ? [
+          {
+            code: "set_emailengine_prepared_token",
+            label: "设置 EmailEngine 预置令牌",
+            env: ["EENGINE_PREPARED_TOKEN"],
+            effect: "Docker 无人值守启动时 EmailEngine 容器可能不会导入 API 使用的访问令牌。",
           },
         ]
       : []),
@@ -6567,6 +6595,11 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
       url: urlConfigured ? "configured" : "missing",
       http: probeResult.http,
       accessToken: accessTokenConfigured ? "configured" : "missing",
+      ...(typeof preparedTokenConfigured === "boolean"
+        ? {
+            preparedToken: preparedTokenConfigured ? "configured" : "missing",
+          }
+        : {}),
       webhookSecret: !webhookSecretConfigured
         ? "missing"
         : webhookSecretUsesDefault
@@ -6622,6 +6655,10 @@ function getMissingEmailEngineConfiguration(config: ApiConfig): string[] {
     ...(config.emailEngineAccessTokenConfigured === true
       ? []
       : ["EMAILENGINE_ACCESS_TOKEN"]),
+    ...((config.emailEngineAccessTokenConfigured === true &&
+      config.emailEnginePreparedTokenConfigured === false)
+      ? ["EENGINE_PREPARED_TOKEN"]
+      : []),
     ...(config.emailEngineWebhookSecret.trim().length > 0
       ? []
       : ["EMAILENGINE_WEBHOOK_SECRET"]),

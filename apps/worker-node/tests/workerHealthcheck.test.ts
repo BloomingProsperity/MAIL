@@ -24,6 +24,7 @@ describe("worker healthcheck", () => {
       checks: {
         database: "ok",
         emailEngineAccessToken: "missing",
+        emailEnginePreparedToken: "missing",
       },
       runtime: {
         leaseSeconds: 30,
@@ -57,6 +58,7 @@ describe("worker healthcheck", () => {
       checks: {
         database: "missing",
         emailEngineAccessToken: "missing",
+        emailEnginePreparedToken: "missing",
       },
       missing: ["DATABASE_URL"],
     });
@@ -100,9 +102,57 @@ describe("worker healthcheck", () => {
       checks: {
         database: "ok",
         emailEngineAccessToken: "missing",
+        emailEnginePreparedToken: "missing",
       },
-      missing: ["EMAILENGINE_ACCESS_TOKEN"],
+      missing: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
     });
+  });
+
+  it("warns when the worker has a raw EmailEngine token without a prepared Docker token", async () => {
+    const health = await checkWorkerHealth({
+      env: {
+        DATABASE_URL: "postgres://emailhub:secret@postgres:5432/emailhub",
+        EMAILENGINE_ACCESS_TOKEN: "raw-secret-token",
+      },
+      createPool: () => pool(),
+    });
+
+    expect(health).toMatchObject({
+      ok: true,
+      checks: {
+        database: "ok",
+        emailEngineAccessToken: "configured",
+        emailEnginePreparedToken: "missing",
+      },
+      missing: [],
+      warnings: ["EENGINE_PREPARED_TOKEN"],
+    });
+    expect(JSON.stringify(health)).not.toContain("raw-secret-token");
+  });
+
+  it("passes strict EmailEngine health when raw and prepared tokens are configured", async () => {
+    const health = await checkWorkerHealth({
+      env: {
+        DATABASE_URL: "postgres://emailhub:secret@postgres:5432/emailhub",
+        EMAILENGINE_ACCESS_TOKEN: "raw-secret-token",
+        EENGINE_PREPARED_TOKEN: "prepared-secret-token",
+        WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN: "true",
+      },
+      createPool: () => pool(),
+    });
+
+    expect(health).toMatchObject({
+      ok: true,
+      checks: {
+        database: "ok",
+        emailEngineAccessToken: "configured",
+        emailEnginePreparedToken: "configured",
+      },
+      missing: [],
+      warnings: [],
+    });
+    expect(JSON.stringify(health)).not.toContain("raw-secret-token");
+    expect(JSON.stringify(health)).not.toContain("prepared-secret-token");
   });
 });
 

@@ -110,6 +110,7 @@ logger.info("api_configuration_loaded", {
   databaseConfigured: Boolean(databaseUrl),
   emailEngineUrl: config.emailEngineUrl,
   emailEngineAccessTokenConfigured: config.emailEngineAccessTokenConfigured,
+  emailEnginePreparedTokenConfigured: config.emailEnginePreparedTokenConfigured,
 });
 
 if (pool) {

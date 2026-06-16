@@ -22,6 +22,7 @@ export interface WorkerHealthResult {
   checks: {
     database: WorkerHealthDatabaseStatus;
     emailEngineAccessToken: WorkerHealthTokenStatus;
+    emailEnginePreparedToken: WorkerHealthTokenStatus;
   };
   missing: string[];
   warnings: string[];
@@ -57,16 +58,32 @@ export async function checkWorkerHealth(
     env.EMAILENGINE_ACCESS_TOKEN.trim().length > 0
       ? "configured"
       : "missing";
+  const emailEnginePreparedToken =
+    typeof env.EENGINE_PREPARED_TOKEN === "string" &&
+    env.EENGINE_PREPARED_TOKEN.trim().length > 0
+      ? "configured"
+      : "missing";
   if (emailEngineAccessToken === "missing") {
     warnings.push("EMAILENGINE_ACCESS_TOKEN");
     if (requireEmailEngineToken) {
       missing.push("EMAILENGINE_ACCESS_TOKEN");
     }
   }
+  if (
+    emailEngineAccessToken === "configured" &&
+    emailEnginePreparedToken === "missing"
+  ) {
+    warnings.push("EENGINE_PREPARED_TOKEN");
+  }
+  if (requireEmailEngineToken && emailEnginePreparedToken === "missing") {
+    missing.push("EENGINE_PREPARED_TOKEN");
+  }
 
   const ok =
     database === "ok" &&
-    (!requireEmailEngineToken || emailEngineAccessToken === "configured");
+    (!requireEmailEngineToken ||
+      (emailEngineAccessToken === "configured" &&
+        emailEnginePreparedToken === "configured"));
 
   return {
     service: "email-hub-worker",
@@ -78,6 +95,7 @@ export async function checkWorkerHealth(
     checks: {
       database,
       emailEngineAccessToken,
+      emailEnginePreparedToken,
     },
     missing,
     warnings,
@@ -90,6 +108,7 @@ export function formatWorkerHealthForLog(result: WorkerHealthResult): string {
     `ok=${String(result.ok)}`,
     `database=${result.checks.database}`,
     `emailEngineAccessToken=${result.checks.emailEngineAccessToken}`,
+    `emailEnginePreparedToken=${result.checks.emailEnginePreparedToken}`,
     `lanes=${result.lanes.length}`,
   ].join(" ");
 }

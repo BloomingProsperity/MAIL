@@ -1023,6 +1023,7 @@ export interface MailEngineHealthDto {
     url: "configured" | "missing";
     http: "ok" | "unavailable" | "skipped";
     accessToken: "configured" | "missing";
+    preparedToken?: "configured" | "missing";
     webhookSecret: "custom" | "default" | "missing";
   };
   capabilities: {

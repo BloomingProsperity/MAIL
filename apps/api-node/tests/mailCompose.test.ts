@@ -1675,6 +1675,51 @@ describe("mail compose service", () => {
     });
   });
 
+  it("rejects immediate EmailEngine sends before queueing when the transport is missing", async () => {
+    const calls: unknown[] = [];
+    const store = createStore({
+      async getDraftWithAccount(input) {
+        calls.push(["get", input]);
+        return {
+          account: {
+            accountId: "acc_1",
+            email: "me@example.com",
+            syncState: "syncing",
+            engineProvider: "emailengine",
+          },
+          draft: {
+            ...draft(),
+            from: { address: "support@demo.site", name: "Support" },
+          },
+        };
+      },
+      async createScheduledSend(input) {
+        calls.push(["queue", input]);
+        throw new Error("should not queue without a transport");
+      },
+    });
+    const service = createMailComposeService({
+      store,
+      createId: () => "schedule_1",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      sendIdentityStore: sendIdentityStoreFor({
+        address: "support@demo.site",
+        name: "Support",
+      }),
+      transports: {},
+    });
+
+    await expect(
+      service.sendDraft({
+        accountId: "acc_1",
+        draftId: "draft_1",
+      }),
+    ).rejects.toThrow("emailengine send transport is not configured");
+    expect(calls).toEqual([
+      ["get", { accountId: "acc_1", draftId: "draft_1" }],
+    ]);
+  });
+
   it("returns the existing immediate send queue item for retried draft sends", async () => {
     const calls: unknown[] = [];
     const store = createStore({
@@ -2604,6 +2649,52 @@ describe("mail compose service", () => {
       notBefore: "2026-06-13T08:00:00.000Z",
       canSendNow: false,
     });
+  });
+
+  it("rejects scheduled send-now before queueing when the transport is missing", async () => {
+    const calls: unknown[] = [];
+    const store = createStore({
+      async getScheduledDraft(input) {
+        calls.push(["get", input]);
+        return {
+          scheduledSend: scheduledSend(),
+          account: {
+            accountId: "acc_1",
+            email: "me@example.com",
+            syncState: "syncing",
+            engineProvider: "emailengine",
+          },
+          draft: {
+            ...draft(),
+            from: { address: "support@demo.site" },
+            status: "scheduled",
+          },
+        };
+      },
+      async queueScheduledSendNow(input) {
+        calls.push(["queue-now", input]);
+        throw new Error("should not queue without a transport");
+      },
+    });
+    const service = createMailComposeService({
+      store,
+      createId: () => "unused",
+      now: () => new Date("2026-06-13T08:00:00.000Z"),
+      sendIdentityStore: sendIdentityStoreFor({
+        address: "support@demo.site",
+      }),
+      transports: {},
+    });
+
+    await expect(
+      service.sendScheduledNow({
+        accountId: "acc_1",
+        scheduledId: "schedule_1",
+      }),
+    ).rejects.toThrow("emailengine send transport is not configured");
+    expect(calls).toEqual([
+      ["get", { accountId: "acc_1", scheduledId: "schedule_1" }],
+    ]);
   });
 
   it("rejects send-now before queueing when the saved send-as identity was revoked", async () => {

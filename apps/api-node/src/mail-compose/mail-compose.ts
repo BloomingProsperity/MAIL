@@ -1047,6 +1047,7 @@ export function createMailComposeService(options: {
         loaded.account.accountId,
         loaded.draft.from,
       );
+      ensureSendTransportAvailable(options.transports, loaded.account);
 
       const now = currentIso(options.now);
       const scheduledSend = await options.store.createScheduledSend({
@@ -1254,6 +1255,7 @@ export function createMailComposeService(options: {
         loaded.account.accountId,
         loaded.draft.from,
       );
+      ensureSendTransportAvailable(options.transports, loaded.account);
 
       const scheduledSend = await options.store.queueScheduledSendNow({
         accountId: input.accountId,
@@ -2310,6 +2312,17 @@ function ensureAccountCanSend(input: MailComposeAccount): void {
   }
   if (input.syncState === "reauth_required") {
     throw new InvalidMailComposeRequestError("account requires reauthorization");
+  }
+}
+
+function ensureSendTransportAvailable(
+  transports: Partial<Record<MailEngineProvider, MailSendTransport>>,
+  account: MailComposeAccount,
+): void {
+  if (!transports[account.engineProvider]) {
+    throw new InvalidMailComposeRequestError(
+      `${account.engineProvider} send transport is not configured`,
+    );
   }
 }
 

@@ -387,6 +387,50 @@ describe("API routes", () => {
     );
   });
 
+  it("degrades EmailEngine launch readiness when the Docker prepared token is missing", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/mail-engine/health`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          provider: "emailengine",
+          ok: true,
+          checks: {
+            accessToken: "configured",
+            preparedToken: "missing",
+          },
+          missing: ["EENGINE_PREPARED_TOKEN"],
+          warnings: ["EENGINE_PREPARED_TOKEN_MISSING"],
+          readiness: {
+            status: "degraded",
+            setupActions: [
+              {
+                code: "set_emailengine_prepared_token",
+                label: "设置 EmailEngine 预置令牌",
+                env: ["EENGINE_PREPARED_TOKEN"],
+                effect:
+                  "Docker 无人值守启动时 EmailEngine 容器可能不会导入 API 使用的访问令牌。",
+              },
+            ],
+          },
+        });
+      },
+      {
+        emailEngineAccessTokenConfigured: true,
+        emailEnginePreparedTokenConfigured: false,
+        mailEngineHealthProbe: {
+          async check() {
+            return { http: "ok", statusCode: 200 };
+          },
+        },
+        accountOnboardingService: {},
+        attachmentDownloadService: {},
+        mailComposeService: {},
+      },
+    );
+  });
+
   it("does not expose EmailEngine token values in health responses", async () => {
     await withApi(
       async (baseUrl) => {
@@ -1100,6 +1144,21 @@ describe("API routes", () => {
       },
       { mailReadStore, attachmentDownloadService },
     );
+  });
+
+  it("explains attachment download cannot run until EmailEngine token is configured", async () => {
+    await withApi(async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/accounts/account_1/attachments/attachment_1/download`,
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "emailengine_configuration_required",
+        capability: "attachment_download",
+        missing: ["EMAILENGINE_ACCESS_TOKEN"],
+      });
+    });
   });
 
   it("returns 404 when a local attachment id is not visible for the account", async () => {

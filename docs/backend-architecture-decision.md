@@ -352,6 +352,11 @@ EmailEngine service so the container imports the same raw token during
 unattended startup. `EMAILENGINE_ACCESS_TOKEN` is the raw token used by Email
 Hub API and worker clients; `EENGINE_PREPARED_TOKEN` is the EmailEngine-imported
 representation of that token.
+The API and worker containers receive the prepared-token flag as well, so
+`/api/mail-engine/health` and strict worker health checks can detect the common
+misconfiguration where Email Hub has a raw token but the EmailEngine container
+was not bootstrapped with the matching prepared token. Health responses expose
+only configured/missing state, never token values.
 The bundled Redis service uses RDB snapshots and `maxmemory-policy noeviction`;
 evicting EmailEngine keys is treated as data loss because it can discard mail
 sync state, credentials, or indexes and force expensive re-syncs.

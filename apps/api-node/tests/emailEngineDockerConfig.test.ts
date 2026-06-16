@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { readApiConfig } from "../src/config";
+
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
 
 async function readProjectFile(...parts: string[]): Promise<string> {
@@ -28,10 +30,24 @@ describe("EmailEngine Docker configuration", () => {
       "EENGINE_PREPARED_TOKEN: ${EENGINE_PREPARED_TOKEN:-}",
     );
     expect(
+      compose.match(/EENGINE_PREPARED_TOKEN: \$\{EENGINE_PREPARED_TOKEN:-\}/g),
+    ).toHaveLength(3);
+    expect(
       compose.match(
         /EMAILENGINE_ACCESS_TOKEN: \$\{EMAILENGINE_ACCESS_TOKEN:-\}/g,
       ),
     ).toHaveLength(2);
+  });
+
+  it("reads the prepared token flag without exposing token values", () => {
+    const config = readApiConfig({
+      EMAILENGINE_ACCESS_TOKEN: "raw-secret-token",
+      EENGINE_PREPARED_TOKEN: "prepared-secret-token",
+    } as NodeJS.ProcessEnv);
+
+    expect(config.emailEnginePreparedTokenConfigured).toBe(true);
+    expect(JSON.stringify(config)).not.toContain("raw-secret-token");
+    expect(JSON.stringify(config)).not.toContain("prepared-secret-token");
   });
 
   it("pre-configures EmailEngine webhooks to call the API container in self-hosted Docker", async () => {

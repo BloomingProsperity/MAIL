@@ -13,6 +13,9 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     emailEngineWebhookSecretUsesDefault:
       !env.EMAILENGINE_WEBHOOK_SECRET ||
       env.EMAILENGINE_WEBHOOK_SECRET === "dev-emailhub-secret",
+    emailEnginePreparedTokenConfigured:
+      typeof env.EENGINE_PREPARED_TOKEN === "string" &&
+      env.EENGINE_PREPARED_TOKEN.trim().length > 0,
     oauthProvidersConfigured: {
       gmail:
         typeof env.GOOGLE_OAUTH_CLIENT_ID === "string" &&
