@@ -51,6 +51,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
     runtimeEnv.EMAILHUB_DOCKER_HEALTH_WAIT_MS,
     5_000,
   );
+  const composeProjectName = readDockerComposeProjectName(runtimeEnv);
   const apiHeaders = bearerTokenHeaders(runtimeEnv.EMAILHUB_API_TOKEN);
   const writeStdout = options.writeStdout ?? console.log;
   const writeStderr = options.writeStderr ?? console.error;
@@ -75,6 +76,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
       projectRoot,
       envFile,
       composeFiles,
+      ...(composeProjectName ? { composeProjectName } : {}),
       requiredComposeFiles: composeFiles,
       httpTimeoutMs,
       waitAttempts,
@@ -141,6 +143,13 @@ export async function runEmailEngineDockerHealthVerifyCli(
     );
     return 1;
   }
+}
+
+function readDockerComposeProjectName(env: CliEnv): string | undefined {
+  const value =
+    env.EMAILHUB_DOCKER_COMPOSE_PROJECT_NAME ?? env.COMPOSE_PROJECT_NAME;
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 export function dockerHealthPreparedTokenPairs(

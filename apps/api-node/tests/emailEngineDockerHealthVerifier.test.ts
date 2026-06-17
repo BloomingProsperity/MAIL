@@ -63,6 +63,70 @@ describe("Docker compose health verifier", () => {
     ]);
   });
 
+  it("targets the selected Docker compose project for all compose commands", async () => {
+    const calls: Array<{ args: string[] }> = [];
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeProjectName: "emailhub-current-test",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      requiredComposeFiles: [
+        "infra/docker-compose.yml",
+        "infra/docker-compose.prod.yml",
+      ],
+      preparedTokenPairs: [
+        {
+          service: "emailengine",
+          name: "accessTokenPreparedToken",
+          rawToken: "raw-token",
+          expectedPreparedToken: "prepared-token",
+        },
+      ],
+      runCommand: async (input) => {
+        calls.push({ args: input.args });
+        if (input.args.includes("inspect")) {
+          return {
+            exitCode: 0,
+            stdout:
+              "/repo/infra/docker-compose.yml,/repo/infra/docker-compose.prod.yml\n",
+            stderr: "",
+          };
+        }
+        if (input.args.includes("tokens")) {
+          return {
+            exitCode: 0,
+            stdout: "prepared-token\n",
+            stderr: "",
+          };
+        }
+        if (input.args.includes("--format")) {
+          return healthyComposeCommand();
+        }
+        if (input.args.includes("-q")) {
+          const serviceName = input.args.at(-1);
+          return {
+            exitCode: 0,
+            stdout: `${serviceName}_container\n`,
+            stderr: "",
+          };
+        }
+        throw new Error(`unexpected docker command: ${input.args.join(" ")}`);
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.composeProjectName).toBe("emailhub-current-test");
+    const composeCalls = calls.filter((call) => call.args[0] === "compose");
+    expect(composeCalls.length).toBeGreaterThan(1);
+    expect(
+      composeCalls.every(
+        (call) =>
+          call.args[1] === "--project-name" &&
+          call.args[2] === "emailhub-current-test",
+      ),
+    ).toBe(true);
+  });
+
   it("passes optional host HTTP probes for API, EmailEngine readiness, and web", async () => {
     const httpCalls: unknown[] = [];
     const result = await verifyDockerComposeHealth({

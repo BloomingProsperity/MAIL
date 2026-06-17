@@ -8,6 +8,7 @@ import {
 export interface DockerComposeHealthVerifierOptions {
   envFile: string;
   composeFiles: string[];
+  composeProjectName?: string;
   requiredComposeFiles?: string[];
   projectRoot: string;
   requiredServices?: string[];
@@ -30,6 +31,7 @@ export interface DockerComposeHealthVerificationResult {
   attempts: number;
   maxAttempts: number;
   composeFiles: string[];
+  composeProjectName?: string;
   envFile: string;
   checks: Record<string, DockerComposeServiceCheck>;
   composeFileChecks: Record<string, DockerComposeConfigFileCheck>;
@@ -226,6 +228,7 @@ async function verifyDockerComposeHealthOnce(input: {
       attempts: input.attempt,
       maxAttempts: input.maxAttempts,
       composeFiles: options.composeFiles,
+      ...dockerComposeProjectNameReport(options),
       envFile: options.envFile,
       checks,
       composeFileChecks: {},
@@ -329,6 +332,7 @@ async function verifyDockerComposeHealthOnce(input: {
     attempts: input.attempt,
     maxAttempts: input.maxAttempts,
     composeFiles: options.composeFiles,
+    ...dockerComposeProjectNameReport(options),
     envFile: options.envFile,
     checks,
     composeFileChecks,
@@ -599,10 +603,25 @@ function dockerComposeBaseArgs(
 ): string[] {
   return [
     "compose",
+    ...dockerComposeProjectNameArgs(options),
     "--env-file",
     options.envFile,
     ...options.composeFiles.flatMap((file) => ["-f", file]),
   ];
+}
+
+function dockerComposeProjectNameArgs(
+  options: DockerComposeHealthVerifierOptions,
+): string[] {
+  const projectName = options.composeProjectName?.trim();
+  return projectName ? ["--project-name", projectName] : [];
+}
+
+function dockerComposeProjectNameReport(
+  options: DockerComposeHealthVerifierOptions,
+): { composeProjectName?: string } {
+  const projectName = options.composeProjectName?.trim();
+  return projectName ? { composeProjectName: projectName } : {};
 }
 
 async function checkHostHttpEndpoint(

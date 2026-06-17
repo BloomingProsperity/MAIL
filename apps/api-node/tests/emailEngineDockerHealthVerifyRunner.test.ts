@@ -25,6 +25,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         "infra/docker-compose.yml",
         "infra/docker-compose.prod.yml",
       ]);
+      expect(input.composeProjectName).toBe("emailhub-current-test");
       expect(input.requiredComposeFiles).toEqual([
         "infra/docker-compose.yml",
         "infra/docker-compose.prod.yml",
@@ -187,6 +188,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
       env: {
         EMAILHUB_REPO_ROOT: "/repo",
         EMAILHUB_ENV_FILE: ".env.prod",
+        EMAILHUB_DOCKER_COMPOSE_PROJECT_NAME: "emailhub-current-test",
         API_BIND: "0.0.0.0:9090",
         WEB_BIND: "0.0.0.0:3000",
         EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS: "1200",
@@ -221,6 +223,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
       [
         "API_BIND=0.0.0.0:9191",
         "WEB_BIND=0.0.0.0:4242",
+        "COMPOSE_PROJECT_NAME=file-compose-project",
         "EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS=1800",
         "EMAILHUB_DOCKER_HEALTH_ATTEMPTS=4",
         "EMAILHUB_DOCKER_HEALTH_WAIT_MS=25",
@@ -236,6 +239,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
     const result = dockerHealthResult({ ok: true });
     const verifyHealth = vi.fn(async (input) => {
       expect(input.envFile).toBe(".env.prod");
+      expect(input.composeProjectName).toBe("file-compose-project");
       expect(input.httpTimeoutMs).toBe(1800);
       expect(input.waitAttempts).toBe(4);
       expect(input.waitIntervalMs).toBe(25);
