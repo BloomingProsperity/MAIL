@@ -12,6 +12,7 @@ import {
   type SendSmtpSmokeMessageInput,
   type SmtpSmokeDeliveryResult,
 } from "./greenmail-smtp-smoke.js";
+import { safeSmokeBodySummary } from "./smoke-error.js";
 
 export interface RunEmailEngineRealWebhookSmokeInput {
   apiBaseUrl: string;
@@ -209,7 +210,7 @@ async function readReusableExistingAccount(input: {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
     throw new Error(
-      `EmailEngine real webhook smoke sync center returned ${response.status}: ${JSON.stringify(
+      `EmailEngine real webhook smoke sync center returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -257,7 +258,7 @@ async function readInitialSyncJobStatus(input: {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
     throw new Error(
-      `EmailEngine real webhook smoke sync center returned ${response.status}: ${JSON.stringify(
+      `EmailEngine real webhook smoke sync center returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -365,7 +366,7 @@ async function readDiagnostics(input: {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
     throw new Error(
-      `EmailEngine real webhook smoke diagnostics returned ${response.status}: ${JSON.stringify(
+      `EmailEngine real webhook smoke diagnostics returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -431,7 +432,7 @@ async function findMessageInReadModel(input: {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
     throw new Error(
-      `EmailEngine real webhook smoke mail read list returned ${response.status}: ${JSON.stringify(
+      `EmailEngine real webhook smoke mail read list returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -464,7 +465,7 @@ async function readMessageDetail(input: {
   }
   if (!response.ok) {
     throw new Error(
-      `EmailEngine real webhook smoke mail read detail returned ${response.status}: ${JSON.stringify(
+      `EmailEngine real webhook smoke mail read detail returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );

@@ -12,6 +12,7 @@ import {
   type SendSmtpSmokeMessageInput,
   type SmtpSmokeDeliveryResult,
 } from "./greenmail-smtp-smoke.js";
+import { safeSmokeBodySummary, safeSmokeText } from "./smoke-error.js";
 
 export interface RunEmailEngineSendSmokeInput {
   apiBaseUrl: string;
@@ -532,7 +533,7 @@ async function createDraft(input: {
   );
   if (response.status !== 201) {
     throw new Error(
-      `EmailEngine send smoke draft creation returned ${response.status}: ${JSON.stringify(
+      `EmailEngine send smoke draft creation returned ${response.status}: ${safeSmokeBodySummary(
         response.body,
       )}`,
     );
@@ -560,7 +561,7 @@ async function sendDraft(input: {
     readRequiredString(body, "action") !== "draft_send_queued"
   ) {
     throw new Error(
-      `EmailEngine send smoke draft send returned ${response.status}: ${JSON.stringify(
+      `EmailEngine send smoke draft send returned ${response.status}: ${safeSmokeBodySummary(
         response.body,
       )}`,
     );
@@ -584,7 +585,7 @@ async function requestManualSync(input: {
   const parsed = readManualSyncResponse(asRecord(response.body));
   if (response.status !== 202 || parsed.action !== "manual_sync_queued") {
     throw new Error(
-      `EmailEngine mail action smoke manual resync returned ${response.status}: ${JSON.stringify(
+      `EmailEngine mail action smoke manual resync returned ${response.status}: ${safeSmokeBodySummary(
         response.body,
       )}`,
     );
@@ -614,7 +615,7 @@ async function markMessageRead(input: {
     parsed.command.commandType !== "mark_read"
   ) {
     throw new Error(
-      `EmailEngine mail action smoke mark_read returned ${response.status}: ${JSON.stringify(
+      `EmailEngine mail action smoke mark_read returned ${response.status}: ${safeSmokeBodySummary(
         response.body,
       )}`,
     );
@@ -666,7 +667,7 @@ async function readReusableExistingAccount(input: {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
     throw new Error(
-      `EmailEngine smoke sync center returned ${response.status}: ${JSON.stringify(
+      `EmailEngine smoke sync center returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -714,7 +715,7 @@ async function readInitialSyncJobStatus(input: {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
     throw new Error(
-      `EmailEngine smoke sync center returned ${response.status}: ${JSON.stringify(
+      `EmailEngine smoke sync center returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -756,10 +757,11 @@ async function waitForEngineCommandProcessedDiagnostic(input: {
         latestStatus === "failed" &&
         readString(result.finalJobStatus) === "dead_letter"
       ) {
+        const errorMessage =
+          safeSmokeText(readString(result.errorMessage)) ??
+          "unknown worker error";
         throw new Error(
-          `EmailEngine mail action smoke command ${input.commandId} reached dead_letter: ${readString(
-            result.errorMessage,
-          ) ?? "unknown worker error"}`,
+          `EmailEngine mail action smoke command ${input.commandId} reached dead_letter: ${errorMessage}`,
         );
       }
     }
@@ -794,7 +796,7 @@ async function readEngineCommandDiagnostics(input: {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
     throw new Error(
-      `EmailEngine mail action smoke diagnostics returned ${response.status}: ${JSON.stringify(
+      `EmailEngine mail action smoke diagnostics returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -838,10 +840,11 @@ async function waitForExpectedMessage(input: {
       });
       if (syncFailure) {
         const result = asRecord(syncFailure.context.result);
+        const errorMessage =
+          safeSmokeText(readString(result.errorMessage)) ??
+          "unknown sync error";
         throw new Error(
-          `${input.errorPrefix} post-delivery sync job ${input.syncJobId} failed: ${readString(
-            result.errorMessage,
-          ) ?? "unknown sync error"}; final status ${readString(
+          `${input.errorPrefix} post-delivery sync job ${input.syncJobId} failed: ${errorMessage}; final status ${readString(
             result.finalJobStatus,
           ) ?? "unknown"}`,
         );
@@ -876,7 +879,7 @@ async function readWorkerSyncFailureDiagnostic(input: {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
     throw new Error(
-      `EmailEngine mail action smoke sync diagnostics returned ${response.status}: ${JSON.stringify(
+      `EmailEngine mail action smoke sync diagnostics returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -913,7 +916,7 @@ async function findMessageInReadModel(input: {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
     throw new Error(
-      `EmailEngine smoke mail read list returned ${response.status}: ${JSON.stringify(
+      `EmailEngine smoke mail read list returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -946,7 +949,7 @@ async function readMessageDetail(input: {
   }
   if (!response.ok) {
     throw new Error(
-      `EmailEngine smoke mail read detail returned ${response.status}: ${JSON.stringify(
+      `EmailEngine smoke mail read detail returned ${response.status}: ${safeSmokeBodySummary(
         body,
       )}`,
     );
@@ -988,8 +991,9 @@ async function downloadAttachment(input: {
   );
   const text = await response.text();
   if (!response.ok) {
+    const responseText = safeSmokeText(text) ?? "";
     throw new Error(
-      `EmailEngine attachment download smoke returned ${response.status}: ${text}`,
+      `EmailEngine attachment download smoke returned ${response.status}: ${responseText}`,
     );
   }
 

@@ -21,10 +21,18 @@ export function sanitizeCliError(
     .replace(/github_pat_[A-Za-z0-9_]+/g, "[redacted]")
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(
-      /\b(?:token|access_token|api_key|secret|password|authorization)=([^\s&]+)/gi,
+      /\bauthorization=(?:Basic|Bearer)\s+[^\s&"',}\[\]\\]+/gi,
+      "authorization=[redacted]",
+    )
+    .replace(
+      /\b(?:token|access_token|api[_-]?key|secret|password|authorization)=([^\s&"',}\[\]\\]+)/gi,
       "[redacted]",
     )
-    .replace(/https?:\/\/[^\s"'<>]+/gi, "[url]")
+    .replace(
+      /\b(token|access_token|api[_-]?key|secret|password|authorization)\s*:\s*"?(?:(?:Basic|Bearer)\s+)?[^\s&"',}\[\]\\]+/gi,
+      "$1: [redacted]",
+    )
+    .replace(/https?:\/\/[^\s"'<>\\]+/gi, "[url]")
     .replace(
       /\b(?:10|127|192\.168|172\.(?:1[6-9]|2\d|3[0-1]))(?:\.\d{1,3}){3}\b/g,
       "[host]",

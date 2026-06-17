@@ -101,6 +101,33 @@ describe("GreenMail SMTP smoke delivery", () => {
 });
 
 describe("real EmailEngine webhook smoke", () => {
+  it("redacts failed sync center response details before onboarding reuse", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(
+        {
+          error: "failed http://user:secret@10.0.0.20:8080/path?token=abc github_pat_abc password=hunter2",
+          authorization: "Bearer raw-token",
+          secret: "smoke-secret",
+        },
+        503,
+      ),
+    );
+
+    await expectSanitizedSmokeFailure(
+      runEmailEngineRealWebhookSmoke({
+        apiBaseUrl: "http://127.0.0.1:8080",
+        payload: smokePayload(),
+        deliverySmtp: {
+          host: "127.0.0.1",
+          port: 3025,
+        },
+        fetchImpl: fetchImpl as typeof fetch,
+        reuseExistingReadyAccount: true,
+      }),
+      "EmailEngine real webhook smoke sync center returned 503",
+    );
+  });
+
   it("onboards a GreenMail account, delivers a message, and waits for message_upserted diagnostics", async () => {
     let diagnosticsCalls = 0;
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
@@ -1208,9 +1235,50 @@ describe("real EmailEngine webhook smoke", () => {
   });
 });
 
-function jsonResponse(body: unknown): Response {
+async function expectSanitizedSmokeFailure(
+  promise: Promise<unknown>,
+  expectedMessage: string,
+): Promise<void> {
+  try {
+    await promise;
+    throw new Error("expected smoke failure");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    expect(message).toContain(expectedMessage);
+    expect(message).not.toContain("smoke-secret");
+    expect(message).not.toContain("Bearer raw-token");
+    expect(message).not.toContain("user:secret");
+    expect(message).not.toContain("10.0.0.20");
+    expect(message).not.toContain("github_pat_abc");
+    expect(message).not.toContain("hunter2");
+    expect(message).not.toContain("token=abc");
+  }
+}
+
+function smokePayload() {
+  return {
+    email: "support@example.com",
+    provider: "custom_domain",
+    imap: {
+      host: "greenmail-test",
+      port: 3143,
+      secure: false,
+      username: "support@example.com",
+      secret: "smoke-secret",
+    },
+    smtp: {
+      host: "greenmail-test",
+      port: 3025,
+      secure: false,
+      username: "support@example.com",
+      secret: "smoke-secret",
+    },
+  };
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "content-type": "application/json" },
   });
 }

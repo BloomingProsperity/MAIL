@@ -39,6 +39,43 @@ const recipientPayload = {
 };
 
 describe("EmailEngine send and attachment smoke", () => {
+  it("redacts failed draft creation response details", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(
+        {
+          error:
+            "failed http://user:secret@10.0.0.20:8080/path?token=abc github_pat_abc password=hunter2",
+          authorization: "Bearer raw-token",
+          secret: "smoke-secret",
+        },
+        500,
+      ),
+    );
+    const runOnboarding = vi.fn(async (input) => ({
+      email: input.payload.email,
+      provider: input.payload.provider,
+      accountId:
+        input.payload.email === "recipient@example.com"
+          ? "acc_recipient"
+          : "acc_1",
+      syncJobId: "job_initial",
+      syncJobStatus: "done",
+    }));
+
+    await expectSanitizedSmokeFailure(
+      runEmailEngineSendSmoke({
+        apiBaseUrl: "http://127.0.0.1:8080",
+        payload,
+        recipientPayload,
+        fetchImpl: fetchImpl as typeof fetch,
+        runOnboarding,
+        createUniqueId: () => "unique_1",
+        reuseExistingReadyAccount: false,
+      }),
+      "EmailEngine send smoke draft creation returned 500",
+    );
+  });
+
   it("creates a draft, queues worker send, and waits for the delivered message in the read model", async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -262,6 +299,82 @@ describe("EmailEngine send and attachment smoke", () => {
       attachmentContentType: "text/plain",
       downloadedBytes: attachmentText.length,
     });
+  });
+
+  it("redacts failed attachment download response text", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/messages?")) {
+        return jsonResponse({
+          items: [
+            {
+              id: "message_1",
+              accountId: "acc_1",
+              subject: "[EmailHub Attachment Smoke] unique_1",
+              receivedAt: "2026-06-17T10:00:05.000Z",
+            },
+          ],
+        });
+      }
+      if (requestUrl.endsWith("/messages/message_1")) {
+        return jsonResponse({
+          id: "message_1",
+          accountId: "acc_1",
+          subject: "[EmailHub Attachment Smoke] unique_1",
+          bodyText:
+            "Email Hub EmailEngine attachment smoke.\nuniqueId=unique_1",
+          attachments: [
+            {
+              id: "attachment_1",
+              filename: "emailhub-smoke-unique_1.txt",
+              contentType: "text/plain",
+              byteSize: 42,
+              inline: false,
+              embedded: false,
+            },
+          ],
+        });
+      }
+      if (requestUrl.endsWith("/attachments/attachment_1/download")) {
+        return new Response(
+          "download failed Authorization: Basic raw-basic password: hunter2 http://user:secret@10.0.0.20:8080?token=abc",
+          { status: 500 },
+        );
+      }
+      throw new Error(`unexpected URL ${requestUrl}`);
+    });
+    const runOnboarding = vi.fn(async (input) => ({
+      email: input.payload.email,
+      provider: input.payload.provider,
+      accountId: "acc_1",
+      syncJobId: "job_initial",
+      syncJobStatus: "done",
+    }));
+
+    await expectSanitizedSmokeFailure(
+      runEmailEngineAttachmentDownloadSmoke({
+        apiBaseUrl: "http://127.0.0.1:8080/",
+        payload,
+        deliverySmtp: {
+          host: "127.0.0.1",
+          port: 3025,
+        },
+        fetchImpl: fetchImpl as typeof fetch,
+        runOnboarding,
+        sendMessage: vi.fn(async (input) => ({
+          host: input.host,
+          port: input.port,
+          to: input.to,
+          messageId: `<${input.messageId}>`,
+        })),
+        createUniqueId: () => "unique_1",
+        delayMs: async () => {},
+        pollAttempts: 1,
+        pollMs: 1,
+        reuseExistingReadyAccount: false,
+      }),
+      "EmailEngine attachment download smoke returned 500",
+    );
   });
 
   it("marks a delivered message read and waits for the worker to process the engine command", async () => {
@@ -509,7 +622,8 @@ describe("EmailEngine send and attachment smoke", () => {
                   status: "failed",
                   commandId: "cmd_mark_read",
                   finalJobStatus: "dead_letter",
-                  errorMessage: "EmailEngine rejected flags update",
+                  errorMessage:
+                    "EmailEngine rejected flags update Authorization: Basic raw-basic password: hunter2 http://user:secret@10.0.0.20:8080?token=abc",
                 },
               },
             },
@@ -526,7 +640,7 @@ describe("EmailEngine send and attachment smoke", () => {
       syncJobStatus: "done",
     }));
 
-    await expect(
+    await expectSanitizedSmokeFailure(
       runEmailEngineMailActionSmoke({
         apiBaseUrl: "http://127.0.0.1:8080",
         payload,
@@ -550,8 +664,7 @@ describe("EmailEngine send and attachment smoke", () => {
         workerDiagnosticPollMs: 1,
         reuseExistingReadyAccount: false,
       }),
-    ).rejects.toThrow(
-      "EmailEngine mail action smoke command cmd_mark_read reached dead_letter: EmailEngine rejected flags update",
+      "EmailEngine mail action smoke command cmd_mark_read reached dead_letter",
     );
   });
 
@@ -585,7 +698,8 @@ describe("EmailEngine send and attachment smoke", () => {
                   status: "failed",
                   jobId: "job_manual",
                   finalJobStatus: "queued",
-                  errorMessage: "EmailEngine request failed: 500",
+                  errorMessage:
+                    "EmailEngine request failed Authorization: Basic raw-basic password: hunter2 http://user:secret@10.0.0.20:8080?token=abc",
                 },
               },
             },
@@ -602,7 +716,7 @@ describe("EmailEngine send and attachment smoke", () => {
       syncJobStatus: "done",
     }));
 
-    await expect(
+    await expectSanitizedSmokeFailure(
       runEmailEngineMailActionSmoke({
         apiBaseUrl: "http://127.0.0.1:8080",
         payload,
@@ -624,8 +738,7 @@ describe("EmailEngine send and attachment smoke", () => {
         pollMs: 1,
         reuseExistingReadyAccount: false,
       }),
-    ).rejects.toThrow(
-      "EmailEngine mail action smoke post-delivery sync job job_manual failed: EmailEngine request failed: 500; final status queued",
+      "EmailEngine mail action smoke post-delivery sync job job_manual failed",
     );
   });
 
@@ -678,4 +791,26 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+async function expectSanitizedSmokeFailure(
+  promise: Promise<unknown>,
+  expectedMessage: string,
+): Promise<void> {
+  try {
+    await promise;
+    throw new Error("expected smoke failure");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    expect(message).toContain(expectedMessage);
+    expect(message).not.toContain("smoke-secret");
+    expect(message).not.toContain("Bearer raw-token");
+    expect(message).not.toContain("raw-basic");
+    expect(message).not.toContain("raw-equals");
+    expect(message).not.toContain("user:secret");
+    expect(message).not.toContain("10.0.0.20");
+    expect(message).not.toContain("github_pat_abc");
+    expect(message).not.toContain("hunter2");
+    expect(message).not.toContain("token=abc");
+  }
 }
