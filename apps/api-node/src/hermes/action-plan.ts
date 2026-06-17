@@ -1,6 +1,5 @@
 import type {
   ApproveHermesRuleInput,
-  DraftHermesRuleInput,
   HermesRule,
   HermesRuleCandidate,
   HermesRuleHistoryBackfill,
@@ -87,8 +86,10 @@ export interface HermesActionPlanConfirmation {
   steps: HermesActionPlanStep[];
 }
 
-export interface CreateHermesActionPlanInput
-  extends DraftHermesRuleInput {
+export interface CreateHermesActionPlanInput {
+  accountId: string;
+  command?: string;
+  candidateId?: string;
   sampleLimit?: number;
 }
 
@@ -107,7 +108,11 @@ export interface HermesActionPlanService {
 export interface CreateHermesActionPlanServiceOptions {
   ruleService: Pick<
     HermesRuleService,
-    "draftRule" | "simulateRule" | "approveRule" | "backfillRuleHistory"
+    | "draftRule"
+    | "getRuleCandidate"
+    | "simulateRule"
+    | "approveRule"
+    | "backfillRuleHistory"
   >;
   workspaceContextService: Pick<HermesWorkspaceContextService, "getContext">;
   planStore: HermesActionPlanStore;
@@ -135,9 +140,19 @@ export function createHermesActionPlanService(
   return {
     async createPlan(input) {
       const accountId = requireText(input.accountId);
-      const command = requireCommand(input.command);
+      const requestedCandidateId =
+        input.candidateId === undefined
+          ? undefined
+          : requireText(input.candidateId);
+      const command =
+        input.command === undefined
+          ? undefined
+          : requireCommand(input.command);
       const sampleLimit = optionalLimit(input.sampleLimit ?? 25, 1, 100);
-      if (!isMailboxRulePlanCommand(command)) {
+      if (!requestedCandidateId && !command) {
+        throw new InvalidHermesActionPlanRequestError();
+      }
+      if (!requestedCandidateId && command && !isMailboxRulePlanCommand(command)) {
         throw new InvalidHermesActionPlanRequestError();
       }
 
@@ -146,11 +161,19 @@ export function createHermesActionPlanService(
         ruleLimit: 25,
         labelLimit: 50,
       });
-      const draft = await options.ruleService.draftRule({ accountId, command });
-      const candidate = draft.candidates[0];
-      if (!candidate) {
+      const candidate = requestedCandidateId
+        ? await options.ruleService.getRuleCandidate({
+            accountId,
+            candidateId: requestedCandidateId,
+          })
+        : (await options.ruleService.draftRule({
+            accountId,
+            command: command ?? "",
+          })).candidates[0];
+      if (!candidate || candidate.status !== "shadow") {
         throw new InvalidHermesActionPlanRequestError();
       }
+      const planCommand = command ?? `确认 Hermes 规则候选：${candidate.title}`;
 
       const simulation = await options.ruleService.simulateRule({
         accountId,
@@ -169,7 +192,7 @@ export function createHermesActionPlanService(
       const record = await options.planStore.createPlan({
         id: planId,
         accountId,
-        command,
+        command: planCommand,
         intent: "create_mailbox_rule",
         candidateId: candidate.id,
         simulationId: simulation.id,
@@ -181,7 +204,7 @@ export function createHermesActionPlanService(
       const plan: HermesActionPlan = {
         id: record.id,
         accountId,
-        command,
+        command: record.command,
         intent: record.intent,
         status: "requires_confirmation",
         createdAt: record.createdAt,
@@ -197,8 +220,9 @@ export function createHermesActionPlanService(
         readMessageIds: simulation.sampleMessageIds,
         input: {
           accountId,
-          command,
+          command: plan.command,
           sampleLimit,
+          ...(requestedCandidateId ? { candidateId: requestedCandidateId } : {}),
           intent: plan.intent,
           workspace: plan.workspace,
         },

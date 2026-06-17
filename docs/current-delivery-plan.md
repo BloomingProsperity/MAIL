@@ -216,6 +216,12 @@ with more than smoke-level tests.
   body-read permission, memory-write permission, confirmation requirement,
   context character budget, and memory limit through the API instead of
   changing code or environment variables.
+- Current action-plan status: Hermes rule candidates are now recoverable after
+  refresh through `GET /api/hermes/rule-candidates`, and Settings loads shadow
+  candidates alongside enabled rules. Confirming a candidate creates the
+  auditable Hermes action plan from the existing candidate id, reruns shadow
+  simulation, then requires explicit user confirmation before enabling the
+  rule.
 
 ### 4. Mail Organization
 
@@ -245,7 +251,9 @@ with more than smoke-level tests.
   synced history during action-plan confirmation, apply matching labels to
   newly mirrored messages in the worker, and now expose a manual active run
   path through `POST /api/hermes/rules/:ruleId/run` plus recent execution
-  reads through `GET /api/hermes/rule-runs`. Manual runs reuse the same
+  reads through `GET /api/hermes/rule-runs`. Pending rule candidates are read
+  through `GET /api/hermes/rule-candidates` so Settings can show unapproved
+  drafts after reload. Manual runs reuse the same
   idempotent local `label_assignments` write path, record and list `active`
   `hermes_rule_runs` results with matched/applied counts and sample message
   ids, and are wired into the Settings rule manager. Hermes rules still do not

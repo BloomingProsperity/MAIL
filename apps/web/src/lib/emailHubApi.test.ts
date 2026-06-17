@@ -1055,6 +1055,44 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("lists Hermes rule candidates through backend routes", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        items: [
+          {
+            id: "candidate 1",
+            accountId: "account 1",
+            title: "启用验证码智能分组",
+            ruleType: "content_label",
+            condition: { anyKeywords: ["验证码", "otp"] },
+            action: { type: "apply_label", labelName: "验证码" },
+            confidence: 0.9,
+            status: "shadow",
+            evidenceMessageIds: [],
+            createdAt: "2026-06-15T09:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const page = await api.listHermesRuleCandidates({
+      accountId: "account 1",
+      status: "shadow",
+      limit: 20,
+    });
+
+    expect(page.items[0]).toMatchObject({
+      id: "candidate 1",
+      status: "shadow",
+      ruleType: "content_label",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/rule-candidates?accountId=account+1&status=shadow&limit=20",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("runs approved Hermes rules through backend routes", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
@@ -2775,6 +2813,7 @@ describe("emailHubApi", () => {
     const plan = await api.createHermesActionPlan({
       accountId: "account_1",
       command: "帮我创建一个验证码分组规则",
+      candidateId: "candidate_codes",
       sampleLimit: 12,
     });
     const confirmation = await api.confirmHermesActionPlan({
@@ -2798,6 +2837,7 @@ describe("emailHubApi", () => {
         body: JSON.stringify({
           accountId: "account_1",
           command: "帮我创建一个验证码分组规则",
+          candidateId: "candidate_codes",
           sampleLimit: 12,
         }),
       }),

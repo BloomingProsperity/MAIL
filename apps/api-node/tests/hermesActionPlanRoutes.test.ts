@@ -146,6 +146,97 @@ describe("Hermes action plan routes", () => {
     ]);
   });
 
+  it("creates an action plan from an existing candidate id", async () => {
+    const calls: unknown[] = [];
+    const hermesActionPlanService = {
+      async createPlan(input: unknown) {
+        calls.push(input);
+        return {
+          id: "plan_1",
+          auditEventId: "audit_plan_1",
+          accountId: "account_1",
+          command: "确认 Hermes 规则候选：启用验证码智能分组",
+          intent: "create_mailbox_rule",
+          status: "requires_confirmation",
+          createdAt: "2026-06-16T08:00:00.000Z",
+          candidate: {
+            id: "candidate_codes",
+            accountId: "account_1",
+            title: "启用验证码智能分组",
+            ruleType: "content_label",
+            condition: { anyKeywords: ["验证码", "otp"] },
+            action: {
+              type: "apply_label",
+              labelName: "验证码",
+              requiresConfirmation: true,
+            },
+            confidence: 0.9,
+            status: "shadow",
+            evidenceMessageIds: [],
+            createdAt: "2026-06-16T08:00:00.000Z",
+          },
+          simulation: {
+            id: "simulation_1",
+            accountId: "account_1",
+            candidateId: "candidate_codes",
+            mode: "shadow",
+            matchedCount: 3,
+            sampleMessageIds: ["message_1"],
+            actionPreview: { type: "apply_label", labelName: "验证码" },
+            createdAt: "2026-06-16T08:00:01.000Z",
+          },
+          workspace: {
+            accountCount: 1,
+            selectedAccountId: "account_1",
+            provider: "gmail",
+            quickCategoryCount: 8,
+            labelCount: 2,
+            ruleCount: 0,
+            pendingRuleCandidateCount: 1,
+            unavailableModules: [],
+          },
+          safety: {
+            requiresUserConfirmation: true,
+            providerWriteback: false,
+            appliesToHistory: false,
+            destructive: false,
+          },
+          steps: [],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/hermes/action-plans`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            accountId: "account_1",
+            candidateId: "candidate_codes",
+            sampleLimit: 12,
+          }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          id: "plan_1",
+          command: "确认 Hermes 规则候选：启用验证码智能分组",
+          candidate: { id: "candidate_codes" },
+        });
+      },
+      { hermesActionPlanService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        sampleLimit: 12,
+      },
+    ]);
+  });
+
   it("confirms an action plan through the service", async () => {
     const calls: unknown[] = [];
     const hermesActionPlanService = {

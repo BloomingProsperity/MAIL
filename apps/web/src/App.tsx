@@ -8659,12 +8659,22 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
           limit: 100,
         })
         .catch(() => ({ items: [] as HermesRuleExecutionDto[] }));
+      const candidatesPage = await props.api
+        .listHermesRuleCandidates({
+          accountId: props.accountId,
+          status: "shadow",
+          limit: 50,
+        })
+        .catch(() => ({ items: [] as HermesRuleCandidateDto[] }));
       setRules(page.items);
       setRuleExecutions(latestExecutionsByRuleId(executionsPage.items));
+      setCandidateDrafts(candidatesPage.items);
       setRuleNotice(
         page.items.length === 0
-          ? "当前账号还没有 Hermes 规则。"
-          : `已读取 ${page.items.length} 条 Hermes 规则。`,
+          ? candidatesPage.items.length === 0
+            ? "当前账号还没有 Hermes 规则。"
+            : `已读取 ${candidatesPage.items.length} 条待确认 Hermes 规则草案。`
+          : `已读取 ${page.items.length} 条 Hermes 规则，${candidatesPage.items.length} 条待确认草案。`,
       );
     } catch {
       setRules([]);
@@ -8903,6 +8913,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
     try {
       const plan = await props.api.createHermesActionPlan({
         accountId: props.accountId,
+        candidateId: candidate.id,
         command,
         sampleLimit: 25,
       });

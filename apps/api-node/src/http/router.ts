@@ -1703,6 +1703,25 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
       }
 
+      const hermesRuleCandidateRoute = parseHermesRuleCandidateRoute(request.url);
+      if (hermesRuleCandidateRoute) {
+        if (!config.hermesRuleService) {
+          writeJson(response, 503, { error: "hermes_rules_unavailable" });
+          return;
+        }
+
+        if (
+          hermesRuleCandidateRoute.action === "list" &&
+          request.method === "GET"
+        ) {
+          const result = await config.hermesRuleService.listRuleCandidates(
+            parseHermesRuleCandidateListInput(request.url),
+          );
+          writeJson(response, 200, result);
+          return;
+        }
+      }
+
       const hermesRuleRoute = parseHermesRuleRoute(request.url);
       if (hermesRuleRoute) {
         if (!config.hermesRuleService) {
@@ -4054,6 +4073,19 @@ function parseHermesRuleExecutionRoute(
 
   const url = new URL(requestUrl, "http://localhost");
   return url.pathname === "/api/hermes/rule-runs" ? { action: "list" } : undefined;
+}
+
+function parseHermesRuleCandidateRoute(
+  requestUrl: string | undefined,
+): { action: "list" } | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  return url.pathname === "/api/hermes/rule-candidates"
+    ? { action: "list" }
+    : undefined;
 }
 
 function parseHermesActionPlanRoute(
@@ -6951,29 +6983,45 @@ function parseHermesRuleSuggestInput(body: string): {
 
 function parseHermesActionPlanCreateInput(body: string): {
   accountId: string;
-  command: string;
+  command?: string;
+  candidateId?: string;
   sampleLimit?: number;
 } {
   const payload = JSON.parse(body) as {
     accountId?: unknown;
     command?: unknown;
+    candidateId?: unknown;
     sampleLimit?: unknown;
   };
-  if (!isNonEmptyString(payload.accountId) || typeof payload.command !== "string") {
+  if (!isNonEmptyString(payload.accountId)) {
     throw new InvalidHermesActionPlanRequestError();
   }
-  const command = payload.command.trim();
-  if (
-    command.length < 2 ||
-    command.length > 500 ||
-    /[\u0000-\u001F\u007F]/.test(command)
-  ) {
+  if (payload.command !== undefined && typeof payload.command !== "string") {
     throw new InvalidHermesActionPlanRequestError();
+  }
+  if (payload.candidateId !== undefined && !isNonEmptyString(payload.candidateId)) {
+    throw new InvalidHermesActionPlanRequestError();
+  }
+  const command = payload.command?.trim();
+  if (!command && !payload.candidateId) {
+    throw new InvalidHermesActionPlanRequestError();
+  }
+  if (command) {
+    if (
+      command.length < 2 ||
+      command.length > 500 ||
+      /[\u0000-\u001F\u007F]/.test(command)
+    ) {
+      throw new InvalidHermesActionPlanRequestError();
+    }
   }
 
   return {
     accountId: payload.accountId,
-    command,
+    ...(command ? { command } : {}),
+    ...(isNonEmptyString(payload.candidateId)
+      ? { candidateId: payload.candidateId }
+      : {}),
     ...parseOptionalHermesActionPlanInteger(
       payload.sampleLimit,
       "sampleLimit",
@@ -7193,6 +7241,40 @@ function parseHermesRuleExecutionListInput(requestUrl: string | undefined): {
     ...(ruleId ? { ruleId } : {}),
     limit: parseHermesRuleLimit(url.searchParams.get("limit")),
   };
+}
+
+function parseHermesRuleCandidateListInput(requestUrl: string | undefined): {
+  accountId: string;
+  status?: "shadow" | "approved" | "dismissed";
+  limit: number;
+} {
+  const url = new URL(requestUrl ?? "", "http://localhost");
+  const accountId = url.searchParams.get("accountId");
+  if (!isNonEmptyString(accountId)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  const status = parseOptionalHermesRuleCandidateStatus(
+    url.searchParams.get("status"),
+  );
+  return {
+    accountId,
+    ...(status ? { status } : {}),
+    limit: parseHermesRuleLimit(url.searchParams.get("limit")),
+  };
+}
+
+function parseOptionalHermesRuleCandidateStatus(
+  value: string | null,
+): "shadow" | "approved" | "dismissed" | undefined {
+  if (value === null) {
+    return undefined;
+  }
+  if (value === "shadow" || value === "approved" || value === "dismissed") {
+    return value;
+  }
+
+  throw new InvalidHermesRuleRequestError();
 }
 
 function parseOptionalHermesRuleInteger<

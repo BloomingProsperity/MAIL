@@ -144,6 +144,116 @@ describe("Hermes action plan service", () => {
     ]);
   });
 
+  it("creates an action plan from an existing shadow rule candidate", async () => {
+    const planStore = createInMemoryHermesActionPlanStore();
+    const ruleStore = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            applyToHistory: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-16T08:00:00.000Z",
+        },
+      ],
+      messages: [
+        {
+          accountId: "account_1",
+          messageId: "message_code",
+          senderEmail: "login@example.com",
+          subject: "验证码 482911",
+        },
+      ],
+    });
+    const ruleService = createHermesRuleService({
+      store: ruleStore,
+      createId: nextId(["simulation_1"]),
+      now: () => "2026-06-16T08:02:00.000Z",
+    });
+    const service = createHermesActionPlanService({
+      ruleService,
+      workspaceContextService: {
+        async getContext(input) {
+          return {
+            generatedAt: "2026-06-16T08:02:00.000Z",
+            accountScope: {
+              requestedAccountId: input.accountId,
+              availableAccountIds: ["account_1"],
+              selectedAccount: {
+                accountId: "account_1",
+                email: "lina@example.com",
+                provider: "gmail",
+                authMethod: "oauth",
+                syncState: "syncing",
+                engineProvider: "emailengine",
+                reauthRequired: false,
+                nextAction: "none",
+                accountUpdatedAt: "2026-06-16T00:00:00.000Z",
+              },
+            },
+            accounts: [],
+            navigation: { providerGroups: [], quickCategories: [] },
+            labels: [],
+            rules: [],
+            pendingRuleCandidates: [],
+            skills: [],
+            operationBoundaries: [],
+            unavailableModules: [],
+          };
+        },
+      },
+      planStore,
+      createId: nextId(["plan_1"]),
+      now: () => "2026-06-16T08:03:00.000Z",
+    });
+
+    const plan = await service.createPlan({
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+      sampleLimit: 10,
+    });
+
+    expect(plan).toMatchObject({
+      id: "plan_1",
+      command: "确认 Hermes 规则候选：启用验证码智能分组",
+      candidate: { id: "candidate_codes" },
+      simulation: {
+        id: "simulation_1",
+        candidateId: "candidate_codes",
+        matchedCount: 1,
+      },
+    });
+    expect(
+      await ruleStore.listRuleCandidates({
+        accountId: "account_1",
+        status: "shadow",
+        limit: 10,
+      }),
+    ).toMatchObject({
+      items: [{ id: "candidate_codes", status: "shadow" }],
+    });
+    expect(planStore.listPlans()).toEqual([
+      expect.objectContaining({
+        id: "plan_1",
+        command: "确认 Hermes 规则候选：启用验证码智能分组",
+        candidateId: "candidate_codes",
+        simulationId: "simulation_1",
+      }),
+    ]);
+  });
+
   it("confirms a planned content label rule and records audit", async () => {
     const runStoreCalls: unknown[] = [];
     const planStore = createInMemoryHermesActionPlanStore({

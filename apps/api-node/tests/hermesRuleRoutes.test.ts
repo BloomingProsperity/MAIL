@@ -203,6 +203,53 @@ describe("Hermes rule routes", () => {
     ]);
   });
 
+  it("lists pending Hermes rule candidates", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async listRuleCandidates(input: unknown) {
+        calls.push(input);
+        return {
+          items: [
+            {
+              id: "candidate_codes",
+              accountId: "account_1",
+              title: "启用验证码智能分组",
+              ruleType: "content_label",
+              condition: { anyKeywords: ["验证码", "otp"] },
+              action: { type: "apply_label", labelName: "验证码" },
+              confidence: 0.9,
+              status: "shadow",
+              evidenceMessageIds: [],
+              createdAt: "2026-06-13T10:00:00.000Z",
+            },
+          ],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/rule-candidates?accountId=account_1&status=shadow&limit=20`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          items: [{ id: "candidate_codes", status: "shadow" }],
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        status: "shadow",
+        limit: 20,
+      },
+    ]);
+  });
+
   it("approves a candidate into an enabled rule", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {

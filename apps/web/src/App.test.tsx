@@ -1385,6 +1385,50 @@ describe("Email Hub first UI baseline", () => {
     expect(within(rulePanel).getByText(/最近运行：命中 5 封，新增 1 个标签关联/)).toBeTruthy();
   });
 
+  it("loads pending Hermes rule candidates in Settings", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listHermesRuleCandidates).mockResolvedValueOnce({
+      items: [
+        {
+          id: "candidate_receipts",
+          accountId: "account_1",
+          title: "启用发票/账单智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["发票", "invoice", "receipt"] },
+          action: {
+            type: "apply_label",
+            labelName: "发票/账单",
+            labelColor: "green",
+            providerWriteback: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.82,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:15:00.000Z",
+        },
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    await waitFor(() => {
+      expect(api.listHermesRuleCandidates).toHaveBeenCalledWith({
+        accountId: "account_1",
+        status: "shadow",
+        limit: 50,
+      });
+    });
+    expect(within(rulePanel).getByText("启用发票/账单智能分组")).toBeTruthy();
+    expect(within(rulePanel).getByText(/82% · 草案/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+  });
+
   it("lets users draft, simulate, and approve Hermes rules from Settings", async () => {
     const api = createApiFixture();
     const command = "帮我创建一个验证码分组规则";
@@ -1432,6 +1476,7 @@ describe("Email Hub first UI baseline", () => {
     await waitFor(() => {
       expect(api.createHermesActionPlan).toHaveBeenCalledWith({
         accountId: "account_1",
+        candidateId: "candidate_codes",
         command,
         sampleLimit: 25,
       });
@@ -7710,6 +7755,9 @@ function createApiFixture(): EmailHubApi {
       createdAt: "2026-06-13T10:30:00.000Z",
     } satisfies HermesRuleExecutionDto)),
     listHermesRuleExecutions: vi.fn(async () => ({
+      items: [],
+    })),
+    listHermesRuleCandidates: vi.fn(async () => ({
       items: [],
     })),
     draftHermesRule: vi.fn(async () => ({

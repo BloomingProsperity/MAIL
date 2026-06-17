@@ -1831,7 +1831,8 @@ export interface EmailHubApi {
   }): Promise<HermesWorkspaceContextDto>;
   createHermesActionPlan(input: {
     accountId: string;
-    command: string;
+    command?: string;
+    candidateId?: string;
     sampleLimit?: number;
   }): Promise<HermesActionPlanDto>;
   confirmHermesActionPlan(input: {
@@ -1844,6 +1845,11 @@ export interface EmailHubApi {
     enabled?: boolean;
     limit?: number;
   }): Promise<Page<HermesRuleDto>>;
+  listHermesRuleCandidates(input: {
+    accountId: string;
+    status?: HermesRuleCandidateStatus;
+    limit?: number;
+  }): Promise<Page<HermesRuleCandidateDto>>;
   updateHermesRule(input: {
     accountId: string;
     ruleId: string;
@@ -2696,6 +2702,22 @@ export function createEmailHubApi(
         fetchImpl,
         baseUrl,
         `/api/hermes/rules?${params.toString()}`,
+      );
+    },
+
+    listHermesRuleCandidates(input) {
+      const params = new URLSearchParams();
+      params.set("accountId", input.accountId);
+      if (input.status) {
+        params.set("status", input.status);
+      }
+      if (input.limit !== undefined) {
+        params.set("limit", String(input.limit));
+      }
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/rule-candidates?${params.toString()}`,
       );
     },
 

@@ -597,6 +597,7 @@ POST /api/hermes/skills/reply_draft/run
 POST /api/hermes/skills/rewrite_polish/run
 POST /api/hermes/drafts/feedback
 POST /api/hermes/rules/suggest
+GET  /api/hermes/rule-candidates
 POST /api/hermes/rules/:candidateId/simulate
 POST /api/hermes/rules/:candidateId/approve
 ```
@@ -757,10 +758,16 @@ POST /api/hermes/rules/suggest
 -> read repeated Smart Inbox feedback for one account
 -> create hermes_rule_candidates with status shadow and evidence message ids
 
+GET /api/hermes/rule-candidates?accountId=:accountId&status=shadow
+-> list pending reviewed candidates for Settings and action-plan confirmation
+
 POST /api/hermes/rules/:candidateId/simulate
 -> match recent visible messages by candidate condition
 -> write hermes_rule_runs in shadow mode
 -> return sample message ids and action preview
+
+POST /api/hermes/action-plans
+-> create an auditable confirmation-required plan from a command or existing candidate id
 
 POST /api/hermes/rules/:candidateId/approve
 -> mark candidate approved

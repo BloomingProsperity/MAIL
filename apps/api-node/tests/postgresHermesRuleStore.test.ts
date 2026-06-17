@@ -110,6 +110,82 @@ describe("postgres Hermes rule store", () => {
     });
   });
 
+  it("lists rule candidates by account and status in newest-first order", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "candidate_new",
+              account_id: "account_1",
+              title: "启用发票智能分组",
+              rule_type: "content_label",
+              condition: { anyKeywords: ["发票", "invoice"] },
+              action: {
+                type: "apply_label",
+                labelName: "发票",
+                requiresConfirmation: true,
+              },
+              confidence: "0.820",
+              status: "shadow",
+              evidence_message_ids: ["message_2"],
+              created_at: "2026-06-13T10:30:00.000Z",
+              approved_at: null,
+            },
+            {
+              id: "candidate_old",
+              account_id: "account_1",
+              title: "启用验证码智能分组",
+              rule_type: "content_label",
+              condition: { anyKeywords: ["验证码", "otp"] },
+              action: {
+                type: "apply_label",
+                labelName: "验证码",
+                requiresConfirmation: true,
+              },
+              confidence: "0.900",
+              status: "shadow",
+              evidence_message_ids: ["message_1"],
+              created_at: "2026-06-13T10:00:00.000Z",
+              approved_at: null,
+            },
+          ],
+        };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    const result = await store.listRuleCandidates({
+      accountId: "account_1",
+      status: "shadow",
+      limit: 20,
+    });
+
+    expect(queries[0].text).toMatch(/FROM hermes_rule_candidates/i);
+    expect(queries[0].text).toMatch(/WHERE account_id = \$1/i);
+    expect(queries[0].text).toMatch(/\(\$2::text IS NULL OR status = \$2\)/i);
+    expect(queries[0].text).toMatch(/ORDER BY created_at DESC, id DESC/i);
+    expect(queries[0].values).toEqual(["account_1", "shadow", 20]);
+    expect(result).toEqual({
+      items: [
+        expect.objectContaining({
+          id: "candidate_new",
+          accountId: "account_1",
+          status: "shadow",
+          confidence: 0.82,
+        }),
+        expect.objectContaining({
+          id: "candidate_old",
+          accountId: "account_1",
+          status: "shadow",
+          confidence: 0.9,
+        }),
+      ],
+    });
+  });
+
   it("records shadow simulations against a candidate", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

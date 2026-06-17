@@ -112,6 +112,11 @@ export interface ApproveHermesRuleInput {
   candidateId: string;
 }
 
+export interface GetHermesRuleCandidateInput {
+  accountId: string;
+  candidateId: string;
+}
+
 export interface BackfillHermesRuleHistoryInput {
   accountId: string;
   ruleId: string;
@@ -201,6 +206,9 @@ export interface HermesRuleService {
   listRuleCandidates(
     input: ListHermesRuleCandidatesInput,
   ): Promise<{ items: HermesRuleCandidate[] }>;
+  getRuleCandidate(
+    input: GetHermesRuleCandidateInput,
+  ): Promise<HermesRuleCandidate | undefined>;
   simulateRule(
     input: SimulateHermesRuleInput,
   ): Promise<HermesRuleSimulation | undefined>;
@@ -320,6 +328,13 @@ export function createHermesRuleService(
         accountId: requireString(input.accountId),
         ...(input.status ? { status: input.status } : {}),
         limit: positiveInteger(input.limit, 1, 100),
+      });
+    },
+
+    async getRuleCandidate(input) {
+      return options.store.getRuleCandidate({
+        accountId: requireString(input.accountId),
+        candidateId: requireString(input.candidateId),
       });
     },
 
