@@ -95,6 +95,80 @@ describe("HermesSkillSettingsPanel", () => {
       .closest("article") as HTMLElement;
     expect(within(savedTranslateCard).getByText(/已同步/)).toBeTruthy();
   });
+
+  it("locks skill inputs while a backend save is in flight", async () => {
+    const api = createSkillApiFixture();
+    const pendingUpdate = deferred<HermesSkillDto>();
+    vi.mocked(api.updateHermesSkillSettings).mockImplementation(
+      async () => pendingUpdate.promise,
+    );
+
+    render(<HermesSkillSettingsPanel api={api} />);
+
+    const panel = await screen.findByLabelText("Hermes skill settings");
+    const translateCard = within(panel)
+      .getByText("翻译邮件")
+      .closest("article") as HTMLElement;
+    fireEvent.click(
+      within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
+    );
+    fireEvent.click(
+      within(translateCard).getByRole("button", {
+        name: "Save Hermes skill settings 翻译邮件",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.updateHermesSkillSettings).toHaveBeenCalledWith({
+        skillId: "translate_text",
+        patch: expect.objectContaining({ enabled: false }),
+      });
+    });
+    expect(
+      (
+        within(translateCard).getByLabelText(
+          "Enable Hermes skill 翻译邮件",
+        ) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        within(translateCard).getByLabelText(
+          "Hermes skill max context 翻译邮件",
+        ) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        within(translateCard).getByLabelText(
+          "Hermes skill custom instructions 翻译邮件",
+        ) as HTMLTextAreaElement
+      ).disabled,
+    ).toBe(true);
+
+    pendingUpdate.resolve(
+      skillFixture({
+        id: "translate_text",
+        title: "翻译邮件",
+        mode: "read",
+        description: "翻译邮件正文",
+        settings: {
+          ...skillSettingsFixture(),
+          enabled: false,
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        (
+          within(translateCard).getByLabelText(
+            "Enable Hermes skill 翻译邮件",
+          ) as HTMLInputElement
+        ).disabled,
+      ).toBe(false);
+    });
+  });
 });
 
 function createSkillApiFixture(): EmailHubApi {
@@ -198,4 +272,14 @@ function resourceProfileFixture(): HermesResourceProfileDto {
     },
     guardrails: ["Prompt context is capped per skill."],
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }

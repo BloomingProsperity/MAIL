@@ -454,6 +454,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                     <input
                       aria-label={`Enable Hermes skill ${skill.title}`}
                       type="checkbox"
+                      disabled={isSavingAnySkill}
                       checked={skill.settings.enabled}
                       onChange={(event) =>
                         updateLocalSkill(skill.id, {
@@ -467,6 +468,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                     <input
                       aria-label={`Allow Hermes body reads ${skill.title}`}
                       type="checkbox"
+                      disabled={isSavingAnySkill}
                       checked={skill.settings.allowBodyRead}
                       onChange={(event) =>
                         updateLocalSkill(skill.id, {
@@ -480,6 +482,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                     <input
                       aria-label={`Allow Hermes memory writes ${skill.title}`}
                       type="checkbox"
+                      disabled={isSavingAnySkill}
                       checked={skill.settings.allowMemoryWrite}
                       onChange={(event) =>
                         updateLocalSkill(skill.id, {
@@ -493,6 +496,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                     <input
                       aria-label={`Require Hermes confirmation ${skill.title}`}
                       type="checkbox"
+                      disabled={isSavingAnySkill}
                       checked={skill.settings.requireConfirmation}
                       onChange={(event) =>
                         updateLocalSkill(skill.id, {
@@ -513,6 +517,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                       min={skill.settingBounds.maxContextChars.min}
                       max={skill.settingBounds.maxContextChars.max}
                       step={skill.settingBounds.maxContextChars.step}
+                      disabled={isSavingAnySkill}
                       value={skill.settings.maxContextChars}
                       onChange={(event) =>
                         updateLocalSkill(skill.id, {
@@ -533,6 +538,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                       min={skill.settingBounds.memoryLimit.min}
                       max={skill.settingBounds.memoryLimit.max}
                       step={skill.settingBounds.memoryLimit.step}
+                      disabled={isSavingAnySkill}
                       value={skill.settings.memoryLimit}
                       onChange={(event) =>
                         updateLocalSkill(skill.id, {
@@ -553,6 +559,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                     aria-label={`Hermes skill custom instructions ${skill.title}`}
                     maxLength={skill.settingBounds.customInstructions.maxLength}
                     rows={4}
+                    disabled={isSavingAnySkill}
                     value={skill.settings.customInstructions}
                     onChange={(event) =>
                       updateLocalSkill(skill.id, {
