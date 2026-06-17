@@ -16,6 +16,10 @@ import {
   type HermesSkill,
   type HermesSkillSettingsPatch,
 } from "../hermes/skills.js";
+import {
+  createHermesResourceProfile,
+  type HermesRetentionPolicy,
+} from "../hermes/resource-profile.js";
 import { limitHermesContextText } from "../hermes/message-content.js";
 import {
   HermesSkillDisabledError,
@@ -446,6 +450,7 @@ export interface ApiConfig {
   hermesMessageFollowupTrackerService?: HermesMessageFollowupTrackerService;
   hermesRuntimeConfigService?: HermesRuntimeConfigService;
   hermesSkillSettingsService?: HermesSkillSettingsService;
+  hermesRetentionPolicy?: Partial<HermesRetentionPolicy>;
   hermesProviderProbeService?: HermesProviderProbeService;
   hermesTranslationPreferenceService?: HermesTranslationPreferenceService;
   hermesFollowUpReminderService?: HermesFollowUpReminderService;
@@ -766,6 +771,24 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           config.hermesSkillSettingsService
             ? await config.hermesSkillSettingsService.listSkills()
             : getHermesSkills(),
+        );
+        return;
+      }
+
+      if (
+        request.method === "GET" &&
+        request.url === "/api/hermes/resource-profile"
+      ) {
+        const skills = config.hermesSkillSettingsService
+          ? await config.hermesSkillSettingsService.listSkills()
+          : getHermesSkills();
+        writeJson(
+          response,
+          200,
+          createHermesResourceProfile({
+            skills,
+            retention: config.hermesRetentionPolicy,
+          }),
         );
         return;
       }

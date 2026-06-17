@@ -171,6 +171,124 @@ describe("Hermes routes", () => {
     ]);
   });
 
+  it("reports Hermes resource profile from editable skill budgets", async () => {
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        return [
+          {
+            id: "translate_text",
+            title: "翻译邮件",
+            mode: "read",
+            description: "翻译邮件正文",
+            settings: {
+              enabled: true,
+              maxContextChars: 12000,
+              memoryLimit: 2,
+              allowBodyRead: true,
+              allowMemoryWrite: true,
+              requireConfirmation: false,
+            },
+            settingBounds: {
+              maxContextChars: { min: 1000, max: 200000, step: 1000 },
+              memoryLimit: { min: 0, max: 50, step: 1 },
+            },
+          },
+          {
+            id: "action_plan",
+            title: "执行计划",
+            mode: "learn",
+            description: "把自然语言邮箱操作转成可确认计划",
+            settings: {
+              enabled: true,
+              maxContextChars: 32000,
+              memoryLimit: 8,
+              allowBodyRead: true,
+              allowMemoryWrite: true,
+              requireConfirmation: true,
+            },
+            settingBounds: {
+              maxContextChars: { min: 1000, max: 200000, step: 1000 },
+              memoryLimit: { min: 0, max: 50, step: 1 },
+            },
+          },
+          {
+            id: "newsletter_cleanup",
+            title: "订阅清理",
+            mode: "classify",
+            description: "识别订阅和营销邮件",
+            settings: {
+              enabled: false,
+              maxContextChars: 24000,
+              memoryLimit: 6,
+              allowBodyRead: true,
+              allowMemoryWrite: false,
+              requireConfirmation: false,
+            },
+            settingBounds: {
+              maxContextChars: { min: 1000, max: 200000, step: 1000 },
+              memoryLimit: { min: 0, max: 50, step: 1 },
+            },
+          },
+        ];
+      },
+      async getSkill() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/hermes/resource-profile`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          skills: {
+            total: 3,
+            enabled: 2,
+            bodyReadEnabled: 2,
+            memoryWriteEnabled: 2,
+            confirmationRequired: 1,
+            maxContextCharsPerRun: 32000,
+            maxMemoryItemsPerRun: 8,
+            enabledContextBudgetChars: 44000,
+            enabledMemoryBudgetItems: 10,
+          },
+          retention: {
+            retentionDays: 14,
+            cleanupIntervalMs: 120000,
+            cleanupLimit: 250,
+            managedTables: expect.arrayContaining(["hermes_skill_runs"]),
+          },
+          deployment: {
+            profile: "small",
+            recommendedMinimum: {
+              cpuCores: 2,
+              memoryGb: 4,
+              diskGb: 20,
+            },
+            localModelRecommendedMinimum: {
+              memoryGb: 16,
+            },
+          },
+          guardrails: expect.arrayContaining([
+            expect.stringContaining("Prompt context is capped per skill"),
+          ]),
+        });
+      },
+      {
+        hermesSkillSettingsService,
+        hermesRetentionPolicy: {
+          retentionDays: 14,
+          cleanupIntervalMs: 120000,
+          cleanupLimit: 250,
+        },
+      },
+    );
+  });
+
   it("rejects invalid Hermes skill settings updates", async () => {
     const hermesSkillSettingsService = {
       async listSkills() {

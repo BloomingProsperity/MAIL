@@ -543,6 +543,40 @@ export interface HermesSkillDto {
   settingBounds: HermesSkillSettingBoundsDto;
 }
 
+export interface HermesResourceProfileDto {
+  skills: {
+    total: number;
+    enabled: number;
+    bodyReadEnabled: number;
+    memoryWriteEnabled: number;
+    confirmationRequired: number;
+    maxContextCharsPerRun: number;
+    maxMemoryItemsPerRun: number;
+    enabledContextBudgetChars: number;
+    enabledMemoryBudgetItems: number;
+  };
+  retention: {
+    retentionDays: number;
+    cleanupIntervalMs: number;
+    cleanupLimit: number;
+    managedTables: string[];
+  };
+  deployment: {
+    profile: "small" | "medium" | "large";
+    recommendedMinimum: {
+      cpuCores: number;
+      memoryGb: number;
+      diskGb: number;
+    };
+    localModelRecommendedMinimum: {
+      cpuCores: number;
+      memoryGb: number;
+      diskGb: number;
+    };
+  };
+  guardrails: string[];
+}
+
 export interface HermesWorkspaceOperationBoundaryDto {
   id: string;
   title: string;
@@ -1811,6 +1845,7 @@ export interface EmailHubApi {
   getHermesRuntimeVersion(): Promise<HermesRuntimeVersionStatus>;
   checkHermesRuntimeUpdate(): Promise<HermesRuntimeVersionStatus>;
   listHermesSkills(): Promise<HermesSkillDto[]>;
+  getHermesResourceProfile(): Promise<HermesResourceProfileDto>;
   updateHermesSkillSettings(input: {
     skillId: string;
     patch: HermesSkillSettingsUpdateInput;
@@ -2569,6 +2604,10 @@ export function createEmailHubApi(
 
     listHermesSkills() {
       return request(fetchImpl, baseUrl, "/api/hermes/skills");
+    },
+
+    getHermesResourceProfile() {
+      return request(fetchImpl, baseUrl, "/api/hermes/resource-profile");
     },
 
     updateHermesSkillSettings(input) {

@@ -215,7 +215,11 @@ with more than smoke-level tests.
   skill options for each built-in skill. Users can edit enabled state,
   body-read permission, memory-write permission, confirmation requirement,
   context character budget, and memory limit through the API instead of
-  changing code or environment variables.
+  changing code or environment variables. `GET /api/hermes/resource-profile`
+  now summarizes enabled skill count, max per-run context budget, memory
+  fan-out, retention cleanup policy, managed Hermes tables, and self-hosted
+  machine guidance; Settings displays the same profile before the editable
+  skill cards so operators can lower budgets before a node is under pressure.
 - Current action-plan status: Hermes rule candidates are now recoverable after
   refresh through `GET /api/hermes/rule-candidates`, and Settings loads shadow
   candidates alongside enabled rules. Confirming a candidate creates the

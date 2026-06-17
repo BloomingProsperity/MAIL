@@ -56,6 +56,7 @@ import type {
   HermesRuleExecutionDto,
   HermesRuleHistoryBackfillDto,
   HermesRuleSimulationDto,
+  HermesResourceProfileDto,
   HermesRuntimeMode,
   HermesSkillDto,
   HermesRuntimeUpdateChannel,
@@ -604,6 +605,58 @@ const fallbackHermesSkills: HermesSkillDto[] = [
     requireConfirmation: true,
   }),
 ];
+
+const fallbackHermesResourceProfile: HermesResourceProfileDto = {
+  skills: {
+    total: fallbackHermesSkills.length,
+    enabled: fallbackHermesSkills.filter((skill) => skill.settings.enabled).length,
+    bodyReadEnabled: fallbackHermesSkills.filter(
+      (skill) => skill.settings.enabled && skill.settings.allowBodyRead,
+    ).length,
+    memoryWriteEnabled: fallbackHermesSkills.filter(
+      (skill) => skill.settings.enabled && skill.settings.allowMemoryWrite,
+    ).length,
+    confirmationRequired: fallbackHermesSkills.filter(
+      (skill) => skill.settings.enabled && skill.settings.requireConfirmation,
+    ).length,
+    maxContextCharsPerRun: 24000,
+    maxMemoryItemsPerRun: 6,
+    enabledContextBudgetChars:
+      fallbackHermesSkills.filter((skill) => skill.settings.enabled).length * 24000,
+    enabledMemoryBudgetItems:
+      fallbackHermesSkills.filter((skill) => skill.settings.enabled).length * 6,
+  },
+  retention: {
+    retentionDays: 30,
+    cleanupIntervalMs: 60 * 60 * 1000,
+    cleanupLimit: 500,
+    managedTables: [
+      "hermes_message_translations",
+      "hermes_message_summaries",
+      "hermes_action_plans",
+      "hermes_feedback",
+      "hermes_audit_events",
+      "hermes_skill_runs",
+    ],
+  },
+  deployment: {
+    profile: "medium",
+    recommendedMinimum: {
+      cpuCores: 2,
+      memoryGb: 6,
+      diskGb: 30,
+    },
+    localModelRecommendedMinimum: {
+      cpuCores: 6,
+      memoryGb: 24,
+      diskGb: 80,
+    },
+  },
+  guardrails: [
+    "Prompt context is capped per skill before provider calls and audit persistence.",
+    "Retention cleanup prunes expired Hermes caches, plans, feedback, audit events, and skill runs in bounded batches.",
+  ],
+};
 
 export interface AppProps {
   api?: EmailHubApi;
@@ -6451,6 +6504,17 @@ function formatHermesSkillMode(mode: HermesSkillDto["mode"]): string {
   return labels[mode];
 }
 
+function formatHermesDeploymentProfile(
+  profile: HermesResourceProfileDto["deployment"]["profile"],
+): string {
+  const labels: Record<HermesResourceProfileDto["deployment"]["profile"], string> = {
+    small: "轻量",
+    medium: "标准",
+    large: "高负载",
+  };
+  return labels[profile];
+}
+
 function clampHermesSkillInteger(
   value: string,
   current: number,
@@ -8355,6 +8419,9 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
 
 function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
   const [skills, setSkills] = useState<HermesSkillDto[]>(fallbackHermesSkills);
+  const [resourceProfile, setResourceProfile] = useState<HermesResourceProfileDto>(
+    fallbackHermesResourceProfile,
+  );
   const [savingSkillId, setSavingSkillId] = useState<string>();
   const [notice, setNotice] = useState("正在读取 Hermes 能力选项...");
 
@@ -8363,22 +8430,27 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
 
     if (!props.api) {
       setSkills(fallbackHermesSkills);
+      setResourceProfile(fallbackHermesResourceProfile);
       setNotice("本地预览能力选项，连接后会保存到后端。");
       return () => {
         alive = false;
       };
     }
 
-    void props.api
-      .listHermesSkills()
-      .then((items) => {
+    void Promise.all([
+      props.api.listHermesSkills(),
+      props.api.getHermesResourceProfile(),
+    ])
+      .then(([items, profile]) => {
         if (!alive) return;
         setSkills(items);
+        setResourceProfile(profile);
         setNotice("能力选项已同步。");
       })
       .catch(() => {
         if (!alive) return;
         setSkills(fallbackHermesSkills);
+        setResourceProfile(fallbackHermesResourceProfile);
         setNotice("暂时无法读取能力选项，已使用本地兜底。");
       });
 
@@ -8438,6 +8510,51 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
           <p>每个能力都可以独立限制正文读取、记忆写入、确认门槛和上下文预算。</p>
         </div>
       </header>
+
+      <div
+        className="settings-card-grid maintenance-grid"
+        aria-label="Hermes resource profile"
+      >
+        <article className="settings-module maintenance-stat">
+          <span>启用技能</span>
+          <strong>
+            {resourceProfile.skills.enabled}/{resourceProfile.skills.total}
+          </strong>
+          <p>{resourceProfile.skills.bodyReadEnabled} 个允许读取正文</p>
+        </article>
+        <article className="settings-module maintenance-stat">
+          <span>单次上下文上限</span>
+          <strong>
+            {resourceProfile.skills.maxContextCharsPerRun.toLocaleString()}
+          </strong>
+          <p>
+            总预算{" "}
+            {resourceProfile.skills.enabledContextBudgetChars.toLocaleString()} 字符
+          </p>
+        </article>
+        <article className="settings-module maintenance-stat">
+          <span>记忆扇出</span>
+          <strong>{resourceProfile.skills.maxMemoryItemsPerRun}</strong>
+          <p>{resourceProfile.skills.memoryWriteEnabled} 个技能允许写入记忆</p>
+        </article>
+        <article className="settings-module maintenance-stat">
+          <span>部署档位</span>
+          <strong>{formatHermesDeploymentProfile(resourceProfile.deployment.profile)}</strong>
+          <p>
+            {resourceProfile.deployment.recommendedMinimum.cpuCores}C /{" "}
+            {resourceProfile.deployment.recommendedMinimum.memoryGb}GB RAM
+          </p>
+        </article>
+      </div>
+
+      <div className="backend-notice compact" role="note">
+        Hermes 保留 {resourceProfile.retention.retentionDays} 天数据，清理间隔{" "}
+        {Math.round(resourceProfile.retention.cleanupIntervalMs / 60000)} 分钟，
+        每批最多 {resourceProfile.retention.cleanupLimit.toLocaleString()} 行。
+        本地模型建议至少{" "}
+        {resourceProfile.deployment.localModelRecommendedMinimum.cpuCores}C /{" "}
+        {resourceProfile.deployment.localModelRecommendedMinimum.memoryGb}GB RAM。
+      </div>
 
       <div className="skill-grid compact hermes-skill-grid">
         {skills.map((skill) => (

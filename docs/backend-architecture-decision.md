@@ -584,6 +584,8 @@ a first-class built-in skill:
 
 ```text
 GET  /api/hermes/skills
+GET  /api/hermes/resource-profile
+PATCH /api/hermes/skills/:skillId/settings
 POST /api/hermes/skills/translate_text/run
 POST /api/hermes/translation-preferences
 POST /api/hermes/skills/email_search_qa/run

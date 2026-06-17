@@ -132,6 +132,26 @@ config.databaseHealthCheck = async () => {
 
   await pool.query("SELECT 1");
 };
+config.hermesRetentionPolicy = {
+  retentionDays: readBoundedIntegerEnv({
+    value: process.env.HERMES_RETENTION_DAYS,
+    fallback: 30,
+    min: 1,
+    max: 365,
+  }),
+  cleanupIntervalMs: readBoundedIntegerEnv({
+    value: process.env.HERMES_RETENTION_CLEANUP_INTERVAL_MS,
+    fallback: 60 * 60 * 1000,
+    min: 60_000,
+    max: 24 * 60 * 60 * 1000,
+  }),
+  cleanupLimit: readBoundedIntegerEnv({
+    value: process.env.HERMES_RETENTION_CLEANUP_LIMIT,
+    fallback: 500,
+    min: 1,
+    max: 10_000,
+  }),
+};
 
 logger.info("api_configuration_loaded", {
   databaseConfigured: Boolean(databaseUrl),

@@ -112,6 +112,10 @@ Hermes skills can also load scoped memory context, for example `memoryScope: "gl
 Hermes read/write skill execution is available at:
 
 ```text
+GET /api/hermes/skills
+GET /api/hermes/resource-profile
+PATCH /api/hermes/skills/:skillId/settings
+POST /api/hermes/skills/translate_text/run
 POST /api/hermes/skills/email_search_qa/run
 POST /api/hermes/skills/thread_summarize/run
 POST /api/hermes/skills/action_item_extract/run
@@ -120,11 +124,20 @@ POST /api/hermes/skills/priority_triage/run
 POST /api/hermes/skills/followup_tracker/run
 POST /api/hermes/skills/newsletter_cleanup/run
 POST /api/hermes/skills/reply_draft/run
+POST /api/hermes/skills/quick_reply/run
+POST /api/hermes/skills/rewrite_polish/run
 POST /api/hermes/drafts/feedback
 POST /api/hermes/rules/suggest
+GET /api/hermes/rule-candidates
 POST /api/hermes/rules/:candidateId/simulate
 POST /api/hermes/rules/:candidateId/approve
 ```
+
+`GET /api/hermes/resource-profile` summarizes the current enabled skill count,
+per-run context and memory limits, retention cleanup policy, and self-hosted
+machine guidance. Settings shows the same profile above the editable skill
+cards so operators can see the pressure created by Hermes before raising
+budgets.
 
 `email_search_qa` searches app-owned Postgres message DTOs first, then asks Hermes to answer from those matches. It returns `answerText`, `searchQuery`, and match summaries, and records the matched message ids in `hermes_audit_events`.
 The web app routes the compact bottom Hermes dock through this same
@@ -273,6 +286,20 @@ Default entry points:
 
 - Web: http://127.0.0.1:5173
 - API: http://127.0.0.1:8080/health
+
+Suggested self-hosted sizing for EmailEngine-first deployments:
+
+- Small external-Hermes setup: 2 CPU cores, 4 GB RAM, 20 GB disk for a small
+  mailbox set where Hermes calls an external provider.
+- Standard external-Hermes setup: 2 CPU cores, 6 GB RAM, 30 GB disk when most
+  built-in Hermes skills are enabled with the default 24k context budget.
+- Local model setup: start at 6 CPU cores, 24 GB RAM, 80 GB disk for the app
+  stack plus a local OpenAI-compatible Hermes model. Larger models or higher
+  context budgets need more RAM/GPU headroom.
+
+Use Settings -> Hermes skill options or `GET /api/hermes/resource-profile` to
+inspect the current profile. Lower per-skill `maxContextChars` and
+`memoryLimit` first when a self-hosted node is memory constrained.
 
 For an EmailEngine-first launch, set these values in `.env` before onboarding
 real mailboxes:

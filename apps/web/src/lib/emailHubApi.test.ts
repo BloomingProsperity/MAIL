@@ -850,6 +850,55 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("loads Hermes resource profile for self-hosted settings", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        skills: {
+          total: 14,
+          enabled: 13,
+          bodyReadEnabled: 12,
+          memoryWriteEnabled: 5,
+          confirmationRequired: 4,
+          maxContextCharsPerRun: 24000,
+          maxMemoryItemsPerRun: 6,
+          enabledContextBudgetChars: 312000,
+          enabledMemoryBudgetItems: 78,
+        },
+        retention: {
+          retentionDays: 30,
+          cleanupIntervalMs: 3600000,
+          cleanupLimit: 500,
+          managedTables: ["hermes_skill_runs"],
+        },
+        deployment: {
+          profile: "medium",
+          recommendedMinimum: {
+            cpuCores: 2,
+            memoryGb: 6,
+            diskGb: 30,
+          },
+          localModelRecommendedMinimum: {
+            cpuCores: 6,
+            memoryGb: 24,
+            diskGb: 80,
+          },
+        },
+        guardrails: ["Prompt context is capped per skill."],
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const profile = await api.getHermesResourceProfile();
+
+    expect(profile.skills.enabled).toBe(13);
+    expect(profile.retention.retentionDays).toBe(30);
+    expect(profile.deployment.profile).toBe("medium");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/resource-profile",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("preserves Hermes provider request protocol metadata for settings wiring", async () => {
     const catalogResponse: HermesProviderCatalogResponse = {
       providers: [

@@ -29,6 +29,7 @@ import type {
   HermesRuleDto,
   HermesRuleExecutionDto,
   HermesRuleSimulationDto,
+  HermesResourceProfileDto,
   HermesSkillDto,
   HermesThreadSummaryResult,
   HermesTranslationPreferenceResult,
@@ -1192,6 +1193,62 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText("能力选项已保存：翻译邮件。")).toBeTruthy();
+  });
+
+  it("shows Hermes resource profile and self-hosted machine guidance", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getHermesResourceProfile).mockResolvedValueOnce(
+      hermesResourceProfileFixture({
+        skills: {
+          total: 14,
+          enabled: 11,
+          bodyReadEnabled: 9,
+          memoryWriteEnabled: 4,
+          confirmationRequired: 5,
+          maxContextCharsPerRun: 48000,
+          maxMemoryItemsPerRun: 8,
+          enabledContextBudgetChars: 410000,
+          enabledMemoryBudgetItems: 64,
+        },
+        retention: {
+          retentionDays: 21,
+          cleanupIntervalMs: 1800000,
+          cleanupLimit: 300,
+          managedTables: ["hermes_skill_runs"],
+        },
+        deployment: {
+          profile: "medium",
+          recommendedMinimum: {
+            cpuCores: 4,
+            memoryGb: 8,
+            diskGb: 40,
+          },
+          localModelRecommendedMinimum: {
+            cpuCores: 8,
+            memoryGb: 32,
+            diskGb: 100,
+          },
+        },
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const profile = await screen.findByLabelText("Hermes resource profile");
+    await waitFor(() => {
+      expect(api.getHermesResourceProfile).toHaveBeenCalled();
+    });
+    expect(within(profile).getByText("11/14")).toBeTruthy();
+    expect(within(profile).getByText("48,000")).toBeTruthy();
+    expect(within(profile).getByText("标准")).toBeTruthy();
+    expect(
+      await screen.findByText(/Hermes 保留 21 天数据，清理间隔 30 分钟/),
+    ).toBeTruthy();
+    expect(await screen.findByText(/本地模型建议至少 8C \/ 32GB RAM/)).toBeTruthy();
   });
 
   it("lets admins inspect and clean compose attachment cache from Settings", async () => {
@@ -6348,6 +6405,45 @@ function hermesSkillFixture(
   };
 }
 
+function hermesResourceProfileFixture(
+  overrides: Partial<HermesResourceProfileDto> = {},
+): HermesResourceProfileDto {
+  return {
+    skills: {
+      total: 14,
+      enabled: 13,
+      bodyReadEnabled: 12,
+      memoryWriteEnabled: 5,
+      confirmationRequired: 4,
+      maxContextCharsPerRun: 24000,
+      maxMemoryItemsPerRun: 6,
+      enabledContextBudgetChars: 312000,
+      enabledMemoryBudgetItems: 78,
+    },
+    retention: {
+      retentionDays: 30,
+      cleanupIntervalMs: 3600000,
+      cleanupLimit: 500,
+      managedTables: ["hermes_skill_runs"],
+    },
+    deployment: {
+      profile: "medium",
+      recommendedMinimum: {
+        cpuCores: 2,
+        memoryGb: 6,
+        diskGb: 30,
+      },
+      localModelRecommendedMinimum: {
+        cpuCores: 6,
+        memoryGb: 24,
+        diskGb: 80,
+      },
+    },
+    guardrails: ["Prompt context is capped per skill."],
+    ...overrides,
+  };
+}
+
 function createApiFixture(): EmailHubApi {
   return {
     listMailboxes: vi.fn(async () => ({
@@ -6703,6 +6799,7 @@ function createApiFixture(): EmailHubApi {
         },
       }),
     ]),
+    getHermesResourceProfile: vi.fn(async () => hermesResourceProfileFixture()),
     updateHermesSkillSettings: vi.fn(async (input) =>
       hermesSkillFixture({
         id: input.skillId,
