@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createHermesRuntimeConfigService,
   createHermesRuntimeTextProvider,
+  HermesRuntimeNotConfiguredError,
 } from "../src/hermes/runtime-config";
 import { createPostgresHermesRuntimeConfigStore } from "../src/hermes/postgres-runtime-config-store";
 
@@ -430,6 +431,32 @@ describe("Hermes runtime config service", () => {
         headers: expect.objectContaining({ authorization: "Bearer b-secret" }),
       }),
     );
+  });
+
+  it("raises a typed error when skill calls run before Hermes runtime is configured", async () => {
+    const provider = createHermesRuntimeTextProvider({
+      runtimeConfigService: {
+        async getConnectionSettings() {
+          return undefined;
+        },
+      },
+    });
+
+    await expect(
+      provider.complete({
+        systemPrompt: "You are Hermes.",
+        userPrompt: "Summarize this message.",
+      }),
+    ).rejects.toBeInstanceOf(HermesRuntimeNotConfiguredError);
+    await expect(
+      provider.complete({
+        systemPrompt: "You are Hermes.",
+        userPrompt: "Summarize this message.",
+      }),
+    ).rejects.toMatchObject({
+      code: "hermes_runtime_not_configured",
+      statusCode: 503,
+    });
   });
 
   it("rejects direct provider keys before Hermes skill model calls", async () => {

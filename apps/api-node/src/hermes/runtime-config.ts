@@ -105,6 +105,15 @@ export class InvalidHermesRuntimeConfigRequestError extends Error {
   }
 }
 
+export class HermesRuntimeNotConfiguredError extends Error {
+  readonly code = "hermes_runtime_not_configured";
+  readonly statusCode = 503;
+
+  constructor(message = "Hermes runtime is not configured") {
+    super(message);
+  }
+}
+
 export function createHermesRuntimeConfigService(options: {
   store: HermesRuntimeConfigStore;
   env?: NodeJS.ProcessEnv;
@@ -206,7 +215,7 @@ export function createHermesRuntimeTextProvider(options: {
     async complete(input) {
       const settings = await options.runtimeConfigService.getConnectionSettings();
       if (!settings?.enabled || !settings.endpointUrl.trim()) {
-        throw new Error("Hermes runtime is not configured");
+        throw new HermesRuntimeNotConfiguredError();
       }
       const providerKey = normalizeRuntimeProviderKey(settings.providerKey);
 

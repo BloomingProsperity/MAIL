@@ -10847,6 +10847,9 @@ function hermesSkillErrorNotice(
     if (error.code === "hermes_skill_disabled") {
       return hermesSkillDisabledNotice(error.skillId ?? input.skillId);
     }
+    if (error.code === "hermes_runtime_not_configured") {
+      return "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。";
+    }
     const unavailableNotice = input.unavailable?.[error.code];
     if (unavailableNotice) {
       return unavailableNotice;

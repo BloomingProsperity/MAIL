@@ -486,6 +486,31 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
   });
 
+  it("points dock Hermes users to runtime settings when the model gateway is not configured", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.searchMailWithHermes).mockRejectedValueOnce(
+      new ApiRequestError(503, "hermes_runtime_not_configured", {
+        error: "hermes_runtime_not_configured",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "找一下合同" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    expect(
+      await screen.findByText(
+        "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
+  });
+
   it("explains when Hermes mail search is disabled by skill settings", async () => {
     const api = createApiFixture();
     vi.mocked(api.searchMailWithHermes).mockRejectedValueOnce(
@@ -1128,6 +1153,32 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("Hermes 总结暂时不可用。")).toBeTruthy();
     expect(screen.getByText("Live body from backend")).toBeTruthy();
     expect(screen.queryByText("需要确认发布时间，并在今天回复 Lina。")).toBeNull();
+  });
+
+  it("points reader Hermes users to runtime settings when the model gateway is not configured", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.summarizeMessage).mockRejectedValueOnce(
+      new ApiRequestError(503, "hermes_runtime_not_configured", {
+        error: "hermes_runtime_not_configured",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to summarize selected message",
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Live body from backend")).toBeTruthy();
   });
 
   it("explains when Hermes reader summary is disabled by skill settings", async () => {

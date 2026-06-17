@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApiHandler } from "../src/http/router";
+import { HermesRuntimeNotConfiguredError } from "../src/hermes/runtime-config";
 import { createHermesSkillSettingsService } from "../src/hermes/skill-settings";
 import type { HermesSkillSettings } from "../src/hermes/skills";
 
@@ -554,6 +555,36 @@ describe("Hermes routes", () => {
             memoryLayers: ["writing_style_profile", "contact_memory"],
           },
         ]);
+      },
+      { hermesService },
+    );
+  });
+
+  it("returns a clear error when Hermes runtime is not configured for skill runs", async () => {
+    const hermesService = {
+      async translate() {
+        throw new HermesRuntimeNotConfiguredError();
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/translate_text/run`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              text: "Hello",
+              targetLanguage: "Chinese",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({
+          error: "hermes_runtime_not_configured",
+        });
       },
       { hermesService },
     );

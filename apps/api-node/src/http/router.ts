@@ -124,6 +124,7 @@ import {
   type HermesMessageFollowupTrackerService,
 } from "../hermes/message-followups.js";
 import {
+  HermesRuntimeNotConfiguredError,
   InvalidHermesRuntimeConfigRequestError,
   type HermesRuntimeConfigService,
   type HermesRuntimeMode,
@@ -3263,6 +3264,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
 
       if (error instanceof InvalidHermesRuntimeConfigRequestError) {
         writeJson(response, 400, { error: error.code });
+        return;
+      }
+
+      if (error instanceof HermesRuntimeNotConfiguredError) {
+        writeJson(response, error.statusCode, { error: error.code });
         return;
       }
 
