@@ -1,14 +1,17 @@
+import { fileURLToPath } from "node:url";
+
 import { createApiTokenFetch } from "./api-token-fetch.js";
 import {
   normalizeApiBaseUrl,
   verifyEmailEngineLaunch,
 } from "./mail-engine/launch-verifier.js";
 import { sanitizeCliError } from "./cli/safe-error.js";
-
-type Env = Record<string, string | undefined>;
+import { loadCliEnvFile, type CliEnv } from "./cli/env-file.js";
 
 export interface EmailEngineLaunchVerifyCliOptions {
-  env?: Env;
+  env?: CliEnv;
+  fileExists?: (path: string) => boolean;
+  readEnvFile?: (path: string) => string | undefined;
   fetchImpl?: typeof fetch;
   verifyLaunch?: typeof verifyEmailEngineLaunch;
   writeStdout?: (message: string) => void;
@@ -19,10 +22,19 @@ export async function runEmailEngineLaunchVerifyCli(
   options: EmailEngineLaunchVerifyCliOptions = {},
 ): Promise<number> {
   const env = options.env ?? process.env;
+  const projectRoot =
+    env.EMAILHUB_REPO_ROOT ??
+    fileURLToPath(new URL("../../..", import.meta.url));
+  const { runtimeEnv } = loadCliEnvFile({
+    env,
+    projectRoot,
+    fileExists: options.fileExists,
+    readEnvFile: options.readEnvFile,
+  });
   const apiBaseUrl =
-    env.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080";
+    runtimeEnv.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080";
   const timeoutMs = readPositiveInteger(
-    env.EMAILHUB_LAUNCH_VERIFY_TIMEOUT_MS,
+    runtimeEnv.EMAILHUB_LAUNCH_VERIFY_TIMEOUT_MS,
     10_000,
   );
   const writeStdout = options.writeStdout ?? console.log;
@@ -35,7 +47,7 @@ export async function runEmailEngineLaunchVerifyCli(
       timeoutMs,
       fetchImpl: createApiTokenFetch(
         options.fetchImpl ?? fetch,
-        env.EMAILHUB_API_TOKEN,
+        runtimeEnv.EMAILHUB_API_TOKEN,
       ),
     });
     writeStdout(JSON.stringify(result, null, 2));
@@ -49,7 +61,7 @@ export async function runEmailEngineLaunchVerifyCli(
           apiBaseUrl: normalizeApiBaseUrl(apiBaseUrl),
           error: sanitizeLaunchVerifyError(error, [
             apiBaseUrl,
-            env.EMAILHUB_API_TOKEN,
+            runtimeEnv.EMAILHUB_API_TOKEN,
           ]),
         },
         null,

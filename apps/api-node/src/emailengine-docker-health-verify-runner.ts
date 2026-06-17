@@ -1,15 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { sanitizeCliError } from "./cli/safe-error.js";
+import { loadCliEnvFile, type CliEnv } from "./cli/env-file.js";
 import { resolveDockerComposeHostBaseUrl } from "./mail-engine/docker-compose-host-urls.js";
 import { verifyDockerComposeHealth } from "./mail-engine/docker-compose-health-verifier.js";
 
-type Env = Record<string, string | undefined>;
-
 export interface EmailEngineDockerHealthVerifyCliOptions {
-  env?: Env;
+  env?: CliEnv;
   fileExists?: (path: string) => boolean;
   readEnvFile?: (path: string) => string | undefined;
   verifyHealth?: typeof verifyDockerComposeHealth;
@@ -21,19 +18,15 @@ export async function runEmailEngineDockerHealthVerifyCli(
   options: EmailEngineDockerHealthVerifyCliOptions = {},
 ): Promise<number> {
   const env = options.env ?? process.env;
-  const fileExists = options.fileExists ?? existsSync;
-  const readEnvFile = options.readEnvFile ?? readDockerHealthEnvFile;
   const projectRoot =
     env.EMAILHUB_REPO_ROOT ??
     fileURLToPath(new URL("../../..", import.meta.url));
-  const configuredEnvFile = env.EMAILHUB_ENV_FILE ?? ".env";
-  const envFile = fileExists(resolve(projectRoot, configuredEnvFile))
-    ? configuredEnvFile
-    : ".env.example";
-  const runtimeEnv: Env = {
-    ...parseEnvFile(readEnvFile(resolve(projectRoot, envFile)) ?? ""),
-    ...env,
-  };
+  const { envFile, runtimeEnv } = loadCliEnvFile({
+    env,
+    projectRoot,
+    fileExists: options.fileExists,
+    readEnvFile: options.readEnvFile,
+  });
   const composeFiles = [
     "infra/docker-compose.yml",
     "infra/docker-compose.prod.yml",
@@ -172,7 +165,7 @@ export function bearerTokenHeaders(
   return trimmed ? { authorization: `Bearer ${trimmed}` } : undefined;
 }
 
-function assertCompatibleWebApiToken(env: Env): void {
+function assertCompatibleWebApiToken(env: CliEnv): void {
   const apiToken = env.EMAILHUB_API_TOKEN?.trim();
   const webToken = env.VITE_EMAILHUB_API_TOKEN?.trim();
   if (apiToken && webToken && apiToken !== webToken) {
@@ -180,44 +173,4 @@ function assertCompatibleWebApiToken(env: Env): void {
       "VITE_EMAILHUB_API_TOKEN must match EMAILHUB_API_TOKEN for the protected self-hosted web build.",
     );
   }
-}
-
-function readDockerHealthEnvFile(path: string): string | undefined {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
-function parseEnvFile(content: string): Env {
-  const parsed: Env = {};
-  for (const line of content.split(/\r?\n/)) {
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(
-      line,
-    );
-    if (!match) {
-      continue;
-    }
-    parsed[match[1]] = parseEnvValue(match[2] ?? "");
-  }
-  return parsed;
-}
-
-function parseEnvValue(value: string): string {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    const unquoted = trimmed.slice(1, -1);
-    return trimmed.startsWith('"')
-      ? unquoted
-          .replace(/\\n/g, "\n")
-          .replace(/\\"/g, '"')
-          .replace(/\\\\/g, "\\")
-      : unquoted;
-  }
-
-  return trimmed.replace(/\s+#.*$/, "").trim();
 }
