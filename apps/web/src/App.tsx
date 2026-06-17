@@ -44,9 +44,16 @@ import {
   HermesReaderTranslationResult,
 } from "./features/hermes/HermesReaderTranslationPanel";
 import {
+  HermesReaderOrganizationPanel,
+  HermesReaderSummaryPanel,
+  formatHermesActionItemNote,
+  hermesActionItemApplyId,
+} from "./features/hermes/HermesReaderOrganizationPanels";
+import {
   HERMES_SOURCE_LANGUAGES,
   HERMES_TRANSLATION_LANGUAGES,
 } from "./features/hermes/hermesTranslation";
+import type { HermesOrganizationApplyAction } from "./features/hermes/HermesReaderOrganizationPanels";
 import {
   HermesAuditLogPanel,
   HermesMemoryManagerPanel,
@@ -82,8 +89,10 @@ import type {
   GatekeeperMode,
   GatekeeperSenderDto,
   HermesEmailSearchQaResult,
+  HermesActionItem,
   HermesActionPlanDto,
   HermesFollowupTrackerResult,
+  HermesMessageSummaryResult,
   HermesMessageTranslationResult,
   HermesMessageOrganizationResult,
   HermesMemoryDto,
@@ -100,7 +109,6 @@ import type {
   HermesRuntimeUpdateChannel,
   HermesRuntimeUpdatePolicy,
   HermesRuntimeVersionStatus,
-  HermesThreadSummaryResult,
   HermesWorkspaceContextDto,
   ImapSmtpConnectionDiagnostic,
   ImapSmtpConnectionTestResult,
@@ -193,28 +201,6 @@ type ComposeAutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
 type ReaderHermesBusy = "summary" | "translation" | "organize";
 type SmartInboxBusyAction = "" | "bulk_done" | SmartInboxFeedbackAction;
 type ReaderActionResult = boolean | Promise<boolean>;
-
-type ReaderHermesOrganizationResult = HermesMessageOrganizationResult;
-
-type HermesOrganizationApplyAction =
-  | {
-      id: string;
-      label: string;
-      kind: "smart_inbox";
-      action: SmartInboxFeedbackAction;
-    }
-  | {
-      id: string;
-      label: string;
-      kind: "mail";
-      action: Extract<MailAction, "archive">;
-    }
-  | {
-      id: string;
-      label: string;
-      kind: "label";
-      labelName: string;
-    };
 
 type PasswordReauthorizationFormState = {
   username: string;
@@ -2199,11 +2185,11 @@ function MailWorkspace(props: {
   const [readerTranslationPreferenceBusy, setReaderTranslationPreferenceBusy] =
     useState(false);
   const [readerHermesSummary, setReaderHermesSummary] =
-    useState<HermesThreadSummaryResult | undefined>();
+    useState<HermesMessageSummaryResult | undefined>();
   const [readerHermesTranslation, setReaderHermesTranslation] =
     useState<HermesMessageTranslationResult | undefined>();
   const [readerHermesOrganization, setReaderHermesOrganization] =
-    useState<ReaderHermesOrganizationResult | undefined>();
+    useState<HermesMessageOrganizationResult | undefined>();
   const [readerHermesApplyBusy, setReaderHermesApplyBusy] =
     useState<string | undefined>();
   const [rescheduleTimes, setRescheduleTimes] = useState<Record<string, string>>(
@@ -2383,13 +2369,6 @@ function MailWorkspace(props: {
   const readerRecipientSummary = messageRecipientSummary(
     props.selectedDetail,
   );
-  const readerHermesApplyActions = readerHermesOrganization
-    ? hermesOrganizationApplyActions(readerHermesOrganization)
-    : [];
-  const readerHermesUnsupportedActionCount = readerHermesOrganization
-    ? hermesOrganizationUnsupportedActionCount(readerHermesOrganization)
-    : 0;
-
   useEffect(() => {
     if (composeAutosaveTimerRef.current !== undefined) {
       window.clearTimeout(composeAutosaveTimerRef.current);
@@ -3064,7 +3043,7 @@ function MailWorkspace(props: {
   }
 
   async function createHermesActionItemFollowUp(
-    item: ReaderHermesOrganizationResult["actionItems"]["items"][number],
+    item: HermesActionItem,
     index: number,
   ) {
     if (readerHermesApplyBusy) {
@@ -4889,13 +4868,7 @@ function MailWorkspace(props: {
             ) : null}
 
             {readerHermesSummary ? (
-              <div className="reason-box hermes-reader-result" role="status">
-                <div>
-                  <Sparkles size={18} />
-                  <strong>Hermes 摘要</strong>
-                </div>
-                <p>{readerHermesSummary.summaryText}</p>
-              </div>
+              <HermesReaderSummaryPanel summary={readerHermesSummary} />
             ) : null}
 
             {readerHermesTranslation ? (
@@ -4909,117 +4882,17 @@ function MailWorkspace(props: {
             ) : null}
 
             {readerHermesOrganization ? (
-              <div
-                className="reason-box hermes-reader-result hermes-organize-result"
-                role="status"
-                aria-label="Hermes 整理建议"
-              >
-                <div>
-                  <Sparkles size={18} />
-                  <strong>Hermes 整理建议</strong>
-                </div>
-                <p>
-                  {readerHermesOrganization.priority.bucket} · 分数{" "}
-                  {readerHermesOrganization.priority.score} ·{" "}
-                  {readerHermesOrganization.priority.reasons.join("，")}
-                </p>
-                {readerHermesOrganization.priority.explanation ? (
-                  <p>{readerHermesOrganization.priority.explanation}</p>
-                ) : null}
-                {readerHermesOrganization.labels.labels.length > 0 ? (
-                  <p>
-                    标签：{" "}
-                    {readerHermesOrganization.labels.labels
-                      .map((label) =>
-                        label.reason ? `${label.name}（${label.reason}）` : label.name,
-                      )
-                      .join("，")}
-                  </p>
-                ) : null}
-                {readerHermesOrganization.labels.actions.length > 0 ? (
-                  <p>
-                    建议动作：{" "}
-                    {readerHermesOrganization.labels.actions
-                      .map(formatHermesLabelAction)
-                      .join("，")}
-                  </p>
-                ) : null}
-                <p>
-                  订阅判断：{readerHermesOrganization.newsletter.senderCategory} ·{" "}
-                  {Math.round(readerHermesOrganization.newsletter.confidence * 100)}%
-                  {readerHermesOrganization.newsletter.reasons.length > 0
-                    ? ` · ${readerHermesOrganization.newsletter.reasons.join("，")}`
-                    : ""}
-                </p>
-                {readerHermesOrganization.newsletter.actions.length > 0 ? (
-                  <p>
-                    订阅建议：{" "}
-                    {readerHermesOrganization.newsletter.actions
-                      .map(formatHermesNewsletterAction)
-                      .join("，")}
-                  </p>
-                ) : null}
-                {readerHermesApplyActions.length > 0 ? (
-                  <div
-                    className="hermes-apply-actions"
-                    aria-label="Hermes 可执行整理动作"
-                  >
-                    {readerHermesApplyActions.map((action) => (
-                      <button
-                        key={action.id}
-                        className="tiny-button"
-                        type="button"
-                        aria-label={`Apply Hermes organization action ${action.label}`}
-                        disabled={Boolean(readerHermesApplyBusy)}
-                        onClick={() => void applyHermesOrganizationSuggestion(action)}
-                      >
-                        {readerHermesApplyBusy === action.id ? "应用中" : action.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {readerHermesUnsupportedActionCount > 0 ? (
-                  <p>
-                    还有 {readerHermesUnsupportedActionCount} 条建议需要标签、稍后或退订能力，当前仅展示不执行。
-                  </p>
-                ) : null}
-                {readerHermesOrganization.actionItems.items.length > 0 ? (
-                  <ul className="hermes-action-list">
-                    {readerHermesOrganization.actionItems.items.map((item, index) => {
-                      const applyId = hermesActionItemApplyId(item, index);
-                      return (
-                        <li key={hermesActionItemKey(item, index)}>
-                          <span>
-                            <strong>{item.title}</strong>
-                            {item.owner ? ` · ${item.owner}` : ""}
-                            {item.dueText ?? item.dueAt
-                              ? ` · ${item.dueText ?? formatMailDate(item.dueAt!)}`
-                              : ""}
-                            {item.priority ? ` · ${item.priority}` : ""}
-                          </span>
-                          {item.dueAt ? (
-                            <button
-                              className="tiny-button"
-                              type="button"
-                              aria-label={`Create Hermes action item follow-up ${item.title}`}
-                              disabled={Boolean(readerHermesApplyBusy)}
-                              onClick={() =>
-                                void createHermesActionItemFollowUp(item, index)
-                              }
-                            >
-                              {readerHermesApplyBusy === applyId
-                                ? "创建中"
-                                : "创建提醒"}
-                            </button>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p>待办：未发现明确待办。</p>
-                )}
-              </div>
+              <HermesReaderOrganizationPanel
+                organization={readerHermesOrganization}
+                applyBusyId={readerHermesApplyBusy}
+                formatDate={formatMailDate}
+                onApplyAction={(action) =>
+                  void applyHermesOrganizationSuggestion(action)
+                }
+                onCreateActionItemFollowUp={(item, index) =>
+                  void createHermesActionItemFollowUp(item, index)
+                }
+              />
             ) : null}
 
             <div className="message-body">
@@ -5147,146 +5020,6 @@ function formatSendIdentity(identity: MailSendIdentityDto): string {
       : []),
   ];
   return markers.length > 0 ? `${label} · ${markers.join(" · ")}` : label;
-}
-
-function hermesOrganizationApplyActions(
-  result: ReaderHermesOrganizationResult,
-): HermesOrganizationApplyAction[] {
-  const actions = new Map<string, HermesOrganizationApplyAction>();
-  const add = (action: HermesOrganizationApplyAction) => {
-    if (!actions.has(action.id)) {
-      actions.set(action.id, action);
-    }
-  };
-
-  for (const action of result.labels.actions) {
-    if (action.type === "archive") {
-      add({ id: "mail:archive", kind: "mail", action: "archive", label: "归档" });
-    }
-    if (action.type === "apply_label" && action.label?.trim()) {
-      const labelName = action.label.trim();
-      add({
-        id: `label:${labelName.toLowerCase()}`,
-        kind: "label",
-        label: `应用标签 ${labelName}`,
-        labelName,
-      });
-    }
-    if (action.type === "move_to_feed") {
-      add({
-        id: "smart_inbox:move_to_feed",
-        kind: "smart_inbox",
-        action: "move_to_feed",
-        label: "移到 Feed",
-      });
-    }
-    if (action.type === "mark_important") {
-      add({
-        id: "smart_inbox:mark_important",
-        kind: "smart_inbox",
-        action: "mark_important",
-        label: "标为重要",
-      });
-    }
-  }
-
-  for (const action of result.newsletter.actions) {
-    if (action.type === "archive") {
-      add({ id: "mail:archive", kind: "mail", action: "archive", label: "归档" });
-    }
-    if (action.type === "move_to_feed") {
-      add({
-        id: "smart_inbox:move_to_feed",
-        kind: "smart_inbox",
-        action: "move_to_feed",
-        label: "移到 Feed",
-      });
-    }
-    if (action.type === "mark_not_important") {
-      add({
-        id: "smart_inbox:mark_not_important",
-        kind: "smart_inbox",
-        action: "mark_not_important",
-        label: "降低优先级",
-      });
-    }
-  }
-
-  return [...actions.values()];
-}
-
-function hermesOrganizationUnsupportedActionCount(
-  result: ReaderHermesOrganizationResult,
-): number {
-  const unsupportedLabelActions = result.labels.actions.filter(
-    (action) =>
-      (action.type === "apply_label" && !action.label?.trim()) ||
-      action.type === "snooze" ||
-      action.type === "keep_in_inbox",
-  ).length;
-  const unsupportedNewsletterActions = result.newsletter.actions.filter(
-    (action) => action.type === "unsubscribe_later" || action.type === "keep_in_inbox",
-  ).length;
-  return unsupportedLabelActions + unsupportedNewsletterActions;
-}
-
-function hermesActionItemKey(
-  item: ReaderHermesOrganizationResult["actionItems"]["items"][number],
-  index: number,
-): string {
-  return `${index}:${item.title}:${item.dueAt ?? item.dueText ?? ""}`;
-}
-
-function hermesActionItemApplyId(
-  item: ReaderHermesOrganizationResult["actionItems"]["items"][number],
-  index: number,
-): string {
-  return `followup:${hermesActionItemKey(item, index)}`;
-}
-
-function formatHermesActionItemNote(
-  item: ReaderHermesOrganizationResult["actionItems"]["items"][number],
-): string {
-  return [
-    item.owner ? `Owner: ${item.owner}` : undefined,
-    item.priority ? `Priority: ${item.priority}` : undefined,
-    item.status ? `Status: ${item.status}` : undefined,
-    item.sourceQuote ? `Source: ${item.sourceQuote}` : undefined,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function formatHermesLabelAction(
-  action: ReaderHermesOrganizationResult["labels"]["actions"][number],
-): string {
-  const actionLabels: Record<typeof action.type, string> = {
-    apply_label: "应用标签",
-    archive: "归档",
-    snooze: "稍后",
-    keep_in_inbox: "保留收件箱",
-    move_to_feed: "移入 Feed",
-    mark_important: "标为重要",
-  };
-  const target = action.label ?? action.snoozeUntil;
-  const base = target ? `${actionLabels[action.type]} ${target}` : actionLabels[action.type];
-  return action.reason ? `${base}（${action.reason}）` : base;
-}
-
-function formatHermesNewsletterAction(
-  action: ReaderHermesOrganizationResult["newsletter"]["actions"][number],
-): string {
-  const actionLabels: Record<typeof action.type, string> = {
-    move_to_feed: "移入 Feed",
-    archive: "归档",
-    unsubscribe_later: "稍后退订",
-    keep_in_inbox: "保留收件箱",
-    mark_not_important: "降低优先级",
-  };
-  const base = action.unsubscribeUrl
-    ? `${actionLabels[action.type]} ${action.unsubscribeUrl}`
-    : actionLabels[action.type];
-  return action.reason ? `${base}（${action.reason}）` : base;
 }
 
 function formatSendIdentityCandidateState(
