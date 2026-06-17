@@ -315,13 +315,24 @@ describe("API routes", () => {
         );
         expect(health.status).toBe(404);
 
+        const noToken = await fetch(
+          `${baseUrl}/api/diagnostics/logs?requestId=req_diag_1&limit=5`,
+          {
+            headers: { "x-request-id": "req_diag_unauthorized" },
+          },
+        );
         const response = await fetch(
           `${baseUrl}/api/diagnostics/logs?requestId=req_diag_1&limit=5`,
           {
-            headers: { "x-request-id": "req_diag_reader" },
+            headers: {
+              authorization: "Bearer diagnostics-secret",
+              "x-request-id": "req_diag_reader",
+            },
           },
         );
 
+        expect(noToken.status).toBe(401);
+        expect(await noToken.json()).toEqual({ error: "api_unauthorized" });
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({
           items: [
@@ -346,7 +357,36 @@ describe("API routes", () => {
           ],
         });
       },
-      { logger, diagnosticsLogStore },
+      {
+        logger,
+        diagnosticsLogStore,
+        apiAccessToken: "diagnostics-secret",
+        apiAccessTokenConfigured: true,
+      },
+    );
+  });
+
+  it("requires an explicit API token before diagnostic log reads", async () => {
+    let listCalls = 0;
+    const diagnosticsLogStore = {
+      append() {},
+      list() {
+        listCalls += 1;
+        return { items: [] };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/diagnostics/logs`, {
+          headers: { authorization: "Bearer diagnostics-secret" },
+        });
+
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({ error: "api_unauthorized" });
+        expect(listCalls).toBe(0);
+      },
+      { diagnosticsLogStore },
     );
   });
 

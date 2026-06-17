@@ -28,9 +28,15 @@ describe("worker operational event recorder", () => {
       message: "EmailEngine timeout",
       context: {
         workerId: "worker_1",
-        callbackUrl: "/oauth/callback?code=raw-code&state=state_1",
-        refreshToken: "raw-refresh-token",
-        nested: { apiKey: "raw-api-key" },
+        endpointUrl: "/oauth/callback?code=raw-code&state=state_1",
+        inputMode: "preset",
+        message: "subject should not be logged",
+        subject: "Reset your password",
+        bodyText: "Private body",
+        providerPayload: { id: "provider-message" },
+        prompt: "Summarize this mailbox",
+        output: "Private model output",
+        error: new Error("cookie raw-cookie leaked"),
       },
     });
 
@@ -49,11 +55,18 @@ describe("worker operational event recorder", () => {
       "EmailEngine timeout",
       {
         workerId: "worker_1",
-        callbackUrl: "/oauth/callback?code=%5Bredacted%5D&state=state_1",
-        refreshToken: "[redacted]",
-        nested: { apiKey: "[redacted]" },
+        endpointUrl: "/oauth/callback?code=%5Bredacted%5D&state=state_1",
+        inputMode: "preset",
+        message: "[redacted]",
+        error: {
+          name: "Error",
+          message: "[redacted]",
+        },
       },
     ]);
     expect(JSON.stringify(queries[0].values)).not.toContain("raw-");
+    expect(JSON.stringify(queries[0].values)).not.toContain("Private body");
+    expect(JSON.stringify(queries[0].values)).not.toContain("provider-message");
+    expect(JSON.stringify(queries[0].values)).not.toContain("Summarize this mailbox");
   });
 });

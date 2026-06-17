@@ -4,6 +4,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApiHandler } from "../src/http/router";
 
 let server: Server | undefined;
+const DIAGNOSTICS_TOKEN = "diagnostics-secret";
+const diagnosticsHeaders = { authorization: `Bearer ${DIAGNOSTICS_TOKEN}` };
+const diagnosticsConfig = {
+  apiAccessToken: DIAGNOSTICS_TOKEN,
+  apiAccessTokenConfigured: true,
+};
 
 async function withApi(
   test: (baseUrl: string) => Promise<void>,
@@ -201,6 +207,7 @@ describe("sync center routes", () => {
       async (baseUrl) => {
         const response = await fetch(
           `${baseUrl}/api/sync-center/accounts/acc_1/diagnostics?limit=250`,
+          { headers: diagnosticsHeaders },
         );
 
         expect(response.status).toBe(200);
@@ -251,6 +258,70 @@ describe("sync center routes", () => {
           },
         ]);
       },
+      { ...diagnosticsConfig, operationalEventLogService },
+    );
+  });
+
+  it("requires an explicit API token before listing account sync diagnostics", async () => {
+    const calls: unknown[] = [];
+    const operationalEventLogService = {
+      async listEvents(input: unknown) {
+        calls.push(input);
+        return { items: [] };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const noToken = await fetch(
+          `${baseUrl}/api/sync-center/accounts/acc_1/diagnostics`,
+        );
+        const wrongToken = await fetch(
+          `${baseUrl}/api/sync-center/accounts/acc_1/diagnostics`,
+          { headers: { authorization: "Bearer wrong-secret" } },
+        );
+        const validToken = await fetch(
+          `${baseUrl}/api/sync-center/accounts/acc_1/diagnostics`,
+          { headers: diagnosticsHeaders },
+        );
+
+        expect(noToken.status).toBe(401);
+        expect(await noToken.json()).toEqual({ error: "api_unauthorized" });
+        expect(wrongToken.status).toBe(401);
+        expect(await wrongToken.json()).toEqual({ error: "api_unauthorized" });
+        expect(validToken.status).toBe(200);
+        expect(await validToken.json()).toEqual({ items: [] });
+        expect(calls).toEqual([
+          {
+            accountId: "acc_1",
+            lane: "sync",
+          },
+        ]);
+      },
+      { ...diagnosticsConfig, operationalEventLogService },
+    );
+  });
+
+  it("rejects account sync diagnostics when no API token is configured", async () => {
+    const calls: unknown[] = [];
+    const operationalEventLogService = {
+      async listEvents(input: unknown) {
+        calls.push(input);
+        return { items: [] };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/sync-center/accounts/acc_1/diagnostics`,
+          { headers: diagnosticsHeaders },
+        );
+
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({ error: "api_unauthorized" });
+        expect(calls).toEqual([]);
+      },
       { operationalEventLogService },
     );
   });
@@ -273,7 +344,9 @@ describe("sync center routes", () => {
         ];
 
         for (const path of cases) {
-          const response = await fetch(`${baseUrl}${path}`);
+          const response = await fetch(`${baseUrl}${path}`, {
+            headers: diagnosticsHeaders,
+          });
 
           expect(response.status).toBe(400);
           expect(await response.json()).toEqual({
@@ -282,21 +355,25 @@ describe("sync center routes", () => {
         }
         expect(calls).toEqual([]);
       },
-      { operationalEventLogService },
+      { ...diagnosticsConfig, operationalEventLogService },
     );
   });
 
   it("returns 503 when account sync diagnostics are unavailable", async () => {
-    await withApi(async (baseUrl) => {
-      const response = await fetch(
-        `${baseUrl}/api/sync-center/accounts/acc_1/diagnostics`,
-      );
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/sync-center/accounts/acc_1/diagnostics`,
+          { headers: diagnosticsHeaders },
+        );
 
-      expect(response.status).toBe(503);
-      expect(await response.json()).toEqual({
-        error: "sync_diagnostics_unavailable",
-      });
-    });
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({
+          error: "sync_diagnostics_unavailable",
+        });
+      },
+      diagnosticsConfig,
+    );
   });
 
   it("returns 503 when the sync center store is unavailable", async () => {

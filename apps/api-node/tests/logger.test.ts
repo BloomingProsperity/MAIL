@@ -140,4 +140,32 @@ describe("backend logger", () => {
       },
     });
   });
+
+  it("redacts untrusted mail and Hermes fields without hiding safe mode flags", () => {
+    expect(
+      sanitizeLogFields({
+        subject: "Reset your password",
+        bodyText: "private message body",
+        snippet: "private preview",
+        senderName: "Private Sender",
+        providerPayload: { id: "provider-message" },
+        prompt: "Summarize this mailbox",
+        response: "Private model response",
+        input: "Private model input",
+        output: "Private model output",
+        inputMode: "preset",
+      }),
+    ).toEqual({
+      subject: "[redacted]",
+      bodyText: "[redacted]",
+      snippet: "[redacted]",
+      senderName: "[redacted]",
+      providerPayload: "[redacted]",
+      prompt: "[redacted]",
+      response: "[redacted]",
+      input: "[redacted]",
+      output: "[redacted]",
+      inputMode: "preset",
+    });
+  });
 });

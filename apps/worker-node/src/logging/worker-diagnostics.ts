@@ -21,6 +21,7 @@ function toOperationalEvent(
 ): OperationalEventRecordInput {
   const eventName = eventNameForResult(result);
   const message = messageForResult(result);
+  const resultSummary = resultDiagnosticSummary(result);
 
   return {
     service: "email-hub-worker",
@@ -32,7 +33,7 @@ function toOperationalEvent(
     ...readString("message", message),
     context: {
       workerId,
-      result,
+      result: resultSummary,
       ...readNumber("attempts", result.attempts),
       ...readNumber("maxAttempts", result.maxAttempts),
       ...readBoolean("retryable", result.retryable),
@@ -40,6 +41,25 @@ function toOperationalEvent(
       ...readString("finalCommandStatus", result.finalCommandStatus),
       ...readString("nextRunAt", result.nextRunAt),
     },
+  };
+}
+
+function resultDiagnosticSummary(
+  result: Record<string, unknown> & { status: string },
+): Record<string, unknown> {
+  return {
+    status: result.status,
+    ...readString("laneName", result.laneName),
+    ...readString("accountId", result.accountId),
+    ...readString("jobId", result.jobId),
+    ...readString("commandId", result.commandId),
+    ...readString("commandType", result.commandType),
+    ...readString("finalJobStatus", result.finalJobStatus),
+    ...readString("finalCommandStatus", result.finalCommandStatus),
+    ...readNumber("attempts", result.attempts),
+    ...readNumber("maxAttempts", result.maxAttempts),
+    ...readBoolean("retryable", result.retryable),
+    ...readString("nextRunAt", result.nextRunAt),
   };
 }
 

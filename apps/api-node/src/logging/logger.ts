@@ -26,7 +26,7 @@ const LEVEL_WEIGHT: Record<LogLevel, number> = {
 };
 
 const SENSITIVE_KEY =
-  /authorization|cookie|password|passwd|secret|token|access[_-]?token|refresh[_-]?token|api[_-]?key|pass$/i;
+  /authorization|cookie|password|passwd|secret|token|access[_-]?token|refresh[_-]?token|api[_-]?key|pass$|subject$|body(?:text|html)?$|snippet$|sender(?:name)?$|threadtext$|prompt$|systemprompt$|userprompt$|providerpayload$|payload$|raw(?:body|html|text)?$|response$|input$|output$/i;
 const SENSITIVE_QUERY_KEY =
   /code|password|secret|token|access_token|refresh_token|api_key/i;
 

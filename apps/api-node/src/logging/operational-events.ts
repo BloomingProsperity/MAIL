@@ -80,10 +80,15 @@ export function createOperationalEventLogService(input: {
 
   return {
     async listEvents(rawInput = {}) {
-      return input.store.list(normalizeListInput(rawInput));
+      const page = await input.store.list(normalizeListInput(rawInput));
+      return {
+        items: page.items.map(sanitizeOperationalEventEntry),
+      };
     },
     async recordEvent(rawInput) {
-      return input.store.record(normalizeRecordInput(rawInput, createId(), now()));
+      return sanitizeOperationalEventEntry(
+        await input.store.record(normalizeRecordInput(rawInput, createId(), now())),
+      );
     },
   };
 }
@@ -124,8 +129,23 @@ function normalizeRecordInput(
     ...normalizeTextFilter("accountId", input.accountId),
     ...normalizeTextFilter("lane", input.lane),
     ...normalizeTextFilter("jobId", input.jobId),
-    ...normalizeTextFilter("message", input.message),
+    ...normalizeTextFilter(
+      "message",
+      input.message ? sanitizeOperationalMessage(input.message) : undefined,
+    ),
     context: sanitizeContext(input.context),
+  };
+}
+
+function sanitizeOperationalEventEntry(
+  item: OperationalEventEntry,
+): OperationalEventEntry {
+  return {
+    ...item,
+    ...(item.message
+      ? { message: sanitizeOperationalMessage(item.message) }
+      : {}),
+    context: sanitizeContext(item.context),
   };
 }
 
@@ -172,10 +192,140 @@ function normalizeLimit(value: number | undefined): number {
 function sanitizeContext(
   context: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
-  const sanitized = sanitizeLogFields(context ?? {});
+  const sanitized = sanitizeOperationalContextValue(context ?? {}, undefined);
   if (sanitized && typeof sanitized === "object" && !Array.isArray(sanitized)) {
     return sanitized as Record<string, unknown>;
   }
 
   return {};
+}
+
+const OPERATIONAL_CONTEXT_KEYS = new Set([
+  "action",
+  "accountId",
+  "affected",
+  "attempts",
+  "authMethod",
+  "authType",
+  "category",
+  "checks",
+  "code",
+  "commandId",
+  "commandType",
+  "diagnostics",
+  "duplicate",
+  "email",
+  "endpointUrl",
+  "error",
+  "errorMessage",
+  "finalCommandStatus",
+  "finalJobStatus",
+  "imap",
+  "inputMode",
+  "jobId",
+  "laneName",
+  "loginHint",
+  "mailEngineEventId",
+  "mailEngineEventKind",
+  "mailEngineIdempotencyKey",
+  "maxAttempts",
+  "message",
+  "missing",
+  "model",
+  "name",
+  "nextRunAt",
+  "ok",
+  "provider",
+  "providerEmailId",
+  "providerEventName",
+  "providerKey",
+  "providerMessageId",
+  "reason",
+  "recoveryAction",
+  "redirectPath",
+  "result",
+  "resourceIdentity",
+  "resourceKey",
+  "retriedJobCount",
+  "retriedJobIds",
+  "retryable",
+  "rfcMessageId",
+  "severity",
+  "smtp",
+  "status",
+  "syncJobId",
+  "syncJobType",
+  "triggerEventId",
+  "workerId",
+]);
+
+const SENSITIVE_CONTEXT_KEY =
+  /authorization|cookie|password|passwd|secret|token|access[_-]?token|refresh[_-]?token|api[_-]?key|pass$|subject$|body(?:text|html)?$|snippet$|sender(?:name)?$|threadtext$|prompt$|systemprompt$|userprompt$|providerpayload$|payload$|raw(?:body|html|text)?$|response$|input$|output$/i;
+const SENSITIVE_MESSAGE_PATTERN =
+  /authorization|cookie|password|passwd|secret|token|access[_-]?token|refresh[_-]?token|api[_-]?key|subject|body|snippet|sender|thread text|prompt|provider payload|payload|raw html|raw body|response|input|output/i;
+
+function sanitizeOperationalMessage(value: string): string {
+  return SENSITIVE_MESSAGE_PATTERN.test(value) ? "[redacted]" : value.slice(0, 512);
+}
+
+function sanitizeOperationalContextValue(
+  value: unknown,
+  key: string | undefined,
+): unknown {
+  if (key && SENSITIVE_CONTEXT_KEY.test(key)) {
+    return "[redacted]";
+  }
+
+  if (typeof value === "string") {
+    if (key === "message" || key === "errorMessage") {
+      return sanitizeOperationalMessage(value);
+    }
+
+    const fieldKey = key ?? "value";
+    const sanitized = sanitizeLogFields({ [fieldKey]: value });
+    if (
+      sanitized &&
+      typeof sanitized === "object" &&
+      !Array.isArray(sanitized) &&
+      fieldKey in sanitized
+    ) {
+      return (sanitized as Record<string, unknown>)[fieldKey];
+    }
+    return value;
+  }
+
+  if (
+    value === null ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "undefined"
+  ) {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: sanitizeOperationalMessage(value.message),
+    };
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeOperationalContextValue(item, undefined));
+  }
+
+  if (typeof value === "object") {
+    const output: Record<string, unknown> = {};
+    for (const [entryKey, entryValue] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      if (!OPERATIONAL_CONTEXT_KEYS.has(entryKey)) {
+        continue;
+      }
+      output[entryKey] = sanitizeOperationalContextValue(entryValue, entryKey);
+    }
+    return output;
+  }
+
+  return String(value);
 }

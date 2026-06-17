@@ -4,6 +4,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApiHandler } from "../src/http/router";
 
 let server: Server | undefined;
+const DIAGNOSTICS_TOKEN = "diagnostics-secret";
+const diagnosticsHeaders = { authorization: `Bearer ${DIAGNOSTICS_TOKEN}` };
+const diagnosticsConfig = {
+  apiAccessToken: DIAGNOSTICS_TOKEN,
+  apiAccessTokenConfigured: true,
+};
 
 async function withApi(
   test: (baseUrl: string) => Promise<void>,
@@ -70,6 +76,7 @@ describe("operational event diagnostics routes", () => {
       async (baseUrl) => {
         const response = await fetch(
           `${baseUrl}/api/diagnostics/events?service=email-hub-worker&level=error&event=worker_result&accountId=acc_1&lane=sync&jobId=job_1&requestId=req_1&limit=250`,
+          { headers: diagnosticsHeaders },
         );
 
         expect(response.status).toBe(200);
@@ -102,19 +109,78 @@ describe("operational event diagnostics routes", () => {
           },
         ]);
       },
-      { operationalEventLogService },
+      { ...diagnosticsConfig, operationalEventLogService },
     );
   });
 
   it("returns 503 until durable operational diagnostics are wired", async () => {
-    await withApi(async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/api/diagnostics/events`);
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/diagnostics/events`, {
+          headers: diagnosticsHeaders,
+        });
 
-      expect(response.status).toBe(503);
-      expect(await response.json()).toEqual({
-        error: "operational_events_unavailable",
-      });
-    });
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({
+          error: "operational_events_unavailable",
+        });
+      },
+      diagnosticsConfig,
+    );
+  });
+
+  it("requires an explicit API token before listing operational diagnostics", async () => {
+    const calls: unknown[] = [];
+    const operationalEventLogService = {
+      async listEvents(input: unknown) {
+        calls.push(input);
+        return { items: [] };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const noToken = await fetch(`${baseUrl}/api/diagnostics/events`);
+        const wrongToken = await fetch(`${baseUrl}/api/diagnostics/events`, {
+          headers: { authorization: "Bearer wrong-secret" },
+        });
+        const validToken = await fetch(`${baseUrl}/api/diagnostics/events`, {
+          headers: diagnosticsHeaders,
+        });
+
+        expect(noToken.status).toBe(401);
+        expect(await noToken.json()).toEqual({ error: "api_unauthorized" });
+        expect(wrongToken.status).toBe(401);
+        expect(await wrongToken.json()).toEqual({ error: "api_unauthorized" });
+        expect(validToken.status).toBe(200);
+        expect(await validToken.json()).toEqual({ items: [] });
+        expect(calls).toEqual([{}]);
+      },
+      { ...diagnosticsConfig, operationalEventLogService },
+    );
+  });
+
+  it("rejects operational diagnostics when no API token is configured", async () => {
+    const calls: unknown[] = [];
+    const operationalEventLogService = {
+      async listEvents(input: unknown) {
+        calls.push(input);
+        return { items: [] };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/diagnostics/events`, {
+          headers: diagnosticsHeaders,
+        });
+
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({ error: "api_unauthorized" });
+        expect(calls).toEqual([]);
+      },
+      { operationalEventLogService },
+    );
   });
 
   it("rejects malformed operational event filters before hitting the store", async () => {
@@ -136,7 +202,9 @@ describe("operational event diagnostics routes", () => {
         ];
 
         for (const path of cases) {
-          const response = await fetch(`${baseUrl}${path}`);
+          const response = await fetch(`${baseUrl}${path}`, {
+            headers: diagnosticsHeaders,
+          });
 
           expect(response.status).toBe(400);
           expect(await response.json()).toEqual({
@@ -145,7 +213,7 @@ describe("operational event diagnostics routes", () => {
         }
         expect(calls).toEqual([]);
       },
-      { operationalEventLogService },
+      { ...diagnosticsConfig, operationalEventLogService },
     );
   });
 });

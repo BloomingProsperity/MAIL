@@ -559,6 +559,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       }
 
       if (request.method === "GET" && isDiagnosticsLogRoute(request.url)) {
+        if (!isDiagnosticsReadAuthorized(request, config)) {
+          rejectDiagnosticsRead(request, response, config, requestId, requestPath);
+          return;
+        }
+
         if (!config.diagnosticsLogStore) {
           writeJson(response, 503, { error: "diagnostics_logs_unavailable" });
           return;
@@ -573,6 +578,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       }
 
       if (request.method === "GET" && isOperationalEventsRoute(request.url)) {
+        if (!isDiagnosticsReadAuthorized(request, config)) {
+          rejectDiagnosticsRead(request, response, config, requestId, requestPath);
+          return;
+        }
+
         if (!config.operationalEventLogService) {
           writeJson(response, 503, { error: "operational_events_unavailable" });
           return;
@@ -979,8 +989,18 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
-      const syncDiagnosticsRoute = parseSyncDiagnosticsRoute(request.url);
-      if (syncDiagnosticsRoute && request.method === "GET") {
+      if (isSyncDiagnosticsRoute(request.url) && request.method === "GET") {
+        if (!isDiagnosticsReadAuthorized(request, config)) {
+          rejectDiagnosticsRead(request, response, config, requestId, requestPath);
+          return;
+        }
+
+        const syncDiagnosticsRoute = parseSyncDiagnosticsRoute(request.url);
+        if (!syncDiagnosticsRoute) {
+          writeJson(response, 404, { error: "not_found" });
+          return;
+        }
+
         if (!config.operationalEventLogService) {
           writeJson(response, 503, { error: "sync_diagnostics_unavailable" });
           return;
@@ -3773,6 +3793,35 @@ function isApiRequestAuthorized(
   return suppliedToken ? safeEqual(suppliedToken, expectedToken) : false;
 }
 
+function isDiagnosticsReadAuthorized(
+  request: IncomingMessage,
+  config: ApiConfig,
+): boolean {
+  const expectedToken = config.apiAccessToken?.trim();
+  if (!expectedToken) {
+    return false;
+  }
+
+  const suppliedToken = readApiAccessToken(request);
+  return suppliedToken ? safeEqual(suppliedToken, expectedToken) : false;
+}
+
+function rejectDiagnosticsRead(
+  request: IncomingMessage,
+  response: ServerResponse,
+  config: ApiConfig,
+  requestId: string,
+  requestPath: string,
+): void {
+  config.logger?.warn("diagnostics_request_unauthorized", {
+    requestId,
+    method: request.method,
+    path: requestPath,
+  });
+  response.setHeader("www-authenticate", 'Bearer realm="email-hub"');
+  writeJson(response, 401, { error: "api_unauthorized" });
+}
+
 function isApiAuthExemptPath(path: string): boolean {
   return (
     path === "/api/webhooks/emailengine" ||
@@ -4860,6 +4909,17 @@ function parseSyncDiagnosticsRoute(
       return limit !== undefined ? { limit } : {};
     })(),
   };
+}
+
+function isSyncDiagnosticsRoute(requestUrl: string | undefined): boolean {
+  if (!requestUrl) {
+    return false;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  return /^\/api\/sync-center\/accounts\/([^/]+)\/diagnostics$/.test(
+    url.pathname,
+  );
 }
 
 function parseMailComposeRoute(
