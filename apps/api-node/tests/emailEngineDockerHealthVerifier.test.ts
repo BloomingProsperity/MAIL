@@ -150,6 +150,81 @@ describe("Docker compose health verifier", () => {
     ]);
   });
 
+  it("waits for transient Docker health states before passing", async () => {
+    const sleeps: number[] = [];
+    const commandResults = [
+      {
+        exitCode: 0,
+        stdout: JSON.stringify([
+          service("postgres"),
+          service("redis-engine"),
+          service("emailengine", { Health: "starting" }),
+          service("api"),
+          service("worker"),
+          service("web"),
+        ]),
+        stderr: "",
+      },
+      await healthyComposeCommand(),
+    ];
+
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      waitAttempts: 3,
+      waitIntervalMs: 25,
+      runCommand: async () => commandResults.shift() ?? healthyComposeCommand(),
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.attempts).toBe(2);
+    expect(result.maxAttempts).toBe(3);
+    expect(sleeps).toEqual([25]);
+  });
+
+  it("does not wait when EmailEngine readiness proves a configuration gap", async () => {
+    const sleeps: number[] = [];
+    let httpCalls = 0;
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      waitAttempts: 3,
+      waitIntervalMs: 25,
+      runCommand: healthyComposeCommand,
+      hostChecks: [
+        {
+          name: "mail_engine_readiness",
+          url: "http://127.0.0.1:8080/api/mail-engine/health",
+          expect: "mail_engine_ready",
+        },
+      ],
+      httpGet: async () => {
+        httpCalls += 1;
+        return {
+          status: 200,
+          body: JSON.stringify({
+            ok: false,
+            readiness: { status: "degraded" },
+          }),
+        };
+      },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts).toBe(1);
+    expect(result.maxAttempts).toBe(3);
+    expect(httpCalls).toBe(1);
+    expect(sleeps).toEqual([]);
+  });
+
   it("passes host HTTP probe headers without leaking them in results", async () => {
     const httpCalls: unknown[] = [];
     const result = await verifyDockerComposeHealth({

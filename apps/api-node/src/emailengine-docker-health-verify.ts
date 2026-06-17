@@ -30,6 +30,14 @@ const httpTimeoutMs = readPositiveInteger(
   process.env.EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS,
   5_000,
 );
+const waitAttempts = readPositiveInteger(
+  process.env.EMAILHUB_DOCKER_HEALTH_ATTEMPTS,
+  12,
+);
+const waitIntervalMs = readNonNegativeInteger(
+  process.env.EMAILHUB_DOCKER_HEALTH_WAIT_MS,
+  5_000,
+);
 const apiHeaders = bearerTokenHeaders(process.env.EMAILHUB_API_TOKEN);
 
 try {
@@ -38,6 +46,8 @@ try {
     envFile,
     composeFiles,
     httpTimeoutMs,
+    waitAttempts,
+    waitIntervalMs,
     hostChecks: [
       {
         name: "api_health",
@@ -83,6 +93,14 @@ try {
 function readPositiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readNonNegativeInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function bearerTokenHeaders(

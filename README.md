@@ -411,7 +411,10 @@ base URLs are not set, the verifier derives host probes from `API_BIND` and
 `WEB_BIND`, so alternate local ports such as `WEB_BIND=127.0.0.1:5174` are
 checked correctly. Protected production stacks should export
 `EMAILHUB_API_TOKEN`; the verifier sends it to API host probes without printing
-the token in JSON results.
+the token in JSON results. It waits up to `EMAILHUB_DOCKER_HEALTH_ATTEMPTS`
+times with `EMAILHUB_DOCKER_HEALTH_WAIT_MS` between transient Docker/HTTP
+startup failures, but exits immediately for proven configuration gaps such as
+`readiness.status=degraded`.
 
 For quick core regression while iterating on the launch path, run:
 

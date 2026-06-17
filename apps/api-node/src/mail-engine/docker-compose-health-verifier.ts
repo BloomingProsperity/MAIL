@@ -7,14 +7,19 @@ export interface DockerComposeHealthVerifierOptions {
   requiredServices?: string[];
   hostChecks?: DockerComposeHostHttpCheckInput[];
   httpTimeoutMs?: number;
+  waitAttempts?: number;
+  waitIntervalMs?: number;
   httpGet?: DockerComposeHttpGetter;
   runCommand?: DockerComposeCommandRunner;
+  sleep?: DockerComposeSleeper;
 }
 
 export interface DockerComposeHealthVerificationResult {
   ok: boolean;
   gate: "docker_compose_health";
   checkedAt: string;
+  attempts: number;
+  maxAttempts: number;
   composeFiles: string[];
   envFile: string;
   checks: Record<string, DockerComposeServiceCheck>;
@@ -65,6 +70,8 @@ export type DockerComposeCommandRunner = (input: {
   stderr: string;
 }>;
 
+export type DockerComposeSleeper = (ms: number) => Promise<void>;
+
 const DEFAULT_REQUIRED_SERVICES = [
   "postgres",
   "redis-engine",
@@ -79,6 +86,36 @@ export async function verifyDockerComposeHealth(
 ): Promise<DockerComposeHealthVerificationResult> {
   const requiredServices =
     options.requiredServices ?? DEFAULT_REQUIRED_SERVICES;
+  const maxAttempts = Math.max(1, Math.trunc(options.waitAttempts ?? 1));
+  const waitIntervalMs = Math.max(0, Math.trunc(options.waitIntervalMs ?? 0));
+  const sleep = options.sleep ?? sleepMs;
+  let result: DockerComposeHealthVerificationResult | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    result = await verifyDockerComposeHealthOnce({
+      options,
+      requiredServices,
+      attempt,
+      maxAttempts,
+    });
+    if (result.ok || attempt >= maxAttempts || !shouldRetryHealthCheck(result)) {
+      return result;
+    }
+    if (waitIntervalMs > 0) {
+      await sleep(waitIntervalMs);
+    }
+  }
+
+  return result as DockerComposeHealthVerificationResult;
+}
+
+async function verifyDockerComposeHealthOnce(input: {
+  options: DockerComposeHealthVerifierOptions;
+  requiredServices: string[];
+  attempt: number;
+  maxAttempts: number;
+}): Promise<DockerComposeHealthVerificationResult> {
+  const { options, requiredServices } = input;
   const checkedAt = new Date().toISOString();
   const commandResult = await (options.runCommand ?? runDockerComposeCommand)({
     command: "docker",
@@ -109,6 +146,8 @@ export async function verifyDockerComposeHealth(
       ok: false,
       gate: "docker_compose_health",
       checkedAt,
+      attempts: input.attempt,
+      maxAttempts: input.maxAttempts,
       composeFiles: options.composeFiles,
       envFile: options.envFile,
       checks,
@@ -157,12 +196,57 @@ export async function verifyDockerComposeHealth(
     ok: requiredFollowUps.length === 0,
     gate: "docker_compose_health",
     checkedAt,
+    attempts: input.attempt,
+    maxAttempts: input.maxAttempts,
     composeFiles: options.composeFiles,
     envFile: options.envFile,
     checks,
     hostChecks,
     requiredFollowUps,
   };
+}
+
+function shouldRetryHealthCheck(
+  result: DockerComposeHealthVerificationResult,
+): boolean {
+  return (
+    Object.values(result.checks).some(isRetryableServiceCheck) ||
+    Object.values(result.hostChecks).some(isRetryableHostCheck)
+  );
+}
+
+function isRetryableServiceCheck(check: DockerComposeServiceCheck): boolean {
+  if (check.ok) {
+    return false;
+  }
+
+  if (check.detail === "docker_compose_ps_failed") {
+    return true;
+  }
+
+  if (check.detail === "service_not_running") {
+    return true;
+  }
+
+  return check.detail === "service_not_healthy" && check.health === "starting";
+}
+
+function isRetryableHostCheck(check: DockerComposeHostHttpCheck): boolean {
+  if (check.ok) {
+    return false;
+  }
+
+  if (
+    check.detail === "http_request_failed" ||
+    check.detail === "http_status_not_ok"
+  ) {
+    return true;
+  }
+
+  return (
+    check.detail === "mail_engine_not_ready" &&
+    check.readinessStatus !== "degraded"
+  );
 }
 
 async function checkHostHttpEndpoint(
@@ -347,4 +431,8 @@ async function fetchHttpEndpoint(input: {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function sleepMs(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
