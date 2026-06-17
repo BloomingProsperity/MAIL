@@ -427,6 +427,7 @@ export interface ApiConfig {
   apiAccessToken?: string;
   apiAccessTokenConfigured?: boolean;
   apiAccessTokenRequired?: boolean;
+  apiAccessAccountIds?: string[];
   emailEngineUrl: string;
   emailEngineWebhookSecret: string;
   emailEngineAccessTokenConfigured?: boolean;
@@ -551,6 +552,42 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         writeJson(response, 401, { error: "api_unauthorized" });
         return;
       }
+      const apiAccessContext = createApiAccessContext(config);
+      const scopedAccountId = readScopedRouteAccountId(request.url);
+      if (
+        scopedAccountId &&
+        !isAccountAccessAllowed(apiAccessContext, scopedAccountId)
+      ) {
+        rejectAccountScopedAccess(
+          response,
+          config,
+          requestId,
+          requestPath,
+          scopedAccountId,
+        );
+        return;
+      }
+      if (
+        isApiAccessAccountScoped(apiAccessContext) &&
+        isAdminOnlyForAccountScopedTokenRoute(request.url)
+      ) {
+        rejectAccountScopedAdminRoute(response, config, requestId, requestPath);
+        return;
+      }
+      const ensureRouteAccountAccess = (accountId: string): boolean => {
+        if (isAccountAccessAllowed(apiAccessContext, accountId)) {
+          return true;
+        }
+
+        rejectAccountScopedAccess(
+          response,
+          config,
+          requestId,
+          requestPath,
+          accountId,
+        );
+        return false;
+      };
 
       if (request.method === "GET" && request.url === "/health") {
         const health = await buildApiHealth(config);
@@ -1424,6 +1461,10 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (followUpRoute.action === "list" && request.method === "GET") {
+          if (!ensureRouteAccountAccess(followUpRoute.accountId)) {
+            return;
+          }
+
           const result = await config.followUpService.listFollowUps({
             accountId: followUpRoute.accountId,
             status: followUpRoute.status,
@@ -2079,9 +2120,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           senderScreeningRoute.action === "bulk_senders" &&
           request.method === "POST"
         ) {
-          const result = await config.senderScreeningStore.bulkDecideSenders(
-            parseSenderScreeningBulkInput(await readRequestBody()),
-          );
+          const input = parseSenderScreeningBulkInput(await readRequestBody());
+          if (!ensureRouteAccountAccess(input.accountId)) {
+            return;
+          }
+
+          const result = await config.senderScreeningStore.bulkDecideSenders(input);
           writeJson(response, 202, result);
           return;
         }
@@ -2090,8 +2134,15 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           senderScreeningRoute.action === "accept_sender" &&
           request.method === "POST"
         ) {
+          const input = parseSenderScreeningSenderDecisionInput(
+            await readRequestBody(),
+          );
+          if (!ensureRouteAccountAccess(input.accountId)) {
+            return;
+          }
+
           const result = await config.senderScreeningStore.acceptSender({
-            ...parseSenderScreeningSenderDecisionInput(await readRequestBody()),
+            ...input,
             senderId: senderScreeningRoute.senderId,
           });
           if (!result) {
@@ -2108,8 +2159,15 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           senderScreeningRoute.action === "block_sender" &&
           request.method === "POST"
         ) {
+          const input = parseSenderScreeningSenderDecisionInput(
+            await readRequestBody(),
+          );
+          if (!ensureRouteAccountAccess(input.accountId)) {
+            return;
+          }
+
           const result = await config.senderScreeningStore.blockSender({
-            ...parseSenderScreeningSenderDecisionInput(await readRequestBody()),
+            ...input,
             senderId: senderScreeningRoute.senderId,
           });
           if (!result) {
@@ -2552,11 +2610,13 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         const skill = await ensureHermesSkillAllowed(config, "email_search_qa");
+        const input = parseHermesEmailSearchQaInput(await readRequestBody());
+        if (!ensureRouteAccountAccess(input.accountId)) {
+          return;
+        }
+
         const result = await config.hermesService.searchMail(
-          withHermesSkillContextBudget(
-            parseHermesEmailSearchQaInput(await readRequestBody()),
-            skill,
-          ),
+          withHermesSkillContextBudget(input, skill),
         );
         writeJson(response, 202, result);
         return;
@@ -2673,9 +2733,16 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const input = parseHermesFollowUpConfirmationInput(
+          await readRequestBody(),
+        );
+        if (!ensureRouteAccountAccess(input.accountId)) {
+          return;
+        }
+
         const result =
           await config.hermesFollowUpReminderService.confirmFollowUpSuggestion(
-            parseHermesFollowUpConfirmationInput(await readRequestBody()),
+            input,
           );
         writeJson(response, 201, result);
         return;
@@ -3791,6 +3858,129 @@ function isApiRequestAuthorized(
 
   const suppliedToken = readApiAccessToken(request);
   return suppliedToken ? safeEqual(suppliedToken, expectedToken) : false;
+}
+
+interface ApiAccessContext {
+  accountIds?: Set<string>;
+}
+
+function createApiAccessContext(config: ApiConfig): ApiAccessContext {
+  const accountIds = normalizeApiAccessAccountIds(config.apiAccessAccountIds);
+  return accountIds.length > 0 ? { accountIds: new Set(accountIds) } : {};
+}
+
+function normalizeApiAccessAccountIds(value: string[] | undefined): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((accountId) => accountId.trim())
+        .filter((accountId) => accountId.length > 0),
+    ),
+  );
+}
+
+function isApiAccessAccountScoped(context: ApiAccessContext): boolean {
+  return Boolean(context.accountIds && context.accountIds.size > 0);
+}
+
+function isAccountAccessAllowed(
+  context: ApiAccessContext,
+  accountId: string,
+): boolean {
+  return !context.accountIds || context.accountIds.has(accountId);
+}
+
+function readScopedRouteAccountId(
+  requestUrl: string | undefined,
+): string | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  const pathname = url.pathname;
+  const accountRoute =
+    /^\/api\/accounts\/([^/]+)\/(?:attachments|compose|gatekeeper|labels|mailboxes|messages|outbox|send-identities|smart-inbox)(?:\/|$)/.exec(
+      pathname,
+    );
+  if (accountRoute) {
+    return decodeURIComponent(accountRoute[1]);
+  }
+
+  if (pathname === "/api/follow-ups" || pathname === "/api/screening/senders") {
+    const accountId = url.searchParams.get("accountId");
+    return isNonEmptyString(accountId) ? accountId : undefined;
+  }
+
+  const syncRoute =
+    /^\/api\/sync-center\/accounts\/([^/]+)(?:\/|$)/.exec(pathname);
+  return syncRoute ? decodeURIComponent(syncRoute[1]) : undefined;
+}
+
+function isAdminOnlyForAccountScopedTokenRoute(
+  requestUrl: string | undefined,
+): boolean {
+  if (!requestUrl) {
+    return false;
+  }
+
+  const pathname = new URL(requestUrl, "http://localhost").pathname;
+  return (
+    pathname === "/api/messages" ||
+    pathname === "/api/sync-center/accounts" ||
+    pathname.startsWith("/api/sync-center/reauthorizations") ||
+    pathname === "/api/mail-navigation/summary" ||
+    pathname === "/api/hermes/workspace/context" ||
+    pathname === "/api/hermes/audit-log" ||
+    pathname === "/api/hermes/rule-runs" ||
+    pathname === "/api/hermes/drafts/feedback" ||
+    pathname.startsWith("/api/hermes/action-plans") ||
+    pathname.startsWith("/api/hermes/follow-ups") ||
+    pathname.startsWith("/api/hermes/memories") ||
+    pathname.startsWith("/api/hermes/rule-candidates") ||
+    pathname.startsWith("/api/diagnostics/") ||
+    pathname.startsWith("/api/domains") ||
+    pathname.startsWith("/api/follow-ups/") ||
+    pathname.startsWith("/api/screening/domains/") ||
+    pathname === "/api/accounts/imap-smtp" ||
+    pathname === "/api/accounts/imap-smtp/test" ||
+    pathname.startsWith("/api/accounts/import/") ||
+    pathname.startsWith("/api/accounts/oauth/") ||
+    pathname.startsWith("/api/accounts/transfer/") ||
+    pathname.startsWith("/api/hermes/rules")
+  );
+}
+
+function rejectAccountScopedAccess(
+  response: ServerResponse,
+  config: ApiConfig,
+  requestId: string,
+  requestPath: string,
+  accountId: string,
+): void {
+  config.logger?.warn("api_account_scope_denied", {
+    requestId,
+    path: requestPath,
+    accountId,
+  });
+  writeJson(response, 404, { error: "account_not_found" });
+}
+
+function rejectAccountScopedAdminRoute(
+  response: ServerResponse,
+  config: ApiConfig,
+  requestId: string,
+  requestPath: string,
+): void {
+  config.logger?.warn("api_account_scoped_admin_route_denied", {
+    requestId,
+    path: requestPath,
+  });
+  writeJson(response, 403, { error: "account_scope_required" });
 }
 
 function isDiagnosticsReadAuthorized(

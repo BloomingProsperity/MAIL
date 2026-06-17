@@ -135,6 +135,125 @@ describe("API routes", () => {
     );
   });
 
+  it("rejects global admin routes for account-scoped API token contexts", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const paths = [
+          "/api/messages",
+          "/api/diagnostics/logs",
+          "/api/diagnostics/events",
+          "/api/sync-center/accounts",
+          "/api/sync-center/reauthorizations",
+          "/api/sync-center/reauthorizations/task_1/oauth/start",
+          "/api/sync-center/reauthorizations/task_1/imap-smtp",
+          "/api/sync-center/reauthorizations/oauth/callback",
+          "/api/mail-navigation/summary",
+          "/api/hermes/workspace/context",
+          "/api/hermes/audit-log",
+          "/api/hermes/rule-runs",
+          "/api/hermes/action-plans",
+          "/api/hermes/drafts/feedback",
+          "/api/hermes/follow-ups/confirm",
+          "/api/hermes/memories",
+          "/api/hermes/rule-candidates",
+          "/api/domains",
+          "/api/accounts/import/csv",
+          "/api/accounts/imap-smtp",
+          "/api/accounts/imap-smtp/test",
+          "/api/accounts/oauth/gmail/start",
+          "/api/accounts/transfer/export",
+          "/api/accounts/transfer/import",
+          "/api/follow-ups/follow_1",
+        ];
+
+        for (const path of paths) {
+          const response = await fetch(`${baseUrl}${path}`);
+
+          expect(response.status).toBe(403);
+          expect(await response.json()).toEqual({
+            error: "account_scope_required",
+          });
+        }
+      },
+      { apiAccessAccountIds: ["account_1"] },
+    );
+  });
+
+  it("rejects query and body account scopes outside the configured API token account scope", async () => {
+    const calls: unknown[] = [];
+    const followUpService = {
+      async listFollowUps(input: unknown) {
+        calls.push({ method: "listFollowUps", input });
+        return { items: [] };
+      },
+    };
+    const senderScreeningStore = {
+      async listSenders(input: unknown) {
+        calls.push({ method: "listSenders", input });
+        return { items: [] };
+      },
+      async bulkDecideSenders(input: unknown) {
+        calls.push({ method: "bulkDecideSenders", input });
+        return { items: [] };
+      },
+    };
+    const hermesService = {
+      async searchMail(input: unknown) {
+        calls.push({ method: "searchMail", input });
+        return { answer: "should not run" };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const followUps = await fetch(
+          `${baseUrl}/api/follow-ups?accountId=account_2`,
+        );
+        const senders = await fetch(
+          `${baseUrl}/api/screening/senders?accountId=account_2`,
+        );
+        const bulkSenders = await fetch(
+          `${baseUrl}/api/screening/senders/bulk`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              accountId: "account_2",
+              senderIds: ["sender_1"],
+              action: "accept",
+            }),
+          },
+        );
+        const hermesSearch = await fetch(
+          `${baseUrl}/api/hermes/skills/email_search_qa/run`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              accountId: "account_2",
+              question: "Find invoices",
+            }),
+          },
+        );
+
+        for (const response of [
+          followUps,
+          senders,
+          bulkSenders,
+          hermesSearch,
+        ]) {
+          expect(response.status).toBe(404);
+          expect(await response.json()).toEqual({ error: "account_not_found" });
+        }
+        expect(calls).toEqual([]);
+      },
+      {
+        followUpService,
+        senderScreeningStore,
+        hermesService,
+        apiAccessAccountIds: ["account_1"],
+      },
+    );
+  });
+
   it("reports database readiness from the API health route", async () => {
     const databaseHealthCheck = vi.fn(async () => {});
 
@@ -946,6 +1065,85 @@ describe("API routes", () => {
     );
   });
 
+  it("rejects account-scoped mail reads outside the configured API token account scope", async () => {
+    const calls: unknown[] = [];
+    const mailReadStore = {
+      async listMailboxes(input: unknown) {
+        calls.push({ method: "listMailboxes", input });
+        return { items: [] };
+      },
+      async listMessages(input: unknown) {
+        calls.push({ method: "listMessages", input });
+        return { items: [] };
+      },
+      async getMessage(input: unknown) {
+        calls.push({ method: "getMessage", input });
+        return undefined;
+      },
+      async getAttachmentDownload(input: unknown) {
+        calls.push({ method: "getAttachmentDownload", input });
+        return undefined;
+      },
+    };
+    const attachmentDownloadService = {
+      async downloadAttachment(input: unknown) {
+        calls.push({ method: "downloadAttachment", input });
+        return { body: new Response("should not download") };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const cases = [
+          "/api/accounts/account_2/mailboxes",
+          "/api/accounts/account_2/messages",
+          "/api/accounts/account_2/messages/message_1",
+          "/api/accounts/account_2/attachments/attachment_1/download",
+        ];
+
+        for (const path of cases) {
+          const response = await fetch(`${baseUrl}${path}`);
+
+          expect(response.status).toBe(404);
+          expect(await response.json()).toEqual({ error: "account_not_found" });
+        }
+        expect(calls).toEqual([]);
+      },
+      {
+        mailReadStore,
+        attachmentDownloadService,
+        apiAccessAccountIds: ["account_1"],
+      },
+    );
+  });
+
+  it("allows account-scoped mail reads inside the configured API token account scope", async () => {
+    const calls: unknown[] = [];
+    const mailReadStore = {
+      async listMailboxes() {
+        throw new Error("not used");
+      },
+      async listMessages(input: unknown) {
+        calls.push(input);
+        return { items: [] };
+      },
+      async getMessage() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/accounts/account_1/messages`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ items: [] });
+        expect(calls).toEqual([{ accountId: "account_1", limit: 50 }]);
+      },
+      { mailReadStore, apiAccessAccountIds: ["account_1"] },
+    );
+  });
+
   it("lists messages in a mailbox through the mail read store with cursor and q", async () => {
     const calls: unknown[] = [];
     const cursor = encodeCursorPayload({
@@ -1154,6 +1352,33 @@ describe("API routes", () => {
         ]);
       },
       { mailReadStore },
+    );
+  });
+
+  it("rejects global mail reads for account-scoped API token contexts", async () => {
+    const calls: unknown[] = [];
+    const mailReadStore = {
+      async listMailboxes() {
+        throw new Error("not used");
+      },
+      async listMessages(input: unknown) {
+        calls.push(input);
+        return { items: [] };
+      },
+      async getMessage() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/messages?sort=smart&limit=25`);
+
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({ error: "account_scope_required" });
+        expect(calls).toEqual([]);
+      },
+      { mailReadStore, apiAccessAccountIds: ["account_1"] },
     );
   });
 

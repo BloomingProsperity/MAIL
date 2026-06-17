@@ -150,6 +150,15 @@ describe("EmailEngine Docker configuration", () => {
     expect(JSON.stringify(config)).not.toContain("prod-api-token");
   });
 
+  it("parses optional API token account scopes for self-hosted access control", () => {
+    const config = readApiConfig({
+      NODE_ENV: "development",
+      EMAILHUB_API_TOKEN_ACCOUNT_IDS: "acc_1, acc_2, acc_1 ,,",
+    } as NodeJS.ProcessEnv);
+
+    expect(config.apiAccessAccountIds).toEqual(["acc_1", "acc_2"]);
+  });
+
   it("documents and wires the self-hosted API token through Docker", async () => {
     const envExample = await readProjectFile(".env.example");
     const compose = await readProjectFile("infra", "docker-compose.yml");
@@ -159,6 +168,7 @@ describe("EmailEngine Docker configuration", () => {
     const web = serviceSection(compose, "web");
 
     expect(envExample).toContain("EMAILHUB_API_TOKEN=");
+    expect(envExample).toContain("EMAILHUB_API_TOKEN_ACCOUNT_IDS=");
     expect(envExample).toContain("EMAILHUB_REQUIRE_API_TOKEN=false");
     expect(envExample).toContain("EMAILHUB_ALLOW_DEV_SECRETS=true");
     expect(envExample).toContain("NODE_ENV=development");
@@ -170,6 +180,9 @@ describe("EmailEngine Docker configuration", () => {
       "EMAILHUB_ALLOW_DEV_SECRETS: ${EMAILHUB_ALLOW_DEV_SECRETS:-true}",
     );
     expect(api).toContain("EMAILHUB_API_TOKEN: ${EMAILHUB_API_TOKEN:-}");
+    expect(api).toContain(
+      "EMAILHUB_API_TOKEN_ACCOUNT_IDS: ${EMAILHUB_API_TOKEN_ACCOUNT_IDS:-}",
+    );
     expect(api).toContain(
       "EMAILHUB_REQUIRE_API_TOKEN: ${EMAILHUB_REQUIRE_API_TOKEN:-false}",
     );

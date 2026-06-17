@@ -35,6 +35,7 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     apiName: "email-hub-api",
     apiAccessTokenConfigured: apiAccessToken.length > 0,
     apiAccessTokenRequired,
+    apiAccessAccountIds: readCsvList(env.EMAILHUB_API_TOKEN_ACCOUNT_IDS),
     maxAttachmentDownloadBytes: readBoundedIntegerValue(
       env.EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES,
       25 * 1024 * 1024,
@@ -136,6 +137,21 @@ function readBoundedIntegerValue(
   }
 
   return Math.min(max, Math.max(min, parsed));
+}
+
+function readCsvList(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0),
+    ),
+  );
 }
 
 function isProductionApiToken(value: string): boolean {
