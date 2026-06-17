@@ -140,6 +140,7 @@ POST /api/hermes/skills/rewrite_polish/run
 POST /api/hermes/drafts/feedback
 POST /api/hermes/rules/suggest
 GET /api/hermes/rule-candidates
+PATCH /api/hermes/rule-candidates/:candidateId
 POST /api/hermes/rules/:candidateId/simulate
 POST /api/hermes/rules/:candidateId/approve
 ```
@@ -167,7 +168,7 @@ preview blocks above the original message body.
 `reply_draft` uses the same Hermes provider boundary and memory context as translation. It returns editable `draftText` only; it does not send mail or mutate provider state.
 After the user edits a Hermes draft, `POST /api/hermes/drafts/feedback` records the before/after text in `hermes_feedback`. Meaningful edits create `writing_style_profile` memories so future drafts can learn concise wording, sign-off preferences, and similar habits.
 
-Hermes rule learning is review-first. `POST /api/hermes/rules/suggest` scans repeated Smart Inbox feedback for one account and creates `shadow` candidates with evidence message ids. `simulate` records a shadow run and returns sample matches without changing mail. `approve` converts a candidate into an enabled app-owned rule; provider mutations and automatic sending are still separate explicit flows. The worker reads enabled `classify_sender` Hermes rules during message mirroring and writes only `message_classification` bucket, score, reasons, and `classified_by='hermes_rules'`.
+Hermes rule learning is review-first. `POST /api/hermes/rules/suggest` scans repeated Smart Inbox feedback for one account and creates `shadow` candidates with evidence message ids. `PATCH /api/hermes/rule-candidates/:candidateId` lets users edit safe content-label draft fields such as label name, keywords, and local history backfill before approval; edited candidates must be simulated again in the web flow. `simulate` records a shadow run and returns sample matches without changing mail. `approve` converts a candidate into an enabled app-owned rule; provider mutations and automatic sending are still separate explicit flows. The worker reads enabled `classify_sender` Hermes rules during message mirroring and writes only `message_classification` bucket, score, reasons, and `classified_by='hermes_rules'`.
 
 Mail compose APIs are preview-first:
 

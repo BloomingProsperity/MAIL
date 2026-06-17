@@ -250,6 +250,109 @@ describe("Hermes rule routes", () => {
     ]);
   });
 
+  it("updates an editable Hermes rule candidate", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async updateRuleCandidate(input: unknown) {
+        calls.push(input);
+        return {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "创建票据智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["receipt", "invoice", "发票"] },
+          action: {
+            type: "apply_label",
+            labelName: "票据",
+            labelColor: "blue",
+            providerWriteback: false,
+            applyToHistory: true,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/rule-candidates/candidate_codes`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "account_1",
+              labelName: "票据",
+              keywords: ["receipt", "invoice", "发票"],
+              applyToHistory: true,
+            }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          id: "candidate_codes",
+          title: "创建票据智能分组",
+          status: "shadow",
+          action: {
+            labelName: "票据",
+            applyToHistory: true,
+          },
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        labelName: "票据",
+        keywords: ["receipt", "invoice", "发票"],
+        applyToHistory: true,
+      },
+    ]);
+  });
+
+  it("rejects invalid Hermes rule candidate updates before hitting the service", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async updateRuleCandidate(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/rule-candidates/candidate_codes`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "account_1",
+              labelName: "票据",
+              keywords: "receipt",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_rule_request",
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
   it("approves a candidate into an enabled rule", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {

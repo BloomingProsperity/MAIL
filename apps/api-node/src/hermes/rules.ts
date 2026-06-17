@@ -117,6 +117,16 @@ export interface GetHermesRuleCandidateInput {
   candidateId: string;
 }
 
+export interface UpdateHermesRuleCandidateInput {
+  accountId: string;
+  candidateId: string;
+  title?: string;
+  labelName?: string;
+  labelColor?: LabelColor;
+  keywords?: string[];
+  applyToHistory?: boolean;
+}
+
 export interface BackfillHermesRuleHistoryInput {
   accountId: string;
   ruleId: string;
@@ -163,6 +173,13 @@ export interface HermesRuleStore {
     accountId: string;
     candidateId: string;
   }): Promise<HermesRuleCandidate | undefined>;
+  updateRuleCandidate(
+    input: UpdateHermesRuleCandidateInput & {
+      title: string;
+      condition: Record<string, unknown>;
+      action: Record<string, unknown>;
+    },
+  ): Promise<HermesRuleCandidate | undefined>;
   listCandidateMatches(input: {
     accountId: string;
     candidate: HermesRuleCandidate;
@@ -208,6 +225,9 @@ export interface HermesRuleService {
   ): Promise<{ items: HermesRuleCandidate[] }>;
   getRuleCandidate(
     input: GetHermesRuleCandidateInput,
+  ): Promise<HermesRuleCandidate | undefined>;
+  updateRuleCandidate(
+    input: UpdateHermesRuleCandidateInput,
   ): Promise<HermesRuleCandidate | undefined>;
   simulateRule(
     input: SimulateHermesRuleInput,
@@ -335,6 +355,25 @@ export function createHermesRuleService(
       return options.store.getRuleCandidate({
         accountId: requireString(input.accountId),
         candidateId: requireString(input.candidateId),
+      });
+    },
+
+    async updateRuleCandidate(input) {
+      const accountId = requireString(input.accountId);
+      const candidateId = requireString(input.candidateId);
+      const candidate = await options.store.getRuleCandidate({
+        accountId,
+        candidateId,
+      });
+      if (!candidate || candidate.status !== "shadow") {
+        return undefined;
+      }
+
+      const patch = editableContentLabelCandidatePatch(candidate, input);
+      return options.store.updateRuleCandidate({
+        accountId,
+        candidateId,
+        ...patch,
       });
     },
 
@@ -540,6 +579,22 @@ export function createInMemoryHermesRuleStore(
           item.id === input.candidateId,
       );
       return candidate ? { ...candidate } : undefined;
+    },
+
+    async updateRuleCandidate(input) {
+      const candidate = candidates.find(
+        (item) =>
+          item.accountId === input.accountId &&
+          item.id === input.candidateId,
+      );
+      if (!candidate || candidate.status !== "shadow") {
+        return undefined;
+      }
+
+      candidate.title = input.title;
+      candidate.condition = { ...input.condition };
+      candidate.action = { ...input.action };
+      return { ...candidate };
     },
 
     async listCandidateMatches(input) {
@@ -849,6 +904,68 @@ function labelRuleDraftForCommand(command: string): {
   };
 }
 
+function editableContentLabelCandidatePatch(
+  candidate: HermesRuleCandidate,
+  input: UpdateHermesRuleCandidateInput,
+): {
+  title: string;
+  condition: Record<string, unknown>;
+  action: Record<string, unknown>;
+} {
+  if (candidate.ruleType !== "content_label") {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  const draftAction = labelDraftActionFromCandidate(candidate);
+  const labelName =
+    input.labelName === undefined
+      ? draftAction.labelName
+      : requireRuleDisplayText(input.labelName, 1, 40);
+  const labelColor =
+    input.labelColor === undefined
+      ? draftAction.labelColor
+      : requireLabelColor(input.labelColor);
+  const keywords =
+    input.keywords === undefined
+      ? requireRuleKeywords(
+          ruleCandidateKeywordsForEditing(candidate, draftAction.savedView),
+        )
+      : requireRuleKeywords(input.keywords);
+  const title =
+    input.title === undefined
+      ? `创建${labelName}智能分组`
+      : requireRuleDisplayText(input.title, 2, 80);
+  const applyToHistory =
+    input.applyToHistory === undefined
+      ? draftAction.applyToHistory
+      : requireBoolean(input.applyToHistory);
+  const savedView: SavedViewDefinition = {
+    id: `hermes_${stableTextId(labelName)}`,
+    label: labelName,
+    tone: savedViewToneForLabelColor(labelColor),
+    kind: "keyword",
+    keywords,
+  };
+
+  return {
+    title,
+    condition: {
+      ...candidate.condition,
+      anyKeywords: keywords,
+    },
+    action: {
+      ...candidate.action,
+      type: "apply_label",
+      labelName,
+      labelColor,
+      savedView,
+      applyToHistory,
+      providerWriteback: false,
+      requiresConfirmation: true,
+    },
+  };
+}
+
 async function approvedLabelActionForCandidate(input: {
   candidate: HermesRuleCandidate;
   accountId: string;
@@ -1095,6 +1212,62 @@ function uniqueStrings(values: string[]): string[] {
     }
   }
   return result;
+}
+
+function ruleCandidateKeywordsForEditing(
+  candidate: HermesRuleCandidate,
+  savedView: SavedViewDefinition,
+): string[] {
+  const keywords = conditionKeywords(candidate.condition);
+  return keywords.length > 0 ? keywords : savedView.keywords;
+}
+
+function requireRuleDisplayText(
+  value: unknown,
+  minLength: number,
+  maxLength: number,
+): string {
+  if (typeof value !== "string") {
+    throw new InvalidHermesRuleRequestError();
+  }
+  const trimmed = value.trim();
+  if (
+    trimmed.length < minLength ||
+    trimmed.length > maxLength ||
+    /[\u0000-\u001F\u007F]/.test(trimmed)
+  ) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return trimmed;
+}
+
+function requireRuleKeywords(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+  const keywords = uniqueStrings(
+    value.map((item) => requireRuleDisplayText(item, 1, 40)),
+  );
+  if (keywords.length === 0 || keywords.length > 20) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return keywords;
+}
+
+function requireLabelColor(value: unknown): LabelColor {
+  if (!isLabelColor(value)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return value;
+}
+
+function savedViewToneForLabelColor(
+  value: LabelColor,
+): SavedViewDefinition["tone"] {
+  return isTone(value) ? value : "blue";
 }
 
 function candidateDraftFor(

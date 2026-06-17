@@ -1142,6 +1142,56 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("updates Hermes rule candidates through backend routes", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "candidate 1",
+        accountId: "account 1",
+        title: "创建票据智能分组",
+        ruleType: "content_label",
+        condition: { anyKeywords: ["receipt", "invoice"] },
+        action: {
+          type: "apply_label",
+          labelName: "票据",
+          applyToHistory: true,
+          providerWriteback: false,
+          requiresConfirmation: true,
+        },
+        confidence: 0.9,
+        status: "shadow",
+        evidenceMessageIds: [],
+        createdAt: "2026-06-15T09:00:00.000Z",
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const candidate = await api.updateHermesRuleCandidate({
+      accountId: "account 1",
+      candidateId: "candidate 1",
+      labelName: "票据",
+      keywords: ["receipt", "invoice"],
+      applyToHistory: true,
+    });
+
+    expect(candidate).toMatchObject({
+      id: "candidate 1",
+      title: "创建票据智能分组",
+      status: "shadow",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/rule-candidates/candidate%201",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          accountId: "account 1",
+          labelName: "票据",
+          keywords: ["receipt", "invoice"],
+          applyToHistory: true,
+        }),
+      }),
+    );
+  });
+
   it("runs approved Hermes rules through backend routes", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

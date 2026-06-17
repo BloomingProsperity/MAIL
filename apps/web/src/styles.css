@@ -2218,6 +2218,7 @@ h2 {
 .memory-filter-grid label,
 .audit-filter-grid label,
 .rule-draft-workbench label,
+.rule-candidate-editor label,
 .hermes-memory-card label {
   display: grid;
   gap: 6px;
@@ -2230,6 +2231,7 @@ h2 {
 .audit-filter-grid input,
 .audit-filter-grid select,
 .rule-draft-workbench textarea,
+.rule-candidate-editor input,
 .hermes-memory-card input,
 .hermes-memory-card textarea {
   width: 100%;
@@ -2245,6 +2247,7 @@ h2 {
 .memory-filter-grid input,
 .audit-filter-grid input,
 .audit-filter-grid select,
+.rule-candidate-editor input,
 .hermes-memory-card input {
   height: 36px;
   padding: 0 10px;
@@ -2292,10 +2295,31 @@ h2 {
   font-size: 12px;
 }
 
+.rule-candidate-editor {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1.2fr) auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.rule-candidate-toggle {
+  min-height: 36px;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.rule-candidate-toggle input {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
 .memory-filter-grid input:focus,
 .audit-filter-grid input:focus,
 .audit-filter-grid select:focus,
 .rule-draft-workbench textarea:focus,
+.rule-candidate-editor input:focus,
 .hermes-memory-card input:focus,
 .hermes-memory-card textarea:focus {
   border-color: var(--primary-border);
@@ -3115,6 +3139,7 @@ h2 {
   .hermes-skill-toggles,
   .hermes-skill-budget-grid,
   .memory-filter-grid,
+  .rule-candidate-editor,
   .reauthorization-form,
   .reauthorization-endpoints {
     grid-template-columns: 1fr;

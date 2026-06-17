@@ -172,6 +172,11 @@ type SmartInboxBusyAction = "" | "bulk_done" | SmartInboxFeedbackAction;
 type ReaderActionResult = boolean | Promise<boolean>;
 
 type ReaderHermesOrganizationResult = HermesMessageOrganizationResult;
+type HermesRuleCandidateEditState = {
+  labelName: string;
+  keywordsText: string;
+  applyToHistory: boolean;
+};
 
 type HermesOrganizationApplyAction =
   | {
@@ -7030,6 +7035,85 @@ function formatHermesRuleCondition(condition: Record<string, unknown>) {
   return "条件已生成";
 }
 
+function hermesRuleCandidateEditFromCandidate(
+  candidate: HermesRuleCandidateDto,
+): HermesRuleCandidateEditState {
+  return {
+    labelName: hermesRuleCandidateLabelName(candidate),
+    keywordsText: hermesRuleCandidateKeywords(candidate).join("、"),
+    applyToHistory: candidate.action.applyToHistory === true,
+  };
+}
+
+function hermesRuleCandidateEditMap(
+  candidates: HermesRuleCandidateDto[],
+): Record<string, HermesRuleCandidateEditState> {
+  return Object.fromEntries(
+    candidates.map((candidate) => [
+      candidate.id,
+      hermesRuleCandidateEditFromCandidate(candidate),
+    ]),
+  );
+}
+
+function hermesRuleCandidateLabelName(candidate: HermesRuleCandidateDto): string {
+  return typeof candidate.action.labelName === "string" &&
+    candidate.action.labelName.trim()
+    ? candidate.action.labelName.trim()
+    : candidate.title;
+}
+
+function hermesRuleCandidateKeywords(candidate: HermesRuleCandidateDto): string[] {
+  const keywords = candidate.condition.anyKeywords;
+  if (!Array.isArray(keywords)) {
+    return [];
+  }
+
+  return keywords
+    .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    .map((item) => item.trim());
+}
+
+function parseHermesRuleCandidateKeywords(value: string): string[] {
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const item of value.split(/[,\n，、]+/)) {
+    const trimmed = item.trim();
+    const key = trimmed.toLowerCase();
+    if (!trimmed || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    keywords.push(trimmed);
+  }
+
+  return keywords;
+}
+
+function applyHermesRuleCandidateEdit(
+  candidate: HermesRuleCandidateDto,
+  edit: HermesRuleCandidateEditState,
+): HermesRuleCandidateDto {
+  const labelName = edit.labelName.trim();
+  const keywords = parseHermesRuleCandidateKeywords(edit.keywordsText);
+  return {
+    ...candidate,
+    title: `创建${labelName}智能分组`,
+    condition: {
+      ...candidate.condition,
+      anyKeywords: keywords,
+    },
+    action: {
+      ...candidate.action,
+      type: "apply_label",
+      labelName,
+      applyToHistory: edit.applyToHistory,
+      providerWriteback: false,
+      requiresConfirmation: true,
+    },
+  };
+}
+
 function formatHermesAuditTitle(event: HermesAuditLogEntryDto) {
   return event.skillTitle?.trim() || formatHermesAuditSkillId(event.skillId);
 }
@@ -9258,6 +9342,9 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
   const [candidateDrafts, setCandidateDrafts] = useState<
     HermesRuleCandidateDto[]
   >([]);
+  const [candidateEdits, setCandidateEdits] = useState<
+    Record<string, HermesRuleCandidateEditState>
+  >({});
   const [candidateSimulations, setCandidateSimulations] = useState<
     Record<string, HermesRuleSimulationDto>
   >({});
@@ -9298,6 +9385,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       setRules(page.items);
       setRuleExecutions(latestExecutionsByRuleId(executionsPage.items));
       setCandidateDrafts(candidatesPage.items);
+      setCandidateEdits(hermesRuleCandidateEditMap(candidatesPage.items));
       setRuleNotice(
         page.items.length === 0
           ? candidatesPage.items.length === 0
@@ -9307,6 +9395,8 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       );
     } catch {
       setRules([]);
+      setCandidateDrafts([]);
+      setCandidateEdits({});
       setRuleNotice("Hermes 规则暂时不可用。");
     }
   }
@@ -9418,6 +9508,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
 
     if (!props.api) {
       setCandidateDrafts(previewCandidates);
+      setCandidateEdits(hermesRuleCandidateEditMap(previewCandidates));
       setCandidateSimulations({});
       setRuleNotice("预览规则草案已生成，连接后会先影子模拟再确认启用。");
       return;
@@ -9436,6 +9527,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
         command,
       });
       setCandidateDrafts(result.candidates);
+      setCandidateEdits(hermesRuleCandidateEditMap(result.candidates));
       setCandidateSimulations({});
       setRuleNotice(
         result.candidates.length === 0
@@ -9445,6 +9537,88 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
     } catch {
       setCandidateDrafts([]);
       setRuleNotice("Hermes 规则草案生成失败。");
+    } finally {
+      setRuleDraftBusy("");
+    }
+  }
+
+  function updateRuleCandidateEdit(
+    candidate: HermesRuleCandidateDto,
+    patch: Partial<HermesRuleCandidateEditState>,
+  ) {
+    setCandidateEdits((current) => ({
+      ...current,
+      [candidate.id]: {
+        ...(current[candidate.id] ??
+          hermesRuleCandidateEditFromCandidate(candidate)),
+        ...patch,
+      },
+    }));
+  }
+
+  async function saveRuleCandidateEdit(candidate: HermesRuleCandidateDto) {
+    const edit =
+      candidateEdits[candidate.id] ??
+      hermesRuleCandidateEditFromCandidate(candidate);
+    const labelName = edit.labelName.trim();
+    const keywords = parseHermesRuleCandidateKeywords(edit.keywordsText);
+    if (!labelName || keywords.length === 0) {
+      setRuleNotice("请填写分组名称和至少一个关键词。");
+      return;
+    }
+
+    if (!props.api) {
+      const updated = applyHermesRuleCandidateEdit(candidate, {
+        ...edit,
+        labelName,
+        keywordsText: keywords.join("、"),
+      });
+      setCandidateDrafts((current) =>
+        current.map((item) => (item.id === candidate.id ? updated : item)),
+      );
+      setCandidateEdits((current) => ({
+        ...current,
+        [candidate.id]: hermesRuleCandidateEditFromCandidate(updated),
+      }));
+      setCandidateSimulations((current) => {
+        const next = { ...current };
+        delete next[candidate.id];
+        return next;
+      });
+      setRuleNotice("预览规则草案已保存，请重新模拟后再确认。");
+      return;
+    }
+
+    if (!props.accountId) {
+      setRuleNotice("请先添加邮箱并完成同步，再保存 Hermes 规则草案。");
+      return;
+    }
+
+    setRuleDraftBusy(`save:${candidate.id}`);
+    setRuleNotice("正在保存 Hermes 规则草案...");
+    try {
+      const updated = await props.api.updateHermesRuleCandidate({
+        accountId: props.accountId,
+        candidateId: candidate.id,
+        labelName,
+        keywords,
+        applyToHistory: edit.applyToHistory,
+      });
+      setCandidateDrafts((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setCandidateEdits((current) => ({
+        ...current,
+        [updated.id]: hermesRuleCandidateEditFromCandidate(updated),
+      }));
+      setCandidateSimulations((current) => {
+        const next = { ...current };
+        delete next[updated.id];
+        return next;
+      });
+      setRuleNotice("Hermes 规则草案已保存，请重新运行 shadow simulation。");
+    } catch {
+      setRuleNotice("Hermes 规则草案保存失败。");
     } finally {
       setRuleDraftBusy("");
     }
@@ -9612,8 +9786,13 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
           <div className="rule-candidate-list">
             {candidateDrafts.map((candidate) => {
               const simulation = candidateSimulations[candidate.id];
+              const edit =
+                candidateEdits[candidate.id] ??
+                hermesRuleCandidateEditFromCandidate(candidate);
               const isSimulating = ruleDraftBusy === `simulate:${candidate.id}`;
               const isApproving = ruleDraftBusy === `approve:${candidate.id}`;
+              const isSaving = ruleDraftBusy === `save:${candidate.id}`;
+              const isCandidateLocked = candidate.status === "approved";
               return (
                 <article className="rule-candidate-card" key={candidate.id}>
                   <div className="hermes-memory-meta">
@@ -9639,6 +9818,57 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
                   ) : (
                     <p>确认前必须先运行 shadow simulation，不会直接修改邮箱。</p>
                   )}
+                  <div className="rule-candidate-editor">
+                    <label>
+                      <span>分组名称</span>
+                      <input
+                        aria-label={`Hermes rule label ${candidate.title}`}
+                        value={edit.labelName}
+                        disabled={Boolean(ruleDraftBusy) || isCandidateLocked}
+                        onChange={(event) =>
+                          updateRuleCandidateEdit(candidate, {
+                            labelName: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>关键词</span>
+                      <input
+                        aria-label={`Hermes rule keywords ${candidate.title}`}
+                        value={edit.keywordsText}
+                        disabled={Boolean(ruleDraftBusy) || isCandidateLocked}
+                        onChange={(event) =>
+                          updateRuleCandidateEdit(candidate, {
+                            keywordsText: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="rule-candidate-toggle">
+                      <input
+                        type="checkbox"
+                        aria-label={`Apply Hermes rule to history ${candidate.title}`}
+                        checked={edit.applyToHistory}
+                        disabled={Boolean(ruleDraftBusy) || isCandidateLocked}
+                        onChange={(event) =>
+                          updateRuleCandidateEdit(candidate, {
+                            applyToHistory: event.target.checked,
+                          })
+                        }
+                      />
+                      <span>回填已有邮件</span>
+                    </label>
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      disabled={Boolean(ruleDraftBusy) || isCandidateLocked}
+                      aria-label={`Save Hermes rule candidate ${candidate.title}`}
+                      onClick={() => void saveRuleCandidateEdit(candidate)}
+                    >
+                      {isSaving ? "保存中" : "保存草案"}
+                    </button>
+                  </div>
                   <div className="inline-actions">
                     <button
                       className="ghost-button"

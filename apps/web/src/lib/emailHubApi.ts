@@ -1885,6 +1885,15 @@ export interface EmailHubApi {
     status?: HermesRuleCandidateStatus;
     limit?: number;
   }): Promise<Page<HermesRuleCandidateDto>>;
+  updateHermesRuleCandidate(input: {
+    accountId: string;
+    candidateId: string;
+    title?: string;
+    labelName?: string;
+    labelColor?: string;
+    keywords?: string[];
+    applyToHistory?: boolean;
+  }): Promise<HermesRuleCandidateDto>;
   updateHermesRule(input: {
     accountId: string;
     ruleId: string;
@@ -2757,6 +2766,19 @@ export function createEmailHubApi(
         fetchImpl,
         baseUrl,
         `/api/hermes/rule-candidates?${params.toString()}`,
+      );
+    },
+
+    updateHermesRuleCandidate(input) {
+      const { candidateId, ...body } = input;
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/rule-candidates/${encodePath(candidateId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(cleanObject(body)),
+        },
       );
     },
 

@@ -250,10 +250,13 @@ with more than smoke-level tests.
   model deployments.
 - Current action-plan status: Hermes rule candidates are now recoverable after
   refresh through `GET /api/hermes/rule-candidates`, and Settings loads shadow
-  candidates alongside enabled rules. Confirming a candidate creates the
-  auditable Hermes action plan from the existing candidate id, reruns shadow
-  simulation, then requires explicit user confirmation before enabling the
-  rule.
+  candidates alongside enabled rules. Shadow `content_label` candidates are
+  editable through `PATCH /api/hermes/rule-candidates/:candidateId` for label
+  name, keyword conditions, and local history backfill only; service and SQL
+  layers both require `status='shadow'`. Settings clears any prior simulation
+  after saving a candidate, so confirmation must create a fresh auditable Hermes
+  action plan from the edited candidate id, rerun shadow simulation, then
+  require explicit user confirmation before enabling the rule.
 
 ### 4. Mail Organization
 

@@ -152,6 +152,138 @@ describe("Hermes rule learning service", () => {
     });
   });
 
+  it("updates shadow content label candidates before simulation and approval", async () => {
+    const upsertedLabels: unknown[] = [];
+    const store = createInMemoryHermesRuleStore({
+      messages: [
+        message("msg_receipt", "billing@example.com", "Invoice receipt"),
+        message("msg_code", "login@example.com", "Your OTP verification code"),
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      labelService: {
+        async upsertLabel(input) {
+          upsertedLabels.push(input);
+          return {
+            id: "label_receipts",
+            accountId: input.accountId,
+            name: input.name,
+            color: input.color ?? "blue",
+            messageCount: 0,
+            createdAt: "2026-06-13T10:09:00.000Z",
+          };
+        },
+      },
+      createId: nextId(["candidate_codes", "run_receipts", "rule_receipts"]),
+      now: () => "2026-06-13T10:00:00.000Z",
+    });
+
+    await service.draftRule({
+      accountId: "account_1",
+      command: "帮我创建一个验证码分组规则",
+    });
+
+    const updated = await service.updateRuleCandidate({
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+      labelName: "票据",
+      keywords: ["receipt", "invoice", "发票", "receipt"],
+      applyToHistory: true,
+    });
+
+    expect(updated).toMatchObject({
+      id: "candidate_codes",
+      title: "创建票据智能分组",
+      condition: { anyKeywords: ["receipt", "invoice", "发票"] },
+      action: {
+        type: "apply_label",
+        labelName: "票据",
+        applyToHistory: true,
+        providerWriteback: false,
+        requiresConfirmation: true,
+      },
+      status: "shadow",
+    });
+
+    await expect(
+      service.simulateRule({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        sampleLimit: 10,
+      }),
+    ).resolves.toMatchObject({
+      id: "run_receipts",
+      matchedCount: 1,
+      sampleMessageIds: ["msg_receipt"],
+      actionPreview: expect.objectContaining({
+        labelName: "票据",
+        applyToHistory: true,
+      }),
+    });
+
+    const rule = await service.approveRule({
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+    });
+
+    expect(upsertedLabels).toEqual([
+      { accountId: "account_1", name: "票据", color: "blue" },
+    ]);
+    expect(rule).toMatchObject({
+      id: "rule_receipts",
+      title: "创建票据智能分组",
+      condition: { anyKeywords: ["receipt", "invoice", "发票"] },
+      action: {
+        labelId: "label_receipts",
+        labelName: "票据",
+        applyToHistory: true,
+        providerWriteback: false,
+        requiresConfirmation: false,
+      },
+    });
+  });
+
+  it("does not update approved rule candidates", async () => {
+    const store = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            requiresConfirmation: false,
+          },
+          confidence: 0.9,
+          status: "approved",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+          approvedAt: "2026-06-13T10:10:00.000Z",
+        },
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      createId: nextId([]),
+      now: () => "2026-06-13T10:00:00.000Z",
+    });
+
+    await expect(
+      service.updateRuleCandidate({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        labelName: "票据",
+        keywords: ["receipt"],
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("approves a content label candidate by upserting the account label", async () => {
     const upsertedLabels: unknown[] = [];
     const store = createInMemoryHermesRuleStore({

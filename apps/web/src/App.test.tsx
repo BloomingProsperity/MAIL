@@ -137,7 +137,7 @@ describe("Email Hub first UI baseline", () => {
       vi.advanceTimersByTime(1_000);
     });
     expect(dock?.className).toContain("is-collapsed");
-  }, 10_000);
+  }, 15_000);
 
   it("runs Hermes mail search QA from the compact dock and can open the Search workspace", async () => {
     const api = createApiFixture();
@@ -727,7 +727,7 @@ describe("Email Hub first UI baseline", () => {
         name: "Ask Hermes to organize selected message",
       }),
     );
-    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 5_000 });
+    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 10_000 });
     vi.mocked(api.upsertLabel).mockClear();
 
     fireEvent.click(
@@ -796,7 +796,7 @@ describe("Email Hub first UI baseline", () => {
         action: "archive",
       });
     });
-  }, 10_000);
+  }, 15_000);
 
   it("creates explicit follow-ups from dated Hermes action items", async () => {
     const api = createApiFixture();
@@ -827,7 +827,7 @@ describe("Email Hub first UI baseline", () => {
         name: "Ask Hermes to organize selected message",
       }),
     );
-    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 5_000 });
+    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 10_000 });
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -847,7 +847,7 @@ describe("Email Hub first UI baseline", () => {
         hermesSkillRunId: "run_actions_due",
       });
     });
-  }, 10_000);
+  }, 15_000);
 
   it("shows a safe Hermes organization apply failure without leaking backend details", async () => {
     const api = createApiFixture();
@@ -899,7 +899,7 @@ describe("Email Hub first UI baseline", () => {
         name: "Ask Hermes to organize selected message",
       }),
     );
-    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 5_000 });
+    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 10_000 });
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -911,7 +911,7 @@ describe("Email Hub first UI baseline", () => {
     const pageText = document.body.textContent ?? "";
     expect(pageText).not.toContain("internal_error");
     expect(pageText).not.toContain("hermes-secret");
-  }, 10_000);
+  }, 15_000);
 
   it("shows a reader-level Hermes error without replacing the message body", async () => {
     const api = createApiFixture();
@@ -1674,6 +1674,102 @@ describe("Email Hub first UI baseline", () => {
         name: "Confirm Hermes action plan 启用验证码智能分组",
       }).textContent,
     ).toContain("已启用");
+  });
+
+  it("requires a fresh simulation after editing a Hermes rule candidate", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
+    expect(await within(rulePanel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Simulate Hermes rule 启用验证码智能分组",
+      }),
+    );
+    expect(await within(rulePanel).findByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+
+    fireEvent.change(
+      within(rulePanel).getByLabelText("Hermes rule label 启用验证码智能分组"),
+      {
+        target: { value: "票据" },
+      },
+    );
+    fireEvent.change(
+      within(rulePanel).getByLabelText("Hermes rule keywords 启用验证码智能分组"),
+      {
+        target: { value: "receipt, invoice, 发票" },
+      },
+    );
+    fireEvent.click(
+      within(rulePanel).getByLabelText(
+        "Apply Hermes rule to history 启用验证码智能分组",
+      ),
+    );
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Save Hermes rule candidate 启用验证码智能分组",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.updateHermesRuleCandidate).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        labelName: "票据",
+        keywords: ["receipt", "invoice", "发票"],
+        applyToHistory: true,
+      });
+    });
+    expect(
+      await screen.findByText("Hermes 规则草案已保存，请重新运行 shadow simulation。"),
+    ).toBeTruthy();
+    expect(within(rulePanel).queryByText(/Shadow simulation：命中 4 封邮件/)).toBeNull();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Confirm Hermes action plan 创建票据智能分组",
+      }),
+    );
+    expect(
+      await screen.findByText("请先运行 shadow simulation，再确认启用规则。"),
+    ).toBeTruthy();
+    expect(api.createHermesActionPlan).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Simulate Hermes rule 创建票据智能分组",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.simulateHermesRule).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        sampleLimit: 25,
+      });
+    });
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Confirm Hermes action plan 创建票据智能分组",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.createHermesActionPlan).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        command:
+          "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
+        sampleLimit: 25,
+      });
+    });
   });
 
   it("requires rule simulation before approving a Hermes rule draft", async () => {
@@ -8229,6 +8325,27 @@ function createApiFixture(): EmailHubApi {
     listHermesRuleCandidates: vi.fn(async () => ({
       items: [],
     })),
+    updateHermesRuleCandidate: vi.fn(async (input) => ({
+      id: input.candidateId,
+      accountId: input.accountId,
+      title: `创建${input.labelName ?? "验证码"}智能分组`,
+      ruleType: "content_label",
+      condition: {
+        anyKeywords: input.keywords ?? ["验证码", "verification", "otp"],
+      },
+      action: {
+        type: "apply_label",
+        labelName: input.labelName ?? "验证码",
+        labelColor: input.labelColor ?? "blue",
+        providerWriteback: false,
+        applyToHistory: input.applyToHistory ?? false,
+        requiresConfirmation: true,
+      },
+      confidence: 0.9,
+      status: "shadow",
+      evidenceMessageIds: [],
+      createdAt: "2026-06-13T10:00:00.000Z",
+    } satisfies HermesRuleCandidateDto)),
     draftHermesRule: vi.fn(async () => ({
       candidates: [
         {

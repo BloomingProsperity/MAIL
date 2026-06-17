@@ -763,6 +763,11 @@ POST /api/hermes/rules/suggest
 GET /api/hermes/rule-candidates?accountId=:accountId&status=shadow
 -> list pending reviewed candidates for Settings and action-plan confirmation
 
+PATCH /api/hermes/rule-candidates/:candidateId
+-> update safe shadow content-label draft fields: label name, keyword condition,
+   label color, and local history backfill
+-> refuse non-shadow candidates and keep providerWriteback false
+
 POST /api/hermes/rules/:candidateId/simulate
 -> match recent visible messages by candidate condition
 -> write hermes_rule_runs in shadow mode

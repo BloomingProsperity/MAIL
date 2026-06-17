@@ -189,6 +189,41 @@ export function createPostgresHermesRuleStore(
       return loadCandidate(client, input.accountId, input.candidateId);
     },
 
+    async updateRuleCandidate(input) {
+      const result = await client.query<RuleCandidateRow>(
+        `
+          UPDATE hermes_rule_candidates
+          SET title = $3,
+              condition = $4,
+              action = $5
+          WHERE account_id = $1
+            AND id = $2
+            AND status = 'shadow'
+          RETURNING
+            id,
+            account_id,
+            title,
+            rule_type,
+            condition,
+            action,
+            confidence,
+            status,
+            evidence_message_ids,
+            created_at,
+            approved_at
+        `,
+        [
+          input.accountId,
+          input.candidateId,
+          input.title,
+          input.condition,
+          input.action,
+        ],
+      );
+
+      return result.rows[0] ? candidateFromRow(result.rows[0]) : undefined;
+    },
+
     async listCandidateMatches(input) {
       const keywords = candidateKeywords(input.candidate);
       if (keywords.length > 0) {

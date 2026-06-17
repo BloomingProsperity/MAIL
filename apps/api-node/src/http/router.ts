@@ -1744,6 +1744,25 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           writeJson(response, 200, result);
           return;
         }
+
+        if (
+          hermesRuleCandidateRoute.action === "update" &&
+          request.method === "PATCH"
+        ) {
+          const result = await config.hermesRuleService.updateRuleCandidate(
+            parseHermesRuleCandidateUpdateInput(
+              hermesRuleCandidateRoute.candidateId,
+              await readRequestBody(),
+            ),
+          );
+          if (!result) {
+            writeJson(response, 404, { error: "rule_candidate_not_found" });
+            return;
+          }
+
+          writeJson(response, 200, result);
+          return;
+        }
       }
 
       const hermesRuleRoute = parseHermesRuleRoute(request.url);
@@ -4101,15 +4120,27 @@ function parseHermesRuleExecutionRoute(
 
 function parseHermesRuleCandidateRoute(
   requestUrl: string | undefined,
-): { action: "list" } | undefined {
+): { action: "list" } | { action: "update"; candidateId: string } | undefined {
   if (!requestUrl) {
     return undefined;
   }
 
   const url = new URL(requestUrl, "http://localhost");
-  return url.pathname === "/api/hermes/rule-candidates"
-    ? { action: "list" }
-    : undefined;
+  if (url.pathname === "/api/hermes/rule-candidates") {
+    return { action: "list" };
+  }
+
+  const match = /^\/api\/hermes\/rule-candidates\/([^/]+)$/.exec(
+    url.pathname,
+  );
+  if (!match) {
+    return undefined;
+  }
+
+  return {
+    action: "update",
+    candidateId: decodeURIComponent(match[1]),
+  };
 }
 
 function parseHermesActionPlanRoute(
@@ -7180,6 +7211,44 @@ function parseHermesRuleUpdateInput(
   };
 }
 
+function parseHermesRuleCandidateUpdateInput(
+  candidateId: string,
+  body: string,
+): {
+  accountId: string;
+  candidateId: string;
+  title?: string;
+  labelName?: string;
+  labelColor?: LabelColor;
+  keywords?: string[];
+  applyToHistory?: boolean;
+} {
+  const payload = JSON.parse(body) as {
+    accountId?: unknown;
+    title?: unknown;
+    labelName?: unknown;
+    labelColor?: unknown;
+    keywords?: unknown;
+    applyToHistory?: unknown;
+  };
+  if (!isNonEmptyString(candidateId) || !isNonEmptyString(payload.accountId)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return {
+    accountId: payload.accountId,
+    candidateId,
+    ...parseOptionalHermesRuleTextPatch(payload.title, "title"),
+    ...parseOptionalHermesRuleTextPatch(payload.labelName, "labelName"),
+    ...parseOptionalHermesRuleLabelColor(payload.labelColor),
+    ...parseOptionalHermesRuleKeywords(payload.keywords),
+    ...parseOptionalHermesRuleBooleanPatch(
+      payload.applyToHistory,
+      "applyToHistory",
+    ),
+  };
+}
+
 function parseHermesRuleRunInput(
   ruleId: string,
   body: string,
@@ -7322,6 +7391,65 @@ function parseOptionalHermesRuleInteger<
   }
 
   return { [key]: value } as Partial<Record<Key, number>>;
+}
+
+function parseOptionalHermesRuleTextPatch<
+  Key extends "title" | "labelName",
+>(value: unknown, key: Key): Partial<Record<Key, string>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "string") {
+    throw new InvalidHermesRuleRequestError();
+  }
+  return { [key]: value } as Partial<Record<Key, string>>;
+}
+
+function parseOptionalHermesRuleLabelColor(value: unknown): {
+  labelColor?: LabelColor;
+} {
+  if (value === undefined) {
+    return {};
+  }
+  if (
+    value === "coral" ||
+    value === "blue" ||
+    value === "green" ||
+    value === "yellow" ||
+    value === "purple" ||
+    value === "mint"
+  ) {
+    return { labelColor: value };
+  }
+
+  throw new InvalidHermesRuleRequestError();
+}
+
+function parseOptionalHermesRuleBooleanPatch<
+  Key extends "applyToHistory",
+>(value: unknown, key: Key): Partial<Record<Key, boolean>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "boolean") {
+    throw new InvalidHermesRuleRequestError();
+  }
+  return { [key]: value } as Partial<Record<Key, boolean>>;
+}
+
+function parseOptionalHermesRuleKeywords(value: unknown): {
+  keywords?: string[];
+} {
+  if (value === undefined) {
+    return {};
+  }
+  if (!Array.isArray(value)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+  if (!value.every((item) => typeof item === "string")) {
+    throw new InvalidHermesRuleRequestError();
+  }
+  return { keywords: value };
 }
 
 function parseOptionalHermesRuleBoolean(value: string | null): boolean | undefined {
