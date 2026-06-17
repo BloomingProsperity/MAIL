@@ -3513,6 +3513,62 @@ describe("Hermes routes", () => {
     );
   });
 
+  it("blocks Hermes memory routes when the memory_review skill is disabled", async () => {
+    const calls: unknown[] = [];
+    const hermesMemoryStore = {
+      async listMemories(input: unknown) {
+        calls.push(["list", input]);
+        return { items: [] };
+      },
+      async updateMemory(input: unknown) {
+        calls.push(["update", input]);
+        return undefined;
+      },
+      async deleteMemory(input: unknown) {
+        calls.push(["delete", input]);
+        return false;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const responses = await Promise.all([
+          fetch(`${baseUrl}/api/hermes/memories`),
+          fetch(
+            `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001`,
+            {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                content: { preference: "short replies" },
+              }),
+            },
+          ),
+          fetch(
+            `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001`,
+            { method: "DELETE" },
+          ),
+        ]);
+
+        for (const response of responses) {
+          expect(response.status).toBe(403);
+          expect(await response.json()).toEqual({
+            error: "hermes_skill_disabled",
+            skillId: "memory_review",
+          });
+        }
+      },
+      {
+        hermesMemoryStore,
+        hermesSkillSettingsService: disabledHermesSkillSettingsService(
+          "memory_review",
+        ),
+      },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
   it("updates one Hermes memory", async () => {
     const calls: unknown[] = [];
     const hermesMemoryStore = {
@@ -3662,3 +3718,20 @@ describe("Hermes routes", () => {
     });
   });
 });
+
+function disabledHermesSkillSettingsService(skillId: string) {
+  return {
+    async getSkill(requestedSkillId: string) {
+      if (requestedSkillId !== skillId) {
+        return undefined;
+      }
+
+      return {
+        id: skillId,
+        settings: {
+          enabled: false,
+        },
+      };
+    },
+  };
+}

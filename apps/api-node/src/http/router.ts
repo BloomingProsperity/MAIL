@@ -1635,6 +1635,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (hermesMemoryRoute.action === "list" && request.method === "GET") {
+          await ensureHermesSkillAllowed(config, "memory_review");
           const result = await config.hermesMemoryStore.listMemories(
             parseHermesMemoryListInput(request.url),
           );
@@ -1643,6 +1644,9 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (hermesMemoryRoute.action === "item" && request.method === "PATCH") {
+          await ensureHermesSkillAllowed(config, "memory_review", {
+            requiresMemoryWrite: true,
+          });
           const result = await config.hermesMemoryStore.updateMemory({
             id: hermesMemoryRoute.id,
             ...parseHermesMemoryPatchInput(await readRequestBody()),
@@ -1657,6 +1661,9 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (hermesMemoryRoute.action === "item" && request.method === "DELETE") {
+          await ensureHermesSkillAllowed(config, "memory_review", {
+            requiresMemoryWrite: true,
+          });
           const deleted = await config.hermesMemoryStore.deleteMemory({
             id: hermesMemoryRoute.id,
           });
@@ -1815,6 +1822,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (hermesRuleRoute.action === "draft" && request.method === "POST") {
+          await ensureHermesSkillAllowed(config, "rule_suggest");
           const result = await config.hermesRuleService.draftRule(
             parseHermesRuleDraftInput(await readRequestBody()),
           );
@@ -1823,6 +1831,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (hermesRuleRoute.action === "suggest" && request.method === "POST") {
+          await ensureHermesSkillAllowed(config, "rule_suggest");
           const result = await config.hermesRuleService.suggestRules(
             parseHermesRuleSuggestInput(await readRequestBody()),
           );
@@ -1842,6 +1851,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           hermesRuleRoute.action === "simulate" &&
           request.method === "POST"
         ) {
+          await ensureHermesSkillAllowed(config, "rule_suggest");
           const result = await config.hermesRuleService.simulateRule(
             parseHermesRuleSimulationInput(
               hermesRuleRoute.candidateId,
@@ -1858,6 +1868,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (hermesRuleRoute.action === "approve" && request.method === "POST") {
+          await ensureHermesSkillAllowed(config, "rule_suggest");
           const result = await config.hermesRuleService.approveRule(
             parseHermesRuleApprovalInput(
               hermesRuleRoute.candidateId,

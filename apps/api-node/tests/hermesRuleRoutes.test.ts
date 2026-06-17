@@ -152,6 +152,58 @@ describe("Hermes rule routes", () => {
     ]);
   });
 
+  it("blocks Hermes rule suggestion routes when the rule_suggest skill is disabled", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async draftRule(input: unknown) {
+        calls.push(["draft", input]);
+        return { candidates: [] };
+      },
+      async suggestRules(input: unknown) {
+        calls.push(["suggest", input]);
+        return { candidates: [] };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const responses = await Promise.all([
+          fetch(`${baseUrl}/api/hermes/rules/draft`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "account_1",
+              command: "创建验证码规则",
+            }),
+          }),
+          fetch(`${baseUrl}/api/hermes/rules/suggest`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "account_1",
+            }),
+          }),
+        ]);
+
+        for (const response of responses) {
+          expect(response.status).toBe(403);
+          expect(await response.json()).toEqual({
+            error: "hermes_skill_disabled",
+            skillId: "rule_suggest",
+          });
+        }
+      },
+      {
+        hermesRuleService,
+        hermesSkillSettingsService: disabledHermesSkillSettingsService(
+          "rule_suggest",
+        ),
+      },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
   it("runs a rule simulation in shadow mode", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {
@@ -755,3 +807,20 @@ describe("Hermes rule routes", () => {
     });
   });
 });
+
+function disabledHermesSkillSettingsService(skillId: string) {
+  return {
+    async getSkill(requestedSkillId: string) {
+      if (requestedSkillId !== skillId) {
+        return undefined;
+      }
+
+      return {
+        id: skillId,
+        settings: {
+          enabled: false,
+        },
+      };
+    },
+  };
+}

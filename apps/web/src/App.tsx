@@ -7257,6 +7257,8 @@ function formatHermesAuditSkillId(skillId: string | undefined) {
     quick_reply: "快速回复",
     reply_draft: "写回复",
     rewrite_polish: "改写润色",
+    memory_review: "记忆管理",
+    rule_suggest: "规则建议",
     thread_summarize: "邮件总结",
     translate_text: "邮件翻译",
   };
