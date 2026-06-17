@@ -8641,21 +8641,25 @@ function HermesRuntimeSettingsPanel(props: {
 
     setNotice("正在测试 Hermes 连接...");
     try {
-      const result = await props.api.probeHermesProvider({
-        providerKey,
-        endpointUrl,
-        model,
-        ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
-      });
+      const typedApiKey = apiKey.trim();
+      const result =
+        typedApiKey || !apiKeyConfigured
+          ? await props.api.probeHermesProvider({
+              providerKey,
+              endpointUrl,
+              model,
+              ...(typedApiKey ? { apiKey: typedApiKey } : {}),
+            })
+          : await props.api.testHermesRuntimeConnection();
       if (result.ok) {
         setNotice(`当前配置可用：${result.model ?? model}`);
         return;
       }
-      if (result.status === "external_auth_required") {
+      if ("status" in result && result.status === "external_auth_required") {
         setNotice("这个模型接口需要先完成外部配置。");
         return;
       }
-      if (result.status === "missing_configuration") {
+      if ("status" in result && result.status === "missing_configuration") {
         setNotice(`请补全：${formatHermesMissingFields(result.missing)}`);
         return;
       }

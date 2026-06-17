@@ -1382,6 +1382,27 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("tests the saved Hermes runtime secret when the key field is blank", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    expect(
+      await screen.findByDisplayValue("http://hermes:8081/v1/chat/completions"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+
+    await waitFor(() => {
+      expect(api.testHermesRuntimeConnection).toHaveBeenCalledTimes(1);
+    });
+    expect(api.probeHermesProvider).not.toHaveBeenCalled();
+    expect(await screen.findByText(/当前配置可用：hermes-email/)).toBeTruthy();
+  });
+
   it("lets users edit Hermes skill options from Settings", async () => {
     const api = createApiFixture();
     const refreshedProfile = hermesResourceProfileFixture({
