@@ -562,22 +562,22 @@ async function checkComposePreparedTokenPairs(
           "exec",
           "-T",
           tokenPair.service,
-          "emailengine",
-          "tokens",
-          "export",
-          "-t",
+          "env",
+          `EENGINE_REDIS=${tokenPair.redisUrl ?? "redis://redis-engine:6379/0"}`,
+          "node",
+          "-e",
+          EMAILENGINE_TOKEN_PAIR_VERIFY_SCRIPT,
           tokenPair.rawToken,
-          `--dbs.redis=${tokenPair.redisUrl ?? "redis://redis-engine:6379/0"}`,
+          tokenPair.expectedPreparedToken,
         ],
         cwd: options.projectRoot,
       });
-      const actualPreparedToken = commandResult.stdout.trim();
       const detail =
-        commandResult.exitCode !== 0 || !actualPreparedToken
-          ? "token_export_failed"
-          : actualPreparedToken !== tokenPair.expectedPreparedToken
+        commandResult.exitCode === 0
+          ? undefined
+          : isPreparedTokenMismatchExitCode(commandResult.exitCode)
             ? "prepared_token_mismatch"
-            : undefined;
+            : "token_export_failed";
       const check: DockerComposePreparedTokenPairCheck = {
         ok: detail === undefined,
         service: tokenPair.service,
@@ -589,6 +589,24 @@ async function checkComposePreparedTokenPairs(
   );
 
   return Object.fromEntries(checks);
+}
+
+const EMAILENGINE_TOKEN_PAIR_VERIFY_SCRIPT = [
+  "const crypto = require('crypto');",
+  "const msgpack = require('/emailengine/node_modules/msgpack5')();",
+  "const tokens = require('/emailengine/lib/tokens');",
+  "const [rawToken, preparedToken] = process.argv.slice(1);",
+  "const expectedId = crypto.createHash('sha256').update(Buffer.from(rawToken, 'hex')).digest('hex');",
+  "let decoded;",
+  "try { decoded = msgpack.decode(Buffer.from(preparedToken, 'base64url')); } catch { process.exit(2); }",
+  "if (!decoded || decoded.id !== expectedId) process.exit(2);",
+  "tokens.getRawData(rawToken).then((tokenData) => {",
+  "  process.exit(tokenData && tokenData.id === expectedId ? 0 : 3);",
+  "}).catch(() => process.exit(4));",
+].join("\n");
+
+function isPreparedTokenMismatchExitCode(exitCode: number): boolean {
+  return exitCode === 2 || exitCode === 3 || exitCode === 4;
 }
 
 function preparedTokenPairKey(input: {

@@ -447,7 +447,10 @@ matching the main launch verifier. It waits up to
 times with `EMAILHUB_DOCKER_HEALTH_WAIT_MS` between transient Docker/HTTP
 startup failures, but exits immediately for proven configuration gaps such as
 `readiness.status=degraded` or a running EmailEngine container image that does
-not match the selected `EMAILENGINE_IMAGE`/default pinned image. It also
+not match the selected `EMAILENGINE_IMAGE`/default pinned image. Set
+`EMAILHUB_DOCKER_COMPOSE_PROJECT_NAME` or `COMPOSE_PROJECT_NAME` when verifying
+an isolated compose project on a host that also runs another Email Hub stack. It
+also
 compares the selected env-file values
 against the running `emailengine`, `api`, and `worker` containers for
 EmailEngine access/prepared tokens, service secret, webhook secret, auth-server
@@ -455,9 +458,10 @@ secret, and the `EENGINE_SETTINGS` webhook/auth-server fields. It also verifies
 that EmailEngine webhooks are enabled for all events. Mismatches are
 reported by service and env name only; actual and expected secret values are
 not printed. To catch stale prepared tokens, it also runs EmailEngine's token
-export command inside the running `emailengine` container and verifies that the
-selected `EENGINE_PREPARED_TOKEN` matches the selected
-`EMAILENGINE_ACCESS_TOKEN`.
+verification inside the running `emailengine` container, verifies that the
+selected `EENGINE_PREPARED_TOKEN` decodes to the selected
+`EMAILENGINE_ACCESS_TOKEN`, and confirms the running Redis state can read that
+raw token.
 
 For quick core regression while iterating on the launch path, run:
 

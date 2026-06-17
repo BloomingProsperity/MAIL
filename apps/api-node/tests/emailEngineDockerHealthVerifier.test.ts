@@ -92,10 +92,10 @@ describe("Docker compose health verifier", () => {
             stderr: "",
           };
         }
-        if (input.args.includes("tokens")) {
+        if (input.args.includes("raw-token")) {
           return {
             exitCode: 0,
-            stdout: "prepared-token\n",
+            stdout: "",
             stderr: "",
           };
         }
@@ -755,7 +755,7 @@ describe("Docker compose health verifier", () => {
     expect(serialized).not.toContain("expected-auth-secret");
   });
 
-  it("checks prepared token pairs without leaking raw or exported tokens", async () => {
+  it("checks prepared token pairs without leaking raw or prepared tokens", async () => {
     const calls: unknown[] = [];
     const result = await verifyDockerComposeHealth({
       projectRoot: "/repo",
@@ -776,9 +776,10 @@ describe("Docker compose health verifier", () => {
           return healthyComposeCommand();
         }
         return {
-          exitCode: 0,
-          stdout: "actual-prepared-token\n",
-          stderr: "",
+          exitCode: 2,
+          stdout: "",
+          stderr:
+            "prepared mismatch raw-engine-token expected-prepared-token actual-prepared-token",
         };
       },
     });
@@ -802,12 +803,13 @@ describe("Docker compose health verifier", () => {
             "exec",
             "-T",
             "emailengine",
-            "emailengine",
-            "tokens",
-            "export",
-            "-t",
+            "env",
+            "EENGINE_REDIS=redis://redis-engine:6379/0",
+            "node",
+            "-e",
+            expect.any(String),
             "raw-engine-token",
-            "--dbs.redis=redis://redis-engine:6379/0",
+            "expected-prepared-token",
           ]),
         }),
       ]),
@@ -816,6 +818,44 @@ describe("Docker compose health verifier", () => {
     expect(serialized).not.toContain("raw-engine-token");
     expect(serialized).not.toContain("expected-prepared-token");
     expect(serialized).not.toContain("actual-prepared-token");
+  });
+
+  it("reports prepared token verifier command failures without leaking stderr", async () => {
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      preparedTokenPairs: [
+        {
+          service: "emailengine",
+          name: "accessTokenPreparedToken",
+          rawToken: "raw-engine-token",
+          expectedPreparedToken: "expected-prepared-token",
+        },
+      ],
+      runCommand: async (input) => {
+        if (input.args.includes("ps")) {
+          return healthyComposeCommand();
+        }
+        return {
+          exitCode: 127,
+          stdout: "",
+          stderr: "node missing raw-engine-token expected-prepared-token",
+        };
+      },
+    });
+
+    expect(result.preparedTokenChecks).toEqual({
+      "emailengine.accessTokenPreparedToken": {
+        ok: false,
+        service: "emailengine",
+        name: "accessTokenPreparedToken",
+        detail: "token_export_failed",
+      },
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("raw-engine-token");
+    expect(serialized).not.toContain("expected-prepared-token");
   });
 
   it("does not wait when prepared token pairs prove a configuration gap", async () => {
@@ -839,8 +879,8 @@ describe("Docker compose health verifier", () => {
           return healthyComposeCommand();
         }
         return {
-          exitCode: 0,
-          stdout: "actual-prepared-token\n",
+          exitCode: 3,
+          stdout: "",
           stderr: "",
         };
       },
