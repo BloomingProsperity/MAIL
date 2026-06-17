@@ -522,6 +522,18 @@ export interface HermesRuleSimulationDto {
   createdAt: string;
 }
 
+export interface HermesRuleExecutionDto {
+  id: string;
+  accountId: string;
+  ruleId: string;
+  mode: "active";
+  matchedCount: number;
+  appliedCount: number;
+  sampleMessageIds: string[];
+  actionPreview: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface HermesSkillDto {
   id: string;
   title: string;
@@ -1837,6 +1849,11 @@ export interface EmailHubApi {
     ruleId: string;
     enabled: boolean;
   }): Promise<HermesRuleDto>;
+  runHermesRule(input: {
+    accountId: string;
+    ruleId: string;
+    limit?: number;
+  }): Promise<HermesRuleExecutionDto>;
   draftHermesRule(input: {
     accountId: string;
     command: string;
@@ -2688,6 +2705,23 @@ export function createEmailHubApi(
             accountId: input.accountId,
             enabled: input.enabled,
           }),
+        },
+      );
+    },
+
+    runHermesRule(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/rules/${encodePath(input.ruleId)}/run`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            cleanObject({
+              accountId: input.accountId,
+              limit: input.limit,
+            }),
+          ),
         },
       );
     },

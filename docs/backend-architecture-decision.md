@@ -773,8 +773,8 @@ explicit approval enables a rule. Later worker slices may read `hermes_rules`
 to influence classification, but sending, moving, and deleting mail remain
 separate explicit action APIs.
 
-The worker now consumes approved Hermes classification rules during message
-mirroring:
+The worker now consumes approved Hermes classification and local content-label
+rules during message mirroring:
 
 ```text
 upsert mirrored message
@@ -782,12 +782,15 @@ upsert mirrored message
 -> load enabled hermes_rules where condition.senderEmail matches sender
 -> classifySmartInboxMessage(...)
 -> upsert message_classification with classified_by='hermes_rules' when applied
+-> load enabled content_label/apply_label Hermes rules for the account
+-> insert matching local label_assignments idempotently
 ```
 
-Only `action.type='classify_sender'` is honored. The worker applies bucket,
-priority score, and reason text to app-owned `message_classification`; it does
-not move, delete, archive, label, send, or call any provider APIs from a Hermes
-rule.
+`action.type='classify_sender'` changes only app-owned Smart Inbox
+classification. `rule_type='content_label'` with `action.type='apply_label'`
+adds local Email Hub labels only when keywords match the mirrored message and a
+verified account-scoped label id exists. The worker does not move, delete,
+archive, send, or call any provider APIs from a Hermes rule.
 
 Hermes provider access is hidden behind a backend boundary:
 

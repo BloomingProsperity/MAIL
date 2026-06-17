@@ -1750,6 +1750,22 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        if (hermesRuleRoute.action === "run" && request.method === "POST") {
+          const result = await config.hermesRuleService.runRule(
+            parseHermesRuleRunInput(
+              hermesRuleRoute.ruleId,
+              await readRequestBody(),
+            ),
+          );
+          if (!result) {
+            writeJson(response, 404, { error: "rule_not_found" });
+            return;
+          }
+
+          writeJson(response, 200, result);
+          return;
+        }
+
         if (hermesRuleRoute.action === "update" && request.method === "PATCH") {
           const result = await config.hermesRuleService.updateRuleEnabled(
             parseHermesRuleUpdateInput(
@@ -3963,6 +3979,7 @@ function parseHermesRuleRoute(
   | { action: "suggest" }
   | { action: "simulate"; candidateId: string }
   | { action: "approve"; candidateId: string }
+  | { action: "run"; ruleId: string }
   | { action: "update"; ruleId: string }
   | undefined {
   if (!requestUrl) {
@@ -3978,6 +3995,14 @@ function parseHermesRuleRoute(
   }
   if (url.pathname === "/api/hermes/rules/suggest") {
     return { action: "suggest" };
+  }
+
+  const runMatch = /^\/api\/hermes\/rules\/([^/]+)\/run$/.exec(url.pathname);
+  if (runMatch) {
+    return {
+      action: "run",
+      ruleId: decodeURIComponent(runMatch[1]),
+    };
   }
 
   const updateMatch = /^\/api\/hermes\/rules\/([^/]+)$/.exec(url.pathname);
@@ -7053,6 +7078,29 @@ function parseHermesRuleUpdateInput(
   };
 }
 
+function parseHermesRuleRunInput(
+  ruleId: string,
+  body: string,
+): {
+  accountId: string;
+  ruleId: string;
+  limit?: number;
+} {
+  const payload = JSON.parse(body) as {
+    accountId?: unknown;
+    limit?: unknown;
+  };
+  if (!isNonEmptyString(ruleId) || !isNonEmptyString(payload.accountId)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return {
+    accountId: payload.accountId,
+    ruleId,
+    ...parseOptionalHermesRuleInteger(payload.limit, "limit", 1, 10000),
+  };
+}
+
 function parseOptionalHermesActionPlanInteger<
   K extends string,
 >(
@@ -7095,7 +7143,7 @@ function parseHermesRuleListInput(requestUrl: string | undefined): {
 }
 
 function parseOptionalHermesRuleInteger<
-  Key extends "behaviorWindowDays" | "minEvidenceCount" | "sampleLimit",
+  Key extends "behaviorWindowDays" | "minEvidenceCount" | "sampleLimit" | "limit",
 >(
   value: unknown,
   key: Key,

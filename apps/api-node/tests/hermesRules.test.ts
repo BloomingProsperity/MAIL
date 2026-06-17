@@ -320,6 +320,115 @@ describe("Hermes rule learning service", () => {
     });
   });
 
+  it("manually runs an enabled content label rule and records an active execution", async () => {
+    const store = createInMemoryHermesRuleStore({
+      rules: [
+        {
+          id: "rule_codes",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelId: "label_codes",
+            labelName: "验证码",
+          },
+          confidence: 0.9,
+          enabled: true,
+          createdAt: "2026-06-13T10:10:00.000Z",
+          approvedAt: "2026-06-13T10:10:00.000Z",
+        },
+      ],
+      messages: [
+        message("msg_1", "login@example.com", "Your OTP verification code"),
+        message("msg_2", "login@example.com", "验证码 482911"),
+        message("msg_3", "client@example.com", "Contract update"),
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      createId: nextId(["run_active_1", "run_active_2"]),
+      now: () => "2026-06-13T10:30:00.000Z",
+    });
+
+    const firstRun = await service.runRule({
+      accountId: "account_1",
+      ruleId: "rule_codes",
+      limit: 100,
+    });
+    const secondRun = await service.runRule({
+      accountId: "account_1",
+      ruleId: "rule_codes",
+      limit: 100,
+    });
+
+    expect(firstRun).toEqual({
+      id: "run_active_1",
+      mode: "active",
+      accountId: "account_1",
+      ruleId: "rule_codes",
+      matchedCount: 2,
+      appliedCount: 2,
+      sampleMessageIds: ["msg_1", "msg_2"],
+      actionPreview: {
+        type: "apply_label",
+        labelId: "label_codes",
+        labelName: "验证码",
+      },
+      createdAt: "2026-06-13T10:30:00.000Z",
+    });
+    expect(secondRun).toMatchObject({
+      id: "run_active_2",
+      mode: "active",
+      matchedCount: 2,
+      appliedCount: 0,
+    });
+    expect(store.listRuns()).toEqual([
+      firstRun,
+      secondRun,
+    ]);
+  });
+
+  it("does not manually run disabled Hermes rules", async () => {
+    const store = createInMemoryHermesRuleStore({
+      rules: [
+        {
+          id: "rule_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelId: "label_codes",
+            labelName: "验证码",
+          },
+          confidence: 0.9,
+          enabled: false,
+          createdAt: "2026-06-13T10:10:00.000Z",
+        },
+      ],
+      messages: [
+        message("msg_1", "login@example.com", "验证码 482911"),
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      createId: () => "run_should_not_exist",
+      now: () => "2026-06-13T10:30:00.000Z",
+    });
+
+    await expect(
+      service.runRule({
+        accountId: "account_1",
+        ruleId: "rule_codes",
+      }),
+    ).resolves.toBeUndefined();
+    expect(store.listRuns()).toEqual([]);
+  });
+
   it("does not upsert labels for content candidates that already left shadow mode", async () => {
     const upsertedLabels: unknown[] = [];
     const store = createInMemoryHermesRuleStore({

@@ -390,6 +390,60 @@ describe("postgres Hermes rule store", () => {
     });
   });
 
+  it("records active Hermes rule executions", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    const result = await store.recordRuleExecution({
+      id: "run_active_1",
+      accountId: "account_1",
+      ruleId: "rule_codes",
+      mode: "active",
+      matchedCount: 3,
+      appliedCount: 2,
+      sampleMessageIds: ["message_1", "message_2"],
+      actionPreview: {
+        type: "apply_label",
+        labelId: "label_codes",
+      },
+      createdAt: "2026-06-13T10:30:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/INSERT INTO hermes_rule_runs/i);
+    expect(queries[0].text).toMatch(/rule_id/i);
+    expect(queries[0].text).toMatch(/account_id/i);
+    expect(queries[0].values).toEqual([
+      "run_active_1",
+      "rule_codes",
+      "account_1",
+      "active",
+      {
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        matchedCount: 3,
+        appliedCount: 2,
+        sampleMessageIds: ["message_1", "message_2"],
+        actionPreview: {
+          type: "apply_label",
+          labelId: "label_codes",
+        },
+        createdAt: "2026-06-13T10:30:00.000Z",
+      },
+    ]);
+    expect(result).toMatchObject({
+      id: "run_active_1",
+      mode: "active",
+      matchedCount: 3,
+      appliedCount: 2,
+    });
+  });
+
   it("does not approve a candidate that already left shadow mode", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

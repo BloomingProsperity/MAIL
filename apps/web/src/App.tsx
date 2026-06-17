@@ -53,6 +53,7 @@ import type {
   HermesProviderProbeMissing,
   HermesRuleCandidateDto,
   HermesRuleDto,
+  HermesRuleExecutionDto,
   HermesRuleHistoryBackfillDto,
   HermesRuleSimulationDto,
   HermesRuntimeMode,
@@ -8619,6 +8620,9 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
   const [rules, setRules] = useState<HermesRuleDto[]>([]);
   const [ruleNotice, setRuleNotice] = useState("正在读取 Hermes 规则...");
   const [busyRuleId, setBusyRuleId] = useState("");
+  const [ruleExecutions, setRuleExecutions] = useState<
+    Record<string, HermesRuleExecutionDto>
+  >({});
   const [draftCommand, setDraftCommand] = useState(
     "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
   );
@@ -8683,7 +8687,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       return;
     }
 
-    setBusyRuleId(rule.id);
+    setBusyRuleId(`toggle:${rule.id}`);
     setRuleNotice(enabled ? "正在恢复 Hermes 规则..." : "正在停用 Hermes 规则...");
     try {
       const updated = await props.api.updateHermesRule({
@@ -8701,6 +8705,59 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       );
     } catch {
       setRuleNotice("Hermes 规则更新失败。");
+    } finally {
+      setBusyRuleId("");
+    }
+  }
+
+  async function runRuleNow(rule: HermesRuleDto) {
+    if (!rule.enabled) {
+      setRuleNotice("请先恢复规则，再手动运行。");
+      return;
+    }
+
+    if (!props.api) {
+      const execution: HermesRuleExecutionDto = {
+        id: "preview_rule_execution",
+        accountId: rule.accountId,
+        ruleId: rule.id,
+        mode: "active",
+        matchedCount: 4,
+        appliedCount: 2,
+        sampleMessageIds: ["preview_message_1", "preview_message_2"],
+        actionPreview: rule.action,
+        createdAt: new Date().toISOString(),
+      };
+      setRuleExecutions((current) => ({
+        ...current,
+        [rule.id]: execution,
+      }));
+      setRuleNotice("预览规则已运行：命中 4 封邮件，新增 2 个标签关联。");
+      return;
+    }
+
+    if (!props.accountId) {
+      setRuleNotice("请先添加邮箱并完成同步，再运行 Hermes 规则。");
+      return;
+    }
+
+    setBusyRuleId(`run:${rule.id}`);
+    setRuleNotice("正在运行 Hermes 规则...");
+    try {
+      const execution = await props.api.runHermesRule({
+        accountId: props.accountId,
+        ruleId: rule.id,
+        limit: 5000,
+      });
+      setRuleExecutions((current) => ({
+        ...current,
+        [rule.id]: execution,
+      }));
+      setRuleNotice(
+        `Hermes 规则已运行：${rule.title}，命中 ${execution.matchedCount} 封邮件，新增 ${execution.appliedCount} 个标签关联。`,
+      );
+    } catch {
+      setRuleNotice("Hermes 规则运行失败。");
     } finally {
       setBusyRuleId("");
     }
@@ -8967,30 +9024,49 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       </div>
 
       <div className="task-list">
-        {rules.map((rule) => (
-          <div className="task-row" key={rule.id}>
-            <Sparkles size={19} />
-            <div>
-              <strong>{rule.title}</strong>
-              <span>
-                {formatHermesRuleType(rule.ruleType)} ·{" "}
-                {formatHermesRuleAction(rule.action)} ·{" "}
-                {rule.enabled ? "已启用" : "已停用"} ·{" "}
-                {Math.round(rule.confidence * 100)}%
-              </span>
+        {rules.map((rule) => {
+          const execution = ruleExecutions[rule.id];
+          const isToggling = busyRuleId === `toggle:${rule.id}`;
+          const isRunning = busyRuleId === `run:${rule.id}`;
+          return (
+            <div className="task-row" key={rule.id}>
+              <Sparkles size={19} />
+              <div>
+                <strong>{rule.title}</strong>
+                <span>
+                  {formatHermesRuleType(rule.ruleType)} ·{" "}
+                  {formatHermesRuleAction(rule.action)} ·{" "}
+                  {rule.enabled ? "已启用" : "已停用"} ·{" "}
+                  {Math.round(rule.confidence * 100)}%
+                </span>
+                {execution ? (
+                  <span>
+                    最近运行：命中 {execution.matchedCount} 封，新增{" "}
+                    {execution.appliedCount} 个标签关联
+                  </span>
+                ) : null}
+              </div>
+              <div className="task-actions">
+                <button
+                  type="button"
+                  aria-label={`Run Hermes rule ${rule.title}`}
+                  disabled={!rule.enabled || isRunning || isToggling}
+                  onClick={() => void runRuleNow(rule)}
+                >
+                  {isRunning ? "运行中" : "运行"}
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${rule.enabled ? "Disable" : "Enable"} Hermes rule ${rule.title}`}
+                  disabled={isRunning || isToggling}
+                  onClick={() => void setRuleEnabled(rule, !rule.enabled)}
+                >
+                  {rule.enabled ? "停用" : "恢复"}
+                </button>
+              </div>
             </div>
-            <div className="task-actions">
-              <button
-                type="button"
-                aria-label={`${rule.enabled ? "Disable" : "Enable"} Hermes rule ${rule.title}`}
-                disabled={busyRuleId === rule.id}
-                onClick={() => void setRuleEnabled(rule, !rule.enabled)}
-              >
-                {rule.enabled ? "停用" : "恢复"}
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

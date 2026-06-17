@@ -452,6 +452,38 @@ export function createPostgresHermesRuleStore(
       };
     },
 
+    async recordRuleExecution(input) {
+      await client.query(
+        `
+          INSERT INTO hermes_rule_runs (
+            id,
+            rule_id,
+            account_id,
+            mode,
+            result
+          )
+          VALUES ($1, $2, $3, $4, $5)
+        `,
+        [
+          input.id,
+          input.ruleId,
+          input.accountId,
+          input.mode,
+          {
+            accountId: input.accountId,
+            ruleId: input.ruleId,
+            matchedCount: input.matchedCount,
+            appliedCount: input.appliedCount,
+            sampleMessageIds: input.sampleMessageIds,
+            actionPreview: input.actionPreview,
+            createdAt: input.createdAt,
+          },
+        ],
+      );
+
+      return input;
+    },
+
     async listRules(input) {
       const result = await client.query<RuleRow>(
         `

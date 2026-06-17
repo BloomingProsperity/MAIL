@@ -77,6 +77,13 @@ export interface HermesRuleHistoryBackfill {
   sampleMessageIds: string[];
 }
 
+export interface HermesRuleExecution extends HermesRuleHistoryBackfill {
+  id: string;
+  mode: "active";
+  actionPreview: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface SuggestHermesRulesInput {
   accountId: string;
   behaviorWindowDays?: number;
@@ -106,6 +113,12 @@ export interface ApproveHermesRuleInput {
 }
 
 export interface BackfillHermesRuleHistoryInput {
+  accountId: string;
+  ruleId: string;
+  limit?: number;
+}
+
+export interface RunHermesRuleInput {
   accountId: string;
   ruleId: string;
   limit?: number;
@@ -163,6 +176,7 @@ export interface HermesRuleStore {
     rule: HermesRule;
     limit: number;
   }): Promise<HermesRuleHistoryBackfill>;
+  recordRuleExecution(input: HermesRuleExecution): Promise<HermesRuleExecution>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
   updateRuleEnabled(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
   upsertSavedView(input: SavedViewDefinition): Promise<void>;
@@ -185,6 +199,7 @@ export interface HermesRuleService {
   backfillRuleHistory(
     input: BackfillHermesRuleHistoryInput,
   ): Promise<HermesRuleHistoryBackfill | undefined>;
+  runRule(input: RunHermesRuleInput): Promise<HermesRuleExecution | undefined>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
   updateRuleEnabled(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
 }
@@ -385,6 +400,36 @@ export function createHermesRuleService(
       });
     },
 
+    async runRule(input) {
+      const accountId = requireString(input.accountId);
+      const ruleId = requireString(input.ruleId);
+      const limit = positiveInteger(input.limit ?? 5000, 1, 10000);
+      const rule = await options.store.getRule({ accountId, ruleId });
+      if (!rule || !rule.enabled) {
+        return undefined;
+      }
+
+      const backfill = isRunnableContentLabelRule(rule)
+        ? await options.store.backfillContentLabelRule({
+            accountId,
+            rule,
+            limit,
+          })
+        : emptyRuleBackfill(accountId, rule.id);
+
+      return options.store.recordRuleExecution({
+        id: options.createId(),
+        mode: "active",
+        accountId,
+        ruleId: rule.id,
+        matchedCount: backfill.matchedCount,
+        appliedCount: backfill.appliedCount,
+        sampleMessageIds: backfill.sampleMessageIds,
+        actionPreview: rule.action,
+        createdAt: options.now(),
+      });
+    },
+
     async listRules(input) {
       return options.store.listRules({
         accountId: requireString(input.accountId),
@@ -414,7 +459,7 @@ interface InMemoryHermesRuleStoreSeed {
 export function createInMemoryHermesRuleStore(
   seed: InMemoryHermesRuleStoreSeed = {},
 ): HermesRuleStore & {
-  listRuns(): HermesRuleSimulation[];
+  listRuns(): Array<HermesRuleSimulation | HermesRuleExecution>;
   listSavedViews(): SavedViewDefinition[];
 } {
   const behaviors = [...(seed.observedBehaviors ?? [])];
@@ -424,6 +469,7 @@ export function createInMemoryHermesRuleStore(
   const savedViews = [...(seed.savedViews ?? [])];
   const labelAssignments = new Set<string>();
   const runs: HermesRuleSimulation[] = [];
+  const executions: HermesRuleExecution[] = [];
 
   return {
     async listObservedBehaviors(input) {
@@ -592,6 +638,11 @@ export function createInMemoryHermesRuleStore(
       };
     },
 
+    async recordRuleExecution(input) {
+      executions.push({ ...input });
+      return { ...input };
+    },
+
     async listRules(input) {
       return {
         items: rules
@@ -628,7 +679,10 @@ export function createInMemoryHermesRuleStore(
     },
 
     listRuns() {
-      return runs.map((run) => ({ ...run }));
+      return [
+        ...runs.map((run) => ({ ...run })),
+        ...executions.map((execution) => ({ ...execution })),
+      ];
     },
 
     listSavedViews() {
@@ -936,13 +990,32 @@ function shouldApplyRuleToHistory(command: string): boolean {
 
 function isHistoryBackfillableRule(rule: HermesRule): boolean {
   return (
+    isRunnableContentLabelRule(rule) &&
+    rule.action.applyToHistory === true
+  );
+}
+
+function isRunnableContentLabelRule(rule: HermesRule): boolean {
+  return (
     rule.enabled === true &&
     rule.ruleType === "content_label" &&
     rule.action.type === "apply_label" &&
     typeof rule.action.labelId === "string" &&
-    rule.action.applyToHistory === true &&
     rule.action.providerWriteback !== true
   );
+}
+
+function emptyRuleBackfill(
+  accountId: string,
+  ruleId: string,
+): HermesRuleHistoryBackfill {
+  return {
+    accountId,
+    ruleId,
+    matchedCount: 0,
+    appliedCount: 0,
+    sampleMessageIds: [],
+  };
 }
 
 function stableTextId(value: string): string {

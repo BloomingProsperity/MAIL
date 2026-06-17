@@ -223,11 +223,13 @@ with more than smoke-level tests.
   blocks a sender, searches, opens saved views.
 - State: `message_classification`, `feedback_events`,
   `smart_inbox_sender_rules`, `sender_screening_rules`,
-  `sender_screening_events`, `search_documents`.
+  `sender_screening_events`, `search_documents`, `hermes_rules`,
+  `hermes_rule_runs`, `labels`, `label_assignments`.
 - API: global `/api/messages`, saved views, quick filters, Smart Inbox
-  feedback, card bulk actions, Gatekeeper sender screening.
+  feedback, card bulk actions, Gatekeeper sender screening, Hermes rule
+  execution.
 - Worker: baseline classifier after mirror, future-message sender-rule reads,
-  attachment text extraction.
+  approved Hermes content-label rules, attachment text extraction.
 - Failure: hidden/deleted message, non-visible bulk ids, Gatekeeper off,
   missing indexed body.
 - Tests: global search, quick filter scope, feedback memory trail, Gatekeeper
@@ -238,6 +240,16 @@ with more than smoke-level tests.
   workspace keeps Thunderbird-style scope controls for sender, recipients,
   subject, and body/indexed attachment text plus quick filters such as unread
   and attachments.
+- Current Hermes rule execution status: confirmed Hermes `content_label`
+  rules create local account labels/left-side groups, can backfill matching
+  synced history during action-plan confirmation, apply matching labels to
+  newly mirrored messages in the worker, and now expose a manual active run
+  path through `POST /api/hermes/rules/:ruleId/run`. Manual runs reuse the same
+  idempotent local `label_assignments` write path, record an `active`
+  `hermes_rule_runs` result with matched/applied counts and sample message ids,
+  and are wired into the Settings rule manager. Hermes rules still do not
+  create provider-side Gmail/Outlook labels or queue provider writeback by
+  default.
 
 ### 5. Accounts, Domains, And Migration
 

@@ -300,6 +300,95 @@ describe("Hermes rule routes", () => {
     ]);
   });
 
+  it("manually runs an approved Hermes rule", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async runRule(input: unknown) {
+        calls.push(input);
+        return {
+          id: "run_active_1",
+          accountId: "account_1",
+          ruleId: "rule_codes",
+          mode: "active",
+          matchedCount: 7,
+          appliedCount: 3,
+          sampleMessageIds: ["message_1", "message_2"],
+          actionPreview: {
+            type: "apply_label",
+            labelId: "label_codes",
+            labelName: "验证码",
+          },
+          createdAt: "2026-06-13T10:30:00.000Z",
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/rules/rule_codes/run`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ accountId: "account_1", limit: 1000 }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          id: "run_active_1",
+          ruleId: "rule_codes",
+          mode: "active",
+          matchedCount: 7,
+          appliedCount: 3,
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        limit: 1000,
+      },
+    ]);
+  });
+
+  it("returns 404 when manually running a missing or disabled Hermes rule", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async runRule(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/rules/rule_missing/run`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ accountId: "account_1" }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({ error: "rule_not_found" });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        ruleId: "rule_missing",
+      },
+    ]);
+  });
+
   it("returns 404 when updating a missing Hermes rule", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {

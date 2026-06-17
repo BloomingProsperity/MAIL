@@ -27,6 +27,7 @@ import type {
   HermesRewritePolishResult,
   HermesRuleCandidateDto,
   HermesRuleDto,
+  HermesRuleExecutionDto,
   HermesRuleSimulationDto,
   HermesSkillDto,
   HermesThreadSummaryResult,
@@ -1313,6 +1314,37 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText("Hermes 规则已恢复：启用验证码智能分组。")).toBeTruthy();
+  });
+
+  it("lets users manually run an approved Hermes rule from Settings", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Run Hermes rule 启用验证码智能分组",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.runHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        limit: 5000,
+      });
+    });
+    expect(
+      await screen.findByText(
+        "Hermes 规则已运行：启用验证码智能分组，命中 7 封邮件，新增 3 个标签关联。",
+      ),
+    ).toBeTruthy();
+    expect(within(rulePanel).getByText(/最近运行：命中 7 封，新增 3 个标签关联/)).toBeTruthy();
   });
 
   it("lets users draft, simulate, and approve Hermes rules from Settings", async () => {
@@ -7624,6 +7656,21 @@ function createApiFixture(): EmailHubApi {
       createdAt: "2026-06-13T10:02:00.000Z",
       approvedAt: "2026-06-13T10:02:00.000Z",
     } satisfies HermesRuleDto)),
+    runHermesRule: vi.fn(async (input) => ({
+      id: "run_active_1",
+      accountId: input.accountId,
+      ruleId: input.ruleId,
+      mode: "active",
+      matchedCount: 7,
+      appliedCount: 3,
+      sampleMessageIds: ["message_1", "message_2"],
+      actionPreview: {
+        type: "apply_label",
+        labelId: "label_code",
+        labelName: "验证码",
+      },
+      createdAt: "2026-06-13T10:30:00.000Z",
+    } satisfies HermesRuleExecutionDto)),
     draftHermesRule: vi.fn(async () => ({
       candidates: [
         {

@@ -1055,6 +1055,50 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("runs approved Hermes rules through backend routes", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "run active 1",
+        accountId: "account 1",
+        ruleId: "rule codes",
+        mode: "active",
+        matchedCount: 7,
+        appliedCount: 3,
+        sampleMessageIds: ["message_1", "message_2"],
+        actionPreview: {
+          type: "apply_label",
+          labelId: "label_codes",
+        },
+        createdAt: "2026-06-15T09:04:00.000Z",
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const execution = await api.runHermesRule({
+      accountId: "account 1",
+      ruleId: "rule codes",
+      limit: 1000,
+    });
+
+    expect(execution).toMatchObject({
+      id: "run active 1",
+      ruleId: "rule codes",
+      mode: "active",
+      matchedCount: 7,
+      appliedCount: 3,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/rules/rule%20codes/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          accountId: "account 1",
+          limit: 1000,
+        }),
+      }),
+    );
+  });
+
   it("lists Hermes audit events with scoped filters", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
