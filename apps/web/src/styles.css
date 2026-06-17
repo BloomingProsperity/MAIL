@@ -363,6 +363,7 @@ h2 {
 .primary-button,
 .ghost-button,
 .tiny-button,
+.tiny-icon-button,
 .icon-button,
 .toolbar-button,
 .provider-card button,
@@ -398,6 +399,7 @@ h2 {
 
 .ghost-button:hover,
 .tiny-button:hover,
+.tiny-icon-button:hover,
 .toolbar-button:hover,
 .backend-notice button:hover,
 .provider-card button:hover,
@@ -731,9 +733,48 @@ h2 {
 .composer-tool-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
+}
+
+.compose-translate-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.compose-translate-controls select {
+  width: auto;
+  min-width: 92px;
+}
+
+.compose-editor-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.compose-template-row,
+.compose-format-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.compose-format-toolbar {
+  justify-content: flex-end;
+}
+
+.tiny-icon-button {
+  width: 30px;
+  min-width: 30px;
+  padding: 0;
 }
 
 .compose-attachment-list {

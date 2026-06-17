@@ -5516,6 +5516,136 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("inserts a compose template into the draft body", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Insert compose template 会议纪要" }),
+    );
+    expect((screen.getByLabelText("Compose subject") as HTMLInputElement).value).toBe(
+      "会议纪要：",
+    );
+    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toContain(
+      "- 决议：",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "会议纪要：",
+        bodyText:
+          "大家好，\n\n以下是本次会议纪要：\n\n- 决议：\n- 待办：\n- 截止时间：\n\n如有遗漏请直接补充。",
+        source: "manual",
+      });
+    });
+  });
+
+  it("submits compose bodyHtml after rich formatting is used", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    const body = screen.getByLabelText("Compose body") as HTMLTextAreaElement;
+    fireEvent.change(body, {
+      target: { value: "Launch plan" },
+    });
+    body.focus();
+    body.setSelectionRange(0, "Launch".length);
+    fireEvent.click(screen.getByRole("button", { name: "Bold selected compose text" }));
+
+    expect(body.value).toBe("**Launch** plan");
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+    await waitFor(() => {
+      expect(api.previewMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Launch plan",
+        bodyText: "**Launch** plan",
+        bodyHtml: "<p><strong>Launch</strong> plan</p>",
+        source: "manual",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "Launch plan",
+        bodyText: "**Launch** plan",
+        bodyHtml: "<p><strong>Launch</strong> plan</p>",
+        source: "manual",
+      });
+    });
+  });
+
+  it("translates composed draft text through Hermes", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "发布计划" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "你好，请确认发布计划。" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Translate composed draft with Hermes" }),
+    );
+
+    await waitFor(() => {
+      expect(api.translateText).toHaveBeenCalledWith({
+        text: "你好，请确认发布计划。",
+        targetLanguage: "English",
+        tone: "preserve intent, formatting cues, recipients, and commitments",
+        memoryScope: "global",
+        memoryLayers: ["writing_style_profile", "semantic_profile"],
+      });
+    });
+    expect(await screen.findByText(/Hermes 已翻译草稿：run_translate_1/)).toBeTruthy();
+    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
+      "Hello, please confirm the launch plan.",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.createMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        subject: "发布计划",
+        bodyText: "Hello, please confirm the launch plan.",
+        source: "manual",
+        hermesSkillRunId: "run_translate_1",
+        hermesDraftText: "Hello, please confirm the launch plan.",
+      });
+    });
+  });
+
   it("adds uploaded files to the composed draft payload", async () => {
     const api = createApiFixture();
 

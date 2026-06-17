@@ -1,16 +1,24 @@
 import { buildImapSmtpOnboardingSmokePayload } from "./accounts/imap-smtp-onboarding-smoke.js";
 import { runEmailEngineSendSmoke } from "./mail-engine/real-roundtrip-smoke.js";
+import { resolveSmokeMailboxEmail } from "./mail-engine/smoke-defaults.js";
 
 const apiBaseUrl =
   process.env.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080";
-const email = process.env.EMAILHUB_SMOKE_MAIL_EMAIL ?? "support@example.com";
+const email = resolveSmokeMailboxEmail({
+  env: process.env,
+  envKey: "EMAILHUB_SMOKE_MAIL_EMAIL",
+  prefix: "emailhub-send",
+});
 const provider = process.env.EMAILHUB_SMOKE_MAIL_PROVIDER ?? "custom_domain";
 const displayName =
   process.env.EMAILHUB_SMOKE_MAIL_DISPLAY_NAME ?? "Smoke Mailbox";
 const username = process.env.EMAILHUB_SMOKE_MAIL_USERNAME ?? email;
 const secret = process.env.EMAILHUB_SMOKE_MAIL_SECRET ?? "smoke-secret";
-const recipientEmail =
-  process.env.EMAILHUB_SMOKE_RECIPIENT_EMAIL ?? "recipient@example.com";
+const recipientEmail = resolveSmokeMailboxEmail({
+  env: process.env,
+  envKey: "EMAILHUB_SMOKE_RECIPIENT_EMAIL",
+  prefix: "emailhub-recipient",
+});
 const recipientProvider =
   process.env.EMAILHUB_SMOKE_RECIPIENT_PROVIDER ?? provider;
 const recipientDisplayName =
@@ -96,7 +104,10 @@ try {
       "EMAILHUB_REAL_WEBHOOK_SMOKE_INITIAL_SYNC_POLL_MS",
       2000,
     ),
-    reuseExistingReadyAccount: true,
+    reuseExistingReadyAccount: readBoolean(
+      "EMAILHUB_SEND_SMOKE_REUSE_EXISTING_ACCOUNT",
+      readBoolean("EMAILHUB_REAL_WEBHOOK_SMOKE_REUSE_EXISTING_ACCOUNT", false),
+    ),
     pollAttempts: readPort("EMAILHUB_SEND_SMOKE_ATTEMPTS", 60),
     pollMs: readPort("EMAILHUB_SEND_SMOKE_POLL_MS", 2000),
   });

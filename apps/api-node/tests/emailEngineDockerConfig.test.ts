@@ -272,12 +272,15 @@ describe("EmailEngine Docker configuration", () => {
       "EMAILHUB_REAL_WEBHOOK_SMOKE_INITIAL_SYNC_POLL_MS=2000",
     );
     expect(envExample).toContain(
-      "EMAILHUB_REAL_WEBHOOK_SMOKE_REUSE_EXISTING_ACCOUNT=true",
+      "EMAILHUB_REAL_WEBHOOK_SMOKE_REUSE_EXISTING_ACCOUNT=false",
+    );
+    expect(envExample).toContain(
+      "# EMAILHUB_SMOKE_MAIL_EMAIL=support@example.com",
     );
     expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_ATTEMPTS=60");
     expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_POLL_MS=2000");
     expect(envExample).toContain(
-      "EMAILHUB_SMOKE_RECIPIENT_EMAIL=recipient@example.com",
+      "# EMAILHUB_SMOKE_RECIPIENT_EMAIL=recipient@example.com",
     );
     expect(envExample).toContain(
       "EMAILHUB_SMOKE_RECIPIENT_PROVIDER=custom_domain",
@@ -288,10 +291,19 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain(
       "EMAILHUB_SMOKE_RECIPIENT_SECRET=smoke-secret",
     );
+    expect(envExample).toContain(
+      "EMAILHUB_SEND_SMOKE_REUSE_EXISTING_ACCOUNT=false",
+    );
     expect(envExample).toContain("EMAILHUB_SEND_SMOKE_ATTEMPTS=60");
     expect(envExample).toContain("EMAILHUB_SEND_SMOKE_POLL_MS=2000");
+    expect(envExample).toContain(
+      "EMAILHUB_ATTACHMENT_SMOKE_REUSE_EXISTING_ACCOUNT=false",
+    );
     expect(envExample).toContain("EMAILHUB_ATTACHMENT_SMOKE_ATTEMPTS=60");
     expect(envExample).toContain("EMAILHUB_ATTACHMENT_SMOKE_POLL_MS=2000");
+    expect(envExample).toContain(
+      "EMAILHUB_MAIL_ACTION_SMOKE_REUSE_EXISTING_ACCOUNT=false",
+    );
     expect(envExample).toContain("EMAILHUB_MAIL_ACTION_SMOKE_ATTEMPTS=60");
     expect(envExample).toContain("EMAILHUB_MAIL_ACTION_SMOKE_POLL_MS=2000");
     expect(envExample).toContain(

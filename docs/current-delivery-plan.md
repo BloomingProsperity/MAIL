@@ -43,7 +43,10 @@ with more than smoke-level tests.
   delivers a unique message, queues a Sync Center manual resync, calls the
   public `mark_read` route, and requires the returned engine command id to reach
   a `processed` worker diagnostic in the `engine_commands` lane, so local
-  optimistic state alone cannot satisfy the gate. The default
+  optimistic state alone cannot satisfy the gate. Real webhook, send,
+  attachment-download, and mail-action smokes now default to fresh generated
+  GreenMail mailboxes and only reuse a fixed mailbox when the operator sets the
+  corresponding `EMAILHUB_SMOKE_*` address and reuse flag explicitly. The default
   `verify:emailengine-launch` now runs the core gate, strict DB gate, and
   GreenMail checks, while `verify:emailengine-launch:core` remains available for
   faster iteration before final sign-off.
@@ -218,6 +221,12 @@ with more than smoke-level tests.
   the message body server-side, record the selected message id in Hermes audit
   events, cache by body hash and skill options, and render read-only preview
   blocks above the original message body.
+- Current compose-translation status: the compose panel now exposes Hermes
+  draft translation through the single `translate_text` skill. Users can choose
+  source and target languages for the current draft body, Hermes replaces the
+  editable body with translated text, and the compose payload carries the
+  originating skill run id and translated draft text into the same feedback
+  trail used by Hermes-polished drafts.
 - Current memory-management status: Settings now exposes the app-owned Hermes
   learning records. The frontend lists records through
   `/api/hermes/memories`, supports layer/scope/limit filtering, validates JSON
@@ -353,7 +362,11 @@ with more than smoke-level tests.
   From identity, To/Cc/Bcc, ordinary draft auto-save, manual save draft, send
   now, send later, Hermes quick reply through
   `/api/hermes/skills/quick_reply/run`, and Hermes rewrite/polish through
-  `/api/hermes/skills/rewrite_polish/run`. The outbox panel loads
+  `/api/hermes/skills/rewrite_polish/run`. The compose editor now has compact
+  production helpers for reusable follow-up/meeting/handoff templates, inline
+  bold/italic/list/link formatting that emits the existing `bodyHtml` draft
+  field, and Hermes draft translation through `/api/hermes/skills/translate_text/run`.
+  The outbox panel loads
   `/api/accounts/:accountId/outbox`, and each row routes reschedule, send now,
   cancel, and edit-draft to the matching backend contract. Scheduled outbox
   edits load the app-owned draft detail, preserve the existing `draftId` and

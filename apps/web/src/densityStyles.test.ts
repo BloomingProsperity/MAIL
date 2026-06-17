@@ -24,6 +24,6 @@ describe("mail density styles", () => {
 
   it("keeps common controls short enough for dense mail workflows", () => {
     expect(ruleBody(".top-search,\n.large-search")).toContain("min-height: 30px");
-    expect(ruleBody(".primary-button,\n.ghost-button,\n.tiny-button,\n.icon-button,\n.toolbar-button,\n.provider-card button,\n.task-row button,\n.filter-row button,\n.dock-launcher,\n.dock-model,\n.dock-action,\n.dock-send")).toContain("min-height: 30px");
+    expect(ruleBody(".primary-button,\n.ghost-button,\n.tiny-button,\n.tiny-icon-button,\n.icon-button,\n.toolbar-button,\n.provider-card button,\n.task-row button,\n.filter-row button,\n.dock-launcher,\n.dock-model,\n.dock-action,\n.dock-send")).toContain("min-height: 30px");
   });
 });

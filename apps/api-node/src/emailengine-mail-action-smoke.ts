@@ -1,13 +1,14 @@
-import { randomUUID } from "node:crypto";
-
 import { buildImapSmtpOnboardingSmokePayload } from "./accounts/imap-smtp-onboarding-smoke.js";
 import { runEmailEngineMailActionSmoke } from "./mail-engine/real-roundtrip-smoke.js";
+import { resolveSmokeMailboxEmail } from "./mail-engine/smoke-defaults.js";
 
 const apiBaseUrl =
   process.env.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080";
-const email =
-  process.env.EMAILHUB_SMOKE_MAIL_EMAIL ??
-  `emailhub-action-${randomUUID()}@example.com`;
+const email = resolveSmokeMailboxEmail({
+  env: process.env,
+  envKey: "EMAILHUB_SMOKE_MAIL_EMAIL",
+  prefix: "emailhub-action",
+});
 const provider = process.env.EMAILHUB_SMOKE_MAIL_PROVIDER ?? "custom_domain";
 const displayName =
   process.env.EMAILHUB_SMOKE_MAIL_DISPLAY_NAME ?? "Smoke Mailbox";
@@ -54,7 +55,10 @@ try {
       "EMAILHUB_REAL_WEBHOOK_SMOKE_INITIAL_SYNC_POLL_MS",
       2000,
     ),
-    reuseExistingReadyAccount: true,
+    reuseExistingReadyAccount: readBoolean(
+      "EMAILHUB_MAIL_ACTION_SMOKE_REUSE_EXISTING_ACCOUNT",
+      readBoolean("EMAILHUB_REAL_WEBHOOK_SMOKE_REUSE_EXISTING_ACCOUNT", false),
+    ),
     pollAttempts: readPort("EMAILHUB_MAIL_ACTION_SMOKE_ATTEMPTS", 60),
     pollMs: readPort("EMAILHUB_MAIL_ACTION_SMOKE_POLL_MS", 2000),
     workerDiagnosticAttempts: readPort(

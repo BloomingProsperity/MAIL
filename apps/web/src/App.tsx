@@ -3,12 +3,16 @@ import type { FormEvent } from "react";
 import {
   Archive,
   AtSign,
+  Bold,
   CheckCircle2,
   ChevronDown,
   Clock3,
   Download,
   FileText,
   Inbox,
+  Italic,
+  Link2,
+  List,
   Mail,
   MailPlus,
   Paperclip,
@@ -138,6 +142,29 @@ const READER_SOURCE_LANGUAGES = [
   { value: "auto", label: "自动识别" },
   ...READER_TRANSLATION_LANGUAGES,
 ] as const;
+const COMPOSE_TEMPLATES = [
+  {
+    id: "follow_up",
+    label: "跟进",
+    subject: "跟进：",
+    bodyText:
+      "您好，\n\n想跟进一下上一封邮件里的事项。请您确认当前进展、下一步负责人和预计时间。\n\n谢谢。",
+  },
+  {
+    id: "meeting_notes",
+    label: "会议纪要",
+    subject: "会议纪要：",
+    bodyText:
+      "大家好，\n\n以下是本次会议纪要：\n\n- 决议：\n- 待办：\n- 截止时间：\n\n如有遗漏请直接补充。",
+  },
+  {
+    id: "handoff",
+    label: "交接",
+    subject: "交接说明：",
+    bodyText:
+      "您好，\n\n我整理了当前事项的交接信息：\n\n- 背景：\n- 当前状态：\n- 风险：\n- 下一步：\n\n请查收。",
+  },
+] as const;
 
 type ComposeAutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
 type ReaderHermesBusy = "summary" | "translation" | "organize";
@@ -186,6 +213,7 @@ interface ComposeDraftSignatureInput {
   bcc: Array<{ address: string; name?: string }>;
   subject: string;
   bodyText: string;
+  bodyHtml?: string;
   source: MailDraftSource;
   attachments?: MailDraftAttachmentDto[];
   replyToMessageId?: string;
@@ -1968,6 +1996,10 @@ function MailWorkspace(props: {
   const [composeBcc, setComposeBcc] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
+  const [composeRichHtmlEnabled, setComposeRichHtmlEnabled] = useState(false);
+  const [composeTranslationSource, setComposeTranslationSource] = useState("auto");
+  const [composeTranslationTarget, setComposeTranslationTarget] =
+    useState("English");
   const [composeSource, setComposeSource] = useState<MailDraftSource>("manual");
   const [composeAttachments, setComposeAttachments] = useState<
     MailDraftAttachmentDto[]
@@ -2045,6 +2077,10 @@ function MailWorkspace(props: {
     bcc: ReturnType<typeof parseComposeRecipients>;
     bodyText: string;
   }) {
+    const bodyHtml = composeBodyHtmlForPayload(
+      input.bodyText,
+      composeRichHtmlEnabled,
+    );
     return composeDraftSignature({
       accountId: props.accountId,
       ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
@@ -2053,6 +2089,7 @@ function MailWorkspace(props: {
       bcc: input.bcc,
       subject: composeSubject.trim(),
       bodyText: input.bodyText,
+      ...(bodyHtml ? { bodyHtml } : {}),
       source: composeSource,
       attachments: composeAttachments,
       replyToMessageId: composeReplyToMessageId,
@@ -2270,6 +2307,7 @@ function MailWorkspace(props: {
     composeFrom,
     composeHermesDraftText,
     composeHermesSkillRunId,
+    composeRichHtmlEnabled,
     composeReplyToMessageId,
     composeScheduledId,
     composeSource,
@@ -2493,6 +2531,7 @@ function MailWorkspace(props: {
     setComposeBcc(formatComposeAddressList(seed.bcc));
     setComposeSubject(seed.subject);
     setComposeBody(options.bodyText ?? seed.bodyText);
+    setComposeRichHtmlEnabled(false);
     setComposeSource(options.source ?? seed.source);
     setComposeAttachments(
       seed.mode === "forward" ? seed.attachments.map(composeAttachmentFromSeed) : [],
@@ -2520,6 +2559,7 @@ function MailWorkspace(props: {
     setComposeBcc(formatComposeAddressList(draft.bcc));
     setComposeSubject(draft.subject);
     setComposeBody(draft.bodyText ?? "");
+    setComposeRichHtmlEnabled(Boolean(draft.bodyHtml));
     setComposeSource(draft.source);
     setComposeAttachments(draft.attachments ?? []);
     setComposeReplyToMessageId(draft.replyToMessageId);
@@ -2591,6 +2631,10 @@ function MailWorkspace(props: {
 
     setComposeBusy(true);
     try {
+      const bodyHtml = composeBodyHtmlForPayload(
+        composeBody,
+        composeRichHtmlEnabled,
+      );
       const preview = await props.api.previewMailDraft({
         accountId: props.accountId,
         ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
@@ -2599,6 +2643,7 @@ function MailWorkspace(props: {
         bcc: parseComposeRecipients(composeBcc),
         subject: composeSubject,
         bodyText: composeBody,
+        ...(bodyHtml ? { bodyHtml } : {}),
         source: composeSource,
         ...(composeAttachments.length > 0
           ? { attachments: composeAttachments }
@@ -3080,6 +3125,10 @@ function MailWorkspace(props: {
     bcc: ReturnType<typeof parseComposeRecipients>;
     bodyText: string;
   }) {
+    const bodyHtml = composeBodyHtmlForPayload(
+      input.bodyText,
+      composeRichHtmlEnabled,
+    );
     return {
       accountId: props.accountId,
       ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
@@ -3088,6 +3137,7 @@ function MailWorkspace(props: {
       ...(input.bcc.length > 0 ? { bcc: input.bcc } : {}),
       subject: composeSubject.trim(),
       bodyText: input.bodyText,
+      ...(bodyHtml ? { bodyHtml } : {}),
       source: composeSource,
       ...(composeAttachments.length > 0
         ? { attachments: composeAttachments }
@@ -3175,6 +3225,43 @@ function MailWorkspace(props: {
     }
   }
 
+  function insertComposeTemplate(template: (typeof COMPOSE_TEMPLATES)[number]) {
+    setComposeSubject((current) =>
+      current.trim() ? current : template.subject,
+    );
+    setComposeBody((current) =>
+      current.trim() ? `${current.trim()}\n\n${template.bodyText}` : template.bodyText,
+    );
+    setComposeRichHtmlEnabled(false);
+    setComposePreview(undefined);
+    setComposeNotice(`已插入模板：${template.label}`);
+    focusComposeTarget("body");
+  }
+
+  function applyComposeBodyFormat(format: "bold" | "italic" | "list" | "link") {
+    const editor = document.getElementById("compose-body") as
+      | HTMLTextAreaElement
+      | null;
+    const start = editor?.selectionStart ?? composeBody.length;
+    const end = editor?.selectionEnd ?? composeBody.length;
+    const selection = composeBody.slice(start, end);
+    const formatted = formatComposeSelection(format, selection);
+    const nextBody = `${composeBody.slice(0, start)}${formatted.text}${composeBody.slice(end)}`;
+    setComposeBody(nextBody);
+    setComposeRichHtmlEnabled(true);
+    setComposePreview(undefined);
+    window.requestAnimationFrame(() => {
+      const nextEditor = document.getElementById("compose-body") as
+        | HTMLTextAreaElement
+        | null;
+      nextEditor?.focus();
+      nextEditor?.setSelectionRange(
+        start + formatted.selectionStart,
+        start + formatted.selectionEnd,
+      );
+    });
+  }
+
   function clearComposeForm() {
     cancelComposeAutosave();
     lastSavedComposeSignatureRef.current = "";
@@ -3183,6 +3270,7 @@ function MailWorkspace(props: {
     setComposeBcc("");
     setComposeSubject("");
     setComposeBody("");
+    setComposeRichHtmlEnabled(false);
     setComposeSource("manual");
     setComposeAttachments([]);
     setComposeReplyToMessageId(undefined);
@@ -3193,6 +3281,44 @@ function MailWorkspace(props: {
     setComposeScheduledId(undefined);
     setComposePreview(undefined);
     setComposeScheduledAt(defaultScheduleDateTimeLocal());
+  }
+
+  async function translateComposedMail() {
+    if (!props.api) {
+      setComposeNotice("Hermes 暂时不可用。");
+      return;
+    }
+
+    const bodyText = composeBody.trim();
+    if (!bodyText) {
+      setComposeNotice("请先写正文，再让 Hermes 翻译。");
+      return;
+    }
+
+    setComposeBusy(true);
+    try {
+      const result = await props.api.translateText({
+        text: bodyText,
+        targetLanguage: composeTranslationTarget,
+        ...(composeTranslationSource === "auto"
+          ? {}
+          : { sourceLanguage: composeTranslationSource }),
+        tone: "preserve intent, formatting cues, recipients, and commitments",
+        memoryScope: "global",
+        memoryLayers: ["writing_style_profile", "semantic_profile"],
+      });
+      setComposeBody(result.translatedText);
+      setComposeRichHtmlEnabled(false);
+      setComposeHermesSkillRunId(result.skillRunId);
+      setComposeHermesDraftText(result.translatedText);
+      setComposePreview(undefined);
+      setComposeNotice(`Hermes 已翻译草稿：${result.skillRunId}`);
+      focusComposeTarget("body");
+    } catch {
+      setComposeNotice("Hermes 草稿翻译暂时不可用。");
+    } finally {
+      setComposeBusy(false);
+    }
   }
 
   async function polishComposedMail() {
@@ -3216,6 +3342,7 @@ function MailWorkspace(props: {
         tone: "clear professional",
       });
       setComposeBody(result.rewrittenText);
+      setComposeRichHtmlEnabled(false);
       setComposeHermesSkillRunId(result.skillRunId);
       setComposeHermesDraftText(result.rewrittenText);
       setComposePreview(undefined);
@@ -3668,6 +3795,60 @@ function MailWorkspace(props: {
               placeholder="输入邮件主题"
             />
           </label>
+          <div className="compose-editor-tools" aria-label="Compose editor tools">
+            <div className="compose-template-row" aria-label="Compose templates">
+              {COMPOSE_TEMPLATES.map((template) => (
+                <button
+                  className="tiny-button"
+                  type="button"
+                  key={template.id}
+                  aria-label={`Insert compose template ${template.label}`}
+                  disabled={composeBusy}
+                  onClick={() => insertComposeTemplate(template)}
+                >
+                  {template.label}
+                </button>
+              ))}
+            </div>
+            <div className="compose-format-toolbar" aria-label="Compose format toolbar">
+              <button
+                className="tiny-icon-button"
+                type="button"
+                aria-label="Bold selected compose text"
+                disabled={composeBusy}
+                onClick={() => applyComposeBodyFormat("bold")}
+              >
+                <Bold size={14} />
+              </button>
+              <button
+                className="tiny-icon-button"
+                type="button"
+                aria-label="Italic selected compose text"
+                disabled={composeBusy}
+                onClick={() => applyComposeBodyFormat("italic")}
+              >
+                <Italic size={14} />
+              </button>
+              <button
+                className="tiny-icon-button"
+                type="button"
+                aria-label="List selected compose text"
+                disabled={composeBusy}
+                onClick={() => applyComposeBodyFormat("list")}
+              >
+                <List size={14} />
+              </button>
+              <button
+                className="tiny-icon-button"
+                type="button"
+                aria-label="Link selected compose text"
+                disabled={composeBusy}
+                onClick={() => applyComposeBodyFormat("link")}
+              >
+                <Link2 size={14} />
+              </button>
+            </div>
+          </div>
           <textarea
             id="compose-body"
             aria-label="Compose body"
@@ -3723,6 +3904,42 @@ function MailWorkspace(props: {
             </div>
           ) : null}
           <div className="composer-tool-row">
+            <div className="compose-translate-controls" aria-label="Compose translation controls">
+              <select
+                aria-label="Compose translation source language"
+                value={composeTranslationSource}
+                disabled={composeBusy}
+                onChange={(event) => setComposeTranslationSource(event.target.value)}
+              >
+                {READER_SOURCE_LANGUAGES.map((language) => (
+                  <option key={language.value} value={language.value}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Compose translation target language"
+                value={composeTranslationTarget}
+                disabled={composeBusy}
+                onChange={(event) => setComposeTranslationTarget(event.target.value)}
+              >
+                {READER_TRANSLATION_LANGUAGES.map((language) => (
+                  <option key={language.value} value={language.value}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="tiny-button"
+                type="button"
+                aria-label="Translate composed draft with Hermes"
+                disabled={composeBusy}
+                onClick={() => void translateComposedMail()}
+              >
+                <Sparkles size={14} />
+                翻译
+              </button>
+            </div>
             <button
               className="tiny-button"
               type="button"
@@ -4918,6 +5135,7 @@ function composeDraftSignature(input: ComposeDraftSignatureInput): string {
     sourceMessageId: input.sourceMessageId ?? null,
     hermesSkillRunId: input.hermesSkillRunId ?? null,
     hermesDraftText: input.hermesDraftText ?? null,
+    bodyHtml: input.bodyHtml ?? null,
   });
 }
 
@@ -4930,6 +5148,7 @@ function composeDraftSignatureFromDraft(draft: MailDraftDto): string {
     bcc: draft.bcc,
     subject: draft.subject,
     bodyText: draft.bodyText ?? "",
+    bodyHtml: draft.bodyHtml,
     source: draft.source,
     attachments: draft.attachments,
     replyToMessageId: draft.replyToMessageId,
@@ -4937,6 +5156,100 @@ function composeDraftSignatureFromDraft(draft: MailDraftDto): string {
     hermesSkillRunId: draft.hermesSkillRunId,
     hermesDraftText: draft.hermesDraftText,
   });
+}
+
+function composeBodyHtmlForPayload(
+  bodyText: string,
+  richHtmlEnabled: boolean,
+): string | undefined {
+  if (!richHtmlEnabled || !bodyText.trim()) {
+    return undefined;
+  }
+
+  return composePlainTextToHtml(bodyText);
+}
+
+function composePlainTextToHtml(text: string): string {
+  const blocks = text
+    .trim()
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  return blocks
+    .map((block) => {
+      const lines = block.split(/\n/);
+      if (lines.every((line) => /^\s*[-*]\s+/.test(line))) {
+        const items = lines
+          .map((line) => line.replace(/^\s*[-*]\s+/, "").trim())
+          .filter(Boolean)
+          .map((line) => `<li>${formatComposeInlineMarkup(line)}</li>`)
+          .join("");
+        return `<ul>${items}</ul>`;
+      }
+
+      return `<p>${lines.map(formatComposeInlineMarkup).join("<br>")}</p>`;
+    })
+    .join("");
+}
+
+function formatComposeInlineMarkup(text: string): string {
+  return escapeHtml(text)
+    .replace(
+      /\[([^\]]+)\]\((https?:\/\/[^)"\s<>]+|mailto:[^)"\s<>]+)\)/g,
+      '<a href="$2">$1</a>',
+    )
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatComposeSelection(
+  format: "bold" | "italic" | "list" | "link",
+  selection: string,
+): { text: string; selectionStart: number; selectionEnd: number } {
+  if (format === "list") {
+    const body = selection.trim()
+      ? selection
+          .split(/\n/)
+          .map((line) =>
+            line.trim() ? line.replace(/^\s*(?:[-*]\s+)?/, "- ") : line,
+          )
+          .join("\n")
+      : "- ";
+    return {
+      text: body,
+      selectionStart: body.length,
+      selectionEnd: body.length,
+    };
+  }
+
+  if (format === "link") {
+    const label = selection || "链接文字";
+    const text = `[${label}](https://example.com)`;
+    const urlStart = text.indexOf("https://example.com");
+    return {
+      text,
+      selectionStart: urlStart,
+      selectionEnd: urlStart + "https://example.com".length,
+    };
+  }
+
+  const marker = format === "bold" ? "**" : "*";
+  const label = selection || (format === "bold" ? "加粗文字" : "强调文字");
+  return {
+    text: `${marker}${label}${marker}`,
+    selectionStart: marker.length,
+    selectionEnd: marker.length + label.length,
+  };
 }
 
 function normalizedComposeAddress(address: { address: string; name?: string }) {

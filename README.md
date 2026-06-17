@@ -439,10 +439,12 @@ npm run smoke:emailengine-send
 This creates a draft through `/api/accounts/:accountId/compose/drafts`, queues it
 through `/send`, waits for the worker to submit it through EmailEngine, and
 passes only when the unique sent message appears in a separate GreenMail
-recipient account's read model. By default the sender is
-`EMAILHUB_SMOKE_MAIL_EMAIL` and the recipient is
-`EMAILHUB_SMOKE_RECIPIENT_EMAIL`, so a Sent-folder copy in the sender mailbox
-cannot satisfy the smoke by itself.
+recipient account's read model. By default the sender uses a fresh
+`emailhub-send-<uuid>@example.com` mailbox and the recipient uses a fresh
+`emailhub-recipient-<uuid>@example.com` mailbox, so a Sent-folder copy in the
+sender mailbox cannot satisfy the smoke by itself. Set
+`EMAILHUB_SMOKE_MAIL_EMAIL` or `EMAILHUB_SMOKE_RECIPIENT_EMAIL` only when you
+intentionally need fixed test mailboxes.
 
 To prove app-owned attachment ids can be downloaded without exposing provider
 attachment ids, run:
@@ -454,7 +456,10 @@ npm run smoke:emailengine-attachment-download
 This delivers a unique MIME attachment to GreenMail, waits for EmailEngine sync
 to mirror the attachment metadata, then calls
 `/api/accounts/:accountId/attachments/:attachmentId/download` and verifies the
-downloaded bytes match the smoke attachment content.
+downloaded bytes match the smoke attachment content. By default this smoke
+creates a fresh `emailhub-attachment-<uuid>@example.com` mailbox; set
+`EMAILHUB_SMOKE_MAIL_EMAIL` only when intentionally reusing a fixed test
+mailbox.
 
 To prove user mail actions are not only applied to the local read model but also
 leave the provider command outbox and finish in the worker, run:
