@@ -113,6 +113,7 @@ export interface CreateHermesActionPlanServiceOptions {
     | "simulateRule"
     | "approveRule"
     | "backfillRuleHistory"
+    | "updateRule"
   >;
   workspaceContextService: Pick<HermesWorkspaceContextService, "getContext">;
   planStore: HermesActionPlanStore;
@@ -270,115 +271,171 @@ export function createHermesActionPlanService(
       if (!lockedPlan) {
         return undefined;
       }
-      if (!isConfirmableRulePlan(lockedPlan)) {
-        await options.planStore.failConfirmation({
-          planId,
-          accountId,
-          candidateId,
-          failureMessage: "action_plan_not_confirmable",
-        });
-        return undefined;
-      }
+      let approvedRule: HermesRule | undefined;
+      try {
+        if (!isConfirmableRulePlan(lockedPlan)) {
+          await failActionPlanConfirmation(options.planStore, {
+            planId,
+            accountId,
+            candidateId,
+            failureMessage: "action_plan_not_confirmable",
+          });
+          return undefined;
+        }
 
-      const rule = await options.ruleService.approveRule({
-        accountId,
-        candidateId: lockedPlan.candidateId,
-      });
-      if (!rule) {
-        await options.planStore.failConfirmation({
-          planId,
+        const rule = await options.ruleService.approveRule({
           accountId,
-          candidateId,
-          failureMessage: "rule_candidate_unavailable",
+          candidateId: lockedPlan.candidateId,
         });
-        return undefined;
-      }
+        if (!rule) {
+          await failActionPlanConfirmation(options.planStore, {
+            planId,
+            accountId,
+            candidateId,
+            failureMessage: "rule_candidate_unavailable",
+          });
+          return undefined;
+        }
+        approvedRule = rule;
 
-      const historyBackfill =
-        rule.action.applyToHistory === true
-          ? await options.ruleService.backfillRuleHistory({
-              accountId,
-              ruleId: rule.id,
-              limit: HISTORY_BACKFILL_LIMIT,
-            })
-          : undefined;
-      const confirmedAt = options.now();
-      const memory = await rememberConfirmedRule(options, {
-        planId,
-        command: lockedPlan.command,
-        rule,
-      });
-      const confirmation: HermesActionPlanConfirmation = {
-        id: options.createId(),
-        planId,
-        accountId,
-        candidateId,
-        status: "completed",
-        confirmedAt,
-        rule,
-        ...(memory ? { memory } : {}),
-        ...(historyBackfill ? { historyBackfill } : {}),
-        safety: confirmedRuleSafety(rule),
-        steps: buildConfirmationSteps(rule, historyBackfill, memory),
-      };
-      const auditEventId = await recordActionPlanRun(options, {
-        runId: confirmation.id,
-        eventType: "hermes.action_plan.confirmed",
-        readMessageIds: historyBackfill?.sampleMessageIds ?? [],
-        input: {
+        const historyBackfill =
+          rule.action.applyToHistory === true
+            ? await options.ruleService.backfillRuleHistory({
+                accountId,
+                ruleId: rule.id,
+                limit: HISTORY_BACKFILL_LIMIT,
+              })
+            : undefined;
+        const confirmedAt = options.now();
+        const memory = await rememberConfirmedRule(options, {
+          planId,
+          command: lockedPlan.command,
+          rule,
+        });
+        const confirmation: HermesActionPlanConfirmation = {
+          id: options.createId(),
           planId,
           accountId,
           candidateId,
-        },
-        output: {
-          planId,
-          ruleId: rule.id,
-          status: confirmation.status,
-          safety: confirmation.safety,
+          status: "completed",
+          confirmedAt,
+          rule,
+          ...(memory ? { memory } : {}),
           ...(historyBackfill ? { historyBackfill } : {}),
-          ...(memory
-            ? {
-                memory: {
-                  id: memory.id,
-                  layer: memory.layer,
-                  scope: memory.scope,
-                },
-              }
-            : {}),
-        },
-        action: {
-          type: "confirm_action_plan",
+          safety: confirmedRuleSafety(rule),
+          steps: buildConfirmationSteps(rule, historyBackfill, memory),
+        };
+        const auditEventId = await recordActionPlanRun(options, {
+          runId: confirmation.id,
+          eventType: "hermes.action_plan.confirmed",
+          readMessageIds: historyBackfill?.sampleMessageIds ?? [],
+          input: {
+            planId,
+            accountId,
+            candidateId,
+          },
+          output: {
+            planId,
+            ruleId: rule.id,
+            status: confirmation.status,
+            safety: confirmation.safety,
+            ...(historyBackfill ? { historyBackfill } : {}),
+            ...(memory
+              ? {
+                  memory: {
+                    id: memory.id,
+                    layer: memory.layer,
+                    scope: memory.scope,
+                  },
+                }
+              : {}),
+          },
+          action: {
+            type: "confirm_action_plan",
+            planId,
+            candidateId,
+            ruleId: rule.id,
+            status: confirmation.status,
+            ...(memory ? { memoryId: memory.id } : {}),
+            ...(historyBackfill
+              ? {
+                  historyBackfill: {
+                    matchedCount: historyBackfill.matchedCount,
+                    appliedCount: historyBackfill.appliedCount,
+                  },
+                }
+              : {}),
+          },
+        });
+
+        await options.planStore.completePlan({
           planId,
+          accountId,
           candidateId,
+          confirmationId: confirmation.id,
           ruleId: rule.id,
-          status: confirmation.status,
-          ...(memory ? { memoryId: memory.id } : {}),
-          ...(historyBackfill
-            ? {
-                historyBackfill: {
-                  matchedCount: historyBackfill.matchedCount,
-                  appliedCount: historyBackfill.appliedCount,
-                },
-              }
-            : {}),
-        },
-      });
+          confirmedAt,
+          ...(auditEventId ? { confirmationAuditEventId: auditEventId } : {}),
+        });
 
-      await options.planStore.completePlan({
-        planId,
-        accountId,
-        candidateId,
-        confirmationId: confirmation.id,
-        ruleId: rule.id,
-        confirmedAt,
-        ...(auditEventId ? { confirmationAuditEventId: auditEventId } : {}),
-      });
-
-      return auditEventId
-        ? { ...confirmation, auditEventId }
-        : confirmation;
+        return auditEventId
+          ? { ...confirmation, auditEventId }
+          : confirmation;
+      } catch (error) {
+        if (approvedRule) {
+          await disableRuleAfterFailedConfirmation(options.ruleService, {
+            accountId,
+            ruleId: approvedRule.id,
+          });
+        }
+        await failActionPlanConfirmation(options.planStore, {
+          planId,
+          accountId,
+          candidateId,
+          failureMessage: confirmationFailureMessage(error),
+        });
+        throw error;
+      }
     },
   };
+}
+
+function confirmationFailureMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return `confirm_action_plan_failed:${error.message.slice(0, 120)}`;
+  }
+  return "confirm_action_plan_failed";
+}
+
+async function disableRuleAfterFailedConfirmation(
+  ruleService: Pick<HermesRuleService, "updateRule">,
+  input: { accountId: string; ruleId: string },
+): Promise<void> {
+  try {
+    await ruleService.updateRule({
+      accountId: input.accountId,
+      ruleId: input.ruleId,
+      enabled: false,
+    });
+  } catch {
+    // Preserve the original confirmation failure for the caller.
+  }
+}
+
+async function failActionPlanConfirmation(
+  planStore: HermesActionPlanStore,
+  input: {
+    planId: string;
+    accountId: string;
+    candidateId: string;
+    failureMessage: string;
+  },
+): Promise<void> {
+  try {
+    await planStore.failConfirmation(input);
+  } catch {
+    // Preserve the original confirmation failure for the caller.
+  }
 }
 
 function buildDraftSteps(

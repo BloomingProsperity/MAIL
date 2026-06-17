@@ -552,6 +552,9 @@ describe("postgres mirror store", () => {
             ],
           };
         }
+        if (text.includes("INSERT INTO label_assignments")) {
+          return { rows: [{ label_id: labelId }] };
+        }
         return { rows: [] };
       },
     };
@@ -576,6 +579,7 @@ describe("postgres mirror store", () => {
     expect(contentRuleQuery?.text).toMatch(/enabled = TRUE/i);
     expect(contentRuleQuery?.text).toMatch(/action->>'type' = 'apply_label'/i);
     expect(contentRuleQuery?.text).toMatch(/action->>'labelId' IS NOT NULL/i);
+    expect(contentRuleQuery?.text).toMatch(/ORDER BY sort_order ASC/i);
     expect(contentRuleQuery?.values).toEqual([accountId]);
 
     const assignmentQuery = queries.find((query) =>
@@ -592,6 +596,103 @@ describe("postgres mirror store", () => {
       accountId,
       [labelId],
     ]);
+
+    const runQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO hermes_rule_runs"),
+    );
+    expect(runQuery?.text).toMatch(/rule_id/i);
+    expect(runQuery?.text).toMatch(/message_id/i);
+    expect(runQuery?.text).toMatch(/account_id/i);
+    expect(runQuery?.values).toEqual([
+      expect.any(String),
+      "rule_codes",
+      "message_1",
+      accountId,
+      expect.objectContaining({
+        accountId,
+        ruleId: "rule_codes",
+        matchedCount: 1,
+        appliedCount: 1,
+        sampleMessageIds: ["message_1"],
+        source: "worker_mirror",
+        actionPreview: expect.objectContaining({
+          type: "apply_label",
+          labelId,
+          labelName: "验证码",
+        }),
+      }),
+    ]);
+  });
+
+  it("does not block mirrored messages when Hermes rule run audit fails", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const accountId = "00000000-0000-0000-0000-000000000001";
+    const labelId = "11111111-1111-4111-8111-111111111111";
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("INSERT INTO messages")) {
+          return { rows: [{ id: "message_1" }] };
+        }
+        if (text.includes("rule_type = 'content_label'")) {
+          return {
+            rows: [
+              {
+                id: "rule_codes",
+                condition: { anyKeywords: ["verification", "otp", "验证码"] },
+                action: {
+                  type: "apply_label",
+                  labelId,
+                  labelName: "验证码",
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes("INSERT INTO label_assignments")) {
+          return { rows: [{ label_id: labelId }] };
+        }
+        if (text.includes("INSERT INTO hermes_rule_runs")) {
+          throw new Error("audit_write_failed");
+        }
+        if (text.includes("INSERT INTO provider_message_refs")) {
+          return {
+            rows: [
+              {
+                id: "ref_1",
+                provider: "emailengine",
+                provider_message_id: "ee_msg_1",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresMirrorStore(client);
+
+    await expect(
+      store.upsertMessage({
+        engineAccountId: accountId,
+        provider: "emailengine",
+        message: {
+          id: "ee_msg_1",
+          subject: "Your OTP verification code",
+          date: "2026-06-12T09:00:00.000Z",
+          from: { address: "login@example.com" },
+          text: { plain: "验证码 482911 will expire in 10 minutes." },
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(
+      queries.some((query) => query.text.includes("INSERT INTO hermes_rule_runs")),
+    ).toBe(true);
+    expect(
+      queries.some((query) =>
+        query.text.includes("INSERT INTO provider_message_refs"),
+      ),
+    ).toBe(true);
   });
 
   it("applies multiple approved Hermes content label rules to a newly mirrored message", async () => {
@@ -659,6 +760,14 @@ describe("postgres mirror store", () => {
             ],
           };
         }
+        if (text.includes("INSERT INTO label_assignments")) {
+          return {
+            rows: [
+              { label_id: codesLabelId },
+              { label_id: securityLabelId },
+            ],
+          };
+        }
         return { rows: [] };
       },
     };
@@ -696,6 +805,39 @@ describe("postgres mirror store", () => {
       [codesLabelId, securityLabelId],
     ]);
     expect(assignmentQuery?.values).not.toContain(receiptsLabelId);
+
+    const runQueries = queries.filter((query) =>
+      query.text.includes("INSERT INTO hermes_rule_runs"),
+    );
+    expect(runQueries).toHaveLength(3);
+    expect(runQueries.map((query) => query.values?.[1])).toEqual([
+      "rule_codes",
+      "rule_security",
+      "rule_duplicate_codes",
+    ]);
+    expect(runQueries.map((query) => (query.values?.[4] as any).appliedCount))
+      .toEqual([1, 1, 0]);
+    expect(
+      runQueries.map(
+        (query) => (query.values?.[4] as any).labelAssignment,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        labelId: codesLabelId,
+        attributedApplied: true,
+        duplicateLabelTarget: false,
+      }),
+      expect.objectContaining({
+        labelId: securityLabelId,
+        attributedApplied: true,
+        duplicateLabelTarget: false,
+      }),
+      expect.objectContaining({
+        labelId: codesLabelId,
+        attributedApplied: false,
+        duplicateLabelTarget: true,
+      }),
+    ]);
   });
 
   it("does not apply Hermes content labels when no keyword matches", async () => {
@@ -751,6 +893,9 @@ describe("postgres mirror store", () => {
 
     expect(
       queries.some((query) => query.text.includes("INSERT INTO label_assignments")),
+    ).toBe(false);
+    expect(
+      queries.some((query) => query.text.includes("INSERT INTO hermes_rule_runs")),
     ).toBe(false);
   });
 

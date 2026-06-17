@@ -373,6 +373,170 @@ describe("Hermes action plan service", () => {
     ]);
   });
 
+  it("marks action plans failed when confirmation throws after locking", async () => {
+    const planStore = createInMemoryHermesActionPlanStore({
+      plans: [
+        createPlanRecord({
+          id: "plan_1",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          simulationId: "simulation_1",
+        }),
+      ],
+    });
+    const ruleStore = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            applyToHistory: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-16T08:00:00.000Z",
+        },
+      ],
+    });
+    const ruleService = createHermesRuleService({
+      store: ruleStore,
+      labelService: {
+        async upsertLabel() {
+          throw new Error("label_store_unavailable");
+        },
+      },
+      createId: nextId(["rule_should_not_commit"]),
+      now: () => "2026-06-16T08:02:00.000Z",
+    });
+    const service = createHermesActionPlanService({
+      ruleService,
+      workspaceContextService: {
+        async getContext() {
+          throw new Error("not used while confirming");
+        },
+      },
+      planStore,
+      createId: nextId([]),
+      now: () => "2026-06-16T08:03:00.000Z",
+    });
+
+    await expect(
+      service.confirmPlan({
+        planId: "plan_1",
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      }),
+    ).rejects.toThrow("label_store_unavailable");
+    expect(planStore.listPlans()).toEqual([
+      expect.objectContaining({
+        id: "plan_1",
+        status: "failed",
+        failureMessage:
+          "confirm_action_plan_failed:label_store_unavailable",
+      }),
+    ]);
+  });
+
+  it("disables approved rules when confirmation fails after rule creation", async () => {
+    const planStore = createInMemoryHermesActionPlanStore({
+      plans: [
+        createPlanRecord({
+          id: "plan_1",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          simulationId: "simulation_1",
+        }),
+      ],
+    });
+    const failingPlanStore = {
+      ...planStore,
+      async completePlan() {
+        throw new Error("plan_store_unavailable");
+      },
+    };
+    const ruleStore = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            applyToHistory: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-16T08:00:00.000Z",
+        },
+      ],
+    });
+    const ruleService = createHermesRuleService({
+      store: ruleStore,
+      labelService: {
+        async upsertLabel(input) {
+          return {
+            id: "label_codes",
+            accountId: input.accountId,
+            name: input.name,
+            color: input.color ?? "blue",
+            messageCount: 0,
+            createdAt: "2026-06-16T08:01:00.000Z",
+          };
+        },
+      },
+      createId: nextId(["rule_codes", "confirmation_1"]),
+      now: () => "2026-06-16T08:02:00.000Z",
+    });
+    const service = createHermesActionPlanService({
+      ruleService,
+      workspaceContextService: {
+        async getContext() {
+          throw new Error("not used while confirming");
+        },
+      },
+      planStore: failingPlanStore,
+      createId: nextId(["confirmation_1"]),
+      now: () => "2026-06-16T08:03:00.000Z",
+    });
+
+    await expect(
+      service.confirmPlan({
+        planId: "plan_1",
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      }),
+    ).rejects.toThrow("plan_store_unavailable");
+    expect(planStore.listPlans()).toEqual([
+      expect.objectContaining({
+        id: "plan_1",
+        status: "failed",
+        failureMessage:
+          "confirm_action_plan_failed:plan_store_unavailable",
+      }),
+    ]);
+    await expect(
+      ruleStore.listRules({ accountId: "account_1", enabled: false, limit: 10 }),
+    ).resolves.toMatchObject({
+      items: [{ id: "rule_codes", enabled: false }],
+    });
+  });
+
   it("confirms explicit all-mail plans and backfills matching local labels", async () => {
     const runStoreCalls: unknown[] = [];
     const planStore = createInMemoryHermesActionPlanStore({

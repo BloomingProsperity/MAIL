@@ -64,6 +64,11 @@ interface HermesContentLabelRule {
   id: string;
   labelId: string;
   keywords: string[];
+  action: Record<string, unknown>;
+}
+
+interface LabelAssignmentRow extends Record<string, unknown> {
+  label_id: string;
 }
 
 export function createPostgresMirrorStore(client: Queryable): MirrorStore {
@@ -361,16 +366,15 @@ async function upsertHermesContentLabelAssignments(
   message: NormalizedMirrorMessage,
 ): Promise<void> {
   const rules = await loadHermesContentLabelRules(client, accountId);
-  const labelIds = uniqueStrings(
-    rules
-      .filter((rule) => contentLabelRuleMatchesMessage(rule, message))
-      .map((rule) => rule.labelId),
+  const matchingRules = rules.filter((rule) =>
+    contentLabelRuleMatchesMessage(rule, message),
   );
-  if (labelIds.length === 0) {
+  if (matchingRules.length === 0) {
     return;
   }
+  const labelIds = uniqueStrings(matchingRules.map((rule) => rule.labelId));
 
-  await client.query(
+  const assignmentResult = await client.query<LabelAssignmentRow>(
     `
       INSERT INTO label_assignments (message_id, label_id)
       SELECT messages.id, labels.id
@@ -385,9 +389,73 @@ async function upsertHermesContentLabelAssignments(
         AND labels.account_id = $2
         AND labels.id = ANY($3::uuid[])
       ON CONFLICT (message_id, label_id) DO NOTHING
+      RETURNING label_id
     `,
     [messageId, accountId, labelIds],
   );
+  await recordHermesContentLabelRuleRuns(
+    client,
+    accountId,
+    messageId,
+    matchingRules,
+    assignmentResult.rows.map((row) => row.label_id),
+  );
+}
+
+async function recordHermesContentLabelRuleRuns(
+  client: Queryable,
+  accountId: string,
+  messageId: string,
+  matchingRules: HermesContentLabelRule[],
+  appliedLabelIds: string[],
+): Promise<void> {
+  const remainingAppliedLabelIds = new Set(appliedLabelIds);
+  const seenLabelIds = new Set<string>();
+  const createdAt = new Date().toISOString();
+
+  for (const rule of matchingRules) {
+    const duplicateLabelTarget = seenLabelIds.has(rule.labelId);
+    seenLabelIds.add(rule.labelId);
+    const appliedCount = remainingAppliedLabelIds.delete(rule.labelId) ? 1 : 0;
+    try {
+      await client.query(
+        `
+          INSERT INTO hermes_rule_runs (
+            id,
+            rule_id,
+            message_id,
+            account_id,
+            mode,
+            result
+          )
+          VALUES ($1, $2, $3, $4, 'active', $5)
+        `,
+        [
+          randomUUID(),
+          rule.id,
+          messageId,
+          accountId,
+          {
+            accountId,
+            ruleId: rule.id,
+            matchedCount: 1,
+            appliedCount,
+            sampleMessageIds: [messageId],
+            actionPreview: rule.action,
+            labelAssignment: {
+              labelId: rule.labelId,
+              attributedApplied: appliedCount === 1,
+              duplicateLabelTarget,
+            },
+            source: "worker_mirror",
+            createdAt,
+          },
+        ],
+      );
+    } catch {
+      // Audit must not block the mailbox mirror path.
+    }
+  }
 }
 
 async function upsertMessageLocation(
@@ -1493,7 +1561,7 @@ async function loadHermesContentLabelRules(
         AND rule_type = 'content_label'
         AND action->>'type' = 'apply_label'
         AND action->>'labelId' IS NOT NULL
-      ORDER BY approved_at DESC NULLS LAST, created_at DESC, id DESC
+      ORDER BY sort_order ASC, approved_at DESC NULLS LAST, created_at DESC, id DESC
       LIMIT 100
     `,
     [accountId],
@@ -1554,6 +1622,7 @@ function contentLabelRuleFromRow(
       id: row.id,
       labelId,
       keywords: uniqueStrings(keywords.map((keyword) => keyword.trim())),
+      action: { ...row.action },
     },
   ];
 }
