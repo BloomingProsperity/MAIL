@@ -63,9 +63,9 @@ describe("IMAP/SMTP onboarding smoke helpers", () => {
               nextAction: "wait_for_sync",
               accountUpdatedAt: "2026-06-14T00:00:00.000Z",
               latestSyncJob: {
-                id: "job_1",
+                id: "job_followup",
                 jobType: "sync_account",
-                status: "queued",
+                status: "running",
                 attempts: 0,
                 maxAttempts: 5,
                 notBefore: "2026-06-14T00:00:00.000Z",

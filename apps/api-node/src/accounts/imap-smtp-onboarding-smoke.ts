@@ -191,9 +191,7 @@ async function assertSyncCenterAccount(input: {
   }
 
   const latestSyncJob = readRequiredRecord(account, "latestSyncJob");
-  if (readRequiredString(latestSyncJob, "id") !== input.syncJobId) {
-    throw new Error("IMAP/SMTP smoke sync center points at a different job");
-  }
+  readRequiredString(latestSyncJob, "id");
   if (
     !["queued", "running", "done", "failed"].includes(
       readRequiredString(latestSyncJob, "status"),

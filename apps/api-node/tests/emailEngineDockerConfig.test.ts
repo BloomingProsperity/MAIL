@@ -235,8 +235,20 @@ describe("EmailEngine Docker configuration", () => {
     expect(rootPackage.scripts["smoke:emailengine-real-webhook"]).toBe(
       "npm run smoke:emailengine-real-webhook -w apps/api-node",
     );
+    expect(rootPackage.scripts["smoke:emailengine-send"]).toBe(
+      "npm run smoke:emailengine-send -w apps/api-node",
+    );
+    expect(rootPackage.scripts["smoke:emailengine-attachment-download"]).toBe(
+      "npm run smoke:emailengine-attachment-download -w apps/api-node",
+    );
     expect(apiPackage.scripts["smoke:emailengine-real-webhook"]).toBe(
       "tsx src/emailengine-real-webhook-smoke.ts",
+    );
+    expect(apiPackage.scripts["smoke:emailengine-send"]).toBe(
+      "tsx src/emailengine-send-smoke.ts",
+    );
+    expect(apiPackage.scripts["smoke:emailengine-attachment-download"]).toBe(
+      "tsx src/emailengine-attachment-download-smoke.ts",
     );
     expect(envExample).toContain("EMAILHUB_SMOKE_DELIVERY_SMTP_HOST=127.0.0.1");
     expect(envExample).toContain("EMAILHUB_SMOKE_DELIVERY_SMTP_PORT=3025");
@@ -258,6 +270,22 @@ describe("EmailEngine Docker configuration", () => {
     );
     expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_ATTEMPTS=60");
     expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_POLL_MS=2000");
+    expect(envExample).toContain(
+      "EMAILHUB_SMOKE_RECIPIENT_EMAIL=recipient@example.com",
+    );
+    expect(envExample).toContain(
+      "EMAILHUB_SMOKE_RECIPIENT_PROVIDER=custom_domain",
+    );
+    expect(envExample).toContain(
+      "EMAILHUB_SMOKE_RECIPIENT_DISPLAY_NAME=Smoke Recipient",
+    );
+    expect(envExample).toContain(
+      "EMAILHUB_SMOKE_RECIPIENT_SECRET=smoke-secret",
+    );
+    expect(envExample).toContain("EMAILHUB_SEND_SMOKE_ATTEMPTS=60");
+    expect(envExample).toContain("EMAILHUB_SEND_SMOKE_POLL_MS=2000");
+    expect(envExample).toContain("EMAILHUB_ATTACHMENT_SMOKE_ATTEMPTS=60");
+    expect(envExample).toContain("EMAILHUB_ATTACHMENT_SMOKE_POLL_MS=2000");
   });
 
   it("exposes layered EmailEngine-first launch verification gates", async () => {
@@ -290,7 +318,7 @@ describe("EmailEngine Docker configuration", () => {
       "npm run verify:emailengine-live && npm run smoke:emailengine-webhook",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:greenmail"]).toBe(
-      "npm run smoke:imap-smtp-onboarding && npm run smoke:emailengine-real-webhook",
+      "npm run smoke:imap-smtp-onboarding && npm run smoke:emailengine-real-webhook && npm run smoke:emailengine-send && npm run smoke:emailengine-attachment-download",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:core"]).toBe(
       "npm run verify:emailengine-launch:offline && npm run verify:emailengine-launch:live",

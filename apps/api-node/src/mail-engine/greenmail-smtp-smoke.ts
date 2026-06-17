@@ -10,8 +10,15 @@ export interface SendSmtpSmokeMessageInput {
   messageId: string;
   subject: string;
   text: string;
+  attachments?: SmtpSmokeAttachment[];
   timeoutMs?: number;
   now?: () => Date;
+}
+
+export interface SmtpSmokeAttachment {
+  filename: string;
+  contentType: string;
+  content: string | Uint8Array;
 }
 
 export interface SmtpSmokeDeliveryResult {
@@ -187,6 +194,36 @@ async function expectResponse(
 
 function buildMessage(input: Required<SendSmtpSmokeMessageInput>): string {
   const body = dotStuff(input.text).replace(/\r?\n/g, "\r\n");
+  if (input.attachments.length > 0) {
+    const boundary = `emailhub-smoke-${input.messageId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+    return [
+      `Message-ID: <${input.messageId}>`,
+      `Date: ${input.now().toUTCString()}`,
+      `From: Email Hub Smoke <${input.from}>`,
+      `To: <${input.to}>`,
+      `Subject: ${sanitizeHeader(input.subject)}`,
+      "MIME-Version: 1.0",
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      body,
+      ...input.attachments.flatMap((attachment) => [
+        `--${boundary}`,
+        `Content-Type: ${sanitizeContentType(attachment.contentType)}`,
+        "Content-Transfer-Encoding: base64",
+        `Content-Disposition: attachment; filename="${sanitizeFilename(
+          attachment.filename,
+        )}"`,
+        "",
+        foldBase64(attachment.content),
+      ]),
+      `--${boundary}--`,
+    ].join("\r\n");
+  }
+
   return [
     `Message-ID: <${input.messageId}>`,
     `Date: ${input.now().toUTCString()}`,
@@ -210,6 +247,22 @@ function dotStuff(text: string): string {
 
 function sanitizeHeader(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+function sanitizeFilename(value: string): string {
+  return sanitizeHeader(value).replace(/["\\]/g, "_") || "attachment";
+}
+
+function sanitizeContentType(value: string): string {
+  const sanitized = value.replace(/[\r\n\u0000]+/g, "").trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(sanitized)
+    ? sanitized
+    : "application/octet-stream";
+}
+
+function foldBase64(content: string | Uint8Array): string {
+  const base64 = Buffer.from(content).toString("base64");
+  return base64.match(/.{1,76}/g)?.join("\r\n") ?? "";
 }
 
 function normalizeInput(
@@ -240,6 +293,7 @@ function normalizeInput(
     messageId,
     subject,
     text: input.text,
+    attachments: input.attachments ?? [],
     timeoutMs: input.timeoutMs ?? 10000,
     now: input.now ?? (() => new Date()),
   };

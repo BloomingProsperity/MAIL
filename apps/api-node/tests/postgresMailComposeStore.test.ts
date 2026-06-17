@@ -58,9 +58,9 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       "Launch confirmation",
-      [{ address: "lina@example.com", name: "Lina" }],
-      [],
-      [],
+      JSON.stringify([{ address: "lina@example.com", name: "Lina" }]),
+      JSON.stringify([]),
+      JSON.stringify([]),
       "Looks good.",
       null,
       "manual",
@@ -72,7 +72,7 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       null,
-      [],
+      JSON.stringify([]),
       null,
       null,
       "2026-06-13T08:00:00.000Z",
@@ -284,9 +284,9 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       "Updated subject",
-      [{ address: "lina@example.com" }],
-      [],
-      [],
+      JSON.stringify([{ address: "lina@example.com" }]),
+      JSON.stringify([]),
+      JSON.stringify([]),
       "Updated body",
       null,
       "reply",
@@ -298,7 +298,7 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       null,
-      [],
+      JSON.stringify([]),
       "run_1",
       "Original Hermes body",
       "2026-06-13T08:30:00.000Z",
@@ -394,7 +394,7 @@ describe("Postgres mail compose store", () => {
     });
 
     expect(queries[0].text).toMatch(/attachment_manifest/i);
-    expect(queries[0].values).toContainEqual(manifest);
+    expect(queries[0].values).toContain(JSON.stringify(manifest));
     expect(JSON.stringify(draft)).not.toContain("ee_attachment_1");
     expect(JSON.stringify(draft)).not.toContain("aGVsbG8=");
     expect(JSON.stringify(draft)).not.toContain("Zm9yd2FyZA==");
@@ -677,9 +677,9 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       "Re: Launch confirmation",
-      [{ address: "lina@example.com" }],
-      [],
-      [],
+      JSON.stringify([{ address: "lina@example.com" }]),
+      JSON.stringify([]),
+      JSON.stringify([]),
       "Thanks.",
       null,
       "reply",
@@ -691,7 +691,7 @@ describe("Postgres mail compose store", () => {
       "emailengine_msg_1",
       "gmail_thread_1",
       "graph_msg_1",
-      [],
+      JSON.stringify([]),
       null,
       null,
       "2026-06-13T08:00:00.000Z",
@@ -1161,9 +1161,9 @@ describe("Postgres mail compose store", () => {
       "support@example.com",
       "Support",
       "Edited scheduled launch",
-      [{ address: "lina@example.com" }],
-      [],
-      [],
+      JSON.stringify([{ address: "lina@example.com" }]),
+      JSON.stringify([]),
+      JSON.stringify([]),
       "Edited body.",
       null,
       "manual",
@@ -1175,7 +1175,7 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       null,
-      [
+      JSON.stringify([
         {
           id: "upload_1",
           source: "uploaded_file",
@@ -1186,7 +1186,7 @@ describe("Postgres mail compose store", () => {
           inline: false,
           contentBase64: "cGxhbg==",
         },
-      ],
+      ]),
       null,
       null,
       "2026-06-13T08:30:00.000Z",

@@ -336,7 +336,9 @@ npm run verify:emailengine-launch
 
 That default full gate runs `:core` plus the GreenMail gate below, so the final
 launch check cannot accidentally skip the path where EmailEngine registers a
-real IMAP/SMTP account and emits webhooks back into Email Hub.
+real IMAP/SMTP account, emits webhooks back into Email Hub, submits an outgoing
+message through the worker send lane, and downloads an incoming attachment
+through the public app route.
 
 After the stack is healthy, run the EmailEngine webhook smoke check from the
 host:
@@ -386,6 +388,33 @@ sync/read-model path, it is reported as `read_model_sync`. By default this smoke
 uses a unique `emailhub-smoke-<uuid>@example.com` mailbox so repeated runs do not
 reuse old onboarding or sync-center state; set `EMAILHUB_SMOKE_MAIL_EMAIL` when
 you need a fixed mailbox.
+
+To prove the outgoing EmailEngine submit path, worker scheduled-send lane, SMTP
+delivery, webhook/sync, and read model all work together, run:
+
+```powershell
+npm run smoke:emailengine-send
+```
+
+This creates a draft through `/api/accounts/:accountId/compose/drafts`, queues it
+through `/send`, waits for the worker to submit it through EmailEngine, and
+passes only when the unique sent message appears in a separate GreenMail
+recipient account's read model. By default the sender is
+`EMAILHUB_SMOKE_MAIL_EMAIL` and the recipient is
+`EMAILHUB_SMOKE_RECIPIENT_EMAIL`, so a Sent-folder copy in the sender mailbox
+cannot satisfy the smoke by itself.
+
+To prove app-owned attachment ids can be downloaded without exposing provider
+attachment ids, run:
+
+```powershell
+npm run smoke:emailengine-attachment-download
+```
+
+This delivers a unique MIME attachment to GreenMail, waits for EmailEngine sync
+to mirror the attachment metadata, then calls
+`/api/accounts/:accountId/attachments/:attachmentId/download` and verifies the
+downloaded bytes match the smoke attachment content.
 
 The same GreenMail-backed checks are also grouped as:
 

@@ -61,6 +61,43 @@ describe("GreenMail SMTP smoke delivery", () => {
     expect(receivedData).toContain("Subject: [EmailHub Smoke] unique_1");
     expect(receivedData).toContain("real webhook smoke unique_1");
   });
+
+  it("can deliver a smoke attachment as multipart MIME", async () => {
+    let receivedData = "";
+    const port = await startSmtpServer({
+      onCommand() {},
+      onData(data) {
+        receivedData = data;
+      },
+    });
+
+    await sendSmtpSmokeMessage({
+      host: "127.0.0.1",
+      port,
+      from: "emailhub-smoke@example.com",
+      to: "support@example.com",
+      messageId: "emailhub-attachment-unique_1@emailhub-smoke.local",
+      subject: "[EmailHub Attachment Smoke] unique_1",
+      text: "attachment smoke unique_1",
+      attachments: [
+        {
+          filename: "brief.txt",
+          contentType: "text/plain",
+          content: "attachment bytes unique_1",
+        },
+      ],
+      timeoutMs: 2000,
+    });
+
+    expect(receivedData).toContain("Content-Type: multipart/mixed;");
+    expect(receivedData).toContain(
+      'Content-Disposition: attachment; filename="brief.txt"',
+    );
+    expect(receivedData).toContain("Content-Transfer-Encoding: base64");
+    expect(receivedData).toContain(
+      Buffer.from("attachment bytes unique_1").toString("base64"),
+    );
+  });
 });
 
 describe("real EmailEngine webhook smoke", () => {

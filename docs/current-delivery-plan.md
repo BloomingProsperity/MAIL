@@ -34,10 +34,11 @@ with more than smoke-level tests.
   EmailEngine readiness, token-backed onboarding/download/send capabilities,
   provider identity, API health status, and the signed webhook idempotency
   smoke. `verify:emailengine-launch:greenmail` groups the IMAP/SMTP onboarding
-  and real EmailEngine webhook smoke against the GreenMail test stack. The
-  default `verify:emailengine-launch` now runs the core gate plus GreenMail
-  checks, while `verify:emailengine-launch:core` remains available for faster
-  iteration before final sign-off.
+  smoke, real EmailEngine webhook smoke, outgoing worker send smoke, and
+  attachment download smoke against the GreenMail test stack. The default
+  `verify:emailengine-launch` now runs the core gate plus GreenMail checks,
+  while `verify:emailengine-launch:core` remains available for faster iteration
+  before final sign-off.
 
 ### 2. Native Engine Track
 
