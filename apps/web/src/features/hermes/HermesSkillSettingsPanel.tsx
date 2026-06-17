@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ShieldCheck, Sparkles, Undo2 } from "lucide-react";
 import type {
   EmailHubApi,
@@ -110,7 +110,11 @@ const fallbackHermesResourceProfile: HermesResourceProfileDto = {
   ],
 };
 
-export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
+export function HermesSkillSettingsPanel(props: {
+  api?: EmailHubApi;
+  focusedSkillId?: string;
+  focusRequestId?: number;
+}) {
   const [skills, setSkills] = useState<HermesSkillDto[]>(fallbackHermesSkills);
   const [savedSkills, setSavedSkills] =
     useState<HermesSkillDto[]>(fallbackHermesSkills);
@@ -121,6 +125,8 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
   const [showUnsavedOnly, setShowUnsavedOnly] = useState(false);
   const [savingSkillId, setSavingSkillId] = useState<string>();
   const [notice, setNotice] = useState("正在读取 Hermes 能力选项...");
+  const focusedSkillRef = useRef<HTMLElement | null>(null);
+  const handledFocusRequestRef = useRef("");
   const savedSkillsById = useMemo(
     () => new Map(savedSkills.map((skill) => [skill.id, skill])),
     [savedSkills],
@@ -143,6 +149,36 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
     );
   });
   const isSavingAnySkill = Boolean(savingSkillId);
+
+  useEffect(() => {
+    if (!props.focusedSkillId) {
+      return;
+    }
+
+    const focusRequestKey = `${props.focusRequestId ?? 0}:${props.focusedSkillId}`;
+    if (handledFocusRequestRef.current === focusRequestKey) {
+      return;
+    }
+
+    const focusedSkill = skills.find((skill) => skill.id === props.focusedSkillId);
+    setShowUnsavedOnly(false);
+    setModeFilter(focusedSkill?.mode ?? "all");
+    if (focusedSkill) {
+      handledFocusRequestRef.current = focusRequestKey;
+    }
+  }, [props.focusRequestId, props.focusedSkillId, skills]);
+
+  useEffect(() => {
+    if (!props.focusedSkillId || !focusedSkillRef.current) {
+      return;
+    }
+
+    focusedSkillRef.current.focus({ preventScroll: true });
+    focusedSkillRef.current.scrollIntoView?.({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [props.focusRequestId, props.focusedSkillId, visibleSkills.length]);
 
   useEffect(() => {
     let alive = true;
@@ -439,8 +475,21 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
       <div className="skill-grid compact hermes-skill-grid">
         {visibleSkills.map((skill) => {
           const hasUnsavedChanges = unsavedSkillIds.has(skill.id);
+          const isFocusedSkill = skill.id === props.focusedSkillId;
           return (
-            <article key={skill.id} className="skill-card hermes-skill-card">
+            <article
+              key={skill.id}
+              ref={isFocusedSkill ? focusedSkillRef : undefined}
+              className={
+                isFocusedSkill
+                  ? "skill-card hermes-skill-card is-focused"
+                  : "skill-card hermes-skill-card"
+              }
+              aria-label={
+                isFocusedSkill ? `Focused Hermes skill ${skill.title}` : undefined
+              }
+              tabIndex={isFocusedSkill ? -1 : undefined}
+            >
               <Sparkles size={18} />
               <div className="hermes-skill-card-body">
                 <div className="skill-card-head">

@@ -58,6 +58,7 @@ import type { HermesOrganizationApplyAction } from "./features/hermes/HermesRead
 import { HermesRuntimeSettingsPanel } from "./features/hermes/HermesRuntimeSettingsPanel";
 import {
   hermesActionPlanErrorNotice,
+  hermesDisabledSkillIdFromError,
   hermesRuleNavigationTarget,
   hermesRulePreview,
   hermesSkillDisabledNotice,
@@ -561,6 +562,16 @@ interface OAuthPendingState {
   createdAt: string;
 }
 
+interface HermesNoticeState {
+  text: string;
+  skillId?: string;
+}
+
+interface HermesSkillSettingsFocus {
+  skillId: string;
+  requestId: number;
+}
+
 const OAUTH_PENDING_PREFIX = "email-hub:oauth:";
 const SELECTED_ACCOUNT_STORAGE_KEY = "email-hub:selected-account-id";
 
@@ -577,7 +588,10 @@ export function App(props: AppProps = {}) {
     props.api ? "" : mailItemKey(mailItems[0]),
   );
   const [hermesPrompt, setHermesPrompt] = useState("");
-  const [hermesDockNotice, setHermesDockNotice] = useState<string | undefined>();
+  const [hermesDockNoticeState, setHermesDockNoticeState] =
+    useState<HermesNoticeState>();
+  const [hermesSkillSettingsFocus, setHermesSkillSettingsFocus] =
+    useState<HermesSkillSettingsFocus>();
   const [hermesDockResult, setHermesDockResult] = useState<
     HermesEmailSearchQaResult | undefined
   >();
@@ -626,6 +640,20 @@ export function App(props: AppProps = {}) {
       return storedAccountId;
     },
   );
+
+  const hermesDockNotice = hermesDockNoticeState?.text;
+
+  function setHermesDockNotice(notice: string | undefined, skillId?: string) {
+    setHermesDockNoticeState(notice ? { text: notice, skillId } : undefined);
+  }
+
+  function openHermesSkillSettings(skillId: string) {
+    setHermesSkillSettingsFocus((current) => ({
+      skillId,
+      requestId: (current?.requestId ?? 0) + 1,
+    }));
+    setActiveView("settings");
+  }
   const [accountDiscoveryReady, setAccountDiscoveryReady] = useState(
     () => !props.api || Boolean(props.defaultAccountId),
   );
@@ -900,7 +928,10 @@ export function App(props: AppProps = {}) {
         if (!isCurrentHermesDockRequest(requestId)) {
           return;
         }
-        setHermesDockNotice(hermesActionPlanErrorNotice(error, "create"));
+        setHermesDockNotice(
+          hermesActionPlanErrorNotice(error, "create"),
+          hermesDisabledSkillIdFromError(error, "action_plan"),
+        );
       } finally {
         if (isCurrentHermesDockRequest(requestId)) {
           setHermesDockBusy(false);
@@ -938,6 +969,7 @@ export function App(props: AppProps = {}) {
           skillId: "email_search_qa",
           fallback: "Hermes 搜索暂时不可用。",
         }),
+        hermesDisabledSkillIdFromError(error, "email_search_qa"),
       );
     } finally {
       if (isCurrentHermesDockRequest(requestId)) {
@@ -1004,7 +1036,10 @@ export function App(props: AppProps = {}) {
       if (!isCurrentHermesDockRequest(requestId)) {
         return;
       }
-      setHermesDockNotice(hermesActionPlanErrorNotice(error, "confirm"));
+      setHermesDockNotice(
+        hermesActionPlanErrorNotice(error, "confirm"),
+        hermesDisabledSkillIdFromError(error, "action_plan"),
+      );
     } finally {
       if (isCurrentHermesDockRequest(requestId)) {
         setHermesDockBusy(false);
@@ -1753,6 +1788,7 @@ export function App(props: AppProps = {}) {
               onLabelsChanged={(accountId) => void refreshLabels(accountId)}
               onTrackFollowUp={() => void trackSelectedFollowUp()}
               onConfirmHermesFollowUp={() => void confirmHermesFollowUp()}
+              onOpenHermesSkillSettings={openHermesSkillSettings}
             />
           ) : (
             <MailEmptyState
@@ -1803,12 +1839,15 @@ export function App(props: AppProps = {}) {
             labels={navigationLabels}
             launch={searchLaunch}
             onOpenResult={openSearchResult}
+            onOpenHermesSkillSettings={openHermesSkillSettings}
           />
         ) : null}
         {activeView === "settings" ? (
           <SettingsPage
             api={props.api}
             accountId={props.api ? selectedAccountId : accountId}
+            focusedHermesSkillId={hermesSkillSettingsFocus?.skillId}
+            hermesSkillFocusRequestId={hermesSkillSettingsFocus?.requestId}
             onHermesRuleApproved={(rule) =>
               void handleSettingsHermesRuleApproved(rule)
             }
@@ -1829,11 +1868,13 @@ export function App(props: AppProps = {}) {
         workspaceContext={hermesWorkspaceContext}
         workspaceContextLoading={hermesWorkspaceContextLoading}
         busy={hermesDockBusy}
+        noticeActionSkillId={hermesDockNoticeState?.skillId}
         onPromptChange={updateHermesPrompt}
         onOpen={() => void refreshHermesWorkspaceContext()}
         onSubmit={(prompt) => void submitHermesDockPrompt(prompt)}
         onApproveRule={() => void approveHermesDockRule()}
         onOpenSearch={launchGlobalSearch}
+        onOpenHermesSkillSettings={openHermesSkillSettings}
       />
     </div>
   );
@@ -2086,6 +2127,7 @@ function MailWorkspace(props: {
   onLabelsChanged: (accountId: string) => void;
   onTrackFollowUp: () => void;
   onConfirmHermesFollowUp: () => void;
+  onOpenHermesSkillSettings: (skillId: string) => void;
 }) {
   const [topSearchQuery, setTopSearchQuery] = useState("");
   const [labelFormOpen, setLabelFormOpen] = useState(false);
@@ -2144,7 +2186,8 @@ function MailWorkspace(props: {
   const [composeScheduledAt, setComposeScheduledAt] = useState(
     defaultScheduleDateTimeLocal(),
   );
-  const [composeNotice, setComposeNotice] = useState("");
+  const [composeNoticeState, setComposeNoticeState] =
+    useState<HermesNoticeState>({ text: "" });
   const [composeBusy, setComposeBusy] = useState(false);
   const [composeAutosaveStatus, setComposeAutosaveStatus] =
     useState<ComposeAutosaveStatus>("idle");
@@ -2158,7 +2201,8 @@ function MailWorkspace(props: {
     string | undefined
   >();
   const [attachmentDownloadNotice, setAttachmentDownloadNotice] = useState("");
-  const [readerHermesNotice, setReaderHermesNotice] = useState("");
+  const [readerHermesNoticeState, setReaderHermesNoticeState] =
+    useState<HermesNoticeState>({ text: "" });
   const [readerHermesBusy, setReaderHermesBusy] =
     useState<ReaderHermesBusy | undefined>();
   const [readerTranslationSource, setReaderTranslationSource] = useState("auto");
@@ -2187,6 +2231,16 @@ function MailWorkspace(props: {
   const readerTranslationPreferenceRequestRef = useRef(0);
   composeMessageAccountIdRef.current = props.accountId;
   composeBodyRef.current = composeBody;
+  const composeNotice = composeNoticeState.text;
+  const readerHermesNotice = readerHermesNoticeState.text;
+
+  function setComposeNotice(notice: string, skillId?: string) {
+    setComposeNoticeState({ text: notice, skillId });
+  }
+
+  function setReaderHermesNotice(notice: string, skillId?: string) {
+    setReaderHermesNoticeState({ text: notice, skillId });
+  }
 
   function cancelComposeAutosave(status: ComposeAutosaveStatus = "idle") {
     if (composeAutosaveTimerRef.current !== undefined) {
@@ -2878,6 +2932,7 @@ function MailWorkspace(props: {
           skillId: "thread_summarize",
           fallback: "Hermes 总结暂时不可用。",
         }),
+        hermesDisabledSkillIdFromError(error, "thread_summarize"),
       );
     } finally {
       if (readerHermesRequestRef.current === requestId) {
@@ -2931,6 +2986,7 @@ function MailWorkspace(props: {
           skillId: "translate_text",
           fallback: "Hermes 翻译暂时不可用。",
         }),
+        hermesDisabledSkillIdFromError(error, "translate_text"),
       );
     } finally {
       if (readerHermesRequestRef.current === requestId) {
@@ -3038,6 +3094,7 @@ function MailWorkspace(props: {
           skillId: "priority_triage",
           fallback: "Hermes 整理暂时不可用。",
         }),
+        hermesDisabledSkillIdFromError(error, "priority_triage"),
       );
     } finally {
       if (readerHermesRequestRef.current === requestId) {
@@ -3204,6 +3261,7 @@ function MailWorkspace(props: {
           skillId: "reply_draft",
           fallback: "Hermes 写回复暂时不可用。",
         }),
+        hermesDisabledSkillIdFromError(error, "reply_draft"),
       );
     } finally {
       finishComposeMessageRequest(requestId);
@@ -3262,6 +3320,7 @@ function MailWorkspace(props: {
           skillId: "quick_reply",
           fallback: "Hermes 快速回复暂时不可用。",
         }),
+        hermesDisabledSkillIdFromError(error, "quick_reply"),
       );
     } finally {
       finishComposeMessageRequest(requestId);
@@ -3582,6 +3641,7 @@ function MailWorkspace(props: {
           skillId: "translate_text",
           fallback: "Hermes 草稿翻译暂时不可用。",
         }),
+        hermesDisabledSkillIdFromError(error, "translate_text"),
       );
     } finally {
       finishComposeMessageRequest(requestId);
@@ -3629,6 +3689,7 @@ function MailWorkspace(props: {
           skillId: "rewrite_polish",
           fallback: "Hermes 润色暂时不可用。",
         }),
+        hermesDisabledSkillIdFromError(error, "rewrite_polish"),
       );
     } finally {
       finishComposeMessageRequest(requestId);
@@ -3902,9 +3963,12 @@ function MailWorkspace(props: {
             <Send size={18} />
           </div>
           {composeNotice ? (
-            <div className="backend-notice compact" role="status">
-              {composeNotice}
-            </div>
+            <HermesNotice
+              notice={composeNotice}
+              skillId={composeNoticeState.skillId}
+              compact
+              onOpenSkillSettings={props.onOpenHermesSkillSettings}
+            />
           ) : null}
           <label className="compose-from-field">
             <span>From</span>
@@ -4924,9 +4988,11 @@ function MailWorkspace(props: {
             ) : null}
 
             {readerHermesNotice ? (
-              <div className="backend-notice" role="status">
-                {readerHermesNotice}
-              </div>
+              <HermesNotice
+                notice={readerHermesNotice}
+                skillId={readerHermesNoticeState.skillId}
+                onOpenSkillSettings={props.onOpenHermesSkillSettings}
+              />
             ) : null}
 
             {readerHermesSummary ? (
@@ -7989,16 +8055,17 @@ function SearchPage(props: {
   labels: LabelItem[];
   launch?: SearchLaunch;
   onOpenResult: (mail: MailItem) => void;
+  onOpenHermesSkillSettings: (skillId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [naturalLanguageQuery, setNaturalLanguageQuery] = useState("");
   const [results, setResults] = useState<MailItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
-  const [notice, setNotice] = useState(
-    props.restrictToAccount
+  const [noticeState, setNoticeState] = useState<HermesNoticeState>({
+    text: props.restrictToAccount
       ? "输入关键词后搜索当前邮箱。"
       : "输入关键词后搜索所有已同步邮件。",
-  );
+  });
   const [searchAllAccounts, setSearchAllAccounts] = useState(
     () => !props.restrictToAccount,
   );
@@ -8017,6 +8084,20 @@ function SearchPage(props: {
   const [labelIds, setLabelIds] = useState<string[]>([]);
   const [tagMode, setTagMode] = useState<MailTagMode>("any");
   const [hermesSearchBusy, setHermesSearchBusy] = useState(false);
+  const notice = noticeState.text;
+
+  function setNotice(
+    nextNotice: string | ((current: string) => string),
+    skillId?: string,
+  ) {
+    setNoticeState((current) => ({
+      text:
+        typeof nextNotice === "function"
+          ? nextNotice(current.text)
+          : nextNotice,
+      skillId,
+    }));
+  }
 
   function toggleQuickFilter(filter: MailQuickFilter) {
     setQuickFilters((current) =>
@@ -8211,6 +8292,7 @@ function SearchPage(props: {
           skillId: "email_search_qa",
           fallback: "Hermes 自然语言搜索暂时不可用。",
         }),
+        hermesDisabledSkillIdFromError(error, "email_search_qa"),
       );
     } finally {
       setHermesSearchBusy(false);
@@ -8443,7 +8525,11 @@ function SearchPage(props: {
               ))}
             </div>
           ) : null}
-          <div className="backend-notice" role="status">{notice}</div>
+          <HermesNotice
+            notice={notice}
+            skillId={noticeState.skillId}
+            onOpenSkillSettings={props.onOpenHermesSkillSettings}
+          />
         {results.length > 0
           ? results.map((mail) => (
               <button
@@ -8472,6 +8558,8 @@ function SearchPage(props: {
 function SettingsPage(props: {
   api?: EmailHubApi;
   accountId?: string;
+  focusedHermesSkillId?: string;
+  hermesSkillFocusRequestId?: number;
   onHermesRuleApproved?: (rule: HermesRuleDto) => void;
 }) {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("hermes");
@@ -8510,6 +8598,8 @@ function SettingsPage(props: {
             <HermesRuntimeSettingsPanel
               api={props.api}
               accountId={props.accountId}
+              focusedSkillId={props.focusedHermesSkillId}
+              focusRequestId={props.hermesSkillFocusRequestId}
               onHermesRuleApproved={props.onHermesRuleApproved}
             />
           ) : null}
@@ -9995,6 +10085,7 @@ function HermesDock(props: {
   workspaceContext?: HermesWorkspaceContextDto;
   workspaceContextLoading?: boolean;
   busy: boolean;
+  noticeActionSkillId?: string;
   onPromptChange: (value: string) => void;
   onOpen: () => void;
   onSubmit: (prompt: string) => void;
@@ -10003,6 +10094,7 @@ function HermesDock(props: {
     query: string,
     options?: Omit<SearchLaunch, "query" | "requestId">,
   ) => void;
+  onOpenHermesSkillSettings: (skillId: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [activityVersion, setActivityVersion] = useState(0);
@@ -10089,9 +10181,12 @@ function HermesDock(props: {
             loading={props.workspaceContextLoading}
           />
           {props.notice ? (
-            <div className="dock-result-status" role="status">
-              {props.notice}
-            </div>
+            <HermesNotice
+              className="dock-result-status"
+              notice={props.notice}
+              skillId={props.noticeActionSkillId}
+              onOpenSkillSettings={props.onOpenHermesSkillSettings}
+            />
           ) : null}
           {result ? (
             <div className="dock-result" aria-label="Hermes 搜索回答">
@@ -10341,6 +10436,40 @@ function UndoDoneNotice(props: { onUndoDone: () => void }) {
       <button type="button" aria-label="Undo done" onClick={props.onUndoDone}>
         Undo
       </button>
+    </div>
+  );
+}
+
+function HermesNotice(props: {
+  notice: string;
+  skillId?: string;
+  compact?: boolean;
+  className?: string;
+  onOpenSkillSettings?: (skillId: string) => void;
+}) {
+  const className =
+    props.className
+      ? `${props.className} hermes-actionable-notice`
+      : props.compact
+        ? "backend-notice compact hermes-actionable-notice"
+        : "backend-notice hermes-actionable-notice";
+  const canOpenSkillSettings = Boolean(props.skillId && props.onOpenSkillSettings);
+
+  function openSkillSettings() {
+    if (!props.skillId) {
+      return;
+    }
+    props.onOpenSkillSettings?.(props.skillId);
+  }
+
+  return (
+    <div className={className} role="status">
+      <span>{props.notice}</span>
+      {canOpenSkillSettings ? (
+        <button type="button" onClick={openSkillSettings}>
+          打开能力选项
+        </button>
+      ) : null}
     </div>
   );
 }

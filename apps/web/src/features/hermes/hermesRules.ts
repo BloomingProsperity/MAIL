@@ -119,6 +119,20 @@ export function hermesActionPlanErrorNotice(
     : "Hermes 执行计划确认失败。";
 }
 
+export function hermesDisabledSkillIdFromError(
+  error: unknown,
+  fallbackSkillId: string,
+): string | undefined {
+  if (
+    error instanceof ApiRequestError &&
+    error.code === "hermes_skill_disabled"
+  ) {
+    return error.skillId ?? fallbackSkillId;
+  }
+
+  return undefined;
+}
+
 export function hermesSkillDisabledNotice(skillId: string): string {
   const skillLabel = formatHermesAuditSkillId(skillId);
   return `Hermes ${skillLabel}能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“${skillLabel}”。`;

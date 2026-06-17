@@ -76,6 +76,8 @@ function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string
 export function HermesRuntimeSettingsPanel(props: {
   api?: EmailHubApi;
   accountId?: string;
+  focusedSkillId?: string;
+  focusRequestId?: number;
   onHermesRuleApproved?: (rule: HermesRuleDto) => void;
 }) {
   const [enabled, setEnabled] = useState(true);
@@ -504,7 +506,11 @@ export function HermesRuntimeSettingsPanel(props: {
         {notice}
       </div>
 
-      <HermesSkillSettingsPanel api={props.api} />
+      <HermesSkillSettingsPanel
+        api={props.api}
+        focusedSkillId={props.focusedSkillId}
+        focusRequestId={props.focusRequestId}
+      />
 
       <HermesRuleManagerPanel
         api={props.api}

@@ -448,6 +448,29 @@ h2 {
   font-weight: 800;
 }
 
+.hermes-actionable-notice > span {
+  min-width: 0;
+}
+
+.dock-result-status.hermes-actionable-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dock-result-status.hermes-actionable-notice button {
+  border: 1px solid var(--primary-border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--primary-hover);
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .mail-empty-panel {
   display: grid;
   align-content: center;
@@ -2637,6 +2660,11 @@ h2 {
 
 .hermes-skill-card {
   align-items: start;
+}
+
+.hermes-skill-card.is-focused {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 .hermes-skill-card-body {

@@ -7696,6 +7696,17 @@ describe("Email Hub first UI baseline", () => {
     expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
       "你好，请确认发布计划。",
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开能力选项" }));
+
+    expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
+    const skillPanel = await screen.findByLabelText("Hermes skill settings");
+    const focusedCard = await within(skillPanel).findByLabelText(
+      "Focused Hermes skill 翻译邮件",
+    );
+    expect(
+      within(focusedCard).getByLabelText("Enable Hermes skill 翻译邮件"),
+    ).toBeTruthy();
   });
 
   it("adds uploaded files to the composed draft payload", async () => {

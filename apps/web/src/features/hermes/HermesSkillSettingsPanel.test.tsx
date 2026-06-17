@@ -43,6 +43,35 @@ describe("HermesSkillSettingsPanel", () => {
     expect(screen.getByText("没有匹配的 Hermes 能力。")).toBeTruthy();
   });
 
+  it("reveals and marks a focused skill from another filter", async () => {
+    const { rerender } = render(<HermesSkillSettingsPanel />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show Hermes skill mode draft" }),
+    );
+    fireEvent.click(screen.getByLabelText("仅看未保存"));
+    expect(screen.queryByText("翻译邮件")).toBeNull();
+
+    rerender(
+      <HermesSkillSettingsPanel
+        focusedSkillId="translate_text"
+        focusRequestId={1}
+      />,
+    );
+
+    const focusedCard = await screen.findByLabelText(
+      "Focused Hermes skill 翻译邮件",
+    );
+    expect(
+      within(focusedCard).getByLabelText("Enable Hermes skill 翻译邮件"),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Show Hermes skill mode read" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
   it("saves all changed backend skill settings and refreshes the resource profile", async () => {
     const api = createSkillApiFixture();
 
