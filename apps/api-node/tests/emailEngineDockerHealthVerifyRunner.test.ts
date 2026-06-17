@@ -105,6 +105,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         "EMAILHUB_DOCKER_HEALTH_ATTEMPTS=4",
         "EMAILHUB_DOCKER_HEALTH_WAIT_MS=25",
         "EMAILHUB_API_TOKEN=file-token",
+        "VITE_EMAILHUB_API_TOKEN=",
       ].join("\n"),
     );
     const result = dockerHealthResult({ ok: true });
@@ -151,6 +152,42 @@ describe("EmailEngine Docker health verify CLI runner", () => {
     expect(stderr).toEqual([]);
     expect(readEnvFile).toHaveBeenCalledWith("/repo/.env.prod");
     expect(JSON.stringify(stdout)).not.toContain("file-token");
+  });
+
+  it("fails before Docker checks when the built web token would not match the API token", async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const verifyHealth = vi.fn() as unknown as typeof verifyDockerComposeHealth;
+
+    const exitCode = await runEmailEngineDockerHealthVerifyCli({
+      env: {
+        EMAILHUB_REPO_ROOT: "/repo",
+        EMAILHUB_ENV_FILE: ".env.prod",
+      },
+      fileExists: (path) => path === "/repo/.env.prod",
+      readEnvFile: () =>
+        [
+          "EMAILHUB_API_TOKEN=api-token",
+          "VITE_EMAILHUB_API_TOKEN=wrong-web-token",
+        ].join("\n"),
+      verifyHealth,
+      writeStdout: (message) => stdout.push(message),
+      writeStderr: (message) => stderr.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(verifyHealth).not.toHaveBeenCalled();
+    expect(stdout).toEqual([]);
+    const parsed = JSON.parse(stderr[0] ?? "{}");
+    expect(parsed).toMatchObject({
+      ok: false,
+      gate: "docker_compose_health",
+      projectRoot: "/repo",
+      envFile: ".env.prod",
+    });
+    expect(JSON.stringify(parsed)).toContain("VITE_EMAILHUB_API_TOKEN");
+    expect(JSON.stringify(parsed)).not.toContain("api-token");
+    expect(JSON.stringify(parsed)).not.toContain("wrong-web-token");
   });
 
   it("lets process env override selected env file host probe settings", async () => {

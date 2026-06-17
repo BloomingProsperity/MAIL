@@ -66,6 +66,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
   const verifyHealth = options.verifyHealth ?? verifyDockerComposeHealth;
 
   try {
+    assertCompatibleWebApiToken(runtimeEnv);
     const result = await verifyHealth({
       projectRoot,
       envFile,
@@ -120,6 +121,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
   } catch (error) {
     const reportSecrets = [
       runtimeEnv.EMAILHUB_API_TOKEN,
+      runtimeEnv.VITE_EMAILHUB_API_TOKEN,
       runtimeEnv.EMAILHUB_API_BASE_URL,
       runtimeEnv.EMAILHUB_WEB_BASE_URL,
       runtimeEnv.API_BIND,
@@ -168,6 +170,16 @@ export function bearerTokenHeaders(
 ): Record<string, string> | undefined {
   const trimmed = token?.trim();
   return trimmed ? { authorization: `Bearer ${trimmed}` } : undefined;
+}
+
+function assertCompatibleWebApiToken(env: Env): void {
+  const apiToken = env.EMAILHUB_API_TOKEN?.trim();
+  const webToken = env.VITE_EMAILHUB_API_TOKEN?.trim();
+  if (apiToken && webToken && apiToken !== webToken) {
+    throw new Error(
+      "VITE_EMAILHUB_API_TOKEN must match EMAILHUB_API_TOKEN for the protected self-hosted web build.",
+    );
+  }
 }
 
 function readDockerHealthEnvFile(path: string): string | undefined {
