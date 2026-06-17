@@ -5166,10 +5166,17 @@ function AddMailPage(props: {
         )
       : true,
   );
+  const mailOnboardingUnavailable =
+    mailEngineHealth?.capabilities.imapSmtpOnboarding === false;
 
   async function connectProvider(provider: ProviderOption) {
     if (!props.api) {
       setNotice(`${provider.title} 连接服务还没有准备好。`);
+      return;
+    }
+
+    if (mailOnboardingUnavailable && provider.action !== "manual") {
+      setNotice("邮箱接入服务还没准备好，请先按上线体检完成配置。");
       return;
     }
 
@@ -5253,6 +5260,11 @@ function AddMailPage(props: {
 
   async function connectManualProvider() {
     if (!props.api || !manualProvider) {
+      return;
+    }
+
+    if (mailOnboardingUnavailable) {
+      setNotice("邮箱接入服务还没准备好，请先按上线体检完成配置。");
       return;
     }
 
@@ -5615,7 +5627,10 @@ function AddMailPage(props: {
             </div>
             <button
               type="button"
-              disabled={busyProvider === manualProvider.provider}
+              disabled={
+                busyProvider === manualProvider.provider ||
+                mailOnboardingUnavailable
+              }
               onClick={() => void connectManualProvider()}
             >
               {busyProvider === manualProvider.provider
@@ -5719,23 +5734,28 @@ function AddMailPage(props: {
       ) : null}
 
       <div className="add-grid">
-        {visibleProviders.map((provider) => (
-          <article key={provider.title} className="provider-card">
-            <ProviderIcon provider={provider.provider} title={provider.title} mark={provider.mark} />
-            <div>
-              <strong>{provider.title}</strong>
-              <span>{provider.subtitle}</span>
-            </div>
-            <button
-              type="button"
-              aria-label={`连接 ${provider.title}`}
-              disabled={busyProvider === provider.provider}
-              onClick={() => void connectProvider(provider)}
-            >
-              {busyProvider === provider.provider ? "连接中" : "连接"}
-            </button>
-          </article>
-        ))}
+        {visibleProviders.map((provider) => {
+          const providerBlocked =
+            mailOnboardingUnavailable && provider.action !== "manual";
+
+          return (
+            <article key={provider.title} className="provider-card">
+              <ProviderIcon provider={provider.provider} title={provider.title} mark={provider.mark} />
+              <div>
+                <strong>{provider.title}</strong>
+                <span>{provider.subtitle}</span>
+              </div>
+              <button
+                type="button"
+                aria-label={`连接 ${provider.title}`}
+                disabled={busyProvider === provider.provider || providerBlocked}
+                onClick={() => void connectProvider(provider)}
+              >
+                {busyProvider === provider.provider ? "连接中" : "连接"}
+              </button>
+            </article>
+          );
+        })}
       </div>
 
       <section className="page-panel import-transfer-panel" aria-label="批量导入和账号转移">
@@ -5963,6 +5983,50 @@ function MailEngineReadinessPanel(props: { health: MailEngineHealthDto }) {
               <strong>{action.label}</strong>
               <span>{action.env.join(" / ")}</span>
               <p>{action.effect}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function MailEngineLaunchActivityPanel(props: {
+  events: OperationalEventDto[];
+  notice: string;
+}) {
+  return (
+    <section
+      className="page-panel sync-diagnostics-panel"
+      aria-label="EmailEngine 运行事件体检"
+    >
+      <div className="sync-diagnostics-header">
+        <div>
+          <h2>EmailEngine 运行事件体检</h2>
+          <p>最近 webhook、同步 worker 和重试链路活动。</p>
+        </div>
+      </div>
+      {props.notice ? (
+        <div className="backend-notice" role="status">
+          {props.notice}
+        </div>
+      ) : null}
+      {props.events.length > 0 ? (
+        <div className="diagnostic-list">
+          {props.events.map((event) => (
+            <div className="diagnostic-row sync-diagnostic-row" key={event.id}>
+              <div>
+                <strong>{friendlySyncDiagnosticTitle(event)}</strong>
+                <span>
+                  {formatOperationalEventSource(event)} ·{" "}
+                  {formatOperationalEventLevel(event.level)}
+                  {event.jobId ? ` · ${event.jobId}` : ""}
+                </span>
+                {friendlySyncDiagnosticDetail(event) ? (
+                  <p>{friendlySyncDiagnosticDetail(event)}</p>
+                ) : null}
+              </div>
+              <span>{formatMailDate(event.occurredAt)}</span>
             </div>
           ))}
         </div>
@@ -6382,8 +6446,11 @@ function friendlyOnboardingDiagnosticMessage(event: OperationalEventDto): string
 function friendlySyncDiagnosticTitle(event: OperationalEventDto): string {
   const labels: Record<string, string> = {
     emailengine_webhook_ingested: "邮箱服务状态已更新",
+    worker_result: "同步任务已处理",
     sync_account_failed: "同步任务没有完成",
     sync_account_dead_lettered: "同步任务多次失败",
+    sync_job_retry_scheduled: "同步任务等待重试",
+    sync_job_dead_lettered: "同步任务多次失败",
     reauthorization_imap_smtp_failed: "重新授权没有通过",
     native_send_reauthorization_required: "发信权限需要重新授权",
     smtp_send_reauthorization_required: "发信权限需要重新提交授权码",
@@ -6395,6 +6462,15 @@ function friendlySyncDiagnosticDetail(event: OperationalEventDto): string | unde
   if (event.event === "emailengine_webhook_ingested") {
     return "系统已收到邮箱服务回调，正在按本地同步状态处理。";
   }
+  if (event.event === "worker_result") {
+    return "后台已处理一条同步任务，邮箱镜像链路有最近活动。";
+  }
+  if (event.event === "sync_job_retry_scheduled") {
+    return "同步任务会自动重试；如果持续出现，请打开账号诊断查看恢复建议。";
+  }
+  if (event.event === "sync_job_dead_lettered") {
+    return "同步任务多次失败后已停止重试，请打开账号诊断处理。";
+  }
   if (event.event === "reauthorization_imap_smtp_failed") {
     return "请检查授权码、专用密码和自定义服务器设置后重新提交。";
   }
@@ -6403,6 +6479,31 @@ function friendlySyncDiagnosticDetail(event: OperationalEventDto): string | unde
   }
 
   return event.message;
+}
+
+function latestOperationalEvents(
+  events: OperationalEventDto[],
+  limit: number,
+): OperationalEventDto[] {
+  return [...events]
+    .sort(
+      (left, right) =>
+        Date.parse(right.occurredAt) - Date.parse(left.occurredAt),
+    )
+    .slice(0, limit);
+}
+
+function formatOperationalEventSource(event: OperationalEventDto): string {
+  if (event.event === "emailengine_webhook_ingested") {
+    return "Webhook";
+  }
+
+  const labels: Record<string, string> = {
+    "email-hub-api": "API",
+    "email-hub-worker": "Worker",
+  };
+
+  return labels[event.service] ?? event.service;
 }
 
 function ProviderIcon(props: { provider: string; title: string; mark: string }) {
@@ -6986,6 +7087,10 @@ function SyncCenterPage(props: {
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
   const [mailEngineHealth, setMailEngineHealth] =
     useState<MailEngineHealthDto | undefined>();
+  const [mailEngineLaunchEvents, setMailEngineLaunchEvents] = useState<
+    OperationalEventDto[]
+  >([]);
+  const [mailEngineLaunchNotice, setMailEngineLaunchNotice] = useState("");
 
   function mergeAccountState(update: { accountId: string; syncState: string }) {
     setAccounts((current) =>
@@ -7300,6 +7405,53 @@ function SyncCenterPage(props: {
     };
   }, [props.api]);
 
+  useEffect(() => {
+    if (!props.api) {
+      setMailEngineLaunchEvents([]);
+      setMailEngineLaunchNotice("");
+      return;
+    }
+
+    let alive = true;
+    setMailEngineLaunchNotice("正在读取最近运行事件...");
+    void Promise.all([
+      props.api.listOperationalEvents({
+        service: "email-hub-api",
+        event: "emailengine_webhook_ingested",
+        lane: "sync",
+        limit: 3,
+      }),
+      props.api.listOperationalEvents({
+        service: "email-hub-worker",
+        lane: "sync",
+        limit: 5,
+      }),
+    ])
+      .then(([webhookPage, workerPage]) => {
+        if (!alive) {
+          return;
+        }
+        const events = latestOperationalEvents(
+          [...webhookPage.items, ...workerPage.items],
+          5,
+        );
+        setMailEngineLaunchEvents(events);
+        setMailEngineLaunchNotice(
+          events.length > 0 ? "" : "还没有最近运行事件。",
+        );
+      })
+      .catch(() => {
+        if (alive) {
+          setMailEngineLaunchEvents([]);
+          setMailEngineLaunchNotice("最近运行事件暂时不可用。");
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [props.api]);
+
   return (
     <section className="workspace-page page-scroll">
       <header className="topbar single">
@@ -7311,6 +7463,12 @@ function SyncCenterPage(props: {
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
       {mailEngineHealth ? (
         <MailEngineReadinessPanel health={mailEngineHealth} />
+      ) : null}
+      {props.api ? (
+        <MailEngineLaunchActivityPanel
+          events={mailEngineLaunchEvents}
+          notice={mailEngineLaunchNotice}
+        />
       ) : null}
       <section className="page-panel">
         {accounts.map((account) => (

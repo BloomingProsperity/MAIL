@@ -3367,6 +3367,63 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
   });
 
+  it("shows recent EmailEngine webhook and worker activity in Sync Center", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+
+    const panel = await screen.findByRole("region", {
+      name: "EmailEngine 运行事件体检",
+    });
+    expect(
+      within(panel).getByText("最近 webhook、同步 worker 和重试链路活动。"),
+    ).toBeTruthy();
+
+    await waitFor(() => {
+      expect(api.listOperationalEvents).toHaveBeenCalledWith({
+        service: "email-hub-api",
+        event: "emailengine_webhook_ingested",
+        lane: "sync",
+        limit: 3,
+      });
+      expect(api.listOperationalEvents).toHaveBeenCalledWith({
+        service: "email-hub-worker",
+        lane: "sync",
+        limit: 5,
+      });
+    });
+
+    expect(await within(panel).findByText("同步任务已处理")).toBeTruthy();
+    expect(within(panel).getByText("邮箱服务状态已更新")).toBeTruthy();
+    expect(
+      within(panel).getByText(
+        "后台已处理一条同步任务，邮箱镜像链路有最近活动。",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(panel).getByText("系统已收到邮箱服务回调，正在按本地同步状态处理。"),
+    ).toBeTruthy();
+    expect(within(panel).getByText(/Worker · 信息 · job_sync/)).toBeTruthy();
+    expect(within(panel).getByText(/Webhook · 信息 · job_webhook/)).toBeTruthy();
+  });
+
+  it("keeps Sync Center usable when recent EmailEngine events are unavailable", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listOperationalEvents).mockRejectedValue(new Error("offline"));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+
+    const panel = await screen.findByRole("region", {
+      name: "EmailEngine 运行事件体检",
+    });
+    expect(
+      await within(panel).findByText("最近运行事件暂时不可用。"),
+    ).toBeTruthy();
+    expect(await screen.findByText("sync@example.com")).toBeTruthy();
+  });
+
   it("surfaces rejected EmailEngine access tokens in Sync Center", async () => {
     const api = createApiFixture();
     vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
@@ -3723,9 +3780,15 @@ describe("Email Hub first UI baseline", () => {
         limit: 200,
       });
     });
-    expect(await screen.findByText("同步诊断")).toBeTruthy();
-    expect(screen.getByText("邮箱服务状态已更新")).toBeTruthy();
-    expect(screen.getByText("系统已收到邮箱服务回调，正在按本地同步状态处理。")).toBeTruthy();
+    const diagnosticsPanel = await screen.findByRole("region", {
+      name: "同步诊断",
+    });
+    expect(within(diagnosticsPanel).getByText("邮箱服务状态已更新")).toBeTruthy();
+    expect(
+      within(diagnosticsPanel).getByText(
+        "系统已收到邮箱服务回调，正在按本地同步状态处理。",
+      ),
+    ).toBeTruthy();
   });
 
   it("switches the active mailbox account from Sync Center before loading mail and search", async () => {
@@ -4274,6 +4337,24 @@ describe("Email Hub first UI baseline", () => {
       screen.getByText("添加邮箱、附件下载、发信和同步任务会失败。"),
     ).toBeTruthy();
     expect(document.body.textContent ?? "").not.toContain("super-secret-token");
+
+    const qqConnect = await screen.findByRole("button", { name: "连接 QQ 邮箱" });
+    expect((qqConnect as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(qqConnect);
+    expect(api.testImapSmtpConnection).not.toHaveBeenCalled();
+    expect(api.onboardImapSmtpAccount).not.toHaveBeenCalled();
+
+    const customConnect = screen.getByRole("button", {
+      name: "连接 个人域名邮箱",
+    }) as HTMLButtonElement;
+    expect(customConnect.disabled).toBe(false);
+    fireEvent.click(customConnect);
+    const manualSubmit = await screen.findByRole("button", {
+      name: "测试并接入个人域名邮箱",
+    });
+    expect((manualSubmit as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(manualSubmit);
+    expect(api.testImapSmtpConnection).not.toHaveBeenCalled();
   });
 
   it("tests custom domain server settings before onboarding from Add Mail", async () => {
@@ -6997,20 +7078,61 @@ function createApiFixture(): EmailHubApi {
         status: "completed",
       },
     })),
-    listOperationalEvents: vi.fn(async () => ({
-      items: [
-        {
-          id: "op_1",
-          occurredAt: "2026-06-14T08:00:00.000Z",
-          service: "email-hub-api",
-          level: "warn" as const,
-          event: "account_onboarding_connection_test_failed",
-          lane: "account_onboarding",
-          message: "connection test failed for 163",
-          context: {},
-        },
-      ],
-    })),
+    listOperationalEvents: vi.fn(async (input) => {
+      if (
+        input?.service === "email-hub-api" &&
+        input.event === "emailengine_webhook_ingested"
+      ) {
+        return {
+          items: [
+            {
+              id: "op_webhook_1",
+              occurredAt: "2026-06-14T08:03:00.000Z",
+              service: "email-hub-api",
+              level: "info" as const,
+              event: "emailengine_webhook_ingested",
+              lane: "sync",
+              accountId: "account_1",
+              jobId: "job_webhook",
+              context: {},
+            },
+          ],
+        };
+      }
+
+      if (input?.service === "email-hub-worker" && input.lane === "sync") {
+        return {
+          items: [
+            {
+              id: "op_worker_1",
+              occurredAt: "2026-06-14T08:04:00.000Z",
+              service: "email-hub-worker",
+              level: "info" as const,
+              event: "worker_result",
+              lane: "sync",
+              accountId: "account_1",
+              jobId: "job_sync",
+              context: {},
+            },
+          ],
+        };
+      }
+
+      return {
+        items: [
+          {
+            id: "op_1",
+            occurredAt: "2026-06-14T08:00:00.000Z",
+            service: "email-hub-api",
+            level: "warn" as const,
+            event: "account_onboarding_connection_test_failed",
+            lane: "account_onboarding",
+            message: "connection test failed for 163",
+            context: {},
+          },
+        ],
+      };
+    }),
     listSyncCenterAccounts: vi.fn(async () => ({
       items: [
         {
