@@ -90,12 +90,15 @@ describe("Hermes reader translation panel", () => {
 
   it("renders translation metadata and remembers preferences", () => {
     const onRememberPreference = vi.fn();
+    const onRefresh = vi.fn();
 
     render(
       <HermesReaderTranslationResult
         translation={translationFixture()}
         preferenceBusy={false}
+        refreshBusy={false}
         onRememberPreference={onRememberPreference}
+        onRefresh={onRefresh}
       />,
     );
 
@@ -112,10 +115,51 @@ describe("Hermes reader translation panel", () => {
 
     fireEvent.click(
       within(result).getByRole("button", {
+        name: "Refresh Hermes translation",
+      }),
+    );
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(
+      within(result).getByRole("button", {
         name: "Remember Hermes translation preference",
       }),
     );
     expect(onRememberPreference).toHaveBeenCalledTimes(1);
+  });
+
+  it("only offers refresh for cached reader translations", () => {
+    const { rerender } = render(
+      <HermesReaderTranslationResult
+        translation={translationFixture({ cached: false })}
+        preferenceBusy={false}
+        refreshBusy={false}
+        onRememberPreference={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Refresh Hermes translation",
+      }),
+    ).toBeNull();
+
+    rerender(
+      <HermesReaderTranslationResult
+        translation={translationFixture({ cached: true })}
+        preferenceBusy={false}
+        refreshBusy
+        onRememberPreference={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const refreshButton = screen.getByRole("button", {
+      name: "Refresh Hermes translation",
+    }) as HTMLButtonElement;
+    expect(refreshButton.disabled).toBe(true);
+    expect(refreshButton.textContent).toBe("重新翻译中");
   });
 
   it("keeps unknown translation language labels visible", () => {
@@ -123,7 +167,9 @@ describe("Hermes reader translation panel", () => {
   });
 });
 
-function translationFixture(): HermesMessageTranslationResult {
+function translationFixture(
+  overrides: Partial<HermesMessageTranslationResult> = {},
+): HermesMessageTranslationResult {
   return {
     skillRunId: "run_translate_1",
     auditEventId: "audit_translate_1",
@@ -134,5 +180,6 @@ function translationFixture(): HermesMessageTranslationResult {
     targetLanguage: "English",
     translatedText: "Hello, please confirm the launch plan.",
     cached: true,
+    ...overrides,
   };
 }

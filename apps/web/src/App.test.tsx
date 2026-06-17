@@ -908,6 +908,84 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("Hermes 已记住这个翻译习惯。")).toBeTruthy();
   });
 
+  it("refreshes cached reader translations with Hermes force refresh", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.translateMessage)
+      .mockResolvedValueOnce({
+        skillRunId: "run_translate_cached",
+        auditEventId: "audit_cached_translate",
+        skillId: "translate_text",
+        accountId: "account_1",
+        messageId: "message_1",
+        sourceLanguage: "Chinese",
+        targetLanguage: "English",
+        translatedText: "Cached translation.",
+        cached: true,
+      } satisfies HermesMessageTranslationResult)
+      .mockResolvedValueOnce({
+        skillRunId: "run_translate_refreshed",
+        auditEventId: "audit_refreshed_translate",
+        skillId: "translate_text",
+        accountId: "account_1",
+        messageId: "message_1",
+        sourceLanguage: "Chinese",
+        targetLanguage: "English",
+        translatedText: "Fresh translation.",
+        cached: false,
+      } satisfies HermesMessageTranslationResult);
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Hermes translation source language" }),
+      { target: { value: "Chinese" } },
+    );
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Hermes translation target language" }),
+      { target: { value: "English" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to translate selected message",
+      }),
+    );
+
+    const translation = await screen.findByLabelText("Hermes 邮件翻译");
+    expect(within(translation).getByText("Cached translation.")).toBeTruthy();
+    expect(
+      within(translation).getByText(
+        /缓存命中 · 运行 run_translate_cached · 审计 audit_cached_translate/,
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(translation).getByRole("button", {
+        name: "Refresh Hermes translation",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.translateMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          accountId: "account_1",
+          messageId: "message_1",
+          sourceLanguage: "Chinese",
+          targetLanguage: "English",
+          memoryScope: "sender:client@example.com",
+          forceRefresh: true,
+        }),
+      );
+    });
+    expect(await screen.findByText("Fresh translation.")).toBeTruthy();
+    expect(
+      within(screen.getByLabelText("Hermes 邮件翻译")).queryByRole("button", {
+        name: "Refresh Hermes translation",
+      }),
+    ).toBeNull();
+    expect(await screen.findByText("Hermes 已重新翻译：run_translate_refreshed")).toBeTruthy();
+  });
+
   it("ignores a stale Hermes translation preference after switching messages", async () => {
     const api = createApiFixture();
     let resolvePreference: (value: HermesTranslationPreferenceResult) => void =
@@ -1465,6 +1543,65 @@ describe("Email Hub first UI baseline", () => {
     });
 
     expect(screen.queryByText("Stale summary should not render.")).toBeNull();
+    expect(screen.getByText("Second backend body")).toBeTruthy();
+  });
+
+  it("ignores a stale Hermes reader translation after switching messages", async () => {
+    const api = createApiFixture();
+    let resolveTranslation: (value: HermesMessageTranslationResult) => void =
+      () => {};
+    mockTwoMessageReader(api);
+    vi.mocked(api.translateMessage).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveTranslation = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "First subject" });
+    await screen.findByText("First backend body");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to translate selected message",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.translateMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "account_1",
+          messageId: "message_1",
+          targetLanguage: "Chinese",
+        }),
+      );
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "邮件列表" })).getByRole(
+        "button",
+        { name: /Second subject/ },
+      ),
+    );
+    await screen.findByRole("heading", { name: "Second subject" });
+    await screen.findByText("Second backend body");
+
+    await act(async () => {
+      resolveTranslation({
+        skillRunId: "run_stale_translation",
+        auditEventId: "audit_stale_translation",
+        skillId: "translate_text",
+        accountId: "account_1",
+        messageId: "message_1",
+        sourceLanguage: "auto",
+        targetLanguage: "Chinese",
+        translatedText: "Stale translation should not render.",
+        cached: false,
+      });
+    });
+
+    expect(screen.queryByText("Stale translation should not render.")).toBeNull();
+    expect(screen.queryByLabelText("Hermes 邮件翻译")).toBeNull();
     expect(screen.getByText("Second backend body")).toBeTruthy();
   });
 

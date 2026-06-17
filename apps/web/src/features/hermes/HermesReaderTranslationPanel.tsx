@@ -56,7 +56,9 @@ export function HermesReaderTranslationControls(props: {
 export function HermesReaderTranslationResult(props: {
   translation: HermesMessageTranslationResult;
   preferenceBusy: boolean;
+  refreshBusy: boolean;
   onRememberPreference: () => void;
+  onRefresh: () => void;
 }) {
   return (
     <div
@@ -80,6 +82,17 @@ export function HermesReaderTranslationResult(props: {
       </small>
       <p>{props.translation.translatedText}</p>
       <div className="hermes-apply-actions">
+        {props.translation.cached ? (
+          <button
+            className="tiny-button"
+            type="button"
+            aria-label="Refresh Hermes translation"
+            disabled={props.refreshBusy}
+            onClick={props.onRefresh}
+          >
+            {props.refreshBusy ? "重新翻译中" : "重新翻译"}
+          </button>
+        ) : null}
         <button
           className="tiny-button"
           type="button"

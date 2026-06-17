@@ -2885,7 +2885,9 @@ function MailWorkspace(props: {
     }
   }
 
-  async function askHermesForReaderTranslation() {
+  async function askHermesForReaderTranslation(
+    options: { forceRefresh?: boolean } = {},
+  ) {
     if (!props.api) {
       setReaderHermesNotice("Hermes 暂时不可用。");
       return;
@@ -2894,7 +2896,11 @@ function MailWorkspace(props: {
     const requestId = readerHermesRequestRef.current + 1;
     readerHermesRequestRef.current = requestId;
     setReaderHermesBusy("translation");
-    setReaderHermesNotice("Hermes 正在翻译当前邮件...");
+    setReaderHermesNotice(
+      options.forceRefresh
+        ? "Hermes 正在重新翻译当前邮件..."
+        : "Hermes 正在翻译当前邮件...",
+    );
     try {
       const result = await props.api.translateMessage({
         accountId: props.selectedMail.accountId,
@@ -2905,12 +2911,15 @@ function MailWorkspace(props: {
           : { sourceLanguage: readerTranslationSource }),
         tone: "preserve original meaning and formatting",
         memoryScope: `sender:${props.selectedMail.email}`,
+        ...(options.forceRefresh ? { forceRefresh: true } : {}),
       });
       if (readerHermesRequestRef.current !== requestId) {
         return;
       }
       setReaderHermesTranslation(result);
-      setReaderHermesNotice(`Hermes 已翻译：${result.skillRunId}`);
+      setReaderHermesNotice(
+        `${options.forceRefresh ? "Hermes 已重新翻译" : "Hermes 已翻译"}：${result.skillRunId}`,
+      );
     } catch (error) {
       if (readerHermesRequestRef.current !== requestId) {
         return;
@@ -4927,8 +4936,12 @@ function MailWorkspace(props: {
               <HermesReaderTranslationResult
                 translation={readerHermesTranslation}
                 preferenceBusy={readerTranslationPreferenceBusy}
+                refreshBusy={readerHermesBusy === "translation"}
                 onRememberPreference={() =>
                   void rememberReaderTranslationPreference()
+                }
+                onRefresh={() =>
+                  void askHermesForReaderTranslation({ forceRefresh: true })
                 }
               />
             ) : null}
