@@ -31,7 +31,7 @@ describe("Hermes provider probe service", () => {
     expect(JSON.stringify(result)).not.toMatch(/secret|token|apiKey/i);
   });
 
-  it("probes local OpenAI-compatible providers with default endpoints and no auth header", async () => {
+  it("probes the trusted Hermes gateway default endpoint with no auth header", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createHermesProviderProbeService({
       fetchImpl: async (url, init) => {
@@ -42,19 +42,48 @@ describe("Hermes provider probe service", () => {
     });
 
     const result = await service.probe({
-      providerKey: "ollama",
-      model: "qwen3:latest",
+      providerKey: "hermes",
+      model: "hermes-email",
     });
 
     expect(result).toMatchObject({
       ok: true,
       status: "ready",
-      providerKey: "ollama",
-      endpointUrl: "http://localhost:11434/v1/chat/completions",
+      providerKey: "hermes",
+      endpointUrl: "http://hermes:8081/v1/chat/completions",
       missing: [],
     });
     expect(calls).toHaveLength(1);
     expect(calls[0].init?.headers).not.toHaveProperty("authorization");
+  });
+
+  it("rejects private provider probe endpoints before any network call", async () => {
+    const fetchImpl = vi.fn();
+    const service = createHermesProviderProbeService({
+      fetchImpl: fetchImpl as any,
+    });
+
+    const unsafeEndpoints = [
+      "http://127.0.0.1:8080/v1/chat/completions",
+      "http://localhost:11434/v1/chat/completions",
+      "http://169.254.169.254/latest/meta-data",
+      "http://10.0.0.8/v1/chat/completions",
+      "http://172.16.0.8/v1/chat/completions",
+      "http://192.168.1.8/v1/chat/completions",
+      "http://postgres:5432/v1/chat/completions",
+      "http://[::1]:8080/v1/chat/completions",
+    ];
+
+    for (const endpointUrl of unsafeEndpoints) {
+      await expect(
+        service.probe({
+          providerKey: "custom",
+          endpointUrl,
+          model: "mail-llm",
+        }),
+      ).rejects.toBeInstanceOf(InvalidHermesProviderProbeRequestError);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("returns an external-auth status for OAuth and AWS providers instead of pretending to test them", async () => {

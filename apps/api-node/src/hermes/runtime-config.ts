@@ -1,5 +1,8 @@
 import { createHermesHttpTextProvider } from "./http-provider.js";
-import { resolveHermesProviderEndpoint } from "./provider-endpoints.js";
+import {
+  normalizeSafeHermesEndpointUrl,
+  resolveHermesProviderEndpoint,
+} from "./provider-endpoints.js";
 import {
   findHermesProvider,
   type HermesProviderRequestProtocol,
@@ -222,10 +225,19 @@ function normalizePublicRuntimeSettings(
   settings: HermesRuntimeSettingsDto,
 ): HermesRuntimeSettingsDto {
   try {
+    const providerKey = normalizeRuntimeProviderKey(settings.providerKey);
     return {
       ...settings,
       mode: "external_hermes",
-      providerKey: normalizeRuntimeProviderKey(settings.providerKey),
+      providerKey,
+      ...(settings.endpointUrl
+        ? {
+            endpointUrl: normalizeSafeHermesEndpointUrl({
+              providerKey,
+              endpointUrl: settings.endpointUrl,
+            }),
+          }
+        : {}),
     };
   } catch {
     return defaultSettings();
@@ -240,9 +252,14 @@ function normalizeConnectionSettings(
   }
 
   try {
+    const providerKey = normalizeRuntimeProviderKey(settings.providerKey);
     return {
       ...settings,
-      providerKey: normalizeRuntimeProviderKey(settings.providerKey),
+      providerKey,
+      endpointUrl: normalizeSafeHermesEndpointUrl({
+        providerKey,
+        endpointUrl: settings.endpointUrl,
+      }),
     };
   } catch {
     return undefined;
@@ -312,7 +329,7 @@ function normalizeEndpointUrl(
       endpointUrl: value,
     });
     if (endpointUrl) {
-      return endpointUrl;
+      return normalizeSafeHermesEndpointUrl({ providerKey, endpointUrl });
     }
   } catch {
     throw new InvalidHermesRuntimeConfigRequestError();

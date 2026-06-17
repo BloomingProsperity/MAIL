@@ -1,5 +1,8 @@
 import { createHermesHttpTextProvider } from "./http-provider.js";
-import { resolveHermesProviderEndpoint } from "./provider-endpoints.js";
+import {
+  normalizeSafeHermesEndpointUrl,
+  resolveHermesProviderEndpoint,
+} from "./provider-endpoints.js";
 import {
   findHermesProvider,
   type HermesProviderAuthType,
@@ -176,11 +179,17 @@ function resolveProbeEndpoint(
   endpointUrl: string | undefined,
 ): string | undefined {
   try {
-    return resolveHermesProviderEndpoint({
+    const resolved = resolveHermesProviderEndpoint({
       providerKey: provider.key,
       model,
       endpointUrl,
     });
+    return resolved
+      ? normalizeSafeHermesEndpointUrl({
+          providerKey: provider.key,
+          endpointUrl: resolved,
+        })
+      : undefined;
   } catch {
     throw new InvalidHermesProviderProbeRequestError();
   }

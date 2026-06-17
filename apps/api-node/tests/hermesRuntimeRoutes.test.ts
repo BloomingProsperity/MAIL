@@ -1,7 +1,9 @@
 import { createServer, type Server } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createApiHandler } from "../src/http/router";
+import { createHermesProviderProbeService } from "../src/hermes/provider-probe";
+import { createHermesRuntimeConfigService } from "../src/hermes/runtime-config";
 
 let server: Server | undefined;
 
@@ -77,12 +79,12 @@ describe("Hermes runtime routes", () => {
         return {
           ok: true,
           status: "ready",
-          providerKey: "ollama",
-          label: "Ollama 本地",
-          category: "local",
+          providerKey: "hermes",
+          label: "Hermes 服务",
+          category: "gateway",
           authType: "none",
-          endpointUrl: "http://localhost:11434/v1/chat/completions",
-          model: "qwen3:latest",
+          endpointUrl: "http://hermes:8081/v1/chat/completions",
+          model: "hermes-email",
           missing: [],
           checkedAt: "2026-06-14T09:00:00.000Z",
         };
@@ -105,7 +107,7 @@ describe("Hermes runtime routes", () => {
     await withApi(
       async (baseUrl) => {
         const response = await fetch(
-          `${baseUrl}/api/hermes/providers/ollama/probe`,
+          `${baseUrl}/api/hermes/providers/hermes/probe`,
           {
             method: "POST",
             headers: {
@@ -113,7 +115,7 @@ describe("Hermes runtime routes", () => {
               "x-request-id": "req_1",
             },
             body: JSON.stringify({
-              model: "qwen3:latest",
+              model: "hermes-email",
               apiKey: "local-secret",
             }),
           },
@@ -124,13 +126,13 @@ describe("Hermes runtime routes", () => {
         expect(body).toMatchObject({
           ok: true,
           status: "ready",
-          providerKey: "ollama",
+          providerKey: "hermes",
         });
         expect(JSON.stringify(body)).not.toContain("local-secret");
         expect(calls).toEqual([
           {
-            providerKey: "ollama",
-            model: "qwen3:latest",
+            providerKey: "hermes",
+            model: "hermes-email",
             apiKey: "local-secret",
           },
         ]);
@@ -141,15 +143,15 @@ describe("Hermes runtime routes", () => {
             event: "hermes_provider_probe_completed",
             requestId: "req_1",
             lane: "hermes",
-            message: "Hermes provider probe ready for ollama",
+            message: "Hermes provider probe ready for hermes",
             context: {
-              providerKey: "ollama",
+              providerKey: "hermes",
               status: "ready",
               ok: true,
               authType: "none",
-              category: "local",
-              endpointUrl: "http://localhost:11434/v1/chat/completions",
-              model: "qwen3:latest",
+              category: "gateway",
+              endpointUrl: "http://hermes:8081/v1/chat/completions",
+              model: "hermes-email",
               missing: [],
             },
           },
@@ -249,6 +251,36 @@ describe("Hermes runtime routes", () => {
     });
   });
 
+  it("rejects private Hermes provider probe endpoints before network calls", async () => {
+    const fetchImpl = vi.fn();
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/providers/custom/probe`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              endpointUrl: "http://169.254.169.254/latest/meta-data",
+              model: "mail-llm",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_provider_probe_request",
+        });
+        expect(fetchImpl).not.toHaveBeenCalled();
+      },
+      {
+        hermesProviderProbeService: createHermesProviderProbeService({
+          fetchImpl: fetchImpl as any,
+        }),
+      },
+    );
+  });
+
   it("loads and saves Hermes runtime settings without returning API keys", async () => {
     const calls: unknown[] = [];
     const hermesRuntimeConfigService = {
@@ -273,9 +305,9 @@ describe("Hermes runtime routes", () => {
         calls.push(input);
         return {
           enabled: true,
-          mode: "openai_compatible",
-          providerKey: "ollama",
-          endpointUrl: "http://localhost:11434/v1/chat/completions",
+          mode: "external_hermes",
+          providerKey: "custom",
+          endpointUrl: "https://gateway.example.test/v1/chat/completions",
           model: "hermes-2-pro",
           apiKeyConfigured: true,
           updatePolicy: "notify",
@@ -297,9 +329,9 @@ describe("Hermes runtime routes", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             enabled: true,
-            mode: "openai_compatible",
-            providerKey: "ollama",
-            endpointUrl: "http://localhost:11434/v1/chat/completions",
+            mode: "external_hermes",
+            providerKey: "custom",
+            endpointUrl: "https://gateway.example.test/v1/chat/completions",
             model: "hermes-2-pro",
             apiKey: "runtime-secret",
             updatePolicy: "notify",
@@ -314,7 +346,7 @@ describe("Hermes runtime routes", () => {
         expect(saved.status).toBe(200);
         const savedBody = await saved.json();
         expect(savedBody).toMatchObject({
-          endpointUrl: "http://localhost:11434/v1/chat/completions",
+          endpointUrl: "https://gateway.example.test/v1/chat/completions",
           model: "hermes-2-pro",
           apiKeyConfigured: true,
         });
@@ -322,15 +354,72 @@ describe("Hermes runtime routes", () => {
         expect(calls).toEqual([
           {
             enabled: true,
-            mode: "openai_compatible",
-            providerKey: "ollama",
-            endpointUrl: "http://localhost:11434/v1/chat/completions",
+            mode: "external_hermes",
+            providerKey: "custom",
+            endpointUrl: "https://gateway.example.test/v1/chat/completions",
             model: "hermes-2-pro",
             apiKey: "runtime-secret",
             updatePolicy: "notify",
             updateChannel: "stable",
           },
         ]);
+      },
+      { hermesRuntimeConfigService },
+    );
+  });
+
+  it("rejects private Hermes runtime endpoints before saving settings", async () => {
+    const savedInputs: unknown[] = [];
+    const hermesRuntimeConfigService = createHermesRuntimeConfigService({
+      store: {
+        async getSettings() {
+          return undefined;
+        },
+        async getConnectionSettings() {
+          return undefined;
+        },
+        async saveSettings(input) {
+          savedInputs.push(input);
+          return {
+            enabled: input.enabled,
+            mode: input.mode,
+            providerKey: input.providerKey ?? "custom",
+            endpointUrl: input.endpointUrl,
+            model: input.model,
+            apiKeyConfigured: false,
+            updatePolicy: input.updatePolicy,
+            updateChannel: input.updateChannel,
+            updateAvailable: false,
+            source: "database" as const,
+          };
+        },
+        async saveVersionStatus() {
+          throw new Error("not used");
+        },
+      },
+    });
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/hermes/runtime`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            enabled: true,
+            mode: "external_hermes",
+            providerKey: "custom",
+            endpointUrl: "http://postgres:5432/v1/chat/completions",
+            model: "hermes-email",
+            updatePolicy: "manual",
+            updateChannel: "stable",
+          }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_runtime_config_request",
+        });
+        expect(savedInputs).toEqual([]);
       },
       { hermesRuntimeConfigService },
     );

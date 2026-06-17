@@ -74,7 +74,7 @@ describe("Hermes runtime config service", () => {
       enabled: true,
       mode: "external_hermes",
       providerKey: "custom",
-      endpointUrl: " http://localhost:8081/v1/chat/completions ",
+      endpointUrl: " https://gateway.example.test/v1/chat/completions ",
       model: " hermes-2-pro ",
       apiKey: "local-secret",
       updatePolicy: "notify",
@@ -82,7 +82,7 @@ describe("Hermes runtime config service", () => {
     });
 
     expect(result).toMatchObject({
-      endpointUrl: "http://localhost:8081/v1/chat/completions",
+      endpointUrl: "https://gateway.example.test/v1/chat/completions",
       model: "hermes-2-pro",
       apiKeyConfigured: true,
       updatePolicy: "notify",
@@ -93,7 +93,7 @@ describe("Hermes runtime config service", () => {
         enabled: true,
         mode: "external_hermes",
         providerKey: "custom",
-        endpointUrl: "http://localhost:8081/v1/chat/completions",
+        endpointUrl: "https://gateway.example.test/v1/chat/completions",
         model: "hermes-2-pro",
         apiKey: "local-secret",
         updatePolicy: "notify",
@@ -111,6 +111,62 @@ describe("Hermes runtime config service", () => {
         updateChannel: "stable",
       }),
     ).rejects.toMatchObject({ code: "invalid_hermes_runtime_config_request" });
+  });
+
+  it("rejects private runtime endpoints before saving settings", async () => {
+    const calls: unknown[] = [];
+    const service = createHermesRuntimeConfigService({
+      store: {
+        async getSettings() {
+          return undefined;
+        },
+        async getConnectionSettings() {
+          return undefined;
+        },
+        async saveSettings(input) {
+          calls.push(input);
+          return {
+            enabled: input.enabled,
+            mode: input.mode,
+            providerKey: input.providerKey ?? "custom",
+            endpointUrl: input.endpointUrl,
+            model: input.model,
+            apiKeyConfigured: false,
+            updatePolicy: input.updatePolicy,
+            updateChannel: input.updateChannel,
+            updateAvailable: false,
+            source: "database" as const,
+          };
+        },
+        async saveVersionStatus() {
+          throw new Error("not used");
+        },
+      },
+    });
+
+    const unsafeEndpoints = [
+      "http://127.0.0.1:8080/v1/chat/completions",
+      "http://169.254.169.254/latest/meta-data",
+      "http://10.0.0.8/v1/chat/completions",
+      "http://postgres:5432/v1/chat/completions",
+    ];
+
+    for (const endpointUrl of unsafeEndpoints) {
+      await expect(
+        service.updateSettings({
+          enabled: true,
+          mode: "external_hermes",
+          providerKey: "custom",
+          endpointUrl,
+          model: "hermes-email",
+          updatePolicy: "manual",
+          updateChannel: "stable",
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_hermes_runtime_config_request",
+      });
+    }
+    expect(calls).toEqual([]);
   });
 
   it("canonicalizes known provider aliases but keeps unknown custom providers", async () => {
@@ -148,7 +204,7 @@ describe("Hermes runtime config service", () => {
       enabled: true,
       mode: "external_hermes",
       providerKey: "custom",
-      endpointUrl: "http://localhost:8081/v1/chat/completions",
+      endpointUrl: "https://gateway.example.test/v1/chat/completions",
       model: "hermes-email",
       updatePolicy: "manual",
       updateChannel: "stable",
@@ -332,14 +388,14 @@ describe("Hermes runtime config service", () => {
       {
         enabled: true,
         providerKey: "custom",
-        endpointUrl: "http://hermes-a/v1/chat/completions",
+        endpointUrl: "https://gateway-a.example.test/v1/chat/completions",
         model: "hermes-a",
         apiKey: "a-secret",
       },
       {
         enabled: true,
         providerKey: "custom",
-        endpointUrl: "http://hermes-b/v1/chat/completions",
+        endpointUrl: "https://gateway-b.example.test/v1/chat/completions",
         model: "hermes-b",
         apiKey: "b-secret",
       },
@@ -362,14 +418,14 @@ describe("Hermes runtime config service", () => {
 
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
-      "http://hermes-a/v1/chat/completions",
+      "https://gateway-a.example.test/v1/chat/completions",
       expect.objectContaining({
         headers: expect.objectContaining({ authorization: "Bearer a-secret" }),
       }),
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
-      "http://hermes-b/v1/chat/completions",
+      "https://gateway-b.example.test/v1/chat/completions",
       expect.objectContaining({
         headers: expect.objectContaining({ authorization: "Bearer b-secret" }),
       }),
