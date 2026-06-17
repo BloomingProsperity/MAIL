@@ -1143,6 +1143,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
     vi.mocked(api.applyMailAction).mockClear();
     vi.mocked(api.recordSmartInboxFeedback).mockClear();
 
@@ -1245,6 +1246,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -1317,6 +1319,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -1863,17 +1866,17 @@ describe("Email Hub first UI baseline", () => {
     const guardrails = await screen.findByLabelText("Hermes resource guardrails");
     expect(
       within(guardrails).getByText(
-        "调用前按 skill 上下文预算截断 Prompt，并按截断后的内容审计。",
+        "调用前按单项能力预算截断上下文，并按实际内容审计。",
       ),
     ).toBeTruthy();
     expect(
       within(guardrails).getByText(
-        "每个 skill 按 memoryLimit 限制记忆读取数量，避免记忆扇出失控。",
+        "每项能力按记忆条数上限读取，避免记忆扇出失控。",
       ),
     ).toBeTruthy();
     expect(
       within(guardrails).getByText(
-        "保留清理会分批删除过期缓存、计划、反馈、审计和 skill run。",
+        "保留清理会分批删除过期缓存、计划、反馈、审计和运行记录。",
       ),
     ).toBeTruthy();
   });
@@ -1900,7 +1903,7 @@ describe("Email Hub first UI baseline", () => {
     expect(within(maintenancePanel).getByText("未引用附件")).toBeTruthy();
     expect(within(maintenancePanel).getByText("2 MB 可清理")).toBeTruthy();
     expect(within(maintenancePanel).getByText("Hermes 过期记录")).toBeTruthy();
-    expect(within(maintenancePanel).getByText("Skill 运行记录")).toBeTruthy();
+    expect(within(maintenancePanel).getByText("运行记录")).toBeTruthy();
 
     fireEvent.change(within(maintenancePanel).getByLabelText("清理最小保留小时"), {
       target: { value: "48" },
@@ -7159,6 +7162,7 @@ describe("Email Hub first UI baseline", () => {
         subject: "Launch plan",
         bodyText: "Updated draft body.",
         source: "manual",
+        attachments: [],
       });
     });
     expect(api.createMailDraft).toHaveBeenCalledTimes(1);
@@ -7196,6 +7200,7 @@ describe("Email Hub first UI baseline", () => {
         subject: "Launch plan",
         bodyText: "Ready to send body.",
         source: "manual",
+        attachments: [],
       });
     });
     await waitFor(() => {
@@ -7242,6 +7247,7 @@ describe("Email Hub first UI baseline", () => {
         subject: "Launch plan",
         bodyText: "This update will fail.",
         source: "manual",
+        attachments: [],
       });
     });
     expect(api.createMailDraft).toHaveBeenCalledTimes(1);
@@ -7366,9 +7372,7 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     const reviewBody = await screen.findByLabelText("Compose review body");
-    expect(reviewBody.querySelector("blockquote")?.textContent).toBe(
-      "Please review this line",
-    );
+    expect(reviewBody.querySelector("strong")?.textContent).toBe("Launch");
   });
 
   it("submits quoted compose bodyHtml after the quote tool is used", async () => {
@@ -7429,6 +7433,7 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.translateText).toHaveBeenCalledWith({
+        accountId: "account_1",
         text: "你好，请确认发布计划。",
         targetLanguage: "English",
         tone: "preserve intent, formatting cues, recipients, and commitments",
@@ -7454,6 +7459,53 @@ describe("Email Hub first UI baseline", () => {
         hermesDraftText: "Hello, please confirm the launch plan.",
       });
     });
+  });
+
+  it("ignores stale Hermes composed draft translations after the body changes", async () => {
+    const api = createApiFixture();
+    let resolveTranslation: (result: HermesTranslateTextResult) => void = () => {};
+    vi.mocked(api.translateText).mockImplementationOnce(
+      async () =>
+        new Promise<HermesTranslateTextResult>((resolve) => {
+          resolveTranslation = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    const body = screen.getByLabelText("Compose body") as HTMLTextAreaElement;
+    fireEvent.change(body, {
+      target: { value: "你好，请确认发布计划。" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Translate composed draft with Hermes" }),
+    );
+
+    await waitFor(() => {
+      expect(api.translateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "account_1",
+          text: "你好，请确认发布计划。",
+        }),
+      );
+    });
+    fireEvent.change(body, {
+      target: { value: "我已经手动改了正文。" },
+    });
+
+    await act(async () => {
+      resolveTranslation({
+        skillRunId: "run_translate_stale",
+        skillId: "translate_text",
+        sourceLanguage: "auto",
+        targetLanguage: "English",
+        translatedText: "Stale translated draft.",
+      });
+    });
+
+    expect(body.value).toBe("我已经手动改了正文。");
+    expect(screen.queryByText(/Hermes 已翻译草稿：run_translate_stale/)).toBeNull();
   });
 
   it("explains when Hermes composed draft translation is disabled by skill settings", async () => {
@@ -7840,6 +7892,7 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.rewritePolishDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
         text: "please review launch plan",
         action: "polish",
         instruction:
@@ -7864,6 +7917,56 @@ describe("Email Hub first UI baseline", () => {
         hermesDraftText: "Hi Lina,\n\nPlease review the launch plan today.",
       });
     });
+  });
+
+  it("ignores stale Hermes polished drafts after the body changes", async () => {
+    const api = createApiFixture();
+    let resolveRewrite: (result: HermesRewritePolishResult) => void = () => {};
+    vi.mocked(api.rewritePolishDraft).mockImplementationOnce(
+      async () =>
+        new Promise<HermesRewritePolishResult>((resolve) => {
+          resolveRewrite = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    const body = screen.getByLabelText("Compose body") as HTMLTextAreaElement;
+    fireEvent.change(body, {
+      target: { value: "please review launch plan" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Polish composed draft with Hermes",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.rewritePolishDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "account_1",
+          text: "please review launch plan",
+        }),
+      );
+    });
+    fireEvent.change(body, {
+      target: { value: "I edited this draft myself." },
+    });
+
+    await act(async () => {
+      resolveRewrite({
+        skillRunId: "run_rewrite_stale",
+        skillId: "rewrite_polish",
+        action: "polish",
+        rewrittenText: "Stale polished draft.",
+        editable: true,
+        sendsDirectly: false,
+      });
+    });
+
+    expect(body.value).toBe("I edited this draft myself.");
+    expect(screen.queryByText(/Hermes 已润色：run_rewrite_stale/)).toBeNull();
   });
 
   it("keeps the Hermes polished text when the user edits before saving", async () => {
@@ -8026,6 +8129,7 @@ describe("Email Hub first UI baseline", () => {
         subject: "Tomorrow review",
         bodyText: "Updated scheduled body.",
         source: "manual",
+        attachments: [],
       });
     });
     await waitFor(() => {
@@ -8129,6 +8233,7 @@ describe("Email Hub first UI baseline", () => {
       subject: "Saved subject",
       bodyText: "Autosaved edited body.",
       source: "manual",
+      attachments: [],
       replyToMessageId: "message_1",
     });
     expect(api.createMailDraft).not.toHaveBeenCalled();
@@ -8240,6 +8345,7 @@ describe("Email Hub first UI baseline", () => {
         subject: "Saved subject",
         bodyText: "Edited saved body.",
         source: "manual",
+        attachments: [],
         replyToMessageId: "message_1",
       });
     });

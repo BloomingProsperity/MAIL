@@ -2124,6 +2124,7 @@ export interface EmailHubApi {
     memoryLayers?: string[];
   }): Promise<HermesMessageFollowupTrackerResult>;
   translateText(input: {
+    accountId: string;
     text: string;
     targetLanguage: string;
     sourceLanguage?: string;
@@ -2219,6 +2220,7 @@ export interface EmailHubApi {
     memoryLayers?: string[];
   }): Promise<HermesQuickReplyResult>;
   rewritePolishDraft(input: {
+    accountId: string;
     text: string;
     action: HermesRewritePolishAction;
     instruction?: string;
@@ -3362,10 +3364,19 @@ export function createEmailHubApi(
     },
 
     translateText(input) {
-      return request(fetchImpl, baseUrl, "/api/hermes/skills/translate_text/run", {
-        method: "POST",
-        body: JSON.stringify(cleanObject(input)),
-      });
+      const accountId = input.accountId.trim();
+      const params = new URLSearchParams();
+      appendParam(params, "accountId", accountId);
+      const query = params.toString();
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/skills/translate_text/run${query ? `?${query}` : ""}`,
+        {
+          method: "POST",
+          body: JSON.stringify(cleanObject({ ...input, accountId })),
+        },
+      );
     },
 
     translateMessage(input) {
@@ -3484,10 +3495,19 @@ export function createEmailHubApi(
     },
 
     rewritePolishDraft(input) {
-      return request(fetchImpl, baseUrl, "/api/hermes/skills/rewrite_polish/run", {
-        method: "POST",
-        body: JSON.stringify(cleanObject(input)),
-      });
+      const accountId = input.accountId.trim();
+      const params = new URLSearchParams();
+      appendParam(params, "accountId", accountId);
+      const query = params.toString();
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/skills/rewrite_polish/run${query ? `?${query}` : ""}`,
+        {
+          method: "POST",
+          body: JSON.stringify(cleanObject({ ...input, accountId })),
+        },
+      );
     },
 
     confirmHermesFollowUp(input) {

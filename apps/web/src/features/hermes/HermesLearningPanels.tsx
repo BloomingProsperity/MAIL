@@ -788,6 +788,8 @@ function formatHermesAuditAction(action: Record<string, unknown>) {
     const value =
       field === "searchPlan"
         ? formatHermesAuditSearchPlan(action[field])
+        : field === "skillId" && typeof action[field] === "string"
+          ? formatHermesAuditSkillId(action[field])
         : formatHermesAuditActionValue(action[field]);
     return value ? [`${labels[field]} ${value}`] : [];
   });

@@ -2807,6 +2807,7 @@ describe("emailHubApi", () => {
     const api = createEmailHubApi({ fetchImpl: fetchMock as any });
 
     const translation = await api.translateText({
+      accountId: "account_1",
       text: "Please confirm the launch schedule.",
       targetLanguage: "Chinese",
       tone: "preserve original meaning",
@@ -2827,10 +2828,11 @@ describe("emailHubApi", () => {
     expect(summary.summaryText).toBe("Action: confirm the launch schedule today.");
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "/api/hermes/skills/translate_text/run",
+      "/api/hermes/skills/translate_text/run?accountId=account_1",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
+          accountId: "account_1",
           text: "Please confirm the launch schedule.",
           targetLanguage: "Chinese",
           tone: "preserve original meaning",
@@ -3336,6 +3338,7 @@ describe("emailHubApi", () => {
     const api = createEmailHubApi({ fetchImpl: fetchMock as any });
 
     const result = await api.rewritePolishDraft({
+      accountId: "account_1",
       text: "please review launch plan",
       action: "polish",
       instruction: "Make it professional.",
@@ -3351,10 +3354,11 @@ describe("emailHubApi", () => {
       sendsDirectly: false,
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/hermes/skills/rewrite_polish/run",
+      "/api/hermes/skills/rewrite_polish/run?accountId=account_1",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
+          accountId: "account_1",
           text: "please review launch plan",
           action: "polish",
           instruction: "Make it professional.",
@@ -4532,6 +4536,7 @@ describe("emailHubApi", () => {
 
     await expect(
       api.translateText({
+        accountId: "account_1",
         text: "Hello",
         targetLanguage: "Chinese",
       }),

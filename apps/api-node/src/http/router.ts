@@ -570,7 +570,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       }
       if (
         isApiAccessAccountScoped(apiAccessContext) &&
-        isAdminOnlyForAccountScopedTokenRoute(request.url)
+        isAdminOnlyForAccountScopedTokenRoute(request.url, request.method)
       ) {
         rejectAccountScopedAdminRoute(response, config, requestId, requestPath);
         return;
@@ -2541,19 +2541,31 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
 
       if (
         request.method === "POST" &&
-        request.url === "/api/hermes/skills/translate_text/run"
+        isRequestPath(request.url, "/api/hermes/skills/translate_text/run")
       ) {
         if (!config.hermesService) {
           writeJson(response, 503, { error: "hermes_unavailable" });
           return;
         }
 
+        const input = parseHermesTranslateInput(
+          await readRequestBody(),
+          readHermesSkillRunAccountId(
+            request.url,
+            "/api/hermes/skills/translate_text/run",
+          ),
+        );
+        if (isApiAccessAccountScoped(apiAccessContext) && !input.accountId) {
+          rejectAccountScopedAdminRoute(response, config, requestId, requestPath);
+          return;
+        }
+        if (input.accountId && !ensureRouteAccountAccess(input.accountId)) {
+          return;
+        }
+
         const skill = await ensureHermesSkillAllowed(config, "translate_text");
         const result = await config.hermesService.translate(
-          withHermesInputTextBudget(
-            parseHermesTranslateInput(await readRequestBody()),
-            skill,
-          ),
+          withHermesInputTextBudget(input, skill),
         );
         writeJson(response, 202, result);
         return;
@@ -2601,19 +2613,31 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
 
       if (
         request.method === "POST" &&
-        request.url === "/api/hermes/skills/rewrite_polish/run"
+        isRequestPath(request.url, "/api/hermes/skills/rewrite_polish/run")
       ) {
         if (!config.hermesService) {
           writeJson(response, 503, { error: "hermes_unavailable" });
           return;
         }
 
+        const input = parseHermesRewritePolishInput(
+          await readRequestBody(),
+          readHermesSkillRunAccountId(
+            request.url,
+            "/api/hermes/skills/rewrite_polish/run",
+          ),
+        );
+        if (isApiAccessAccountScoped(apiAccessContext) && !input.accountId) {
+          rejectAccountScopedAdminRoute(response, config, requestId, requestPath);
+          return;
+        }
+        if (input.accountId && !ensureRouteAccountAccess(input.accountId)) {
+          return;
+        }
+
         const skill = await ensureHermesSkillAllowed(config, "rewrite_polish");
         const result = await config.hermesService.rewritePolish(
-          withHermesInputTextBudget(
-            parseHermesRewritePolishInput(await readRequestBody()),
-            skill,
-          ),
+          withHermesInputTextBudget(input, skill),
         );
         writeJson(response, 202, result);
         return;
@@ -3938,6 +3962,17 @@ function isAccountAccessAllowed(
   return !context.accountIds || context.accountIds.has(accountId);
 }
 
+function isRequestPath(
+  requestUrl: string | undefined,
+  expectedPathname: string,
+): boolean {
+  if (!requestUrl) {
+    return false;
+  }
+
+  return new URL(requestUrl, "http://localhost").pathname === expectedPathname;
+}
+
 function readScopedRouteAccountId(
   requestUrl: string | undefined,
 ): string | undefined {
@@ -3969,6 +4004,10 @@ function readScopedRouteAccountId(
     return isNonEmptyString(accountId) ? accountId : undefined;
   }
 
+  if (isAccountScopedHermesSkillRunRoute(url)) {
+    return readOptionalQueryAccountId(url);
+  }
+
   const syncRoute =
     /^\/api\/sync-center\/accounts\/([^/]+)(?:\/|$)/.exec(pathname);
   return syncRoute ? decodeURIComponent(syncRoute[1]) : undefined;
@@ -3976,6 +4015,7 @@ function readScopedRouteAccountId(
 
 function isAdminOnlyForAccountScopedTokenRoute(
   requestUrl: string | undefined,
+  method?: string,
 ): boolean {
   if (!requestUrl) {
     return false;
@@ -4001,7 +4041,8 @@ function isAdminOnlyForAccountScopedTokenRoute(
     pathname === "/api/hermes/resource-profile" ||
     pathname === "/api/hermes/runtime" ||
     pathname.startsWith("/api/hermes/runtime/") ||
-    isHermesGlobalSkillAdminRoute(pathname) ||
+    (isHermesGlobalSkillAdminRoute(pathname) &&
+      !isAccountBodyScopedHermesSkillRunRoute(url, method)) ||
     pathname === "/api/hermes/workspace/context" ||
     pathname === "/api/hermes/drafts/feedback" ||
     pathname.startsWith("/api/hermes/action-plans") ||
@@ -4053,6 +4094,49 @@ function isHermesGlobalSkillAdminRoute(pathname: string): boolean {
     "/api/hermes/skills/priority_triage/run",
     "/api/hermes/skills/followup_tracker/run",
   ].includes(pathname);
+}
+
+function isAccountScopedHermesSkillRunRoute(url: URL): boolean {
+  if (
+    url.pathname !== "/api/hermes/skills/translate_text/run" &&
+    url.pathname !== "/api/hermes/skills/rewrite_polish/run"
+  ) {
+    return false;
+  }
+
+  return Boolean(readOptionalQueryAccountId(url));
+}
+
+function isAccountBodyScopedHermesSkillRunRoute(
+  url: URL,
+  method?: string,
+): boolean {
+  return (
+    method === "POST" &&
+    (url.pathname === "/api/hermes/skills/translate_text/run" ||
+      url.pathname === "/api/hermes/skills/rewrite_polish/run")
+  );
+}
+
+function readHermesSkillRunAccountId(
+  requestUrl: string | undefined,
+  expectedPathname: string,
+): string | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  if (url.pathname !== expectedPathname) {
+    return undefined;
+  }
+
+  return readOptionalQueryAccountId(url);
+}
+
+function readOptionalQueryAccountId(url: URL): string | undefined {
+  const accountId = url.searchParams.get("accountId");
+  return isNonEmptyString(accountId) ? accountId.trim() : undefined;
 }
 
 function rejectAccountScopedAccess(
@@ -6315,7 +6399,31 @@ function parseOAuthCallbackInput(requestUrl: string | undefined): {
   return { state, code };
 }
 
-function parseHermesTranslateInput(body: string): {
+function parseHermesSkillRunAccountId(
+  payloadAccountId: unknown,
+  routeAccountId: string | undefined,
+  errorCode: InvalidOAuthRequestError["code"],
+): string | undefined {
+  if (payloadAccountId === undefined) {
+    return routeAccountId;
+  }
+  if (!isNonEmptyString(payloadAccountId)) {
+    throw new InvalidOAuthRequestError(errorCode, 400);
+  }
+
+  const accountId = payloadAccountId.trim();
+  if (routeAccountId && accountId !== routeAccountId) {
+    throw new InvalidOAuthRequestError(errorCode, 400);
+  }
+
+  return accountId;
+}
+
+function parseHermesTranslateInput(
+  body: string,
+  routeAccountId?: string,
+): {
+  accountId?: string;
   text: string;
   targetLanguage: string;
   sourceLanguage?: string;
@@ -6330,6 +6438,7 @@ function parseHermesTranslateInput(body: string): {
     targetLanguage?: unknown;
     sourceLanguage?: unknown;
     tone?: unknown;
+    accountId?: unknown;
     readMessageIds?: unknown;
     memoryIds?: unknown;
     memoryScope?: unknown;
@@ -6342,7 +6451,14 @@ function parseHermesTranslateInput(body: string): {
     throw new InvalidOAuthRequestError("invalid_translation_request", 400);
   }
 
+  const accountId = parseHermesSkillRunAccountId(
+    payload.accountId,
+    routeAccountId,
+    "invalid_translation_request",
+  );
+
   return {
+    ...(accountId ? { accountId } : {}),
     text: payload.text,
     targetLanguage: payload.targetLanguage,
     ...(isNonEmptyString(payload.sourceLanguage)
@@ -6852,7 +6968,11 @@ function parseHermesQuickReplyInput(body: string): {
   };
 }
 
-function parseHermesRewritePolishInput(body: string): {
+function parseHermesRewritePolishInput(
+  body: string,
+  routeAccountId?: string,
+): {
+  accountId?: string;
   text: string;
   action: "rewrite" | "polish" | "shorten" | "expand" | "tone" | "proofread";
   instruction?: string;
@@ -6869,6 +6989,7 @@ function parseHermesRewritePolishInput(body: string): {
     instruction?: unknown;
     tone?: unknown;
     language?: unknown;
+    accountId?: unknown;
     readMessageIds?: unknown;
     memoryIds?: unknown;
     memoryScope?: unknown;
@@ -6881,7 +7002,14 @@ function parseHermesRewritePolishInput(body: string): {
     throw new InvalidOAuthRequestError("invalid_rewrite_polish_request", 400);
   }
 
+  const accountId = parseHermesSkillRunAccountId(
+    payload.accountId,
+    routeAccountId,
+    "invalid_rewrite_polish_request",
+  );
+
   return {
+    ...(accountId ? { accountId } : {}),
     text: payload.text,
     action: payload.action,
     ...(isNonEmptyString(payload.instruction)

@@ -103,10 +103,10 @@ const fallbackHermesResourceProfile: HermesResourceProfileDto = {
     },
   },
   guardrails: [
-    "Prompt context is capped per skill before provider calls and audit persistence.",
-    "Skill custom instructions are length capped and appended below system rules.",
-    "Memory fan-out is capped per skill through memoryLimit.",
-    "State-changing learning paths must pass skill permission and confirmation checks.",
+    "Context is capped per capability before model calls and audit persistence.",
+    "Custom capability instructions are length capped and appended below system rules.",
+    "Memory fan-out is capped per capability through item limits.",
+    "State-changing learning paths must pass capability permission and confirmation checks.",
   ],
 };
 
@@ -676,17 +676,25 @@ function formatHermesDeploymentProfile(
 function formatHermesGuardrail(guardrail: string): string {
   const labels: Record<string, string> = {
     "Prompt context is capped per skill before provider calls and audit persistence.":
-      "调用前按 skill 上下文预算截断 Prompt，并按截断后的内容审计。",
+      "调用前按单项能力预算截断上下文，并按实际内容审计。",
+    "Context is capped per capability before model calls and audit persistence.":
+      "调用前按单项能力预算截断上下文，并按实际内容审计。",
     "Skill custom instructions are length capped and appended below system rules.":
-      "自定义 skill 指令有长度上限，并且优先级低于系统规则。",
+      "自定义能力指令有长度上限，并且优先级低于系统规则。",
+    "Custom capability instructions are length capped and appended below system rules.":
+      "自定义能力指令有长度上限，并且优先级低于系统规则。",
     "Memory fan-out is capped per skill through memoryLimit.":
-      "每个 skill 按 memoryLimit 限制记忆读取数量，避免记忆扇出失控。",
+      "每项能力按记忆条数上限读取，避免记忆扇出失控。",
+    "Memory fan-out is capped per capability through item limits.":
+      "每项能力按记忆条数上限读取，避免记忆扇出失控。",
     "State-changing learning paths must pass skill permission and confirmation checks.":
-      "会改变状态的学习路径必须通过 skill 权限和确认门槛。",
+      "会改变状态的学习路径必须通过能力权限和确认门槛。",
+    "State-changing learning paths must pass capability permission and confirmation checks.":
+      "会改变状态的学习路径必须通过能力权限和确认门槛。",
     "Retention cleanup prunes expired Hermes caches, plans, feedback, audit events, and skill runs in bounded batches.":
-      "保留清理会分批删除过期缓存、计划、反馈、审计和 skill run。",
+      "保留清理会分批删除过期缓存、计划、反馈、审计和运行记录。",
     "Prompt context is capped per skill.":
-      "调用前按 skill 上下文预算截断 Prompt。",
+      "调用前按单项能力预算截断上下文。",
   };
 
   return labels[guardrail] ?? guardrail;

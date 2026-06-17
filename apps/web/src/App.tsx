@@ -2180,8 +2180,12 @@ function MailWorkspace(props: {
   const lastSavedComposeSignatureRef = useRef("");
   const composeMessageRequestRef = useRef(0);
   const composeMessageRequestActiveRef = useRef(false);
+  const composeMessageAccountIdRef = useRef(props.accountId);
+  const composeBodyRef = useRef(composeBody);
   const readerHermesRequestRef = useRef(0);
   const readerTranslationPreferenceRequestRef = useRef(0);
+  composeMessageAccountIdRef.current = props.accountId;
+  composeBodyRef.current = composeBody;
 
   function cancelComposeAutosave(status: ComposeAutosaveStatus = "idle") {
     if (composeAutosaveTimerRef.current !== undefined) {
@@ -2209,6 +2213,26 @@ function MailWorkspace(props: {
       composeMessageRequestActiveRef.current = false;
       setComposeBusy(false);
     }
+  }
+
+  function invalidateComposeMessageRequest(): void {
+    composeMessageRequestRef.current += 1;
+    if (composeMessageRequestActiveRef.current) {
+      composeMessageRequestActiveRef.current = false;
+      setComposeBusy(false);
+    }
+  }
+
+  function canApplyComposeMessageResult(input: {
+    requestId: number;
+    accountId: string;
+    body: string;
+  }): boolean {
+    return (
+      isCurrentComposeMessageRequest(input.requestId) &&
+      composeMessageAccountIdRef.current === input.accountId &&
+      composeBodyRef.current === input.body
+    );
   }
 
   function currentComposeSignature(input: {
@@ -2250,11 +2274,7 @@ function MailWorkspace(props: {
   }
 
   useEffect(() => {
-    composeMessageRequestRef.current += 1;
-    if (composeMessageRequestActiveRef.current) {
-      composeMessageRequestActiveRef.current = false;
-      setComposeBusy(false);
-    }
+    invalidateComposeMessageRequest();
     readerHermesRequestRef.current += 1;
     readerTranslationPreferenceRequestRef.current += 1;
     setAttachmentDownloadBusyId(undefined);
@@ -2270,6 +2290,7 @@ function MailWorkspace(props: {
   }, [props.selectedMail.id]);
 
   useEffect(() => {
+    invalidateComposeMessageRequest();
     cancelComposeAutosave();
     lastSavedComposeSignatureRef.current = "";
     setComposeDraftId(undefined);
@@ -2699,6 +2720,7 @@ function MailWorkspace(props: {
   }
 
   function applyDraftToCompose(draft: MailDraftDto, scheduled?: ScheduledSendDto) {
+    invalidateComposeMessageRequest();
     setComposeTo(formatComposeAddressList(draft.to));
     setComposeCc(formatComposeAddressList(draft.cc));
     setComposeBcc(formatComposeAddressList(draft.bcc));
@@ -3483,6 +3505,7 @@ function MailWorkspace(props: {
   }
 
   function clearComposeForm() {
+    invalidateComposeMessageRequest();
     cancelComposeAutosave();
     lastSavedComposeSignatureRef.current = "";
     setComposeTo("");
@@ -3515,9 +3538,12 @@ function MailWorkspace(props: {
       return;
     }
 
-    setComposeBusy(true);
+    const requestId = beginComposeMessageRequest();
+    const accountId = props.accountId;
+    const originalBody = composeBody;
     try {
       const result = await props.api.translateText({
+        accountId,
         text: bodyText,
         targetLanguage: composeTranslationTarget,
         ...(composeTranslationSource === "auto"
@@ -3527,6 +3553,9 @@ function MailWorkspace(props: {
         memoryScope: "global",
         memoryLayers: ["writing_style_profile", "semantic_profile"],
       });
+      if (!canApplyComposeMessageResult({ requestId, accountId, body: originalBody })) {
+        return;
+      }
       setComposeBody(result.translatedText);
       setComposeRichHtmlEnabled(false);
       setComposeHermesSkillRunId(result.skillRunId);
@@ -3535,6 +3564,9 @@ function MailWorkspace(props: {
       setComposeNotice(`Hermes 已翻译草稿：${result.skillRunId}`);
       focusComposeTarget("body");
     } catch (error) {
+      if (!canApplyComposeMessageResult({ requestId, accountId, body: originalBody })) {
+        return;
+      }
       setComposeNotice(
         hermesSkillErrorNotice(error, {
           skillId: "translate_text",
@@ -3542,7 +3574,7 @@ function MailWorkspace(props: {
         }),
       );
     } finally {
-      setComposeBusy(false);
+      finishComposeMessageRequest(requestId);
     }
   }
 
@@ -3558,14 +3590,20 @@ function MailWorkspace(props: {
       return;
     }
 
-    setComposeBusy(true);
+    const requestId = beginComposeMessageRequest();
+    const accountId = props.accountId;
+    const originalBody = composeBody;
     try {
       const result = await props.api.rewritePolishDraft({
+        accountId,
         text: bodyText,
         action: "polish",
         instruction: "Polish this email while preserving intent, recipient details, and concrete commitments.",
         tone: "clear professional",
       });
+      if (!canApplyComposeMessageResult({ requestId, accountId, body: originalBody })) {
+        return;
+      }
       setComposeBody(result.rewrittenText);
       setComposeRichHtmlEnabled(false);
       setComposeHermesSkillRunId(result.skillRunId);
@@ -3573,6 +3611,9 @@ function MailWorkspace(props: {
       setComposePreview(undefined);
       setComposeNotice(`Hermes 已润色：${result.skillRunId}`);
     } catch (error) {
+      if (!canApplyComposeMessageResult({ requestId, accountId, body: originalBody })) {
+        return;
+      }
       setComposeNotice(
         hermesSkillErrorNotice(error, {
           skillId: "rewrite_polish",
@@ -3580,7 +3621,7 @@ function MailWorkspace(props: {
         }),
       );
     } finally {
-      setComposeBusy(false);
+      finishComposeMessageRequest(requestId);
     }
   }
 
@@ -4160,6 +4201,7 @@ function MailWorkspace(props: {
             aria-label="Compose body"
             value={composeBody}
             onChange={(event) => {
+              invalidateComposeMessageRequest();
               setComposeBody(event.target.value);
               setComposePreview(undefined);
             }}
@@ -8987,7 +9029,7 @@ function ComposeAttachmentMaintenancePanel(props: { api?: EmailHubApi }) {
         <article className="settings-module maintenance-stat">
           <span>Hermes 受管表</span>
           <strong>{hermesStatus.tables.length.toLocaleString()}</strong>
-          <p>缓存、审计、计划和 skill run</p>
+          <p>缓存、审计、计划和运行记录</p>
         </article>
       </div>
 
@@ -9061,7 +9103,7 @@ function ComposeAttachmentMaintenancePanel(props: { api?: EmailHubApi }) {
       >
         <div>
           <h3>Hermes 清理</h3>
-          <p>{`默认删除超过 ${hermesStatus.retentionDays} 天的缓存、计划、反馈、审计和 skill run。`}</p>
+          <p>{`默认删除超过 ${hermesStatus.retentionDays} 天的缓存、计划、反馈、审计和运行记录。`}</p>
         </div>
         <label>
           <span>保留天数</span>
@@ -9183,7 +9225,7 @@ function formatHermesRetentionTableName(table: string): string {
     hermes_action_plans: "执行计划",
     hermes_feedback: "草稿反馈",
     hermes_audit_events: "审计日志",
-    hermes_skill_runs: "Skill 运行记录",
+    hermes_skill_runs: "运行记录",
   };
 
   return labels[table] ?? table;
