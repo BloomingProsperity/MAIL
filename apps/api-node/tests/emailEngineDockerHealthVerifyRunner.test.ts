@@ -194,6 +194,43 @@ describe("EmailEngine Docker health verify CLI runner", () => {
     expect(JSON.stringify(parsed)).not.toContain("wrong-web-token");
   });
 
+  it.each([
+    ["missing", ""],
+    ["the development default", "dev-emailhub-token"],
+  ])(
+    "fails before Docker checks when the production API token is %s",
+    async (_label, token) => {
+      const stdout: string[] = [];
+      const stderr: string[] = [];
+      const verifyHealth = vi.fn() as unknown as typeof verifyDockerComposeHealth;
+
+      const exitCode = await runEmailEngineDockerHealthVerifyCli({
+        env: {
+          EMAILHUB_REPO_ROOT: "/repo",
+          EMAILHUB_ENV_FILE: ".env.prod",
+        },
+        fileExists: (path) => path === "/repo/.env.prod",
+        readEnvFile: () => `EMAILHUB_API_TOKEN=${token}`,
+        verifyHealth,
+        writeStdout: (message) => stdout.push(message),
+        writeStderr: (message) => stderr.push(message),
+      });
+
+      expect(exitCode).toBe(1);
+      expect(verifyHealth).not.toHaveBeenCalled();
+      expect(stdout).toEqual([]);
+      const parsed = JSON.parse(stderr[0] ?? "{}");
+      expect(parsed).toMatchObject({
+        ok: false,
+        gate: "docker_compose_health",
+        projectRoot: "/repo",
+        envFile: ".env.prod",
+      });
+      expect(JSON.stringify(parsed)).toContain("EMAILHUB_API_TOKEN");
+      expect(JSON.stringify(parsed)).not.toContain("dev-emailhub-token");
+    },
+  );
+
   it("lets process env override selected env file host probe settings", async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];

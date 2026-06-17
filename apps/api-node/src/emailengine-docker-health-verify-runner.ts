@@ -59,6 +59,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
   const verifyHealth = options.verifyHealth ?? verifyDockerComposeHealth;
 
   try {
+    assertProductionApiTokenConfigured(runtimeEnv);
     assertCompatibleWebApiToken(runtimeEnv);
     const result = await verifyHealth({
       projectRoot,
@@ -164,6 +165,15 @@ export function bearerTokenHeaders(
 ): Record<string, string> | undefined {
   const trimmed = token?.trim();
   return trimmed ? { authorization: `Bearer ${trimmed}` } : undefined;
+}
+
+function assertProductionApiTokenConfigured(env: CliEnv): void {
+  const apiToken = env.EMAILHUB_API_TOKEN?.trim();
+  if (!apiToken || apiToken === "dev-emailhub-token") {
+    throw new Error(
+      "EMAILHUB_API_TOKEN must be set to a non-default value before running the production Docker health gate.",
+    );
+  }
 }
 
 function assertCompatibleWebApiToken(env: CliEnv): void {
