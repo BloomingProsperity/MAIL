@@ -40,6 +40,14 @@ import {
 import { ComposeReview } from "./features/compose/ComposeReview";
 import { HermesSkillSettingsPanel } from "./features/hermes/HermesSkillSettingsPanel";
 import {
+  HermesReaderTranslationControls,
+  HermesReaderTranslationResult,
+} from "./features/hermes/HermesReaderTranslationPanel";
+import {
+  HERMES_SOURCE_LANGUAGES,
+  HERMES_TRANSLATION_LANGUAGES,
+} from "./features/hermes/hermesTranslation";
+import {
   HermesAuditLogPanel,
   HermesMemoryManagerPanel,
   formatHermesMemoryLayer,
@@ -157,18 +165,6 @@ const PREVIEW_ATTACHMENT_ROWS = [
   { name: "Q2_合作方案_最终版.pdf", size: "1.2 MB" },
   { name: "报价明细表.xlsx", size: "320 KB" },
 ];
-const READER_TRANSLATION_LANGUAGES = [
-  { value: "Chinese", label: "中文" },
-  { value: "English", label: "English" },
-  { value: "Japanese", label: "日本語" },
-  { value: "Korean", label: "한국어" },
-  { value: "Spanish", label: "Español" },
-  { value: "French", label: "Français" },
-] as const;
-const READER_SOURCE_LANGUAGES = [
-  { value: "auto", label: "自动识别" },
-  ...READER_TRANSLATION_LANGUAGES,
-] as const;
 const COMPOSE_TEMPLATES = [
   {
     id: "follow_up",
@@ -4184,7 +4180,7 @@ function MailWorkspace(props: {
                 disabled={composeBusy}
                 onChange={(event) => setComposeTranslationSource(event.target.value)}
               >
-                {READER_SOURCE_LANGUAGES.map((language) => (
+                {HERMES_SOURCE_LANGUAGES.map((language) => (
                   <option key={language.value} value={language.value}>
                     {language.label}
                   </option>
@@ -4196,7 +4192,7 @@ function MailWorkspace(props: {
                 disabled={composeBusy}
                 onChange={(event) => setComposeTranslationTarget(event.target.value)}
               >
-                {READER_TRANSLATION_LANGUAGES.map((language) => (
+                {HERMES_TRANSLATION_LANGUAGES.map((language) => (
                   <option key={language.value} value={language.value}>
                     {language.label}
                   </option>
@@ -4781,41 +4777,14 @@ function MailWorkspace(props: {
             >
               Hermes 总结
             </button>
-            <div className="reader-translation-control">
-              <select
-                aria-label="Hermes translation source language"
-                value={readerTranslationSource}
-                disabled={Boolean(readerHermesBusy)}
-                onChange={(event) => setReaderTranslationSource(event.target.value)}
-              >
-                {READER_SOURCE_LANGUAGES.map((language) => (
-                  <option key={language.value} value={language.value}>
-                    {language.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Hermes translation target language"
-                value={readerTranslationTarget}
-                disabled={Boolean(readerHermesBusy)}
-                onChange={(event) => setReaderTranslationTarget(event.target.value)}
-              >
-                {READER_TRANSLATION_LANGUAGES.map((language) => (
-                  <option key={language.value} value={language.value}>
-                    {language.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="toolbar-button"
-                type="button"
-                aria-label="Ask Hermes to translate selected message"
-                disabled={Boolean(readerHermesBusy)}
-                onClick={() => void askHermesForReaderTranslation()}
-              >
-                翻译
-              </button>
-            </div>
+            <HermesReaderTranslationControls
+              sourceLanguage={readerTranslationSource}
+              targetLanguage={readerTranslationTarget}
+              busy={Boolean(readerHermesBusy)}
+              onSourceLanguageChange={setReaderTranslationSource}
+              onTargetLanguageChange={setReaderTranslationTarget}
+              onTranslate={() => void askHermesForReaderTranslation()}
+            />
             <button
               className="toolbar-button"
               type="button"
@@ -4930,38 +4899,13 @@ function MailWorkspace(props: {
             ) : null}
 
             {readerHermesTranslation ? (
-              <div
-                className="reason-box hermes-reader-result hermes-translation-result"
-                role="status"
-                aria-label="Hermes 邮件翻译"
-              >
-                <div>
-                  <Sparkles size={18} />
-                  <strong>
-                    Hermes 翻译 ·{" "}
-                    {translationLanguageLabel(readerHermesTranslation.targetLanguage)}
-                  </strong>
-                </div>
-                <small>
-                  {readerHermesTranslation.cached ? "缓存命中" : "新翻译"} · 运行{" "}
-                  {readerHermesTranslation.skillRunId}
-                  {readerHermesTranslation.auditEventId
-                    ? ` · 审计 ${readerHermesTranslation.auditEventId}`
-                    : ""}
-                </small>
-                <p>{readerHermesTranslation.translatedText}</p>
-                <div className="hermes-apply-actions">
-                  <button
-                    className="tiny-button"
-                    type="button"
-                    aria-label="Remember Hermes translation preference"
-                    disabled={readerTranslationPreferenceBusy}
-                    onClick={() => void rememberReaderTranslationPreference()}
-                  >
-                    {readerTranslationPreferenceBusy ? "保存中" : "记住这个翻译习惯"}
-                  </button>
-                </div>
-              </div>
+              <HermesReaderTranslationResult
+                translation={readerHermesTranslation}
+                preferenceBusy={readerTranslationPreferenceBusy}
+                onRememberPreference={() =>
+                  void rememberReaderTranslationPreference()
+                }
+              />
             ) : null}
 
             {readerHermesOrganization ? (
@@ -5203,13 +5147,6 @@ function formatSendIdentity(identity: MailSendIdentityDto): string {
       : []),
   ];
   return markers.length > 0 ? `${label} · ${markers.join(" · ")}` : label;
-}
-
-function translationLanguageLabel(value: string): string {
-  return (
-    READER_TRANSLATION_LANGUAGES.find((language) => language.value === value)?.label ??
-    value
-  );
 }
 
 function hermesOrganizationApplyActions(
