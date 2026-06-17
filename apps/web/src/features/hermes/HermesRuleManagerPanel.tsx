@@ -487,11 +487,6 @@ export function HermesRuleManagerPanel(props: HermesRuleManagerPanelProps) {
       setRuleNotice("请先运行 shadow simulation，再确认启用规则。");
       return;
     }
-    const command = draftCommand.trim();
-    if (!command) {
-      setRuleNotice("请输入要让 Hermes 创建的规则。");
-      return;
-    }
 
     if (!props.api) {
       const previewRule: HermesRuleDto = {
@@ -532,7 +527,6 @@ export function HermesRuleManagerPanel(props: HermesRuleManagerPanelProps) {
       const plan = await props.api.createHermesActionPlan({
         accountId: props.accountId,
         candidateId: candidate.id,
-        command,
         sampleLimit: 25,
       });
       actionPlanStage = "confirm";

@@ -128,7 +128,6 @@ describe("HermesRuleManagerPanel", () => {
       expect(api.createHermesActionPlan).toHaveBeenCalledWith({
         accountId: "account_1",
         candidateId: "candidate_codes",
-        command: "帮我创建一个验证码分组规则",
         sampleLimit: 25,
       });
       expect(api.confirmHermesActionPlan).toHaveBeenCalledWith({
@@ -223,8 +222,6 @@ describe("HermesRuleManagerPanel", () => {
       expect(api.createHermesActionPlan).toHaveBeenCalledWith({
         accountId: "account_1",
         candidateId: "candidate_codes",
-        command:
-          "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
         sampleLimit: 25,
       });
     });
