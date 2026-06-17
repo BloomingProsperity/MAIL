@@ -27,6 +27,8 @@ Keep files small and responsibilities obvious. Prefer clear module folders such 
 
 `apps/web/src/App.tsx` is already too large and should be treated as a legacy shell, not a place to keep adding whole features. New frontend work should move page- or feature-level code into focused files such as `pages/`, `features/`, `components/`, or hooks/util modules. When touching `App.tsx`, keep edits narrowly scoped; if a change adds a new page, large panel, form flow, or more than a small localized patch, extract that code instead of growing the file. Prefer incremental behavior-preserving extraction with targeted tests over a large one-shot refactor.
 
+Avoid creating or extending 1,000+ line handwritten source files unless they are generated artifacts or there is a documented exception. Before adding substantial frontend behavior, check whether the change belongs in a dedicated component, hook, feature module, API helper, or test fixture. For the existing oversized `App.tsx`, future cleanup should happen opportunistically: extract one stable feature at a time, keep behavior unchanged, and verify with focused tests instead of pausing launch work for a risky broad rewrite.
+
 ## Testing Guidelines
 
 Tests use Vitest. Place backend tests under each workspace `tests/` directory and frontend tests beside source files. Prefer strong behavior tests over snapshots, for example webhook signature rejection, OAuth token redaction, retry dead-lettering, or "mail folders remain in the second column." Write failing tests before production changes when adding behavior.
