@@ -162,6 +162,13 @@ with more than smoke-level tests.
   confirmation requirement, memory limit, and context character budget. Message
   body context is capped before prompt construction and before skill run/audit
   persistence, with a 24k character default when no per-skill override exists.
+  The per-skill memory limit is now applied at runtime when loading memory
+  context for direct skill runs and message-scoped reader skills, so Settings
+  changes reduce prompt memory fan-out instead of only changing UI metadata.
+  The per-skill memory-write permission is enforced before state-changing
+  learning paths write memories or preferences: translation preference
+  confirmation checks `translate_text`, draft feedback checks the originating
+  draft skill, and action-plan confirmation checks `action_plan`.
   New Hermes skills must ship with editable settings, defaults, frontend
   controls, and route tests before they are considered complete.
 - Worker: no silent write actions; worker only consumes explicit mail actions
@@ -180,8 +187,9 @@ with more than smoke-level tests.
   Saving, sending, scheduling, or updating a Hermes-polished compose draft
   carries the `skillRunId` and Hermes draft text into compose persistence; the
   feedback store writes `writing_style_profile` memories when the user edits
-  the result and records accepted rewrite/polish output as positive style
-  preference without exposing draft body outside Hermes memory/audit tables.
+  the result and the originating draft skill allows memory writes. It records
+  accepted rewrite/polish output as positive style preference without exposing
+  draft body outside Hermes memory/audit tables.
 - Current search QA status: the compact Hermes dock now submits natural
   language mail questions through `/api/hermes/skills/email_search_qa/run`
   using the selected account, global memory scope, and a five-result limit. The

@@ -3,6 +3,30 @@ import { describe, expect, it } from "vitest";
 import { createPostgresHermesDraftFeedbackStore } from "../src/hermes/draft-feedback";
 
 describe("postgres Hermes draft feedback store", () => {
+  it("looks up editable draft feedback runs before memory writes", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        if (text.includes("FROM hermes_skill_runs")) {
+          return { rows: [{ id: "run_1", skill_id: "quick_reply" }] };
+        }
+        return { rows: [] };
+      },
+    };
+    const store = createPostgresHermesDraftFeedbackStore(client, {
+      createId: () => "unused",
+    });
+
+    await expect(
+      store.getDraftFeedbackSkillRun({ skillRunId: "run_1" }),
+    ).resolves.toEqual({
+      skillRunId: "run_1",
+      skillId: "quick_reply",
+    });
+    expect(queries[0].values).toEqual(["run_1"]);
+  });
+
   it("records edited reply drafts and writes a writing style memory", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const ids = ["feedback_1", "memory_1"];

@@ -37,6 +37,7 @@ export interface HermesNewsletterCleanupInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export interface HermesNewsletterCleanupResult {

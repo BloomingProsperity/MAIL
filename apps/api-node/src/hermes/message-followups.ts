@@ -13,6 +13,7 @@ export interface HermesMessageFollowupTrackerInput {
   memoryScope?: string;
   memoryLayers?: string[];
   maxContextChars?: number;
+  memoryLimit?: number;
 }
 
 export interface HermesMessageFollowupTrackerResult
@@ -79,6 +80,7 @@ export function createHermesMessageFollowupTrackerService(
           normalized.memoryScope ??
           (message.from.email ? `sender:${message.from.email}` : "global"),
         memoryLayers: normalized.memoryLayers,
+        memoryLimit: normalized.memoryLimit,
       });
 
       return {
@@ -105,7 +107,7 @@ function normalizeInput(
 ): Required<Pick<HermesMessageFollowupTrackerInput, "accountId" | "messageId" | "language">> &
   Pick<
     HermesMessageFollowupTrackerInput,
-    "memoryIds" | "memoryScope" | "memoryLayers" | "maxContextChars"
+    "memoryIds" | "memoryScope" | "memoryLayers" | "maxContextChars" | "memoryLimit"
   > {
   return {
     accountId: normalizeRequiredText(input.accountId),
@@ -121,6 +123,7 @@ function normalizeInput(
     ...(input.maxContextChars !== undefined
       ? { maxContextChars: input.maxContextChars }
       : {}),
+    ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
   };
 }
 

@@ -17,6 +17,7 @@ export interface HermesMessageTranslationInput {
   memoryLayers?: string[];
   forceRefresh?: boolean;
   maxContextChars?: number;
+  memoryLimit?: number;
 }
 
 export interface HermesMessageTranslationResult extends HermesTranslateResult {
@@ -153,6 +154,7 @@ export function createHermesMessageTranslationService(
           normalized.memoryScope ??
           (message.from.email ? `sender:${message.from.email}` : "global"),
         memoryLayers: normalized.memoryLayers,
+        memoryLimit: normalized.memoryLimit,
       });
 
       if (!options.store) {
@@ -194,6 +196,7 @@ type NormalizedHermesMessageTranslationInput = Required<
     | "memoryLayers"
     | "forceRefresh"
     | "maxContextChars"
+    | "memoryLimit"
   >;
 
 function normalizeInput(
@@ -214,6 +217,7 @@ function normalizeInput(
     ...(input.maxContextChars !== undefined
       ? { maxContextChars: input.maxContextChars }
       : {}),
+    ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
   };
 }
 

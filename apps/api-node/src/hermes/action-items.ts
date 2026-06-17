@@ -28,6 +28,7 @@ export interface HermesActionItemExtractInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export interface HermesActionItemExtractResult {

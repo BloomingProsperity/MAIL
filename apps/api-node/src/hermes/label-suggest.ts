@@ -38,6 +38,7 @@ export interface HermesLabelSuggestInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export interface HermesLabelSuggestResult {

@@ -16,6 +16,7 @@ export interface HermesReplyDraftInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export type HermesQuickReplyScenario =
@@ -44,6 +45,7 @@ export interface HermesQuickReplyInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export interface HermesRewritePolishInput {
@@ -56,6 +58,7 @@ export interface HermesRewritePolishInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export interface HermesReplyDraftResult {

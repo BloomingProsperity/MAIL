@@ -17,6 +17,7 @@ export interface HermesMessageSummaryInput {
   memoryLayers?: string[];
   forceRefresh?: boolean;
   maxContextChars?: number;
+  memoryLimit?: number;
 }
 
 export interface HermesMessageSummaryResult extends HermesThreadSummaryResult {
@@ -140,6 +141,7 @@ export function createHermesMessageSummaryService(
         memoryIds: normalized.memoryIds,
         memoryScope: normalized.memoryScope ?? "global",
         memoryLayers: normalized.memoryLayers,
+        memoryLimit: normalized.memoryLimit,
       });
 
       if (!options.store) {
@@ -179,6 +181,7 @@ function normalizeInput(
     | "memoryLayers"
     | "forceRefresh"
     | "maxContextChars"
+    | "memoryLimit"
   > {
   return {
     accountId: normalizeRequiredText(input.accountId),
@@ -197,6 +200,7 @@ function normalizeInput(
     ...(input.maxContextChars !== undefined
       ? { maxContextChars: input.maxContextChars }
       : {}),
+    ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
   };
 }
 

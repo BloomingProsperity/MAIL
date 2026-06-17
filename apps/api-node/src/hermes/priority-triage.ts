@@ -30,6 +30,7 @@ export interface HermesPriorityTriageInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export interface HermesPriorityTriageResult {

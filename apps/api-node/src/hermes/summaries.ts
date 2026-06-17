@@ -16,6 +16,7 @@ export interface HermesThreadSummaryInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export type HermesThreadSummaryMode = "short" | "detailed" | "action_points";

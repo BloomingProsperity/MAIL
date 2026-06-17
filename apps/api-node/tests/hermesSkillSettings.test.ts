@@ -38,6 +38,7 @@ describe("Hermes skill settings service", () => {
     expect(skills.find((skill) => skill.id === "reply_draft")).toMatchObject({
       settings: {
         enabled: true,
+        allowMemoryWrite: true,
         requireConfirmation: true,
       },
     });
@@ -67,7 +68,7 @@ describe("Hermes skill settings service", () => {
           maxContextChars: 32000,
           memoryLimit: 8,
           allowBodyRead: true,
-          allowMemoryWrite: false,
+          allowMemoryWrite: true,
           requireConfirmation: true,
         },
       },

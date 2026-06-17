@@ -356,8 +356,8 @@ describe("Hermes routes", () => {
     );
   });
 
-  it("limits direct Hermes skill run text by the editable context budget", async () => {
-    const calls: Array<{ text: string }> = [];
+  it("limits direct Hermes skill run text and memories by editable budgets", async () => {
+    const calls: Array<{ text: string; memoryLimit?: number }> = [];
     const hermesService = {
       async translate(input: { text: string }) {
         calls.push(input);
@@ -386,7 +386,7 @@ describe("Hermes routes", () => {
           settings: {
             enabled: true,
             maxContextChars: 1000,
-            memoryLimit: 6,
+            memoryLimit: 2,
             allowBodyRead: true,
             allowMemoryWrite: false,
             requireConfirmation: false,
@@ -420,6 +420,7 @@ describe("Hermes routes", () => {
 
     expect(calls[0].text.length).toBeLessThanOrEqual(1000);
     expect(calls[0].text).toContain("Hermes context truncated");
+    expect(calls[0].memoryLimit).toBe(2);
   });
 
   it("blocks disabled Hermes skills before calling the Hermes service", async () => {
@@ -597,7 +598,7 @@ describe("Hermes routes", () => {
     ]);
   });
 
-  it("passes the editable Hermes skill context budget to message-scoped routes", async () => {
+  it("passes editable Hermes skill context and memory budgets to message-scoped routes", async () => {
     const calls: unknown[] = [];
     const hermesSkillSettingsService = {
       async listSkills() {
@@ -616,7 +617,7 @@ describe("Hermes routes", () => {
           settings: {
             enabled: true,
             maxContextChars: 12000,
-            memoryLimit: 6,
+            memoryLimit: 3,
             allowBodyRead: true,
             allowMemoryWrite: false,
             requireConfirmation: false,
@@ -666,6 +667,7 @@ describe("Hermes routes", () => {
         messageId: "message_1",
         targetLanguage: "Chinese",
         maxContextChars: 12000,
+        memoryLimit: 3,
       },
     ]);
   });
@@ -1636,6 +1638,70 @@ describe("Hermes routes", () => {
       },
       { hermesTranslationPreferenceService },
     );
+  });
+
+  it("blocks translation preference memory writes when the skill disallows them", async () => {
+    const calls: unknown[] = [];
+    const hermesTranslationPreferenceService = {
+      async confirmTranslationPreference(input: unknown) {
+        calls.push(input);
+        return {};
+      },
+    };
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings() {
+        throw new Error("not used");
+      },
+      async getSkill(skillId: string) {
+        return {
+          id: skillId,
+          title: "翻译邮件",
+          mode: "read",
+          description: "翻译邮件正文",
+          settings: {
+            enabled: true,
+            maxContextChars: 24000,
+            memoryLimit: 6,
+            allowBodyRead: true,
+            allowMemoryWrite: false,
+            requireConfirmation: false,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/translation-preferences`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "always",
+              sourceLanguage: "English",
+              targetLanguage: "Chinese",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({
+          error: "hermes_skill_disabled",
+          skillId: "translate_text",
+        });
+      },
+      { hermesTranslationPreferenceService, hermesSkillSettingsService },
+    );
+
+    expect(calls).toEqual([]);
   });
 
   it("runs the reply_draft skill through the Hermes service", async () => {
@@ -2995,8 +3061,15 @@ describe("Hermes routes", () => {
   it("records reply draft feedback through the draft feedback store", async () => {
     const calls: unknown[] = [];
     const hermesDraftFeedbackStore = {
+      async getDraftFeedbackSkillRun(input: unknown) {
+        calls.push(["lookup", input]);
+        return {
+          skillRunId: "run_1",
+          skillId: "reply_draft",
+        };
+      },
       async recordDraftFeedback(input: unknown) {
-        calls.push(input);
+        calls.push(["record", input]);
         return {
           feedbackId: "feedback_1",
           skillRunId: "run_1",
@@ -3028,13 +3101,17 @@ describe("Hermes routes", () => {
           memoryId: "memory_1",
         });
         expect(calls).toEqual([
-          {
-            skillRunId: "run_1",
-            draftText: "Hi Lina,\n\nThanks for the details.",
-            finalText: "Hi Lina,\n\nThanks.",
-            subject: "Re: launch",
-            recipientEmail: "lina@example.com",
-          },
+          ["lookup", { skillRunId: "run_1" }],
+          [
+            "record",
+            {
+              skillRunId: "run_1",
+              draftText: "Hi Lina,\n\nThanks for the details.",
+              finalText: "Hi Lina,\n\nThanks.",
+              subject: "Re: launch",
+              recipientEmail: "lina@example.com",
+            },
+          ],
         ]);
       },
       { hermesDraftFeedbackStore },
@@ -3044,6 +3121,10 @@ describe("Hermes routes", () => {
   it("rejects invalid reply draft feedback before hitting the store", async () => {
     const calls: unknown[] = [];
     const hermesDraftFeedbackStore = {
+      async getDraftFeedbackSkillRun(input: unknown) {
+        calls.push(input);
+        return undefined;
+      },
       async recordDraftFeedback(input: unknown) {
         calls.push(input);
         return undefined;
@@ -3074,8 +3155,11 @@ describe("Hermes routes", () => {
 
   it("returns 404 when reply draft feedback references a missing run", async () => {
     const hermesDraftFeedbackStore = {
-      async recordDraftFeedback() {
+      async getDraftFeedbackSkillRun() {
         return undefined;
+      },
+      async recordDraftFeedback() {
+        throw new Error("missing run should not be recorded");
       },
     };
 
@@ -3096,6 +3180,74 @@ describe("Hermes routes", () => {
       },
       { hermesDraftFeedbackStore },
     );
+  });
+
+  it("blocks draft feedback memory writes when the origin skill disallows them", async () => {
+    const calls: unknown[] = [];
+    const hermesDraftFeedbackStore = {
+      async getDraftFeedbackSkillRun(input: unknown) {
+        calls.push(["lookup", input]);
+        return {
+          skillRunId: "run_1",
+          skillId: "reply_draft",
+        };
+      },
+      async recordDraftFeedback(input: unknown) {
+        calls.push(["record", input]);
+        return {};
+      },
+    };
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings() {
+        throw new Error("not used");
+      },
+      async getSkill(skillId: string) {
+        return {
+          id: skillId,
+          title: "生成回复草稿",
+          mode: "draft",
+          description: "根据上下文生成可编辑回复",
+          settings: {
+            enabled: true,
+            maxContextChars: 24000,
+            memoryLimit: 6,
+            allowBodyRead: true,
+            allowMemoryWrite: false,
+            requireConfirmation: true,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/hermes/drafts/feedback`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            skillRunId: "run_1",
+            draftText: "Draft",
+            finalText: "Final",
+          }),
+        });
+
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({
+          error: "hermes_skill_disabled",
+          skillId: "reply_draft",
+        });
+      },
+      { hermesDraftFeedbackStore, hermesSkillSettingsService },
+    );
+
+    expect(calls).toEqual([["lookup", { skillRunId: "run_1" }]]);
   });
 
   it("returns 503 when reply draft feedback storage is unavailable", async () => {

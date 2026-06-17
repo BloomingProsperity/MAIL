@@ -15,7 +15,21 @@ export interface HermesDraftFeedbackResult {
   memoryId?: string;
 }
 
+export type HermesDraftFeedbackSkillId =
+  | "reply_draft"
+  | "quick_reply"
+  | "rewrite_polish";
+
 export interface HermesDraftFeedbackStore {
+  getDraftFeedbackSkillRun(input: {
+    skillRunId: string;
+  }): Promise<
+    | {
+        skillRunId: string;
+        skillId: HermesDraftFeedbackSkillId;
+      }
+    | undefined
+  >;
   recordDraftFeedback(
     input: HermesDraftFeedbackInput,
   ): Promise<HermesDraftFeedbackResult | undefined>;
@@ -32,11 +46,6 @@ interface HermesSkillRunRow extends Record<string, unknown> {
   output?: unknown;
 }
 
-type HermesDraftFeedbackSkillId =
-  | "reply_draft"
-  | "quick_reply"
-  | "rewrite_polish";
-
 interface DraftRevisionAnalysis {
   draftWordCount: number;
   finalWordCount: number;
@@ -49,6 +58,16 @@ export function createPostgresHermesDraftFeedbackStore(
   options: CreatePostgresHermesDraftFeedbackStoreOptions,
 ): HermesDraftFeedbackStore {
   return {
+    async getDraftFeedbackSkillRun(input) {
+      const skillRun = await loadEditableFeedbackRun(client, input.skillRunId);
+      return skillRun
+        ? {
+            skillRunId: skillRun.id,
+            skillId: skillRun.skill_id,
+          }
+        : undefined;
+    },
+
     async recordDraftFeedback(input) {
       return withTransaction(client, async (tx) => {
         const skillRun = await loadEditableFeedbackRun(tx, input.skillRunId);

@@ -26,6 +26,7 @@ export interface HermesMessageOrganizationInput {
   memoryScope?: string;
   memoryLayers?: string[];
   maxContextChars?: number;
+  memoryLimit?: number;
 }
 
 export interface HermesMessageOrganizationResult {
@@ -108,6 +109,7 @@ export function createHermesMessageOrganizationService(
         memoryIds: normalized.memoryIds,
         memoryScope,
         memoryLayers: normalized.memoryLayers,
+        memoryLimit: normalized.memoryLimit,
       };
 
       const [priority, labels, newsletter, actionItems] = await Promise.all([
@@ -164,7 +166,7 @@ function normalizeInput(
 ): Required<Pick<HermesMessageOrganizationInput, "accountId" | "messageId" | "language">> &
   Pick<
     HermesMessageOrganizationInput,
-    "memoryIds" | "memoryScope" | "memoryLayers" | "maxContextChars"
+    "memoryIds" | "memoryScope" | "memoryLayers" | "maxContextChars" | "memoryLimit"
   > {
   return {
     accountId: normalizeRequiredText(input.accountId),
@@ -180,6 +182,7 @@ function normalizeInput(
     ...(input.maxContextChars !== undefined
       ? { maxContextChars: input.maxContextChars }
       : {}),
+    ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
   };
 }
 

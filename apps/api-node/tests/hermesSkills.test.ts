@@ -20,7 +20,7 @@ describe("Hermes skills", () => {
         maxContextChars: 24000,
         memoryLimit: 6,
         allowBodyRead: true,
-        allowMemoryWrite: false,
+        allowMemoryWrite: true,
         requireConfirmation: false,
       },
     });

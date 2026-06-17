@@ -60,12 +60,15 @@ const SKILL_DEFINITIONS: Array<
 > = [
   definition("thread_summarize", "线程总结", "read", "总结线程状态、争议点和下一步"),
   definition("reply_draft", "生成回复草稿", "draft", "根据上下文生成可编辑回复", {
+    allowMemoryWrite: true,
     requireConfirmation: true,
   }),
   definition("rewrite_polish", "改写润色", "draft", "缩短、扩写或调整语气", {
+    allowMemoryWrite: true,
     requireConfirmation: true,
   }),
   definition("quick_reply", "快速短回复", "draft", "生成确认、拒绝、推进等短回复", {
+    allowMemoryWrite: true,
     requireConfirmation: true,
   }),
   definition("email_search_qa", "自然语言查邮件", "read", "把问题转成搜索并总结结果"),
@@ -79,6 +82,9 @@ const SKILL_DEFINITIONS: Array<
     "翻译邮件",
     "read",
     "翻译邮件正文、选中文本或草稿，保留格式和语气",
+    {
+      allowMemoryWrite: true,
+    },
   ),
   definition("action_plan", "执行计划", "learn", "把自然语言邮箱操作转成可确认计划", {
     allowMemoryWrite: true,

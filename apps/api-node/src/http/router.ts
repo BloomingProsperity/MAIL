@@ -836,9 +836,15 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const input = parseHermesTranslationPreferenceInput(
+          await readRequestBody(),
+        );
+        await ensureHermesSkillAllowed(config, "translate_text", {
+          requiresMemoryWrite: true,
+        });
         const result =
           await config.hermesTranslationPreferenceService.confirmTranslationPreference(
-            parseHermesTranslationPreferenceInput(await readRequestBody()),
+            input,
           );
         writeJson(response, 201, result);
         return;
@@ -1611,10 +1617,20 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const input = parseHermesDraftFeedbackInput(await readRequestBody());
+        const skillRun =
+          await config.hermesDraftFeedbackStore.getDraftFeedbackSkillRun({
+            skillRunId: input.skillRunId,
+          });
+        if (!skillRun) {
+          writeJson(response, 404, { error: "draft_run_not_found" });
+          return;
+        }
+        await ensureHermesSkillAllowed(config, skillRun.skillId, {
+          requiresMemoryWrite: true,
+        });
         const result =
-          await config.hermesDraftFeedbackStore.recordDraftFeedback(
-            parseHermesDraftFeedbackInput(await readRequestBody()),
-          );
+          await config.hermesDraftFeedbackStore.recordDraftFeedback(input);
         if (!result) {
           writeJson(response, 404, { error: "draft_run_not_found" });
           return;
@@ -1648,11 +1664,15 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           hermesActionPlanRoute.action === "confirm" &&
           request.method === "POST"
         ) {
+          const input = parseHermesActionPlanConfirmInput(
+            hermesActionPlanRoute.planId,
+            await readRequestBody(),
+          );
+          await ensureHermesSkillAllowed(config, "action_plan", {
+            requiresMemoryWrite: true,
+          });
           const result = await config.hermesActionPlanService.confirmPlan(
-            parseHermesActionPlanConfirmInput(
-              hermesActionPlanRoute.planId,
-              await readRequestBody(),
-            ),
+            input,
           );
           if (!result) {
             writeJson(response, 404, { error: "action_plan_target_not_found" });
@@ -2329,9 +2349,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
-        await ensureHermesSkillAllowed(config, "email_search_qa");
+        const skill = await ensureHermesSkillAllowed(config, "email_search_qa");
         const result = await config.hermesService.searchMail(
-          parseHermesEmailSearchQaInput(await readRequestBody()),
+          withHermesSkillContextBudget(
+            parseHermesEmailSearchQaInput(await readRequestBody()),
+            skill,
+          ),
         );
         writeJson(response, 202, result);
         return;
@@ -3003,7 +3026,7 @@ async function recordOperationalEvent(
 async function ensureHermesSkillAllowed(
   config: ApiConfig,
   skillId: string,
-  options: { requiresBodyRead?: boolean } = {},
+  options: { requiresBodyRead?: boolean; requiresMemoryWrite?: boolean } = {},
 ): Promise<HermesSkill | undefined> {
   if (!config.hermesSkillSettingsService) {
     return undefined;
@@ -3022,6 +3045,12 @@ async function ensureHermesSkillAllowed(
       "Hermes skill body reads are disabled",
     );
   }
+  if (options.requiresMemoryWrite && !skill.settings.allowMemoryWrite) {
+    throw new HermesSkillDisabledError(
+      skillId,
+      "Hermes skill memory writes are disabled",
+    );
+  }
 
   return skill;
 }
@@ -3029,7 +3058,7 @@ async function ensureHermesSkillAllowed(
 function withHermesSkillContextBudget<T extends object>(
   input: T,
   skill: HermesSkill | undefined,
-): T & { maxContextChars?: number } {
+): T & { maxContextChars?: number; memoryLimit?: number } {
   if (!skill) {
     return input;
   }
@@ -3037,36 +3066,47 @@ function withHermesSkillContextBudget<T extends object>(
   return {
     ...input,
     maxContextChars: skill.settings.maxContextChars,
+    memoryLimit: skill.settings.memoryLimit,
   };
 }
 
 function withHermesSkillsContextBudget<T extends object>(
   input: T,
   skills: Array<HermesSkill | undefined>,
-): T & { maxContextChars?: number } {
+): T & { maxContextChars?: number; memoryLimit?: number } {
   const budgets = skills
     .map((skill) => skill?.settings.maxContextChars)
     .filter((value): value is number => typeof value === "number");
+  const memoryLimits = skills
+    .map((skill) => skill?.settings.memoryLimit)
+    .filter((value): value is number => typeof value === "number");
   if (budgets.length === 0) {
-    return input;
+    return memoryLimits.length === 0
+      ? input
+      : { ...input, memoryLimit: Math.min(...memoryLimits) };
   }
 
   return {
     ...input,
     maxContextChars: Math.min(...budgets),
+    ...(memoryLimits.length > 0
+      ? { memoryLimit: Math.min(...memoryLimits) }
+      : {}),
   };
 }
 
 function withHermesInputTextBudget<T extends object>(
   input: T,
   skill: HermesSkill | undefined,
-): T {
+): T & { memoryLimit?: number } {
   if (!skill) {
     return input;
   }
 
   const budget = { maxChars: skill.settings.maxContextChars };
-  const patch: Partial<{ text: string; threadText: string }> = {};
+  const patch: Partial<{ text: string; threadText: string; memoryLimit: number }> = {
+    memoryLimit: skill.settings.memoryLimit,
+  };
   const value = input as { text?: unknown; threadText?: unknown };
   if (typeof value.text === "string") {
     patch.text = limitHermesContextText(value.text, budget);

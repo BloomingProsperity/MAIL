@@ -60,6 +60,39 @@ describe("Hermes memory context", () => {
       "memory_lina",
     ]);
   });
+
+  it("lets a skill run memory limit override the service default", async () => {
+    const calls: unknown[] = [];
+
+    await loadHermesMemoryContext(
+      {
+        memoryScope: "sender:client@example.com",
+        memoryLayers: ["contact_memory", "procedural_memory"],
+        memoryLimit: 2,
+      },
+      {
+        memoryLimit: 10,
+        defaultLayers: ["contact_memory", "procedural_memory"],
+        memoryStore: {
+          async listMemories(input) {
+            calls.push(input);
+            return { items: [] };
+          },
+        },
+      },
+    );
+
+    expect(calls).toEqual([
+      { layer: "contact_memory", scope: "global", limit: 1 },
+      { layer: "contact_memory", scope: "sender:client@example.com", limit: 1 },
+      { layer: "procedural_memory", scope: "global", limit: 1 },
+      {
+        layer: "procedural_memory",
+        scope: "sender:client@example.com",
+        limit: 1,
+      },
+    ]);
+  });
 });
 
 function memory(

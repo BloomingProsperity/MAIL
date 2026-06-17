@@ -3,6 +3,7 @@ import type { HermesMemoryDto, HermesMemoryStore } from "./memory-store.js";
 export interface HermesMemoryContextInput {
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export interface HermesMemoryContextOptions {
@@ -20,7 +21,7 @@ export async function loadHermesMemoryContext(
   }
 
   const layers = normalizeMemoryLayers(input.memoryLayers, options.defaultLayers);
-  const limit = options.memoryLimit ?? 6;
+  const limit = input.memoryLimit ?? options.memoryLimit ?? 6;
   const scopes = normalizeMemoryScopes(input.memoryScope);
   const perQueryLimit = Math.max(1, Math.ceil(limit / (layers.length * scopes.length)));
   const pages = await Promise.all(

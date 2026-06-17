@@ -25,6 +25,7 @@ export interface HermesFollowupTrackerInput {
   memoryIds?: string[];
   memoryScope?: string;
   memoryLayers?: string[];
+  memoryLimit?: number;
 }
 
 export interface HermesFollowupTrackerResult {
