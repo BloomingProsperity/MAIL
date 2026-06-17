@@ -75,6 +75,34 @@ export interface RunEmailEngineAttachmentDownloadSmokeInput {
   reuseExistingReadyAccount?: boolean;
 }
 
+export interface RunEmailEngineMailActionSmokeInput {
+  apiBaseUrl: string;
+  payload: ImapSmtpOnboardingInput;
+  deliverySmtp: {
+    host: string;
+    port: number;
+    secure?: boolean;
+    from?: string;
+  };
+  fetchImpl?: typeof fetch;
+  runOnboarding?: (
+    input: RunImapSmtpOnboardingSmokeInput,
+  ) => Promise<ImapSmtpOnboardingSmokeResult>;
+  sendMessage?: (
+    input: SendSmtpSmokeMessageInput,
+  ) => Promise<SmtpSmokeDeliveryResult>;
+  createUniqueId?: () => string;
+  now?: () => Date;
+  delayMs?: (ms: number) => Promise<void>;
+  pollAttempts?: number;
+  pollMs?: number;
+  initialSyncReadyAttempts?: number;
+  initialSyncReadyPollMs?: number;
+  workerDiagnosticAttempts?: number;
+  workerDiagnosticPollMs?: number;
+  reuseExistingReadyAccount?: boolean;
+}
+
 export interface EmailEngineAttachmentDownloadSmokeResult {
   ok: true;
   smoke: "emailengine_attachment_download";
@@ -89,6 +117,27 @@ export interface EmailEngineAttachmentDownloadSmokeResult {
   attachmentFilename: string;
   attachmentContentType: string;
   downloadedBytes: number;
+}
+
+export interface EmailEngineMailActionSmokeResult {
+  ok: true;
+  smoke: "emailengine_mail_action";
+  apiBaseUrl: string;
+  email: string;
+  provider: string;
+  accountId: string;
+  deliveredMessageId: string;
+  postDeliverySyncJobId: string;
+  readModelMessageId: string;
+  readModelSubject: string;
+  action: "mark_read";
+  commandId: string;
+  commandType: "mark_read";
+  actionResponseStatus: number;
+  actionStateUnread: boolean;
+  workerDiagnosticEventId: string;
+  workerDiagnosticStatus: "processed";
+  workerDiagnosticLane: "engine_commands";
 }
 
 interface SmokeAccountInput {
@@ -115,6 +164,36 @@ interface MessageListEntry {
 interface ExpectedMessage {
   message: MessageListEntry;
   detail: Record<string, unknown>;
+}
+
+interface MailActionCommandResponse {
+  id: string;
+  commandType: string;
+  status: string;
+}
+
+interface MailActionResponse {
+  action: string;
+  state: {
+    unread: boolean;
+  };
+  command: MailActionCommandResponse;
+}
+
+interface ManualSyncResponse {
+  action: "manual_sync_queued";
+  job: {
+    id: string;
+  };
+}
+
+interface OperationalEventEntry {
+  id: string;
+  service: string;
+  event: string;
+  lane?: string;
+  jobId?: string;
+  context: Record<string, unknown>;
 }
 
 export async function runEmailEngineSendSmoke(
@@ -296,6 +375,108 @@ export async function runEmailEngineAttachmentDownloadSmoke(
   };
 }
 
+export async function runEmailEngineMailActionSmoke(
+  input: RunEmailEngineMailActionSmokeInput,
+): Promise<EmailEngineMailActionSmokeResult> {
+  const apiBaseUrl = normalizeApiBaseUrl(input.apiBaseUrl);
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const runOnboarding = input.runOnboarding ?? runImapSmtpOnboardingSmoke;
+  const sendMessage = input.sendMessage ?? sendSmtpSmokeMessage;
+  const uniqueId = (input.createUniqueId ?? randomUUID)();
+  const subject = `[EmailHub Action Smoke] ${uniqueId}`;
+  const delayMs = input.delayMs ?? defaultDelay;
+  const pollMs = input.pollMs ?? 2000;
+  const account = await prepareSmokeAccount({
+    apiBaseUrl,
+    payload: input.payload,
+    fetchImpl,
+    runOnboarding,
+    reuseExistingReadyAccount: input.reuseExistingReadyAccount ?? true,
+    initialSyncReadyAttempts: input.initialSyncReadyAttempts ?? 0,
+    initialSyncReadyPollMs: input.initialSyncReadyPollMs ?? pollMs,
+    pollMs,
+    delayMs,
+  });
+  const delivery = await sendMessage({
+    host: input.deliverySmtp.host,
+    port: input.deliverySmtp.port,
+    secure: input.deliverySmtp.secure ?? false,
+    from: input.deliverySmtp.from ?? "emailhub-smoke@example.com",
+    to: account.email,
+    messageId: `emailhub-action-${uniqueId}@emailhub-smoke.local`,
+    subject,
+    text: [
+      "Email Hub EmailEngine mail action smoke.",
+      `uniqueId=${uniqueId}`,
+      `accountId=${account.accountId}`,
+    ].join("\n"),
+  });
+  const postDeliverySync = await requestManualSync({
+    apiBaseUrl,
+    fetchImpl,
+    accountId: account.accountId,
+  });
+  const observed = await waitForExpectedMessage({
+    apiBaseUrl,
+    fetchImpl,
+    accountId: account.accountId,
+    subject,
+    uniqueId,
+    syncJobId: postDeliverySync.job.id,
+    attempts: input.pollAttempts ?? 60,
+    pollMs,
+    delayMs,
+    errorPrefix: "EmailEngine mail action smoke",
+  });
+  const action = await markMessageRead({
+    apiBaseUrl,
+    fetchImpl,
+    accountId: account.accountId,
+    messageId: observed.message.id,
+  });
+  const diagnostic = await waitForEngineCommandProcessedDiagnostic({
+    apiBaseUrl,
+    fetchImpl,
+    accountId: account.accountId,
+    commandId: action.command.id,
+    attempts: input.workerDiagnosticAttempts ?? input.pollAttempts ?? 60,
+    pollMs: input.workerDiagnosticPollMs ?? pollMs,
+    delayMs,
+  });
+  const finalDetail = await readMessageDetail({
+    apiBaseUrl,
+    fetchImpl,
+    accountId: account.accountId,
+    messageId: observed.message.id,
+  });
+  if (!finalDetail || finalDetail.unread !== false) {
+    throw new Error(
+      "EmailEngine mail action smoke expected read model unread=false after mark_read",
+    );
+  }
+
+  return {
+    ok: true,
+    smoke: "emailengine_mail_action",
+    apiBaseUrl,
+    email: account.email,
+    provider: account.provider,
+    accountId: account.accountId,
+    deliveredMessageId: delivery.messageId,
+    postDeliverySyncJobId: postDeliverySync.job.id,
+    readModelMessageId: observed.message.id,
+    readModelSubject: observed.message.subject,
+    action: "mark_read",
+    commandId: action.command.id,
+    commandType: "mark_read",
+    actionResponseStatus: 202,
+    actionStateUnread: action.state.unread,
+    workerDiagnosticEventId: diagnostic.id,
+    workerDiagnosticStatus: "processed",
+    workerDiagnosticLane: "engine_commands",
+  };
+}
+
 async function prepareSmokeAccount(
   input: SmokeAccountInput,
 ): Promise<ImapSmtpOnboardingSmokeResult> {
@@ -386,6 +567,60 @@ async function sendDraft(input: {
   }
 
   return { action: "draft_send_queued" };
+}
+
+async function requestManualSync(input: {
+  apiBaseUrl: string;
+  fetchImpl: typeof fetch;
+  accountId: string;
+}): Promise<ManualSyncResponse> {
+  const response = await postJson(
+    input.fetchImpl,
+    `${input.apiBaseUrl}/api/sync-center/accounts/${encodeURIComponent(
+      input.accountId,
+    )}/resync`,
+    undefined,
+  );
+  const parsed = readManualSyncResponse(asRecord(response.body));
+  if (response.status !== 202 || parsed.action !== "manual_sync_queued") {
+    throw new Error(
+      `EmailEngine mail action smoke manual resync returned ${response.status}: ${JSON.stringify(
+        response.body,
+      )}`,
+    );
+  }
+
+  return parsed;
+}
+
+async function markMessageRead(input: {
+  apiBaseUrl: string;
+  fetchImpl: typeof fetch;
+  accountId: string;
+  messageId: string;
+}): Promise<MailActionResponse> {
+  const response = await postJson(
+    input.fetchImpl,
+    `${input.apiBaseUrl}/api/accounts/${encodeURIComponent(
+      input.accountId,
+    )}/messages/${encodeURIComponent(input.messageId)}/actions`,
+    { action: "mark_read" },
+  );
+  const parsed = readMailActionResponse(asRecord(response.body));
+  if (
+    response.status !== 202 ||
+    parsed.action !== "mark_read" ||
+    parsed.state.unread !== false ||
+    parsed.command.commandType !== "mark_read"
+  ) {
+    throw new Error(
+      `EmailEngine mail action smoke mark_read returned ${response.status}: ${JSON.stringify(
+        response.body,
+      )}`,
+    );
+  }
+
+  return parsed;
 }
 
 async function waitForInitialSyncReady(input: {
@@ -496,12 +731,87 @@ async function readInitialSyncJobStatus(input: {
   return readString(latestSyncJob.status);
 }
 
+async function waitForEngineCommandProcessedDiagnostic(input: {
+  apiBaseUrl: string;
+  fetchImpl: typeof fetch;
+  accountId: string;
+  commandId: string;
+  attempts: number;
+  pollMs: number;
+  delayMs: (ms: number) => Promise<void>;
+}): Promise<OperationalEventEntry> {
+  const attempts = Math.max(1, input.attempts);
+  let latestStatus = "missing";
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const events = await readEngineCommandDiagnostics(input);
+    const current = events.find(isEngineCommandEvent(input.commandId));
+    if (current) {
+      const result = asRecord(current.context.result);
+      latestStatus = readString(result.status) ?? latestStatus;
+      if (latestStatus === "processed") {
+        return current;
+      }
+      if (
+        latestStatus === "failed" &&
+        readString(result.finalJobStatus) === "dead_letter"
+      ) {
+        throw new Error(
+          `EmailEngine mail action smoke command ${input.commandId} reached dead_letter: ${readString(
+            result.errorMessage,
+          ) ?? "unknown worker error"}`,
+        );
+      }
+    }
+
+    if (attempt < attempts) {
+      await input.delayMs(input.pollMs);
+    }
+  }
+
+  throw new Error(
+    `EmailEngine mail action smoke command ${input.commandId} did not reach worker processed after ${attempts} diagnostics polls; latest status ${latestStatus}`,
+  );
+}
+
+async function readEngineCommandDiagnostics(input: {
+  apiBaseUrl: string;
+  fetchImpl: typeof fetch;
+  accountId: string;
+  commandId: string;
+}): Promise<OperationalEventEntry[]> {
+  const params = new URLSearchParams({
+    service: "email-hub-worker",
+    event: "worker_result",
+    accountId: input.accountId,
+    lane: "engine_commands",
+    jobId: input.commandId,
+    limit: "10",
+  });
+  const response = await input.fetchImpl(
+    `${input.apiBaseUrl}/api/diagnostics/events?${params.toString()}`,
+  );
+  const body = (await response.json()) as unknown;
+  if (!response.ok) {
+    throw new Error(
+      `EmailEngine mail action smoke diagnostics returned ${response.status}: ${JSON.stringify(
+        body,
+      )}`,
+    );
+  }
+
+  return readArray(asRecord(body).items)
+    .map(readOperationalEventEntry)
+    .filter((event): event is OperationalEventEntry => event !== undefined);
+}
+
 async function waitForExpectedMessage(input: {
   apiBaseUrl: string;
   fetchImpl: typeof fetch;
   accountId: string;
   subject: string;
   uniqueId: string;
+  syncJobId?: string;
   attempts: number;
   pollMs: number;
   delayMs: (ms: number) => Promise<void>;
@@ -519,6 +829,24 @@ async function waitForExpectedMessage(input: {
         return { message, detail: detail! };
       }
     }
+    if (input.syncJobId) {
+      const syncFailure = await readWorkerSyncFailureDiagnostic({
+        apiBaseUrl: input.apiBaseUrl,
+        fetchImpl: input.fetchImpl,
+        accountId: input.accountId,
+        syncJobId: input.syncJobId,
+      });
+      if (syncFailure) {
+        const result = asRecord(syncFailure.context.result);
+        throw new Error(
+          `${input.errorPrefix} post-delivery sync job ${input.syncJobId} failed: ${readString(
+            result.errorMessage,
+          ) ?? "unknown sync error"}; final status ${readString(
+            result.finalJobStatus,
+          ) ?? "unknown"}`,
+        );
+      }
+    }
     if (attempt < attempts) {
       await input.delayMs(input.pollMs);
     }
@@ -527,6 +855,45 @@ async function waitForExpectedMessage(input: {
   throw new Error(
     `${input.errorPrefix} did not observe ${input.subject} in the mail read model for ${input.accountId} after ${attempts} polls`,
   );
+}
+
+async function readWorkerSyncFailureDiagnostic(input: {
+  apiBaseUrl: string;
+  fetchImpl: typeof fetch;
+  accountId: string;
+  syncJobId: string;
+}): Promise<OperationalEventEntry | undefined> {
+  const params = new URLSearchParams({
+    service: "email-hub-worker",
+    accountId: input.accountId,
+    lane: "sync",
+    jobId: input.syncJobId,
+    limit: "5",
+  });
+  const response = await input.fetchImpl(
+    `${input.apiBaseUrl}/api/diagnostics/events?${params.toString()}`,
+  );
+  const body = (await response.json()) as unknown;
+  if (!response.ok) {
+    throw new Error(
+      `EmailEngine mail action smoke sync diagnostics returned ${response.status}: ${JSON.stringify(
+        body,
+      )}`,
+    );
+  }
+
+  return readArray(asRecord(body).items)
+    .map(readOperationalEventEntry)
+    .find((event): event is OperationalEventEntry => {
+      const result = asRecord(event?.context.result);
+      return (
+        event !== undefined &&
+        event.service === "email-hub-worker" &&
+        event.lane === "sync" &&
+        event.jobId === input.syncJobId &&
+        readString(result.status) === "failed"
+      );
+    });
 }
 
 async function findMessageInReadModel(input: {
@@ -648,6 +1015,71 @@ async function postJson(
   return { status: response.status, body: await response.json() };
 }
 
+function readManualSyncResponse(body: Record<string, unknown>): ManualSyncResponse {
+  const action = readRequiredString(body, "action");
+  if (action !== "manual_sync_queued") {
+    throw new Error("EmailEngine smoke manual resync returned unexpected action");
+  }
+
+  return {
+    action,
+    job: {
+      id: readRequiredString(asRecord(body.job), "id"),
+    },
+  };
+}
+
+function readMailActionResponse(body: Record<string, unknown>): MailActionResponse {
+  const state = asRecord(body.state);
+  const command = asRecord(body.command);
+  const unread = state.unread;
+  if (typeof unread !== "boolean") {
+    throw new Error("EmailEngine smoke response is missing state.unread");
+  }
+
+  return {
+    action: readRequiredString(body, "action"),
+    state: { unread },
+    command: {
+      id: readRequiredString(command, "id"),
+      commandType: readRequiredString(command, "commandType"),
+      status: readRequiredString(command, "status"),
+    },
+  };
+}
+
+function readOperationalEventEntry(value: unknown): OperationalEventEntry | undefined {
+  const record = asRecord(value);
+  const id = readString(record.id);
+  const service = readString(record.service);
+  const event = readString(record.event);
+  if (!id || !service || !event) {
+    return undefined;
+  }
+
+  return {
+    id,
+    service,
+    event,
+    ...optionalString("lane", record.lane),
+    ...optionalString("jobId", record.jobId),
+    context: asRecord(record.context),
+  };
+}
+
+function isEngineCommandEvent(commandId: string) {
+  return (event: OperationalEventEntry): boolean => {
+    const result = asRecord(event.context.result);
+    return (
+      event.service === "email-hub-worker" &&
+      event.event === "worker_result" &&
+      event.lane === "engine_commands" &&
+      event.jobId === commandId &&
+      readString(result.commandId) === commandId
+    );
+  };
+}
+
 function readMessageListEntry(value: unknown): MessageListEntry | undefined {
   const record = asRecord(value);
   const id = readString(record.id);
@@ -709,4 +1141,12 @@ function readRequiredString(source: Record<string, unknown>, key: string): strin
 
 function readArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function optionalString<K extends string>(
+  key: K,
+  value: unknown,
+): Partial<Record<K, string>> {
+  const stringValue = readString(value);
+  return stringValue ? ({ [key]: stringValue } as Partial<Record<K, string>>) : {};
 }

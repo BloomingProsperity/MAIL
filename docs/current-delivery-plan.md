@@ -37,8 +37,13 @@ with more than smoke-level tests.
   and runs the real Postgres `sync_jobs` concurrency gate, failing immediately
   instead of silently skipping when no disposable test database is configured.
   `verify:emailengine-launch:greenmail` groups the IMAP/SMTP onboarding smoke,
-  real EmailEngine webhook smoke, outgoing worker send smoke, and attachment
-  download smoke against the GreenMail test stack. The default
+  real EmailEngine webhook smoke, outgoing worker send smoke, attachment
+  download smoke, and user mail-action/outbox worker smoke against the
+  GreenMail test stack. The mail-action smoke uses a fresh mailbox by default,
+  delivers a unique message, queues a Sync Center manual resync, calls the
+  public `mark_read` route, and requires the returned engine command id to reach
+  a `processed` worker diagnostic in the `engine_commands` lane, so local
+  optimistic state alone cannot satisfy the gate. The default
   `verify:emailengine-launch` now runs the core gate, strict DB gate, and
   GreenMail checks, while `verify:emailengine-launch:core` remains available for
   faster iteration before final sign-off.

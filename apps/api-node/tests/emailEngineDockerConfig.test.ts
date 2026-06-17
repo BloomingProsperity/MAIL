@@ -241,6 +241,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(rootPackage.scripts["smoke:emailengine-attachment-download"]).toBe(
       "npm run smoke:emailengine-attachment-download -w apps/api-node",
     );
+    expect(rootPackage.scripts["smoke:emailengine-mail-action"]).toBe(
+      "npm run smoke:emailengine-mail-action -w apps/api-node",
+    );
     expect(apiPackage.scripts["smoke:emailengine-real-webhook"]).toBe(
       "tsx src/emailengine-real-webhook-smoke.ts",
     );
@@ -249,6 +252,9 @@ describe("EmailEngine Docker configuration", () => {
     );
     expect(apiPackage.scripts["smoke:emailengine-attachment-download"]).toBe(
       "tsx src/emailengine-attachment-download-smoke.ts",
+    );
+    expect(apiPackage.scripts["smoke:emailengine-mail-action"]).toBe(
+      "tsx src/emailengine-mail-action-smoke.ts",
     );
     expect(envExample).toContain("EMAILHUB_SMOKE_DELIVERY_SMTP_HOST=127.0.0.1");
     expect(envExample).toContain("EMAILHUB_SMOKE_DELIVERY_SMTP_PORT=3025");
@@ -286,6 +292,14 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("EMAILHUB_SEND_SMOKE_POLL_MS=2000");
     expect(envExample).toContain("EMAILHUB_ATTACHMENT_SMOKE_ATTEMPTS=60");
     expect(envExample).toContain("EMAILHUB_ATTACHMENT_SMOKE_POLL_MS=2000");
+    expect(envExample).toContain("EMAILHUB_MAIL_ACTION_SMOKE_ATTEMPTS=60");
+    expect(envExample).toContain("EMAILHUB_MAIL_ACTION_SMOKE_POLL_MS=2000");
+    expect(envExample).toContain(
+      "EMAILHUB_MAIL_ACTION_SMOKE_WORKER_DIAGNOSTIC_ATTEMPTS=60",
+    );
+    expect(envExample).toContain(
+      "EMAILHUB_MAIL_ACTION_SMOKE_WORKER_DIAGNOSTIC_POLL_MS=2000",
+    );
   });
 
   it("exposes layered EmailEngine-first launch verification gates", async () => {
@@ -297,6 +311,15 @@ describe("EmailEngine Docker configuration", () => {
 
     expect(apiPackage.scripts["verify:emailengine-live"]).toBe(
       "tsx src/emailengine-launch-verify.ts",
+    );
+    expect(rootPackage.scripts["compose:up"]).toContain("--env-file \"$ENV_FILE\"");
+    expect(rootPackage.scripts["compose:up"]).toContain("EMAILHUB_ENV_FILE");
+    expect(rootPackage.scripts["compose:up"]).toContain("infra/docker-compose.yml up --build");
+    expect(rootPackage.scripts["compose:up:detached"]).toContain(
+      "--env-file \"$ENV_FILE\"",
+    );
+    expect(rootPackage.scripts["compose:up:detached"]).toContain(
+      "infra/docker-compose.yml up -d --build",
     );
     expect(rootPackage.scripts["compose:config:prod"]).toContain(
       "infra/docker-compose.prod.yml config >/dev/null",
@@ -318,7 +341,7 @@ describe("EmailEngine Docker configuration", () => {
       "npm run verify:emailengine-live && npm run smoke:emailengine-webhook",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:greenmail"]).toBe(
-      "npm run smoke:imap-smtp-onboarding && npm run smoke:emailengine-real-webhook && npm run smoke:emailengine-send && npm run smoke:emailengine-attachment-download",
+      "npm run smoke:imap-smtp-onboarding && npm run smoke:emailengine-real-webhook && npm run smoke:emailengine-send && npm run smoke:emailengine-attachment-download && npm run smoke:emailengine-mail-action",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:core"]).toBe(
       "npm run verify:emailengine-launch:offline && npm run verify:emailengine-launch:live",
@@ -334,6 +357,8 @@ describe("EmailEngine Docker configuration", () => {
     expect(readme).toContain("npm run verify:emailengine-launch:greenmail");
     expect(readme).toContain("npm run verify:emailengine-launch:strict-db");
     expect(readme).toContain("npm run verify:emailengine-launch:core");
+    expect(readme).toContain("npm run compose:up");
+    expect(readme).toContain("EMAILHUB_ENV_FILE=/path/to/env");
     expect(readme).toContain("EMAILHUB_API_BASE_URL");
   });
 });

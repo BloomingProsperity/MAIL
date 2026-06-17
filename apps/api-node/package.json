@@ -11,6 +11,7 @@
     "smoke:emailengine-real-webhook": "tsx src/emailengine-real-webhook-smoke.ts",
     "smoke:emailengine-send": "tsx src/emailengine-send-smoke.ts",
     "smoke:emailengine-attachment-download": "tsx src/emailengine-attachment-download-smoke.ts",
+    "smoke:emailengine-mail-action": "tsx src/emailengine-mail-action-smoke.ts",
     "smoke:imap-smtp-onboarding": "tsx src/imap-smtp-onboarding-smoke.ts",
     "verify:emailengine-live": "tsx src/emailengine-launch-verify.ts",
     "test": "vitest run"

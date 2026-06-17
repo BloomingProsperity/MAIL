@@ -6,8 +6,23 @@ import { isNonRetryableQueueError } from "./queue-errors.js";
 
 export type EngineCommandRunResult =
   | { status: "idle" }
-  | { status: "processed"; commandId: string }
-  | { status: "failed"; commandId: string; errorMessage: string };
+  | (EngineCommandRunContext & { status: "processed" })
+  | (EngineCommandRunContext & {
+      status: "failed";
+      errorMessage: string;
+      finalCommandStatus: EngineCommandRecord["status"];
+      attempts: number;
+      maxAttempts: number;
+      retryable: boolean;
+      nextRunAt?: string;
+    });
+
+export interface EngineCommandRunContext {
+  commandId: string;
+  accountId: string;
+  commandType: EngineCommandRecord["commandType"];
+  idempotencyKey: string;
+}
 
 export interface RunEngineCommandOnceInput {
   queue: EngineCommandQueue;
@@ -78,19 +93,39 @@ async function processClaimedCommand(
       workerId: input.workerId,
       now: input.now,
     });
-    return { status: "processed", commandId: command.id };
+    return { status: "processed", ...commandContext(command) };
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "unknown engine command error";
-    await input.queue.failCommand({
+    const failedCommand = await input.queue.failCommand({
       commandId: command.id,
       workerId: input.workerId,
       errorMessage,
       retryable: !isNonRetryableQueueError(error),
       now: input.now,
     });
-    return { status: "failed", commandId: command.id, errorMessage };
+    return {
+      status: "failed",
+      ...commandContext(command),
+      errorMessage,
+      finalCommandStatus: failedCommand.status,
+      attempts: failedCommand.attempts,
+      maxAttempts: failedCommand.maxAttempts,
+      retryable: failedCommand.status !== "dead_letter",
+      ...(failedCommand.status === "queued"
+        ? { nextRunAt: failedCommand.notBefore }
+        : {}),
+    };
   }
+}
+
+function commandContext(command: EngineCommandRecord): EngineCommandRunContext {
+  return {
+    commandId: command.id,
+    accountId: command.accountId,
+    commandType: command.commandType,
+    idempotencyKey: command.idempotencyKey,
+  };
 }
 
 function normalizeConcurrency(concurrency: number): number {

@@ -28,6 +28,17 @@ npm run test:backend
 npm run build:backend
 ```
 
+Self-hosted Docker startup should use the repo scripts so compose always loads
+the intended env file:
+
+```powershell
+cp .env.example .env
+npm run compose:up
+npm run compose:up:detached
+```
+
+Set `EMAILHUB_ENV_FILE=/path/to/env` when using a non-default env file.
+
 IMAP/SMTP account onboarding is available at:
 
 ```text
@@ -444,6 +455,26 @@ This delivers a unique MIME attachment to GreenMail, waits for EmailEngine sync
 to mirror the attachment metadata, then calls
 `/api/accounts/:accountId/attachments/:attachmentId/download` and verifies the
 downloaded bytes match the smoke attachment content.
+
+To prove user mail actions are not only applied to the local read model but also
+leave the provider command outbox and finish in the worker, run:
+
+```powershell
+npm run smoke:emailengine-mail-action
+```
+
+This delivers a unique message to GreenMail, queues a Sync Center manual resync
+through `/api/sync-center/accounts/:accountId/resync`, waits for the message to
+appear in the app-owned read model, calls
+`POST /api/accounts/:accountId/messages/:messageId/actions` with
+`mark_read`, and then polls `/api/diagnostics/events` for the exact
+`engine_commands` worker result tied to the returned command id. The smoke
+passes only when that command reaches `processed`; dead-lettered commands and
+diagnostics timeouts fail the run. The API and worker containers must both be
+running with durable operational events enabled. By default this smoke creates a
+fresh `emailhub-action-<uuid>@example.com` mailbox; set
+`EMAILHUB_SMOKE_MAIL_EMAIL` only when you intentionally want to reuse a fixed
+test mailbox.
 
 The same GreenMail-backed checks are also grouped as:
 

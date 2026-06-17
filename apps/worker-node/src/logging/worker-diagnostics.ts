@@ -37,6 +37,7 @@ function toOperationalEvent(
       ...readNumber("maxAttempts", result.maxAttempts),
       ...readBoolean("retryable", result.retryable),
       ...readString("finalJobStatus", result.finalJobStatus),
+      ...readString("finalCommandStatus", result.finalCommandStatus),
       ...readString("nextRunAt", result.nextRunAt),
     },
   };
@@ -46,7 +47,7 @@ function levelForResult(
   result: Record<string, unknown> & { status: string },
 ): OperationalEventRecordInput["level"] {
   if (result.status === "failed") {
-    return result.finalJobStatus === "dead_letter" ? "error" : "warn";
+    return finalWorkItemStatus(result) === "dead_letter" ? "error" : "warn";
   }
 
   return result.status === "skipped" ? "warn" : "info";
@@ -57,7 +58,13 @@ function eventNameForResult(result: Record<string, unknown>): string {
     return "worker_result";
   }
 
-  return result.finalJobStatus === "dead_letter"
+  if (result.laneName === "engine_commands") {
+    return finalWorkItemStatus(result) === "dead_letter"
+      ? "engine_command_dead_lettered"
+      : "engine_command_retry_scheduled";
+  }
+
+  return finalWorkItemStatus(result) === "dead_letter"
     ? "sync_job_dead_lettered"
     : "sync_job_retry_scheduled";
 }
@@ -71,8 +78,8 @@ function messageForResult(result: Record<string, unknown>): unknown {
     return result.errorMessage;
   }
 
-  if (result.finalJobStatus === "dead_letter") {
-    return `${result.errorMessage}; job moved to dead letter`;
+  if (finalWorkItemStatus(result) === "dead_letter") {
+    return `${result.errorMessage}; ${workItemName(result)} moved to dead letter`;
   }
 
   if (
@@ -83,6 +90,14 @@ function messageForResult(result: Record<string, unknown>): unknown {
   }
 
   return result.errorMessage;
+}
+
+function finalWorkItemStatus(result: Record<string, unknown>): unknown {
+  return result.finalJobStatus ?? result.finalCommandStatus;
+}
+
+function workItemName(result: Record<string, unknown>): "command" | "job" {
+  return result.laneName === "engine_commands" ? "command" : "job";
 }
 
 function readWorkItemId(result: Record<string, unknown>): unknown {

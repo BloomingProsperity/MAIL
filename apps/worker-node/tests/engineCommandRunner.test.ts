@@ -42,7 +42,13 @@ describe("engine command runner", () => {
       handleCommand,
     });
 
-    expect(result).toEqual({ status: "processed", commandId: "cmd_1" });
+    expect(result).toEqual({
+      status: "processed",
+      commandId: "cmd_1",
+      accountId: "acc_1",
+      commandType: "mark_read",
+      idempotencyKey: "mail-action:acc_1:msg_1:mark_read",
+    });
     expect(handleCommand).toHaveBeenCalledWith(
       expect.objectContaining({ id: "cmd_1", status: "running" }),
     );
@@ -68,7 +74,15 @@ describe("engine command runner", () => {
     expect(result).toEqual({
       status: "failed",
       commandId: "cmd_1",
+      accountId: "acc_1",
+      commandType: "mark_read",
+      idempotencyKey: "mail-action:acc_1:msg_1:mark_read",
       errorMessage: "EmailEngine unavailable",
+      finalCommandStatus: "queued",
+      attempts: 1,
+      maxAttempts: 3,
+      retryable: true,
+      nextRunAt: "2026-06-12T09:00:30.000Z",
     });
     expect(queue.listCommands()[0]).toMatchObject({
       status: "queued",
@@ -92,7 +106,14 @@ describe("engine command runner", () => {
     expect(result).toEqual({
       status: "failed",
       commandId: "cmd_1",
+      accountId: "acc_1",
+      commandType: "mark_read",
+      idempotencyKey: "mail-action:acc_1:msg_1:mark_read",
       errorMessage: "provider mailbox ref not found",
+      finalCommandStatus: "dead_letter",
+      attempts: 1,
+      maxAttempts: 8,
+      retryable: false,
     });
     expect(queue.listCommands()[0]).toMatchObject({
       status: "dead_letter",
@@ -122,8 +143,20 @@ describe("engine command runner", () => {
     });
 
     expect(result).toEqual([
-      { status: "processed", commandId: "cmd_1" },
-      { status: "processed", commandId: "cmd_2" },
+      {
+        status: "processed",
+        commandId: "cmd_1",
+        accountId: "acc_1",
+        commandType: "mark_read",
+        idempotencyKey: "cmd:1",
+      },
+      {
+        status: "processed",
+        commandId: "cmd_2",
+        accountId: "acc_2",
+        commandType: "mark_read",
+        idempotencyKey: "cmd:2",
+      },
     ]);
     expect(startedIds).toEqual(["cmd_1", "cmd_2"]);
     expect(queue.listCommands()[2]).toMatchObject({

@@ -113,4 +113,62 @@ describe("worker diagnostic event mapping", () => {
       },
     ]);
   });
+
+  it("records engine command diagnostics with account-scoped command ids", async () => {
+    const records: unknown[] = [];
+
+    await recordWorkerResultDiagnostic({
+      recorder: {
+        async record(input: unknown) {
+          records.push(input);
+        },
+      },
+      workerId: "worker_1",
+      result: {
+        status: "failed",
+        laneName: "engine_commands",
+        accountId: "acc_1",
+        commandId: "cmd_1",
+        commandType: "mark_read",
+        idempotencyKey: "mail-action:acc_1:msg_1:mark_read",
+        errorMessage: "provider message ref not found",
+        finalCommandStatus: "dead_letter",
+        attempts: 3,
+        maxAttempts: 3,
+        retryable: false,
+      },
+    });
+
+    expect(records).toEqual([
+      {
+        service: "email-hub-worker",
+        level: "error",
+        event: "engine_command_dead_lettered",
+        accountId: "acc_1",
+        lane: "engine_commands",
+        jobId: "cmd_1",
+        message: "provider message ref not found; command moved to dead letter",
+        context: {
+          workerId: "worker_1",
+          result: {
+            status: "failed",
+            laneName: "engine_commands",
+            accountId: "acc_1",
+            commandId: "cmd_1",
+            commandType: "mark_read",
+            idempotencyKey: "mail-action:acc_1:msg_1:mark_read",
+            errorMessage: "provider message ref not found",
+            finalCommandStatus: "dead_letter",
+            attempts: 3,
+            maxAttempts: 3,
+            retryable: false,
+          },
+          attempts: 3,
+          maxAttempts: 3,
+          retryable: false,
+          finalCommandStatus: "dead_letter",
+        },
+      },
+    ]);
+  });
 });
