@@ -47,6 +47,42 @@ describe("Hermes learning panels", () => {
     expect(api.updateHermesMemory).not.toHaveBeenCalled();
   });
 
+  it("clears stale memories when an account-scoped load fails", async () => {
+    const api = {
+      listHermesMemories: vi
+        .fn()
+        .mockResolvedValueOnce({
+          items: [
+            memoryFixture({
+              id: "memory_account_1",
+              content: { preference: "Account one style" },
+            }),
+          ],
+        })
+        .mockRejectedValueOnce(new Error("network")),
+      updateHermesMemory: vi.fn(),
+      deleteHermesMemory: vi.fn(),
+    } as unknown as EmailHubApi;
+
+    const { rerender } = render(
+      <HermesMemoryManagerPanel api={api} accountId="account_1" />,
+    );
+
+    expect(await screen.findByDisplayValue(/Account one style/)).toBeTruthy();
+
+    rerender(<HermesMemoryManagerPanel api={api} accountId="account_2" />);
+
+    await waitFor(() => {
+      expect(api.listHermesMemories).toHaveBeenLastCalledWith({
+        accountId: "account_2",
+        limit: 50,
+      });
+    });
+    expect(await screen.findByText("Hermes 学习记录暂时不可用。")).toBeTruthy();
+    expect(screen.queryByDisplayValue(/Account one style/)).toBeNull();
+    expect(screen.getByText("没有匹配的 Hermes 学习记录。")).toBeTruthy();
+  });
+
   it("filters audit events to entries that used Hermes memory", async () => {
     const api = {
       listHermesAuditLog: vi.fn(async () => ({

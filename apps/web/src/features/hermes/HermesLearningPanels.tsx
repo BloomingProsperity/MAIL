@@ -122,6 +122,9 @@ export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
           : `已读取 ${page.items.length} 条 Hermes 学习记录。`,
       );
     } catch {
+      setMemories([]);
+      syncMemoryEdits([]);
+      setPendingDeleteMemoryId("");
       setMemoryNotice("Hermes 学习记录暂时不可用。");
     }
   }
