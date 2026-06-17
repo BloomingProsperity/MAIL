@@ -43,6 +43,14 @@ describe("worker main wiring", () => {
     expect(main).toContain("operationalEventRecorder");
   });
 
+  it("wires EmailEngine sync auth failures to reauthorization tasks", async () => {
+    const main = await readFile(mainPath, "utf8");
+
+    expect(main).toContain("createEmailEngineHandler({");
+    expect(main).toContain("reauthorizationMarker: accountSettingsStore");
+    expect(main).toContain("reauthorizationMarker: input.reauthorizationMarker");
+  });
+
   it("wraps all worker lanes in one global overlap guard", async () => {
     const main = await readFile(mainPath, "utf8");
 

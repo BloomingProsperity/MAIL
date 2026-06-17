@@ -3,12 +3,22 @@ import { randomUUID } from "node:crypto";
 import { EmailEngineRequestError } from "./email-engine-client.js";
 import type { EmailEngineClient } from "./email-engine-client.js";
 import type { MirrorStore } from "./mirror-store.js";
+import { NonRetryableQueueError } from "../queue-errors.js";
 import type { EnqueueJobInput } from "../sync-job-queue.js";
 import type { SyncJobRecord } from "../sync-job-queue.js";
+
+export interface EmailEngineReauthorizationMarker {
+  markAccountReauthRequired(input: {
+    accountId: string;
+    reason: "auth_failed";
+    at: string;
+  }): Promise<{ taskId?: string }>;
+}
 
 export interface CreateSyncAccountJobHandlerInput {
   emailEngine: EmailEngineClient;
   mirrorStore: MirrorStore;
+  reauthorizationMarker?: EmailEngineReauthorizationMarker;
   continuationQueue?: {
     enqueueJob(input: EnqueueJobInput): Promise<SyncJobRecord>;
   };
@@ -63,7 +73,12 @@ export function createSyncAccountJobHandler(
       return;
     }
 
-    const mailboxes = await input.emailEngine.listMailboxes(job.accountId);
+    const mailboxes = await callEmailEngineOrMarkReauth({
+      input,
+      job,
+      operation: "listMailboxes",
+      call: () => input.emailEngine.listMailboxes(job.accountId!),
+    });
     await input.mirrorStore.upsertMailboxes({
       engineAccountId: job.accountId,
       provider: "emailengine",
@@ -98,6 +113,7 @@ export function createSyncAccountJobHandler(
     if (emailengineMessageId) {
       const message = await getMessageOrRecordDeleted({
         input,
+        job,
         accountId: job.accountId,
         messageId: emailengineMessageId,
         mailboxPath,
@@ -118,16 +134,23 @@ export function createSyncAccountJobHandler(
 
 async function getMessageOrRecordDeleted(input: {
   input: CreateSyncAccountJobHandlerInput;
+  job: SyncJobRecord;
   accountId: string;
   messageId: string;
   mailboxPath?: string;
 }): Promise<unknown | undefined> {
   try {
-    return await input.input.emailEngine.getMessage({
-      accountId: input.accountId,
-      messageId: input.messageId,
-      textType: "*",
-      markAsSeen: false,
+    return await callEmailEngineOrMarkReauth({
+      input: input.input,
+      job: input.job,
+      operation: "getMessage",
+      call: () =>
+        input.input.emailEngine.getMessage({
+          accountId: input.accountId,
+          messageId: input.messageId,
+          textType: "*",
+          markAsSeen: false,
+        }),
     });
   } catch (error) {
     if (!isEmailEngineNotFoundError(error)) {
@@ -179,11 +202,17 @@ async function syncMailboxPage(input: {
   }
 
   const page = asMessagePage(
-    await input.input.emailEngine.listMessages({
-      accountId: input.job.accountId,
-      path: input.mailboxPath,
-      pageSize: input.pageSize,
-      ...(input.cursor ? { cursor: input.cursor } : {}),
+    await callEmailEngineOrMarkReauth({
+      input: input.input,
+      job: input.job,
+      operation: "listMessages",
+      call: () =>
+        input.input.emailEngine.listMessages({
+          accountId: input.job.accountId!,
+          path: input.mailboxPath!,
+          pageSize: input.pageSize,
+          ...(input.cursor ? { cursor: input.cursor } : {}),
+        }),
     }),
   );
 
@@ -315,6 +344,33 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+async function callEmailEngineOrMarkReauth<T>(input: {
+  input: CreateSyncAccountJobHandlerInput;
+  job: SyncJobRecord;
+  operation: string;
+  call: () => Promise<T>;
+}): Promise<T> {
+  try {
+    return await input.call();
+  } catch (error) {
+    if (!isEmailEngineAuthError(error)) {
+      throw error;
+    }
+
+    if (input.job.accountId) {
+      await input.input.reauthorizationMarker?.markAccountReauthRequired({
+        accountId: input.job.accountId,
+        reason: "auth_failed",
+        at: (input.input.now?.() ?? new Date()).toISOString(),
+      });
+    }
+
+    throw new NonRetryableQueueError(
+      `EmailEngine account ${input.job.accountId ?? "unknown"} requires reauthorization after ${input.operation}`,
+    );
+  }
+}
+
 function isEmailEngineNotFoundError(error: unknown): boolean {
   if (error instanceof EmailEngineRequestError) {
     return error.status === 404 || error.code === "MessageNotFound";
@@ -327,5 +383,36 @@ function isEmailEngineNotFoundError(error: unknown): boolean {
   return (
     error.message.includes("EmailEngine request failed: 404") ||
     error.message.includes("MessageNotFound")
+  );
+}
+
+function isEmailEngineAuthError(error: unknown): boolean {
+  if (error instanceof EmailEngineRequestError) {
+    return (
+      error.status === 401 ||
+      error.status === 403 ||
+      isAuthFailureText(error.code) ||
+      isAuthFailureText(error.detail)
+    );
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return isAuthFailureText(error.message);
+}
+
+function isAuthFailureText(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes("auth") ||
+    normalized.includes("credential") ||
+    normalized.includes("permission") ||
+    normalized.includes("forbidden") ||
+    normalized.includes("unauthorized") ||
+    normalized.includes("invalid_grant") ||
+    normalized.includes("invalid login") ||
+    normalized.includes("login failed")
   );
 }

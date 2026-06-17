@@ -21,7 +21,9 @@ const baseJob: SyncJobRecord = {
 describe("account state processor", () => {
   it("marks auth_failed EmailEngine accounts as requiring reauthorization", async () => {
     const store = {
-      markAccountReauthRequired: vi.fn().mockResolvedValue(undefined),
+      markAccountReauthRequired: vi
+        .fn()
+        .mockResolvedValue({ taskId: "task_reauth_1" }),
     };
     const diagnostics = {
       record: vi.fn().mockResolvedValue(undefined),
@@ -49,8 +51,30 @@ describe("account state processor", () => {
       jobId: "job_state_1",
       context: {
         reason: "auth_failed",
+        taskId: "task_reauth_1",
         triggerEventId: "event_auth_failed",
       },
+    });
+  });
+
+  it("marks sync_failed EmailEngine accounts as requiring reauthorization", async () => {
+    const store = {
+      markAccountReauthRequired: vi.fn().mockResolvedValue({}),
+    };
+    const handler = createAccountStateJobHandler({
+      store,
+      now: () => new Date("2026-06-12T09:02:00.000Z"),
+    });
+
+    await handler({
+      ...baseJob,
+      payload: { kind: "sync_failed" },
+    });
+
+    expect(store.markAccountReauthRequired).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      reason: "sync_failed",
+      at: "2026-06-12T09:02:00.000Z",
     });
   });
 

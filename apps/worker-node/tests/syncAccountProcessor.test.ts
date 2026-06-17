@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { EmailEngineRequestError } from "../src/mail-engine/email-engine-client";
 import { createSyncAccountJobHandler } from "../src/mail-engine/sync-account-processor";
 import type { SyncJobRecord } from "../src/sync-job-queue";
 
@@ -377,6 +378,153 @@ describe("sync account processor", () => {
       deletedAt: expect.any(String),
       idempotencyKey: "delete:acc_1:msg_2",
     });
+  });
+
+  it("marks listMailboxes auth failures as EmailEngine reauthorization tasks", async () => {
+    const emailEngine = {
+      listMailboxes: vi.fn().mockRejectedValue(
+        new EmailEngineRequestError(
+          401,
+          "AuthenticationFailed",
+          "Invalid login",
+        ),
+      ),
+      getMessage: vi.fn(),
+      listMessages: vi.fn(),
+    };
+    const mirrorStore = {
+      upsertMailboxes: vi.fn(),
+      upsertMessage: vi.fn(),
+      recordMessageDeleted: vi.fn(),
+    };
+    const reauthorizationMarker = {
+      markAccountReauthRequired: vi
+        .fn()
+        .mockResolvedValue({ taskId: "task_reauth_1" }),
+    };
+    const handler = createSyncAccountJobHandler({
+      emailEngine,
+      mirrorStore,
+      reauthorizationMarker,
+      now: () => new Date("2026-06-12T09:03:00.000Z"),
+    });
+
+    await expect(
+      handler({
+        ...baseJob,
+        payload: { kind: "manual_resync" },
+      }),
+    ).rejects.toThrow(
+      "EmailEngine account acc_1 requires reauthorization after listMailboxes",
+    );
+
+    expect(reauthorizationMarker.markAccountReauthRequired).toHaveBeenCalledWith(
+      {
+        accountId: "acc_1",
+        reason: "auth_failed",
+        at: "2026-06-12T09:03:00.000Z",
+      },
+    );
+    expect(mirrorStore.upsertMailboxes).not.toHaveBeenCalled();
+  });
+
+  it("marks listMessages auth failures as EmailEngine reauthorization tasks", async () => {
+    const emailEngine = {
+      listMailboxes: vi.fn(),
+      getMessage: vi.fn(),
+      listMessages: vi.fn().mockRejectedValue(
+        new EmailEngineRequestError(
+          403,
+          "AuthenticationFailed",
+          "Account authentication failed",
+        ),
+      ),
+    };
+    const mirrorStore = {
+      upsertMailboxes: vi.fn(),
+      upsertMessage: vi.fn(),
+      recordMessageDeleted: vi.fn(),
+    };
+    const reauthorizationMarker = {
+      markAccountReauthRequired: vi.fn().mockResolvedValue({}),
+    };
+    const handler = createSyncAccountJobHandler({
+      emailEngine,
+      mirrorStore,
+      reauthorizationMarker,
+      now: () => new Date("2026-06-12T09:04:00.000Z"),
+    });
+
+    await expect(
+      handler({
+        ...baseJob,
+        payload: {
+          kind: "emailengine_mailbox_continuation",
+          mailboxPath: "INBOX",
+          cursor: "cursor-2",
+          pageSize: 25,
+        },
+      }),
+    ).rejects.toThrow(
+      "EmailEngine account acc_1 requires reauthorization after listMessages",
+    );
+
+    expect(emailEngine.listMailboxes).not.toHaveBeenCalled();
+    expect(reauthorizationMarker.markAccountReauthRequired).toHaveBeenCalledWith(
+      {
+        accountId: "acc_1",
+        reason: "auth_failed",
+        at: "2026-06-12T09:04:00.000Z",
+      },
+    );
+    expect(mirrorStore.upsertMessage).not.toHaveBeenCalled();
+  });
+
+  it("marks getMessage auth failures as EmailEngine reauthorization tasks", async () => {
+    const emailEngine = {
+      listMailboxes: vi.fn().mockResolvedValue([{ path: "INBOX" }]),
+      getMessage: vi.fn().mockRejectedValue(
+        new EmailEngineRequestError(401, "InvalidToken", "Unauthorized"),
+      ),
+      listMessages: vi.fn(),
+    };
+    const mirrorStore = {
+      upsertMailboxes: vi.fn().mockResolvedValue(undefined),
+      upsertMessage: vi.fn(),
+      recordMessageDeleted: vi.fn(),
+    };
+    const reauthorizationMarker = {
+      markAccountReauthRequired: vi.fn().mockResolvedValue({}),
+    };
+    const handler = createSyncAccountJobHandler({
+      emailEngine,
+      mirrorStore,
+      reauthorizationMarker,
+      now: () => new Date("2026-06-12T09:05:00.000Z"),
+    });
+
+    await expect(
+      handler({
+        ...baseJob,
+        payload: {
+          kind: "message_upserted",
+          providerMessageId: "msg_auth_failed",
+          providerPath: "INBOX",
+        },
+      }),
+    ).rejects.toThrow(
+      "EmailEngine account acc_1 requires reauthorization after getMessage",
+    );
+
+    expect(reauthorizationMarker.markAccountReauthRequired).toHaveBeenCalledWith(
+      {
+        accountId: "acc_1",
+        reason: "auth_failed",
+        at: "2026-06-12T09:05:00.000Z",
+      },
+    );
+    expect(mirrorStore.recordMessageDeleted).not.toHaveBeenCalled();
+    expect(mirrorStore.upsertMessage).not.toHaveBeenCalled();
   });
 
   it("no-ops unknown_notification sync jobs", async () => {

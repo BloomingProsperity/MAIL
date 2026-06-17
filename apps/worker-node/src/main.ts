@@ -11,7 +11,10 @@ import { createPostgresEngineCommandTargetResolver } from "./engine-command-reso
 import { runEngineCommandBatch } from "./engine-command-runner.js";
 import { createEmailEngineClient } from "./mail-engine/email-engine-client.js";
 import { createPostgresMirrorStore } from "./mail-engine/postgres-mirror-store.js";
-import { createSyncAccountJobHandler } from "./mail-engine/sync-account-processor.js";
+import {
+  createSyncAccountJobHandler,
+  type EmailEngineReauthorizationMarker,
+} from "./mail-engine/sync-account-processor.js";
 import {
   createConfiguredNativeAdapters,
   createConfiguredNativeCommandProcessor,
@@ -129,6 +132,7 @@ if (!databaseUrl) {
     continuationQueue: queue,
     emailEngineUrl,
     emailEngineAccessToken,
+    reauthorizationMarker: accountSettingsStore,
   });
   const nativeSyncProcessor = createNativeSyncProcessor({
     adapters: createConfiguredNativeAdapters({
@@ -401,6 +405,7 @@ function createEmailEngineHandler(input: {
   continuationQueue: SyncJobQueue;
   emailEngineUrl: string;
   emailEngineAccessToken?: string;
+  reauthorizationMarker?: EmailEngineReauthorizationMarker;
 }) {
   if (!input.emailEngineAccessToken) {
     logger.warn("worker_configuration_missing", {
@@ -424,6 +429,7 @@ function createEmailEngineHandler(input: {
   return createSyncAccountJobHandler({
     emailEngine,
     mirrorStore,
+    reauthorizationMarker: input.reauthorizationMarker,
     continuationQueue: input.continuationQueue,
   });
 }

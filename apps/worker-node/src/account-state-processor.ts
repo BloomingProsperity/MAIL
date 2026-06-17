@@ -7,7 +7,7 @@ export interface AccountStateStore {
     accountId: string;
     reason: "auth_failed" | "sync_failed";
     at: string;
-  }): Promise<void>;
+  }): Promise<{ taskId?: string }>;
 }
 
 export interface CreateAccountStateJobHandlerInput {
@@ -41,7 +41,7 @@ export function createAccountStateJobHandler(
       return;
     }
 
-    await input.store.markAccountReauthRequired({
+    const marker = await input.store.markAccountReauthRequired({
       accountId: job.accountId,
       reason,
       at: (input.now?.() ?? new Date()).toISOString(),
@@ -57,6 +57,7 @@ export function createAccountStateJobHandler(
       jobId: job.id,
       context: {
         reason,
+        ...(marker.taskId ? { taskId: marker.taskId } : {}),
         ...(job.triggerEventId ? { triggerEventId: job.triggerEventId } : {}),
       },
     });

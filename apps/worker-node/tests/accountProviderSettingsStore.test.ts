@@ -129,18 +129,20 @@ describe("postgres account provider settings store", () => {
     });
   });
 
-  it("marks an account as reauthorization required without touching credentials", async () => {
+  it("marks an EmailEngine account as reauthorization required and creates a recovery task without touching credentials", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {
       async query(text: string, values?: unknown[]) {
         queries.push({ text, values });
-        return { rows: [] };
+        return { rows: [{ task_id: "task_reauth_1" }] };
       },
     };
 
-    const store = createPostgresAccountProviderSettingsStore(client);
+    const store = createPostgresAccountProviderSettingsStore(client, {
+      createId: () => "task_reauth_1",
+    });
 
-    await store.markAccountReauthRequired({
+    const result = await store.markAccountReauthRequired({
       accountId: "44444444-4444-4444-4444-444444444444",
       reason: "auth_failed",
       at: "2026-06-12T09:01:00.000Z",
@@ -148,10 +150,21 @@ describe("postgres account provider settings store", () => {
 
     expect(queries[0].text).toMatch(/UPDATE connected_accounts/i);
     expect(queries[0].text).toMatch(/sync_state = 'reauth_required'/i);
-    expect(queries[0].text).not.toMatch(/secret|token|password/i);
+    expect(queries[0].text).toMatch(/engine_provider = 'emailengine'/i);
+    expect(queries[0].text).toMatch(/INSERT INTO onboarding_tasks/i);
+    expect(queries[0].text).toMatch(/existing_task/i);
+    expect(queries[0].text).toMatch(/payload ->> 'accountId' = \$1/i);
+    expect(queries[0].text).toMatch(/emailengine_account_state/i);
+    expect(queries[0].text).toMatch(/LEFT JOIN account_provider_settings/i);
+    expect(queries[0].text).not.toMatch(
+      /account_credentials|stored_secrets|secret_ref|secret_value|access_token|refresh_token/i,
+    );
     expect(queries[0].values).toEqual([
       "44444444-4444-4444-4444-444444444444",
       "2026-06-12T09:01:00.000Z",
+      "task_reauth_1",
+      "auth_failed",
     ]);
+    expect(result).toEqual({ taskId: "task_reauth_1" });
   });
 });
