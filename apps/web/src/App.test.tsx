@@ -1883,16 +1883,115 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(api.approveHermesRule).not.toHaveBeenCalled();
-    expect(
-      await screen.findByText(
-        "Hermes 执行计划已完成：启用验证码智能分组，已回填 4 封历史邮件。",
-      ),
-    ).toBeTruthy();
-    expect(
+    expect(api.getMailNavigationSummary).toHaveBeenCalled();
+    expect(api.listLabels).toHaveBeenCalledWith({ accountId: "account_1" });
+    await waitFor(() => {
+      expect(api.getHermesWorkspaceContext).toHaveBeenCalledWith({
+        accountId: "account_1",
+        ruleLimit: 10,
+        labelLimit: 20,
+      });
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+        sort: "smart",
+        savedView: "codes",
+      });
+    });
+  });
+
+  it("opens label-backed Hermes rules from Settings when no saved view is returned", async () => {
+    const api = createApiFixture();
+    const command = "帮我创建一个验证码分组规则";
+    vi.mocked(api.confirmHermesActionPlan).mockResolvedValueOnce({
+      id: "confirmation_label_1",
+      auditEventId: "audit_confirm_label_1",
+      planId: "plan_1",
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+      status: "completed",
+      confirmedAt: "2026-06-13T10:02:00.000Z",
+      rule: {
+        id: "rule_codes",
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        title: "启用验证码智能分组",
+        ruleType: "content_label",
+        condition: { anyKeywords: ["验证码", "verification", "otp"] },
+        action: {
+          type: "apply_label",
+          labelId: "label_code",
+          labelName: "验证码",
+          labelColor: "blue",
+          applyToHistory: true,
+          providerWriteback: false,
+          requiresConfirmation: false,
+        },
+        confidence: 0.9,
+        enabled: true,
+        sortOrder: 1000,
+        createdAt: "2026-06-13T10:02:00.000Z",
+        approvedAt: "2026-06-13T10:02:00.000Z",
+      },
+      historyBackfill: {
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        matchedCount: 4,
+        appliedCount: 4,
+        sampleMessageIds: ["message_1", "message_2"],
+      },
+      safety: {
+        requiresUserConfirmation: false,
+        providerWriteback: false,
+        appliesToHistory: true,
+        destructive: false,
+      },
+      steps: [
+        {
+          id: "approve_rule_candidate",
+          title: "启用规则",
+          mode: "mutation",
+          status: "completed",
+          detail: "启用验证码智能分组",
+        },
+      ],
+    } satisfies HermesActionPlanConfirmationDto);
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.change(within(rulePanel).getByLabelText("Hermes rule command"), {
+      target: { value: command },
+    });
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
+    expect(await within(rulePanel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Simulate Hermes rule 启用验证码智能分组",
+      }),
+    );
+    expect(await within(rulePanel).findByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+
+    fireEvent.click(
       within(rulePanel).getByRole("button", {
         name: "Confirm Hermes action plan 启用验证码智能分组",
-      }).textContent,
-    ).toContain("已启用");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+        sort: "smart",
+        labelIds: ["label_code"],
+        tagMode: "any",
+      });
+    });
   });
 
   it("explains when Settings Hermes rule confirmation is disabled by action-plan skill settings", async () => {

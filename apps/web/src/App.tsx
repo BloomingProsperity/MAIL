@@ -1085,6 +1085,23 @@ export function App(props: AppProps = {}) {
     }
   }
 
+  async function handleSettingsHermesRuleApproved(rule: HermesRuleDto) {
+    const target = hermesRuleNavigationTarget(rule);
+    await refreshNavigationSummary();
+    await refreshLabels(rule.accountId);
+    await refreshHermesWorkspaceContext({
+      accountId: rule.accountId,
+      force: true,
+    });
+    if (target?.kind === "savedView") {
+      await loadSavedView(target.id);
+      setActiveView("mail");
+    } else if (target?.kind === "label") {
+      await loadLabel(target.id);
+      setActiveView("mail");
+    }
+  }
+
   useEffect(() => {
     void refreshNavigationSummary();
   }, [props.api]);
@@ -1743,6 +1760,9 @@ export function App(props: AppProps = {}) {
           <SettingsPage
             api={props.api}
             accountId={props.api ? selectedAccountId : accountId}
+            onHermesRuleApproved={(rule) =>
+              void handleSettingsHermesRuleApproved(rule)
+            }
           />
         ) : null}
       </main>
@@ -8554,7 +8574,11 @@ function SearchPage(props: {
   );
 }
 
-function SettingsPage(props: { api?: EmailHubApi; accountId?: string }) {
+function SettingsPage(props: {
+  api?: EmailHubApi;
+  accountId?: string;
+  onHermesRuleApproved?: (rule: HermesRuleDto) => void;
+}) {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("hermes");
   const settingsAccountId = props.accountId ?? PREVIEW_ACCOUNT_ID;
 
@@ -8588,7 +8612,11 @@ function SettingsPage(props: { api?: EmailHubApi; accountId?: string }) {
 
         <div className="settings-detail">
           {activeSection === "hermes" ? (
-            <HermesRuntimeSettingsPanel api={props.api} accountId={props.accountId} />
+            <HermesRuntimeSettingsPanel
+              api={props.api}
+              accountId={props.accountId}
+              onHermesRuleApproved={props.onHermesRuleApproved}
+            />
           ) : null}
           {activeSection === "todo" ? (
             <TodoPage api={props.api} accountId={settingsAccountId} embedded />
@@ -8611,7 +8639,11 @@ function SettingsPage(props: { api?: EmailHubApi; accountId?: string }) {
   );
 }
 
-function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: string }) {
+function HermesRuntimeSettingsPanel(props: {
+  api?: EmailHubApi;
+  accountId?: string;
+  onHermesRuleApproved?: (rule: HermesRuleDto) => void;
+}) {
   const [enabled, setEnabled] = useState(true);
   const [mode, setMode] = useState<HermesRuntimeMode>("external_hermes");
   const [providerKey, setProviderKey] = useState("hermes");
@@ -9036,7 +9068,11 @@ function HermesRuntimeSettingsPanel(props: { api?: EmailHubApi; accountId?: stri
 
       <HermesSkillSettingsPanel api={props.api} />
 
-      <HermesRuleManagerPanel api={props.api} accountId={props.accountId} />
+      <HermesRuleManagerPanel
+        api={props.api}
+        accountId={props.accountId}
+        onRuleApproved={props.onHermesRuleApproved}
+      />
       <HermesMemoryManagerPanel
         api={props.api}
         onInspectMemoryUsage={(memory) =>
@@ -9375,7 +9411,11 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
   );
 }
 
-function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }) {
+function HermesRuleManagerPanel(props: {
+  api?: EmailHubApi;
+  accountId?: string;
+  onRuleApproved?: (rule: HermesRuleDto) => void;
+}) {
   const previewRules: HermesRuleDto[] = [
     {
       id: "preview_rule_codes",
@@ -9897,11 +9937,15 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
           item.id === candidate.id ? { ...item, status: "approved" } : item,
         ),
       );
+      const target = props.onRuleApproved
+        ? hermesRuleNavigationTarget(approvedRule)
+        : undefined;
       setRuleNotice(
         confirmation.historyBackfill
-          ? `Hermes 执行计划已完成：${approvedRule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。`
-          : `Hermes 执行计划已完成：${approvedRule.title}。`,
+          ? `Hermes 执行计划已完成：${approvedRule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。${target ? `已打开${target.label}。` : ""}`
+          : `Hermes 执行计划已完成：${approvedRule.title}${target ? `，已打开${target.label}` : ""}。`,
       );
+      props.onRuleApproved?.(approvedRule);
     } catch (error) {
       setRuleNotice(hermesActionPlanErrorNotice(error, actionPlanStage));
     } finally {
