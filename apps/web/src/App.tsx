@@ -23,7 +23,8 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
-  Trash2
+  Trash2,
+  Undo2
 } from "lucide-react";
 import { ApiRequestError } from "./lib/emailHubApi";
 import type {
@@ -7371,6 +7372,21 @@ function clampHermesSkillInteger(
   return Math.min(bounds.max, Math.max(bounds.min, Math.trunc(next)));
 }
 
+function areHermesSkillSettingsEqual(
+  a: HermesSkillDto["settings"],
+  b: HermesSkillDto["settings"],
+): boolean {
+  return (
+    a.enabled === b.enabled &&
+    a.maxContextChars === b.maxContextChars &&
+    a.memoryLimit === b.memoryLimit &&
+    a.allowBodyRead === b.allowBodyRead &&
+    a.allowMemoryWrite === b.allowMemoryWrite &&
+    a.requireConfirmation === b.requireConfirmation &&
+    a.customInstructions === b.customInstructions
+  );
+}
+
 function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string {
   const labels: Record<HermesProviderProbeMissing, string> = {
     endpoint_url: "服务地址",
@@ -9639,17 +9655,24 @@ function HermesRuntimeSettingsPanel(props: {
 
 function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
   const [skills, setSkills] = useState<HermesSkillDto[]>(fallbackHermesSkills);
+  const [savedSkills, setSavedSkills] =
+    useState<HermesSkillDto[]>(fallbackHermesSkills);
   const [resourceProfile, setResourceProfile] = useState<HermesResourceProfileDto>(
     fallbackHermesResourceProfile,
   );
   const [savingSkillId, setSavingSkillId] = useState<string>();
   const [notice, setNotice] = useState("正在读取 Hermes 能力选项...");
+  const savedSkillsById = useMemo(
+    () => new Map(savedSkills.map((skill) => [skill.id, skill])),
+    [savedSkills],
+  );
 
   useEffect(() => {
     let alive = true;
 
     if (!props.api) {
       setSkills(fallbackHermesSkills);
+      setSavedSkills(fallbackHermesSkills);
       setResourceProfile(fallbackHermesResourceProfile);
       setNotice("本地预览能力选项，连接后会保存到后端。");
       return () => {
@@ -9664,12 +9687,14 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
       .then(([items, profile]) => {
         if (!alive) return;
         setSkills(items);
+        setSavedSkills(items);
         setResourceProfile(profile);
         setNotice("能力选项已同步。");
       })
       .catch(() => {
         if (!alive) return;
         setSkills(fallbackHermesSkills);
+        setSavedSkills(fallbackHermesSkills);
         setResourceProfile(fallbackHermesResourceProfile);
         setNotice("暂时无法读取能力选项，已使用本地兜底。");
       });
@@ -9698,8 +9723,30 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
     );
   }
 
+  function resetLocalSkill(skill: HermesSkillDto) {
+    const saved = savedSkillsById.get(skill.id);
+    if (!saved) {
+      return;
+    }
+
+    setSkills((current) =>
+      current.map((item) =>
+        item.id === skill.id
+          ? {
+              ...item,
+              settings: { ...saved.settings },
+            }
+          : item,
+      ),
+    );
+    setNotice(`已撤回未保存更改：${saved.title}。`);
+  }
+
   async function saveSkill(skill: HermesSkillDto) {
     if (!props.api) {
+      setSavedSkills((current) =>
+        current.map((item) => (item.id === skill.id ? skill : item)),
+      );
       setNotice(`预览已更新：${skill.title}。`);
       return;
     }
@@ -9712,6 +9759,9 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
         patch: skill.settings,
       });
       setSkills((current) =>
+        current.map((item) => (item.id === saved.id ? saved : item)),
+      );
+      setSavedSkills((current) =>
         current.map((item) => (item.id === saved.id ? saved : item)),
       );
       try {
@@ -9801,151 +9851,175 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
       ) : null}
 
       <div className="skill-grid compact hermes-skill-grid">
-        {skills.map((skill) => (
-          <article key={skill.id} className="skill-card hermes-skill-card">
-            <Sparkles size={18} />
-            <div className="hermes-skill-card-body">
-              <div className="skill-card-head">
-                <strong>{skill.title}</strong>
-                <span>{formatHermesSkillMode(skill.mode)}</span>
-              </div>
-              <span>{skill.description}</span>
+        {skills.map((skill) => {
+          const savedSkill = savedSkillsById.get(skill.id);
+          const hasUnsavedChanges = savedSkill
+            ? !areHermesSkillSettingsEqual(skill.settings, savedSkill.settings)
+            : false;
+          return (
+            <article key={skill.id} className="skill-card hermes-skill-card">
+              <Sparkles size={18} />
+              <div className="hermes-skill-card-body">
+                <div className="skill-card-head">
+                  <strong>{skill.title}</strong>
+                  <span>{formatHermesSkillMode(skill.mode)}</span>
+                </div>
+                <span>{skill.description}</span>
 
-              <div className="hermes-skill-toggles">
-                <label className="field-toggle">
-                  <input
-                    aria-label={`Enable Hermes skill ${skill.title}`}
-                    type="checkbox"
-                    checked={skill.settings.enabled}
-                    onChange={(event) =>
-                      updateLocalSkill(skill.id, {
-                        enabled: event.currentTarget.checked,
-                      })
-                    }
-                  />
-                  <span>启用</span>
-                </label>
-                <label className="field-toggle">
-                  <input
-                    aria-label={`Allow Hermes body reads ${skill.title}`}
-                    type="checkbox"
-                    checked={skill.settings.allowBodyRead}
-                    onChange={(event) =>
-                      updateLocalSkill(skill.id, {
-                        allowBodyRead: event.currentTarget.checked,
-                      })
-                    }
-                  />
-                  <span>读取正文</span>
-                </label>
-                <label className="field-toggle">
-                  <input
-                    aria-label={`Allow Hermes memory writes ${skill.title}`}
-                    type="checkbox"
-                    checked={skill.settings.allowMemoryWrite}
-                    onChange={(event) =>
-                      updateLocalSkill(skill.id, {
-                        allowMemoryWrite: event.currentTarget.checked,
-                      })
-                    }
-                  />
-                  <span>写入记忆</span>
-                </label>
-                <label className="field-toggle">
-                  <input
-                    aria-label={`Require Hermes confirmation ${skill.title}`}
-                    type="checkbox"
-                    checked={skill.settings.requireConfirmation}
-                    onChange={(event) =>
-                      updateLocalSkill(skill.id, {
-                        requireConfirmation: event.currentTarget.checked,
-                      })
-                    }
-                  />
-                  <span>操作确认</span>
-                </label>
-              </div>
+                <div className="hermes-skill-toggles">
+                  <label className="field-toggle">
+                    <input
+                      aria-label={`Enable Hermes skill ${skill.title}`}
+                      type="checkbox"
+                      checked={skill.settings.enabled}
+                      onChange={(event) =>
+                        updateLocalSkill(skill.id, {
+                          enabled: event.currentTarget.checked,
+                        })
+                      }
+                    />
+                    <span>启用</span>
+                  </label>
+                  <label className="field-toggle">
+                    <input
+                      aria-label={`Allow Hermes body reads ${skill.title}`}
+                      type="checkbox"
+                      checked={skill.settings.allowBodyRead}
+                      onChange={(event) =>
+                        updateLocalSkill(skill.id, {
+                          allowBodyRead: event.currentTarget.checked,
+                        })
+                      }
+                    />
+                    <span>读取正文</span>
+                  </label>
+                  <label className="field-toggle">
+                    <input
+                      aria-label={`Allow Hermes memory writes ${skill.title}`}
+                      type="checkbox"
+                      checked={skill.settings.allowMemoryWrite}
+                      onChange={(event) =>
+                        updateLocalSkill(skill.id, {
+                          allowMemoryWrite: event.currentTarget.checked,
+                        })
+                      }
+                    />
+                    <span>写入记忆</span>
+                  </label>
+                  <label className="field-toggle">
+                    <input
+                      aria-label={`Require Hermes confirmation ${skill.title}`}
+                      type="checkbox"
+                      checked={skill.settings.requireConfirmation}
+                      onChange={(event) =>
+                        updateLocalSkill(skill.id, {
+                          requireConfirmation: event.currentTarget.checked,
+                        })
+                      }
+                    />
+                    <span>操作确认</span>
+                  </label>
+                </div>
 
-              <div className="hermes-skill-budget-grid">
-                <label>
-                  <span>上下文字符</span>
-                  <input
-                    aria-label={`Hermes skill max context ${skill.title}`}
-                    type="number"
-                    min={skill.settingBounds.maxContextChars.min}
-                    max={skill.settingBounds.maxContextChars.max}
-                    step={skill.settingBounds.maxContextChars.step}
-                    value={skill.settings.maxContextChars}
+                <div className="hermes-skill-budget-grid">
+                  <label>
+                    <span>上下文字符</span>
+                    <input
+                      aria-label={`Hermes skill max context ${skill.title}`}
+                      type="number"
+                      min={skill.settingBounds.maxContextChars.min}
+                      max={skill.settingBounds.maxContextChars.max}
+                      step={skill.settingBounds.maxContextChars.step}
+                      value={skill.settings.maxContextChars}
+                      onChange={(event) =>
+                        updateLocalSkill(skill.id, {
+                          maxContextChars: clampHermesSkillInteger(
+                            event.currentTarget.value,
+                            skill.settings.maxContextChars,
+                            skill.settingBounds.maxContextChars,
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>记忆条数</span>
+                    <input
+                      aria-label={`Hermes skill memory limit ${skill.title}`}
+                      type="number"
+                      min={skill.settingBounds.memoryLimit.min}
+                      max={skill.settingBounds.memoryLimit.max}
+                      step={skill.settingBounds.memoryLimit.step}
+                      value={skill.settings.memoryLimit}
+                      onChange={(event) =>
+                        updateLocalSkill(skill.id, {
+                          memoryLimit: clampHermesSkillInteger(
+                            event.currentTarget.value,
+                            skill.settings.memoryLimit,
+                            skill.settingBounds.memoryLimit,
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+
+                <label className="hermes-skill-custom-instructions">
+                  <span>自定义指令</span>
+                  <textarea
+                    aria-label={`Hermes skill custom instructions ${skill.title}`}
+                    maxLength={skill.settingBounds.customInstructions.maxLength}
+                    rows={4}
+                    value={skill.settings.customInstructions}
                     onChange={(event) =>
                       updateLocalSkill(skill.id, {
-                        maxContextChars: clampHermesSkillInteger(
-                          event.currentTarget.value,
-                          skill.settings.maxContextChars,
-                          skill.settingBounds.maxContextChars,
-                        ),
+                        customInstructions: event.currentTarget.value,
                       })
                     }
                   />
+                  <span>
+                    {skill.settings.customInstructions.length.toLocaleString()} /{" "}
+                    {skill.settingBounds.customInstructions.maxLength.toLocaleString()}
+                  </span>
                 </label>
-                <label>
-                  <span>记忆条数</span>
-                  <input
-                    aria-label={`Hermes skill memory limit ${skill.title}`}
-                    type="number"
-                    min={skill.settingBounds.memoryLimit.min}
-                    max={skill.settingBounds.memoryLimit.max}
-                    step={skill.settingBounds.memoryLimit.step}
-                    value={skill.settings.memoryLimit}
-                    onChange={(event) =>
-                      updateLocalSkill(skill.id, {
-                        memoryLimit: clampHermesSkillInteger(
-                          event.currentTarget.value,
-                          skill.settings.memoryLimit,
-                          skill.settingBounds.memoryLimit,
-                        ),
-                      })
+
+                <div className="inline-actions">
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    aria-label={`Reset Hermes skill settings ${skill.title}`}
+                    disabled={!hasUnsavedChanges || savingSkillId === skill.id}
+                    onClick={() => resetLocalSkill(skill)}
+                  >
+                    <Undo2 size={15} aria-hidden="true" />
+                    撤回更改
+                  </button>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    aria-label={`Save Hermes skill settings ${skill.title}`}
+                    disabled={!hasUnsavedChanges || savingSkillId === skill.id}
+                    onClick={() => void saveSkill(skill)}
+                  >
+                    <CheckCircle2 size={15} aria-hidden="true" />
+                    {savingSkillId === skill.id ? "保存中" : "保存选项"}
+                  </button>
+                  <span
+                    className={
+                      hasUnsavedChanges
+                        ? "hermes-skill-sync-status unsaved"
+                        : "hermes-skill-sync-status"
                     }
-                  />
-                </label>
+                  >
+                    {hasUnsavedChanges ? "未保存" : "已同步"} ·{" "}
+                    {skill.settings.maxContextChars.toLocaleString()} 字符 ·{" "}
+                    {skill.settings.memoryLimit} 条记忆
+                  </span>
+                </div>
               </div>
-
-              <label className="hermes-skill-custom-instructions">
-                <span>自定义指令</span>
-                <textarea
-                  aria-label={`Hermes skill custom instructions ${skill.title}`}
-                  maxLength={skill.settingBounds.customInstructions.maxLength}
-                  rows={4}
-                  value={skill.settings.customInstructions}
-                  onChange={(event) =>
-                    updateLocalSkill(skill.id, {
-                      customInstructions: event.currentTarget.value,
-                    })
-                  }
-                />
-                <span>
-                  {skill.settings.customInstructions.length.toLocaleString()} /{" "}
-                  {skill.settingBounds.customInstructions.maxLength.toLocaleString()}
-                </span>
-              </label>
-
-              <div className="inline-actions">
-                <button
-                  className="ghost-button"
-                  type="button"
-                  aria-label={`Save Hermes skill settings ${skill.title}`}
-                  disabled={savingSkillId === skill.id}
-                  onClick={() => void saveSkill(skill)}
-                >
-                  {savingSkillId === skill.id ? "保存中" : "保存选项"}
-                </button>
-                <span>
-                  {skill.settings.maxContextChars.toLocaleString()} 字符 ·{" "}
-                  {skill.settings.memoryLimit} 条记忆
-                </span>
-              </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
 
       <div className="backend-notice compact" role="status">

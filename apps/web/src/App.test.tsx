@@ -1480,6 +1480,71 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("lets users discard unsaved Hermes skill edits from Settings", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const skillPanel = await screen.findByLabelText("Hermes skill settings");
+    await waitFor(() => {
+      expect(api.listHermesSkills).toHaveBeenCalled();
+    });
+
+    const translateCard = within(skillPanel)
+      .getByText("翻译邮件")
+      .closest("article") as HTMLElement;
+    const enableToggle = within(translateCard).getByLabelText(
+      "Enable Hermes skill 翻译邮件",
+    ) as HTMLInputElement;
+    const maxContextInput = within(translateCard).getByLabelText(
+      "Hermes skill max context 翻译邮件",
+    ) as HTMLInputElement;
+    const memoryLimitInput = within(translateCard).getByLabelText(
+      "Hermes skill memory limit 翻译邮件",
+    ) as HTMLInputElement;
+    const customInstructionsInput = within(translateCard).getByLabelText(
+      "Hermes skill custom instructions 翻译邮件",
+    ) as HTMLTextAreaElement;
+    const resetButton = within(translateCard).getByRole("button", {
+      name: "Reset Hermes skill settings 翻译邮件",
+    }) as HTMLButtonElement;
+    const saveButton = within(translateCard).getByRole("button", {
+      name: "Save Hermes skill settings 翻译邮件",
+    }) as HTMLButtonElement;
+
+    expect(resetButton.disabled).toBe(true);
+    expect(saveButton.disabled).toBe(true);
+
+    fireEvent.click(enableToggle);
+    fireEvent.change(maxContextInput, { target: { value: "12000" } });
+    fireEvent.change(memoryLimitInput, { target: { value: "2" } });
+    fireEvent.change(customInstructionsInput, {
+      target: { value: "Prefer bilingual output for launch partners." },
+    });
+
+    expect(
+      within(translateCard).getByText(/未保存 · 12,000 字符 · 2 条记忆/),
+    ).toBeTruthy();
+    expect(resetButton.disabled).toBe(false);
+    expect(saveButton.disabled).toBe(false);
+
+    fireEvent.click(resetButton);
+
+    expect(enableToggle.checked).toBe(true);
+    expect(maxContextInput.value).toBe("24000");
+    expect(memoryLimitInput.value).toBe("6");
+    expect(customInstructionsInput.value).toBe("");
+    expect(
+      within(translateCard).getByText(/已同步 · 24,000 字符 · 6 条记忆/),
+    ).toBeTruthy();
+    expect(await screen.findByText("已撤回未保存更改：翻译邮件。")).toBeTruthy();
+    expect(api.updateHermesSkillSettings).not.toHaveBeenCalled();
+  });
+
   it("shows Hermes resource profile and self-hosted machine guidance", async () => {
     const api = createApiFixture();
     vi.mocked(api.getHermesResourceProfile).mockResolvedValueOnce(
