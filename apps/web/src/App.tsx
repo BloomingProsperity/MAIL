@@ -9618,6 +9618,7 @@ function HermesRuntimeSettingsPanel(props: {
       />
       <HermesMemoryManagerPanel
         api={props.api}
+        accountId={props.accountId}
         onInspectMemoryUsage={(memory) =>
           setAuditMemoryFocus({
             memoryId: memory.id,
@@ -10768,6 +10769,7 @@ function compareHermesRulesByOrder(
 
 function HermesMemoryManagerPanel(props: {
   api?: EmailHubApi;
+  accountId?: string;
   onInspectMemoryUsage?: (memory: HermesMemoryDto) => void;
 }) {
   const previewMemories: HermesMemoryDto[] = [
@@ -10819,9 +10821,18 @@ function HermesMemoryManagerPanel(props: {
       return;
     }
 
+    if (!props.accountId) {
+      setMemories([]);
+      syncMemoryEdits([]);
+      setPendingDeleteMemoryId("");
+      setMemoryNotice("请先添加邮箱并完成同步，再查看 Hermes 学习记录。");
+      return;
+    }
+
     setMemoryNotice("正在读取 Hermes 学习记录...");
     try {
       const page = await props.api.listHermesMemories({
+        accountId: props.accountId,
         ...(memoryLayerFilter.trim() ? { layer: memoryLayerFilter.trim() } : {}),
         ...(memoryScopeFilter.trim() ? { scope: memoryScopeFilter.trim() } : {}),
         limit: safeLimit,
@@ -10843,7 +10854,7 @@ function HermesMemoryManagerPanel(props: {
     void loadMemories();
     // Filters are applied by the explicit refresh button to avoid reloading while typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.api]);
+  }, [props.accountId, props.api]);
 
   function updateMemoryEdit(
     memory: HermesMemoryDto,
@@ -10898,11 +10909,17 @@ function HermesMemoryManagerPanel(props: {
       return;
     }
 
+    if (!props.accountId) {
+      setMemoryNotice("请先添加邮箱并完成同步，再保存 Hermes 学习记录。");
+      return;
+    }
+
     setBusyMemoryId(memory.id);
     setMemoryNotice("正在保存 Hermes 学习记录...");
     try {
       const saved = await props.api.updateHermesMemory({
         id: memory.id,
+        accountId: props.accountId,
         content,
         confidence,
       });
@@ -10935,10 +10952,18 @@ function HermesMemoryManagerPanel(props: {
       return;
     }
 
+    if (!props.accountId) {
+      setMemoryNotice("请先添加邮箱并完成同步，再删除 Hermes 学习记录。");
+      return;
+    }
+
     setBusyMemoryId(memory.id);
     setMemoryNotice("正在删除 Hermes 学习记录...");
     try {
-      await props.api.deleteHermesMemory({ id: memory.id });
+      await props.api.deleteHermesMemory({
+        id: memory.id,
+        accountId: props.accountId,
+      });
       setMemories((current) => current.filter((item) => item.id !== memory.id));
       setPendingDeleteMemoryId("");
       setMemoryNotice("Hermes 学习记录已删除。");

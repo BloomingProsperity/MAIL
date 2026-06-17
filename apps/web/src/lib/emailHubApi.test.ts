@@ -1072,6 +1072,7 @@ describe("emailHubApi", () => {
           items: [
             {
               id: "memory_1",
+              accountId: "account 1",
               layer: "writing_style_profile",
               scope: "global",
               content: { preference: "short replies" },
@@ -1085,6 +1086,7 @@ describe("emailHubApi", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           id: "memory_1",
+          accountId: "account 1",
           layer: "writing_style_profile",
           scope: "global",
           content: { preference: "crisp replies" },
@@ -1097,16 +1099,18 @@ describe("emailHubApi", () => {
     const api = createEmailHubApi({ fetchImpl: fetchMock as any });
 
     const page = await api.listHermesMemories({
+      accountId: " account 1 ",
       layer: " writing_style_profile ",
       scope: " global ",
       limit: 25,
     });
     const updated = await api.updateHermesMemory({
       id: "memory_1",
+      accountId: " account 1 ",
       content: { preference: "crisp replies" },
       confidence: 0.9,
     });
-    await api.deleteHermesMemory({ id: "memory_1" });
+    await api.deleteHermesMemory({ id: "memory_1", accountId: " account 1 " });
 
     expect(page.items[0]).toMatchObject({
       id: "memory_1",
@@ -1116,12 +1120,12 @@ describe("emailHubApi", () => {
     expect(updated.content).toEqual({ preference: "crisp replies" });
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "/api/hermes/memories?layer=writing_style_profile&scope=global&limit=25",
+      "/api/hermes/memories?accountId=account+1&layer=writing_style_profile&scope=global&limit=25",
       expect.objectContaining({ method: "GET" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "/api/hermes/memories/memory_1",
+      "/api/hermes/memories/memory_1?accountId=account+1",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({
@@ -1132,7 +1136,7 @@ describe("emailHubApi", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      "/api/hermes/memories/memory_1",
+      "/api/hermes/memories/memory_1?accountId=account+1",
       expect.objectContaining({ method: "DELETE" }),
     );
   });

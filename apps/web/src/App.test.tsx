@@ -2298,7 +2298,11 @@ describe("Email Hub first UI baseline", () => {
     expect(
       await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 审计日志。"),
     ).toBeTruthy();
+    expect(
+      await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 学习记录。"),
+    ).toBeTruthy();
     expect(api.listHermesRules).not.toHaveBeenCalled();
+    expect(api.listHermesMemories).not.toHaveBeenCalled();
     expect(api.listHermesAuditLog).not.toHaveBeenCalled();
   });
 
@@ -2327,6 +2331,7 @@ describe("Email Hub first UI baseline", () => {
     await waitFor(() => {
       expect(api.updateHermesMemory).toHaveBeenCalledWith({
         id: "memory_1",
+        accountId: "account_1",
         content: { preference: "Use crisp executive summaries." },
         confidence: 0.91,
       });
@@ -2338,7 +2343,10 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 
     await waitFor(() => {
-      expect(api.deleteHermesMemory).toHaveBeenCalledWith({ id: "memory_1" });
+      expect(api.deleteHermesMemory).toHaveBeenCalledWith({
+        id: "memory_1",
+        accountId: "account_1",
+      });
     });
     expect(await screen.findByText("Hermes 学习记录已删除。")).toBeTruthy();
   });
@@ -2409,6 +2417,7 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listHermesMemories).toHaveBeenLastCalledWith({
+        accountId: "account_1",
         layer: "procedural_memory",
         scope: "sender:team@example.com",
         limit: 100,
@@ -8429,6 +8438,7 @@ function createApiFixture(): EmailHubApi {
       items: [
         {
           id: "memory_1",
+          accountId: "account_1",
           layer: "writing_style_profile",
           scope: "global",
           content: {
@@ -8442,6 +8452,7 @@ function createApiFixture(): EmailHubApi {
     })),
     updateHermesMemory: vi.fn(async (input) => ({
       id: input.id,
+      accountId: input.accountId,
       layer: "writing_style_profile",
       scope: "global",
       content: input.content ?? { preference: "Keep replies concise." },

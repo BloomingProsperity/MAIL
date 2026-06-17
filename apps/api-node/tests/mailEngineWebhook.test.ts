@@ -156,6 +156,30 @@ describe("EmailEngine webhook contract", () => {
     );
   });
 
+  it("uses signed payload event ids as stable delivery idempotency keys", () => {
+    const [rootEventId] = normalizeEmailEngineWebhook({
+      event: "messageNew",
+      eventId: "evt_signed_root",
+      account: "acc_1",
+      data: { id: "msg_1" },
+    });
+    const [dataEventId] = normalizeEmailEngineWebhook({
+      event: "messageUpdated",
+      account: "acc_1",
+      data: {
+        id: "msg_1",
+        eventId: "evt_signed_data",
+      },
+    });
+
+    expect(rootEventId.idempotencyKey).toBe(
+      "emailengine:acc_1:event-id:evt_signed_root",
+    );
+    expect(dataEventId.idempotencyKey).toBe(
+      "emailengine:acc_1:event-id:evt_signed_data",
+    );
+  });
+
   it("separates stable message resource identity from webhook delivery identity", () => {
     const [event] = normalizeEmailEngineWebhook({
       event: "messageNew",

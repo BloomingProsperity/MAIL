@@ -334,6 +334,7 @@ export interface HermesRuntimeVersionStatus {
 
 export interface HermesMemoryDto {
   id: string;
+  accountId?: string;
   layer: string;
   scope: string;
   content: Record<string, unknown>;
@@ -343,6 +344,7 @@ export interface HermesMemoryDto {
 }
 
 export interface HermesMemoryListInput {
+  accountId: string;
   layer?: string;
   scope?: string;
   limit?: number;
@@ -350,6 +352,7 @@ export interface HermesMemoryListInput {
 
 export interface HermesMemoryUpdateInput {
   id: string;
+  accountId: string;
   content?: Record<string, unknown>;
   confidence?: number;
 }
@@ -1900,9 +1903,9 @@ export interface EmailHubApi {
     skillId: string;
     patch: HermesSkillSettingsUpdateInput;
   }): Promise<HermesSkillDto>;
-  listHermesMemories(input?: HermesMemoryListInput): Promise<Page<HermesMemoryDto>>;
+  listHermesMemories(input: HermesMemoryListInput): Promise<Page<HermesMemoryDto>>;
   updateHermesMemory(input: HermesMemoryUpdateInput): Promise<HermesMemoryDto>;
-  deleteHermesMemory(input: { id: string }): Promise<void>;
+  deleteHermesMemory(input: { id: string; accountId: string }): Promise<void>;
   listHermesAuditLog(
     input?: HermesAuditLogListInput,
   ): Promise<Page<HermesAuditLogEntryDto>>;
@@ -2690,8 +2693,9 @@ export function createEmailHubApi(
       );
     },
 
-    listHermesMemories(input = {}) {
+    listHermesMemories(input) {
       const params = new URLSearchParams();
+      appendParam(params, "accountId", input.accountId.trim());
       appendParam(params, "layer", input.layer?.trim() || undefined);
       appendParam(params, "scope", input.scope?.trim() || undefined);
       if (input.limit !== undefined) {
@@ -2706,10 +2710,13 @@ export function createEmailHubApi(
     },
 
     updateHermesMemory(input) {
+      const params = new URLSearchParams({
+        accountId: input.accountId.trim(),
+      });
       return request(
         fetchImpl,
         baseUrl,
-        `/api/hermes/memories/${encodePath(input.id)}`,
+        `/api/hermes/memories/${encodePath(input.id)}?${params}`,
         {
           method: "PATCH",
           body: JSON.stringify(
@@ -2723,10 +2730,13 @@ export function createEmailHubApi(
     },
 
     deleteHermesMemory(input) {
+      const params = new URLSearchParams({
+        accountId: input.accountId.trim(),
+      });
       return request(
         fetchImpl,
         baseUrl,
-        `/api/hermes/memories/${encodePath(input.id)}`,
+        `/api/hermes/memories/${encodePath(input.id)}?${params}`,
         { method: "DELETE" },
       );
     },
