@@ -290,11 +290,7 @@ export function HermesRuleCandidateWorkbench(
       props.setRules((current) =>
         normalizeHermesRuleSortOrders([previewRule, ...current]),
       );
-      props.setCandidateDrafts((current) =>
-        current.map((item) =>
-          item.id === candidate.id ? { ...item, status: "approved" } : item,
-        ),
-      );
+      removeRuleCandidateDraft(candidate.id);
       props.setRuleNotice(`预览规则已启用：${candidate.title}。`);
       return;
     }
@@ -334,11 +330,7 @@ export function HermesRuleCandidateWorkbench(
           ...current.filter((rule) => rule.id !== approvedRule.id),
         ]),
       );
-      props.setCandidateDrafts((current) =>
-        current.map((item) =>
-          item.id === candidate.id ? { ...item, status: "approved" } : item,
-        ),
-      );
+      removeRuleCandidateDraft(candidate.id);
       const target = props.onRuleApproved
         ? hermesRuleNavigationTarget(approvedRule)
         : undefined;

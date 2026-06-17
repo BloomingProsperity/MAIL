@@ -263,6 +263,21 @@ describe("HermesRuleManagerPanel", () => {
         expect.objectContaining({ id: "rule_codes" }),
       );
     });
+    await waitFor(() => {
+      expect(
+        within(panel).queryByRole("button", {
+          name: "Confirm Hermes action plan 启用验证码智能分组",
+        }),
+      ).toBeNull();
+    });
+    expect(
+      within(panel).queryByRole("button", {
+        name: "Dismiss Hermes rule candidate 启用验证码智能分组",
+      }),
+    ).toBeNull();
+    expect(
+      within(panel).queryByLabelText("Hermes rule label 启用验证码智能分组"),
+    ).toBeNull();
   });
 
   it("ignores stale Hermes action-plan confirmation after switching accounts", async () => {
