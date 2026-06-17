@@ -33,11 +33,15 @@ with more than smoke-level tests.
   the default EmailEngine image to `postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc` through
   `EMAILENGINE_IMAGE` instead of following `latest`; operators can override to a
   newer version tag or immutable digest only after rerunning the launch gate.
+  Production self-hosted starts use `compose:up:prod` or
+  `compose:up:prod:detached` so the strict EmailEngine readiness overlay is
+  active from boot.
   `verify:emailengine-launch:live` checks the running API `/health`,
   EmailEngine readiness, token-backed onboarding/download/send capabilities,
-  provider identity, API health status, required Docker Compose service health
-  for `postgres`, `redis-engine`, `emailengine`, `api`, `worker`, and `web`, and
-  the signed webhook idempotency smoke. `verify:emailengine-launch:strict-db`
+  provider identity, API health status, host-reachable web/API endpoints,
+  required Docker Compose service health for `postgres`, `redis-engine`,
+  `emailengine`, `api`, `worker`, and `web`, and the signed webhook idempotency
+  smoke. `verify:emailengine-launch:strict-db`
   requires `TEST_DATABASE_URL` and runs the real Postgres `sync_jobs`
   concurrency gate, failing immediately instead of silently skipping when no
   disposable test database is configured.

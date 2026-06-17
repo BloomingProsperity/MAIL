@@ -81,7 +81,8 @@ describe("mail provider capability catalog", () => {
     expect(findProviderCapability("qqmail")).toMatchObject({
       provider: "qq",
       label: "QQ 邮箱",
-      supportsScanLogin: true,
+      connectionLabel: "输入 QQ 邮箱授权码",
+      supportsScanLogin: false,
       supportsAppPassword: true,
       supportsMailboxPassword: true,
       supportsRecall: true,

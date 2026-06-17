@@ -150,11 +150,11 @@ const PROVIDER_CAPABILITIES: InternalMailProviderCapability[] = [
   {
     provider: "qq",
     label: "QQ 邮箱",
-    connectionLabel: "扫码或输入授权码",
+    connectionLabel: "输入 QQ 邮箱授权码",
     accountGroup: "domestic",
     supportsLogin: true,
     supportsWebLogin: false,
-    supportsScanLogin: true,
+    supportsScanLogin: false,
     supportsAppPassword: true,
     supportsMailboxPassword: true,
     supportsServerSearch: false,

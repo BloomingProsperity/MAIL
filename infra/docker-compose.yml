@@ -92,7 +92,7 @@ services:
       API_PORT: 8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DIAGNOSTICS_LOG_CAPACITY: ${DIAGNOSTICS_LOG_CAPACITY:-500}
-      DATABASE_URL: ${DATABASE_URL:-postgres://emailhub:emailhub_dev@postgres:5432/emailhub}
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-emailhub}:${POSTGRES_PASSWORD:-emailhub_dev}@postgres:5432/${POSTGRES_DB:-emailhub}}
       EMAILENGINE_URL: http://emailengine:3000
       EMAILENGINE_ACCESS_TOKEN: ${EMAILENGINE_ACCESS_TOKEN:-}
       EENGINE_PREPARED_TOKEN: ${EENGINE_PREPARED_TOKEN:-}
@@ -107,6 +107,20 @@ services:
       PROTON_BRIDGE_HOST: ${PROTON_BRIDGE_HOST:-host.docker.internal}
       PROTON_BRIDGE_IMAP_PORT: ${PROTON_BRIDGE_IMAP_PORT:-1143}
       PROTON_BRIDGE_SMTP_PORT: ${PROTON_BRIDGE_SMTP_PORT:-1025}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}
+      GOOGLE_OAUTH_AUTHORIZATION_URL: ${GOOGLE_OAUTH_AUTHORIZATION_URL:-https://accounts.google.com/o/oauth2/v2/auth}
+      GMAIL_PROFILE_URL: ${GMAIL_PROFILE_URL:-https://gmail.googleapis.com/gmail/v1/users/me/profile}
+      GMAIL_API_BASE_URL: ${GMAIL_API_BASE_URL:-https://gmail.googleapis.com/gmail/v1}
+      MICROSOFT_OAUTH_CLIENT_ID: ${MICROSOFT_OAUTH_CLIENT_ID:-}
+      MICROSOFT_OAUTH_CLIENT_SECRET: ${MICROSOFT_OAUTH_CLIENT_SECRET:-}
+      MICROSOFT_OAUTH_TENANT: ${MICROSOFT_OAUTH_TENANT:-common}
+      MICROSOFT_OAUTH_TOKEN_URL: ${MICROSOFT_OAUTH_TOKEN_URL:-https://login.microsoftonline.com/common/oauth2/v2.0/token}
+      MICROSOFT_OAUTH_AUTHORIZATION_URL: ${MICROSOFT_OAUTH_AUTHORIZATION_URL:-https://login.microsoftonline.com/common/oauth2/v2.0/authorize}
+      MICROSOFT_GRAPH_PROFILE_URL: ${MICROSOFT_GRAPH_PROFILE_URL:-https://graph.microsoft.com/v1.0/me}
+      MICROSOFT_GRAPH_BASE_URL: ${MICROSOFT_GRAPH_BASE_URL:-https://graph.microsoft.com/v1.0}
+      MICROSOFT_GRAPH_SCOPE: ${MICROSOFT_GRAPH_SCOPE:-offline_access https://graph.microsoft.com/Mail.Read}
     volumes:
       - emailhub-compose-attachments:/data/email-hub/compose-attachments
     ports:
@@ -136,7 +150,7 @@ services:
         condition: service_completed_successfully
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      DATABASE_URL: ${DATABASE_URL:-postgres://emailhub:emailhub_dev@postgres:5432/emailhub}
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-emailhub}:${POSTGRES_PASSWORD:-emailhub_dev}@postgres:5432/${POSTGRES_DB:-emailhub}}
       EMAILENGINE_URL: http://emailengine:3000
       EMAILENGINE_ACCESS_TOKEN: ${EMAILENGINE_ACCESS_TOKEN:-}
       EENGINE_PREPARED_TOKEN: ${EENGINE_PREPARED_TOKEN:-}
@@ -155,6 +169,16 @@ services:
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       WORKER_POLL_MS: ${WORKER_POLL_MS:-5000}
       WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN: ${WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN:-false}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}
+      GMAIL_API_BASE_URL: ${GMAIL_API_BASE_URL:-https://gmail.googleapis.com/gmail/v1}
+      MICROSOFT_OAUTH_CLIENT_ID: ${MICROSOFT_OAUTH_CLIENT_ID:-}
+      MICROSOFT_OAUTH_CLIENT_SECRET: ${MICROSOFT_OAUTH_CLIENT_SECRET:-}
+      MICROSOFT_OAUTH_TENANT: ${MICROSOFT_OAUTH_TENANT:-common}
+      MICROSOFT_OAUTH_TOKEN_URL: ${MICROSOFT_OAUTH_TOKEN_URL:-https://login.microsoftonline.com/common/oauth2/v2.0/token}
+      MICROSOFT_GRAPH_BASE_URL: ${MICROSOFT_GRAPH_BASE_URL:-https://graph.microsoft.com/v1.0}
+      MICROSOFT_GRAPH_SCOPE: ${MICROSOFT_GRAPH_SCOPE:-offline_access https://graph.microsoft.com/Mail.Read}
     volumes:
       - emailhub-compose-attachments:/data/email-hub/compose-attachments
     extra_hosts:

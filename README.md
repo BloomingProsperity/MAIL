@@ -37,6 +37,14 @@ npm run compose:up
 npm run compose:up:detached
 ```
 
+For production launch verification, use the strict overlay so API health checks
+require EmailEngine launch readiness and the worker requires prepared tokens:
+
+```powershell
+npm run compose:up:prod
+npm run compose:up:prod:detached
+```
+
 Set `EMAILHUB_ENV_FILE=/path/to/env` when using a non-default env file.
 
 IMAP/SMTP account onboarding is available at:
@@ -375,6 +383,11 @@ download, and send capabilities are not all available.
 ```powershell
 npm run verify:emailengine-launch:docker-health
 ```
+
+The Docker health gate checks both Docker Compose service health and host
+reachability. It probes `EMAILHUB_API_BASE_URL/health`,
+`EMAILHUB_API_BASE_URL/api/mail-engine/health`, and `EMAILHUB_WEB_BASE_URL/`
+with `EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS` as the per-request timeout.
 
 For quick core regression while iterating on the launch path, run:
 

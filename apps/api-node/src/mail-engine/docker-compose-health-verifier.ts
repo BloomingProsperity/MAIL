@@ -5,6 +5,9 @@ export interface DockerComposeHealthVerifierOptions {
   composeFiles: string[];
   projectRoot: string;
   requiredServices?: string[];
+  hostChecks?: DockerComposeHostHttpCheckInput[];
+  httpTimeoutMs?: number;
+  httpGet?: DockerComposeHttpGetter;
   runCommand?: DockerComposeCommandRunner;
 }
 
@@ -15,6 +18,7 @@ export interface DockerComposeHealthVerificationResult {
   composeFiles: string[];
   envFile: string;
   checks: Record<string, DockerComposeServiceCheck>;
+  hostChecks: Record<string, DockerComposeHostHttpCheck>;
   requiredFollowUps: string[];
 }
 
@@ -25,6 +29,29 @@ export interface DockerComposeServiceCheck {
   health?: string;
   detail?: string;
 }
+
+export interface DockerComposeHostHttpCheckInput {
+  name: string;
+  url: string;
+  expect: "http_ok" | "mail_engine_ready";
+}
+
+export interface DockerComposeHostHttpCheck {
+  ok: boolean;
+  name: string;
+  url: string;
+  status?: number;
+  readinessStatus?: string;
+  detail?: string;
+}
+
+export type DockerComposeHttpGetter = (input: {
+  url: string;
+  timeoutMs: number;
+}) => Promise<{
+  status: number;
+  body: string;
+}>;
 
 export type DockerComposeCommandRunner = (input: {
   command: string;
@@ -83,6 +110,7 @@ export async function verifyDockerComposeHealth(
       composeFiles: options.composeFiles,
       envFile: options.envFile,
       checks,
+      hostChecks: {},
       requiredFollowUps: [
         "Run the Docker compose stack before launch verification and inspect docker compose ps/logs.",
       ],
@@ -103,6 +131,25 @@ export async function verifyDockerComposeHealth(
         ? `Start missing Docker service: ${check.service}.`
         : `Fix unhealthy Docker service: ${check.service} state=${check.state ?? "unknown"} health=${check.health ?? "unknown"}.`,
     );
+  const hostChecks: Record<string, DockerComposeHostHttpCheck> = Object.fromEntries(
+    await Promise.all(
+      (options.hostChecks ?? []).map(async (check) => [
+        check.name,
+        await checkHostHttpEndpoint(check, {
+          httpGet: options.httpGet ?? fetchHttpEndpoint,
+          timeoutMs: options.httpTimeoutMs ?? 5_000,
+        }),
+      ]),
+    ),
+  );
+  requiredFollowUps.push(
+    ...Object.values(hostChecks)
+      .filter((check) => !check.ok)
+      .map(
+        (check) =>
+          `Fix host HTTP check: ${check.name} url=${check.url} detail=${check.detail ?? "unknown"}.`,
+      ),
+  );
 
   return {
     ok: requiredFollowUps.length === 0,
@@ -111,8 +158,59 @@ export async function verifyDockerComposeHealth(
     composeFiles: options.composeFiles,
     envFile: options.envFile,
     checks,
+    hostChecks,
     requiredFollowUps,
   };
+}
+
+async function checkHostHttpEndpoint(
+  check: DockerComposeHostHttpCheckInput,
+  input: {
+    httpGet: DockerComposeHttpGetter;
+    timeoutMs: number;
+  },
+): Promise<DockerComposeHostHttpCheck> {
+  try {
+    const response = await input.httpGet({
+      url: check.url,
+      timeoutMs: input.timeoutMs,
+    });
+    if (check.expect === "http_ok") {
+      return {
+        ok: response.status >= 200 && response.status < 300,
+        name: check.name,
+        url: check.url,
+        status: response.status,
+        ...(response.status >= 200 && response.status < 300
+          ? {}
+          : { detail: "http_status_not_ok" }),
+      };
+    }
+
+    const body = asRecord(parseJson(response.body));
+    const readiness = asRecord(body.readiness);
+    const readinessStatus = readString(readiness.status);
+    const ready =
+      response.status >= 200 &&
+      response.status < 300 &&
+      body.ok === true &&
+      readinessStatus === "ready";
+    return {
+      ok: ready,
+      name: check.name,
+      url: check.url,
+      status: response.status,
+      ...(readinessStatus ? { readinessStatus } : {}),
+      ...(ready ? {} : { detail: "mail_engine_not_ready" }),
+    };
+  } catch {
+    return {
+      ok: false,
+      name: check.name,
+      url: check.url,
+      detail: "http_request_failed",
+    };
+  }
 }
 
 function checkComposeService(
@@ -225,4 +323,23 @@ async function runDockerComposeCommand(input: {
       });
     });
   });
+}
+
+async function fetchHttpEndpoint(input: {
+  url: string;
+  timeoutMs: number;
+}): Promise<{ status: number; body: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
+  try {
+    const response = await fetch(input.url, {
+      signal: controller.signal,
+    });
+    return {
+      status: response.status,
+      body: await response.text(),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }

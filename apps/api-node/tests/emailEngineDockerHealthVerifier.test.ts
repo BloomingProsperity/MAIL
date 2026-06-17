@@ -42,6 +42,7 @@ describe("Docker compose health verifier", () => {
       state: "running",
       health: "healthy",
     });
+    expect(result.hostChecks).toEqual({});
     expect(calls).toEqual([
       {
         command: "docker",
@@ -59,6 +60,93 @@ describe("Docker compose health verifier", () => {
           "json",
         ],
       },
+    ]);
+  });
+
+  it("passes optional host HTTP probes for API, EmailEngine readiness, and web", async () => {
+    const httpCalls: unknown[] = [];
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      runCommand: healthyComposeCommand,
+      hostChecks: [
+        {
+          name: "api_health",
+          url: "http://127.0.0.1:8080/health",
+          expect: "http_ok",
+        },
+        {
+          name: "mail_engine_readiness",
+          url: "http://127.0.0.1:8080/api/mail-engine/health",
+          expect: "mail_engine_ready",
+        },
+        {
+          name: "web_home",
+          url: "http://127.0.0.1:5173/",
+          expect: "http_ok",
+        },
+      ],
+      httpGet: async (input) => {
+        httpCalls.push(input);
+        return {
+          status: 200,
+          body: input.url.includes("/api/mail-engine/health")
+            ? JSON.stringify({ ok: true, readiness: { status: "ready" } })
+            : "ok",
+        };
+      },
+      httpTimeoutMs: 250,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.hostChecks.mail_engine_readiness).toEqual({
+      ok: true,
+      name: "mail_engine_readiness",
+      url: "http://127.0.0.1:8080/api/mail-engine/health",
+      status: 200,
+      readinessStatus: "ready",
+    });
+    expect(httpCalls).toEqual([
+      { url: "http://127.0.0.1:8080/health", timeoutMs: 250 },
+      {
+        url: "http://127.0.0.1:8080/api/mail-engine/health",
+        timeoutMs: 250,
+      },
+      { url: "http://127.0.0.1:5173/", timeoutMs: 250 },
+    ]);
+  });
+
+  it("fails when host EmailEngine readiness is not ready", async () => {
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      runCommand: healthyComposeCommand,
+      hostChecks: [
+        {
+          name: "mail_engine_readiness",
+          url: "http://127.0.0.1:8080/api/mail-engine/health",
+          expect: "mail_engine_ready",
+        },
+      ],
+      httpGet: async () => ({
+        status: 200,
+        body: JSON.stringify({ ok: true, readiness: { status: "blocked" } }),
+      }),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.hostChecks.mail_engine_readiness).toEqual({
+      ok: false,
+      name: "mail_engine_readiness",
+      url: "http://127.0.0.1:8080/api/mail-engine/health",
+      status: 200,
+      readinessStatus: "blocked",
+      detail: "mail_engine_not_ready",
+    });
+    expect(result.requiredFollowUps).toEqual([
+      "Fix host HTTP check: mail_engine_readiness url=http://127.0.0.1:8080/api/mail-engine/health detail=mail_engine_not_ready.",
     ]);
   });
 
@@ -156,5 +244,20 @@ function service(
     Health: "healthy",
     ...overrides,
     Service: name,
+  };
+}
+
+async function healthyComposeCommand() {
+  return {
+    exitCode: 0,
+    stdout: JSON.stringify([
+      service("postgres"),
+      service("redis-engine"),
+      service("emailengine"),
+      service("api"),
+      service("worker"),
+      service("web"),
+    ]),
+    stderr: "",
   };
 }
