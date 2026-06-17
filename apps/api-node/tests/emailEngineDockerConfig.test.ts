@@ -582,10 +582,16 @@ describe("EmailEngine Docker configuration", () => {
       'EMAILHUB_ENV_FILE="$ENV_FILE" npm run verify:emailengine-launch:env',
     );
     expect(rootPackage.scripts["compose:up:prod"]).toContain(
+      'npm run verify:emailengine-launch:env && docker compose --env-file "$ENV_FILE"',
+    );
+    expect(rootPackage.scripts["compose:up:prod"]).toContain(
       "infra/docker-compose.yml -f infra/docker-compose.prod.yml up --build",
     );
     expect(rootPackage.scripts["compose:up:prod:detached"]).toContain(
       'EMAILHUB_ENV_FILE="$ENV_FILE" npm run verify:emailengine-launch:env',
+    );
+    expect(rootPackage.scripts["compose:up:prod:detached"]).toContain(
+      'npm run verify:emailengine-launch:env && docker compose --env-file "$ENV_FILE"',
     );
     expect(rootPackage.scripts["compose:up:prod:detached"]).toContain(
       "infra/docker-compose.yml -f infra/docker-compose.prod.yml up -d --build",
@@ -656,6 +662,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(readme).toContain("npm run verify:emailengine-launch:core");
     expect(readme).toContain("npm run compose:up");
     expect(readme).toContain("npm run compose:up:prod");
+    expect(readme).toContain(
+      "production startup scripts run the EmailEngine env preflight before Docker",
+    );
     expect(readme).toContain("EMAILHUB_ENV_FILE=/path/to/env");
     expect(readme).toContain("EMAILHUB_API_BASE_URL");
     expect(readme).toContain("EMAILHUB_WEB_BASE_URL");
