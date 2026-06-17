@@ -255,6 +255,18 @@ export function dockerHealthEnvInvariants(
       expected: webhookUrl,
     },
     {
+      service: "emailengine",
+      name: "EENGINE_SETTINGS",
+      valuePath: ["webhooksEnabled"],
+      expected: true,
+    },
+    {
+      service: "emailengine",
+      name: "EENGINE_SETTINGS",
+      valuePath: ["webhookEvents"],
+      expected: ["*"],
+    },
+    {
       service: "api",
       name: "EMAILENGINE_ACCESS_TOKEN",
       expected: emailEngineAccessToken,

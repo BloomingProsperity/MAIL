@@ -75,6 +75,8 @@ with more than smoke-level tests.
   worker health checks require the EmailEngine token, and the EmailEngine/API/
   worker containers agree on access/prepared tokens, service secret, webhook
   secret, auth-server secret, and `EENGINE_SETTINGS` webhook/auth-server fields.
+  It also verifies `webhooksEnabled=true` and `webhookEvents=["*"]` inside the
+  running EmailEngine container.
   It additionally runs EmailEngine's token export command inside the running
   `emailengine` container to prove the selected `EENGINE_PREPARED_TOKEN` is the
   exported prepared form of the selected `EMAILENGINE_ACCESS_TOKEN`, catching

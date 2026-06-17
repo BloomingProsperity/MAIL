@@ -1,5 +1,10 @@
 import { spawn } from "node:child_process";
 
+import {
+  checkComposeEnvInvariants,
+  checkComposeImageInvariants,
+} from "./docker-compose-runtime-invariants.js";
+
 export interface DockerComposeHealthVerifierOptions {
   envFile: string;
   composeFiles: string[];
@@ -62,9 +67,14 @@ export interface DockerComposeHostHttpCheck {
 export interface DockerComposeEnvInvariantInput {
   service: string;
   name: string;
-  expected: string;
+  expected: DockerComposeEnvInvariantExpected;
   valuePath?: string[];
 }
+
+export type DockerComposeEnvInvariantExpected =
+  | string
+  | boolean
+  | string[];
 
 export interface DockerComposeImageInvariantInput {
   service: string;
@@ -271,7 +281,11 @@ async function verifyDockerComposeHealthOnce(input: {
       ),
   );
   const imageChecks = Object.values(checks).every((check) => check.ok)
-    ? await checkComposeImageInvariants(options)
+    ? await checkComposeImageInvariants({
+        options,
+        baseArgs: dockerComposeBaseArgs(options),
+        runCommand: options.runCommand ?? runDockerComposeCommand,
+      })
     : {};
   requiredFollowUps.push(
     ...Object.values(imageChecks)
@@ -282,7 +296,11 @@ async function verifyDockerComposeHealthOnce(input: {
       ),
   );
   const envChecks = Object.values(checks).every((check) => check.ok)
-    ? await checkComposeEnvInvariants(options)
+    ? await checkComposeEnvInvariants({
+        options,
+        baseArgs: dockerComposeBaseArgs(options),
+        runCommand: options.runCommand ?? runDockerComposeCommand,
+      })
     : {};
   requiredFollowUps.push(
     ...Object.values(envChecks)
@@ -525,175 +543,6 @@ function composeConfigFileIncluded(
 
 function normalizeComposeConfigFilePath(value: string): string {
   return value.trim().replace(/\\/g, "/").replace(/^\.\/+/, "");
-}
-
-async function checkComposeEnvInvariants(
-  options: DockerComposeHealthVerifierOptions,
-): Promise<Record<string, DockerComposeEnvInvariantCheck>> {
-  const runCommand = options.runCommand ?? runDockerComposeCommand;
-  const checks = await Promise.all(
-    (options.envInvariants ?? []).map(async (invariant) => {
-      const commandResult = await runCommand({
-        command: "docker",
-        args: [
-          ...dockerComposeBaseArgs(options),
-          "exec",
-          "-T",
-          invariant.service,
-          "printenv",
-          invariant.name,
-        ],
-        cwd: options.projectRoot,
-      });
-      const actual =
-        commandResult.exitCode === 0
-          ? readEnvInvariantActual(commandResult.stdout, invariant)
-          : undefined;
-      const detail =
-        commandResult.exitCode !== 0
-          ? "env_read_failed"
-          : actual?.detail
-            ? actual.detail
-            : actual?.value !== invariant.expected
-              ? "env_value_mismatch"
-              : undefined;
-      const check: DockerComposeEnvInvariantCheck = {
-        ok: detail === undefined,
-        service: invariant.service,
-        name: envInvariantReportName(invariant),
-        ...(detail ? { detail } : {}),
-      };
-      return [envInvariantKey(invariant), check] as const;
-    }),
-  );
-
-  return Object.fromEntries(checks);
-}
-
-function readEnvInvariantActual(
-  stdout: string,
-  invariant: DockerComposeEnvInvariantInput,
-):
-  | {
-      value: string;
-      detail?: undefined;
-    }
-  | {
-      value?: undefined;
-      detail: NonNullable<DockerComposeEnvInvariantCheck["detail"]>;
-    } {
-  const rawValue = stdout.trim();
-  if (!invariant.valuePath || invariant.valuePath.length === 0) {
-    return { value: rawValue };
-  }
-
-  const parsed = parseJson(rawValue);
-  if (!parsed) {
-    return { detail: "env_json_parse_failed" };
-  }
-
-  const value = readJsonPathString(parsed, invariant.valuePath);
-  if (!value) {
-    return { detail: "env_json_path_missing" };
-  }
-
-  return { value };
-}
-
-function readJsonPathString(
-  value: unknown,
-  path: string[],
-): string | undefined {
-  let current = value;
-  for (const segment of path) {
-    if (!current || typeof current !== "object" || Array.isArray(current)) {
-      return undefined;
-    }
-    current = (current as Record<string, unknown>)[segment];
-  }
-
-  return readString(current);
-}
-
-function envInvariantKey(input: {
-  service: string;
-  name: string;
-  valuePath?: string[];
-}): string {
-  return `${input.service}.${envInvariantReportName(input)}`;
-}
-
-function envInvariantReportName(input: {
-  name: string;
-  valuePath?: string[];
-}): string {
-  return [input.name, ...(input.valuePath ?? [])].join(".");
-}
-
-async function checkComposeImageInvariants(
-  options: DockerComposeHealthVerifierOptions,
-): Promise<Record<string, DockerComposeImageInvariantCheck>> {
-  const runCommand = options.runCommand ?? runDockerComposeCommand;
-  const checks = await Promise.all(
-    (options.imageInvariants ?? []).map(async (invariant) => {
-      const containerResult = await runCommand({
-        command: "docker",
-        args: [
-          ...dockerComposeBaseArgs(options),
-          "ps",
-          "-q",
-          invariant.service,
-        ],
-        cwd: options.projectRoot,
-      });
-      const containerId = containerResult.stdout.trim().split(/\s+/)[0];
-      if (containerResult.exitCode !== 0 || !containerId) {
-        return [
-          imageInvariantKey(invariant),
-          {
-            ok: false,
-            service: invariant.service,
-            name: invariant.name,
-            detail: "container_id_read_failed",
-          },
-        ] as const;
-      }
-
-      const imageResult = await runCommand({
-        command: "docker",
-        args: [
-          "inspect",
-          "--format",
-          "{{ .Config.Image }}",
-          containerId,
-        ],
-        cwd: options.projectRoot,
-      });
-      const actualImage = imageResult.stdout.trim();
-      const detail =
-        imageResult.exitCode !== 0 || !actualImage
-          ? "image_read_failed"
-          : actualImage !== invariant.expectedImage
-            ? "image_mismatch"
-            : undefined;
-      const check: DockerComposeImageInvariantCheck = {
-        ok: detail === undefined,
-        service: invariant.service,
-        name: invariant.name,
-        ...(detail ? { detail } : {}),
-      };
-      return [imageInvariantKey(invariant), check] as const;
-    }),
-  );
-
-  return Object.fromEntries(checks);
-}
-
-function imageInvariantKey(input: {
-  service: string;
-  name: string;
-}): string {
-  return `${input.service}.${input.name}`;
 }
 
 async function checkComposePreparedTokenPairs(

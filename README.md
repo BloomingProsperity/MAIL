@@ -451,7 +451,8 @@ not match the selected `EMAILENGINE_IMAGE`/default pinned image. It also
 compares the selected env-file values
 against the running `emailengine`, `api`, and `worker` containers for
 EmailEngine access/prepared tokens, service secret, webhook secret, auth-server
-secret, and the `EENGINE_SETTINGS` webhook/auth-server fields. Mismatches are
+secret, and the `EENGINE_SETTINGS` webhook/auth-server fields. It also verifies
+that EmailEngine webhooks are enabled for all events. Mismatches are
 reported by service and env name only; actual and expected secret values are
 not printed. To catch stale prepared tokens, it also runs EmailEngine's token
 export command inside the running `emailengine` container and verifies that the

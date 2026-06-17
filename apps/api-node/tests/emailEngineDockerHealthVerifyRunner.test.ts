@@ -90,6 +90,18 @@ describe("EmailEngine Docker health verify CLI runner", () => {
           expected: "http://api:8080/api/webhooks/emailengine",
         },
         {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["webhooksEnabled"],
+          expected: true,
+        },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["webhookEvents"],
+          expected: ["*"],
+        },
+        {
           service: "api",
           name: "EMAILENGINE_ACCESS_TOKEN",
           expected: "engine-token",
@@ -508,6 +520,18 @@ describe("EmailEngine Docker health verify CLI runner", () => {
           name: "EENGINE_SETTINGS",
           valuePath: ["webhooks"],
           expected: "http://api:8080/custom-webhook",
+        },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["webhooksEnabled"],
+          expected: true,
+        },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["webhookEvents"],
+          expected: ["*"],
         },
         {
           service: "api",
