@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
 import type {
   EmailHubApi,
@@ -53,6 +53,11 @@ const previewAuditEvents: HermesAuditLogEntryDto[] = [
 ];
 
 export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
+  const memoryLoadRequestRef = useRef(0);
+  const memoryLoadScopeRef = useRef({
+    accountId: props.accountId,
+    api: props.api,
+  });
   const [memories, setMemories] = useState<HermesMemoryDto[]>([]);
   const [memoryEdits, setMemoryEdits] = useState<
     Record<string, { contentText: string; confidenceText: string }>
@@ -71,6 +76,10 @@ export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
         : memories,
     [memories, reviewOnly],
   );
+  memoryLoadScopeRef.current = {
+    accountId: props.accountId,
+    api: props.api,
+  };
 
   function syncMemoryEdits(nextMemories: HermesMemoryDto[]) {
     setMemoryEdits(
@@ -87,17 +96,21 @@ export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
   }
 
   async function loadMemories() {
+    const requestId = memoryLoadRequestRef.current + 1;
+    memoryLoadRequestRef.current = requestId;
     const limit = Number.parseInt(memoryLimit, 10);
     const safeLimit = Number.isInteger(limit) && limit >= 1 ? Math.min(limit, 100) : 50;
+    const api = props.api;
+    const accountId = props.accountId;
 
-    if (!props.api) {
+    if (!api) {
       setMemories(previewMemories);
       syncMemoryEdits(previewMemories);
       setMemoryNotice("本地预览学习记录，连接后会读取真实 Hermes 学习记录。");
       return;
     }
 
-    if (!props.accountId) {
+    if (!accountId) {
       setMemories([]);
       syncMemoryEdits([]);
       setPendingDeleteMemoryId("");
@@ -107,12 +120,15 @@ export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
 
     setMemoryNotice("正在读取 Hermes 学习记录...");
     try {
-      const page = await props.api.listHermesMemories({
-        accountId: props.accountId,
+      const page = await api.listHermesMemories({
+        accountId,
         ...(memoryLayerFilter.trim() ? { layer: memoryLayerFilter.trim() } : {}),
         ...(memoryScopeFilter.trim() ? { scope: memoryScopeFilter.trim() } : {}),
         limit: safeLimit,
       });
+      if (!isCurrentMemoryLoad(requestId, accountId, api)) {
+        return;
+      }
       setMemories(page.items);
       syncMemoryEdits(page.items);
       setPendingDeleteMemoryId("");
@@ -122,11 +138,26 @@ export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
           : `已读取 ${page.items.length} 条 Hermes 学习记录。`,
       );
     } catch {
+      if (!isCurrentMemoryLoad(requestId, accountId, api)) {
+        return;
+      }
       setMemories([]);
       syncMemoryEdits([]);
       setPendingDeleteMemoryId("");
       setMemoryNotice("Hermes 学习记录暂时不可用。");
     }
+  }
+
+  function isCurrentMemoryLoad(
+    requestId: number,
+    accountId: string,
+    api: EmailHubApi,
+  ): boolean {
+    return (
+      memoryLoadRequestRef.current === requestId &&
+      memoryLoadScopeRef.current.accountId === accountId &&
+      memoryLoadScopeRef.current.api === api
+    );
   }
 
   useEffect(() => {
@@ -392,6 +423,11 @@ export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
 }
 
 export function HermesAuditLogPanel(props: HermesAuditLogPanelProps) {
+  const auditLoadRequestRef = useRef(0);
+  const auditLoadScopeRef = useRef({
+    accountId: props.accountId,
+    api: props.api,
+  });
   const [events, setEvents] = useState<HermesAuditLogEntryDto[]>([]);
   const [skillFilter, setSkillFilter] = useState("");
   const [messageIdFilter, setMessageIdFilter] = useState("");
@@ -407,6 +443,10 @@ export function HermesAuditLogPanel(props: HermesAuditLogPanelProps) {
         : events,
     [events, memoryEventsOnly],
   );
+  auditLoadScopeRef.current = {
+    accountId: props.accountId,
+    api: props.api,
+  };
 
   async function loadAuditEvents(
     overrides: {
@@ -414,6 +454,8 @@ export function HermesAuditLogPanel(props: HermesAuditLogPanelProps) {
       clearSkillAndMessageFilters?: boolean;
     } = {},
   ) {
+    const requestId = auditLoadRequestRef.current + 1;
+    auditLoadRequestRef.current = requestId;
     const limit = Number.parseInt(limitText, 10);
     const safeLimit = Number.isInteger(limit) && limit >= 1 ? Math.min(limit, 100) : 50;
     const effectiveSkillId = overrides.clearSkillAndMessageFilters
@@ -424,15 +466,19 @@ export function HermesAuditLogPanel(props: HermesAuditLogPanelProps) {
       : messageIdFilter.trim();
     const effectiveMemoryId =
       overrides.memoryId !== undefined ? overrides.memoryId : memoryIdFilter.trim();
+    const api = props.api;
+    const accountId = props.accountId;
 
-    if (!props.api) {
+    if (!api) {
       setEvents(previewAuditEvents);
+      setAuditBusy(false);
       setAuditNotice("本地预览审计日志，连接后会读取真实 Hermes 读信和操作记录。");
       return;
     }
 
-    if (!props.accountId) {
+    if (!accountId) {
       setEvents([]);
+      setAuditBusy(false);
       setAuditNotice("请先添加邮箱并完成同步，再查看 Hermes 审计日志。");
       return;
     }
@@ -440,13 +486,16 @@ export function HermesAuditLogPanel(props: HermesAuditLogPanelProps) {
     setAuditBusy(true);
     setAuditNotice("正在读取 Hermes 审计日志...");
     try {
-      const page = await props.api.listHermesAuditLog({
-        accountId: props.accountId,
+      const page = await api.listHermesAuditLog({
+        accountId,
         ...(effectiveSkillId ? { skillId: effectiveSkillId } : {}),
         ...(effectiveMessageId ? { messageId: effectiveMessageId } : {}),
         ...(effectiveMemoryId ? { memoryId: effectiveMemoryId } : {}),
         limit: safeLimit,
       });
+      if (!isCurrentAuditLoad(requestId, accountId, api)) {
+        return;
+      }
       setEvents(page.items);
       setAuditNotice(
         page.items.length === 0
@@ -454,11 +503,28 @@ export function HermesAuditLogPanel(props: HermesAuditLogPanelProps) {
           : `已读取 ${page.items.length} 条 Hermes 审计事件。`,
       );
     } catch {
+      if (!isCurrentAuditLoad(requestId, accountId, api)) {
+        return;
+      }
       setEvents([]);
       setAuditNotice("Hermes 审计日志暂时不可用。");
     } finally {
-      setAuditBusy(false);
+      if (isCurrentAuditLoad(requestId, accountId, api)) {
+        setAuditBusy(false);
+      }
     }
+  }
+
+  function isCurrentAuditLoad(
+    requestId: number,
+    accountId: string,
+    api: EmailHubApi,
+  ): boolean {
+    return (
+      auditLoadRequestRef.current === requestId &&
+      auditLoadScopeRef.current.accountId === accountId &&
+      auditLoadScopeRef.current.api === api
+    );
   }
 
   useEffect(() => {

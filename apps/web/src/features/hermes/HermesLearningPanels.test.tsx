@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { EmailHubApi } from "../../lib/emailHubApi";
 import {
@@ -83,6 +90,55 @@ describe("Hermes learning panels", () => {
     expect(screen.getByText("没有匹配的 Hermes 学习记录。")).toBeTruthy();
   });
 
+  it("ignores stale memory loads after switching accounts", async () => {
+    const accountOneLoad = deferred<{ items: ReturnType<typeof memoryFixture>[] }>();
+    const api = {
+      listHermesMemories: vi.fn(async (input: { accountId: string }) => {
+        if (input.accountId === "account_1") {
+          return accountOneLoad.promise;
+        }
+        return {
+          items: [
+            memoryFixture({
+              id: "memory_account_2",
+              content: { preference: "Account two style" },
+            }),
+          ],
+        };
+      }),
+      updateHermesMemory: vi.fn(),
+      deleteHermesMemory: vi.fn(),
+    } as unknown as EmailHubApi;
+
+    const { rerender } = render(
+      <HermesMemoryManagerPanel api={api} accountId="account_1" />,
+    );
+
+    await waitFor(() => {
+      expect(api.listHermesMemories).toHaveBeenCalledWith({
+        accountId: "account_1",
+        limit: 50,
+      });
+    });
+    rerender(<HermesMemoryManagerPanel api={api} accountId="account_2" />);
+
+    expect(await screen.findByDisplayValue(/Account two style/)).toBeTruthy();
+    await act(async () => {
+      accountOneLoad.resolve({
+        items: [
+          memoryFixture({
+            id: "memory_account_1",
+            content: { preference: "Account one stale style" },
+          }),
+        ],
+      });
+      await accountOneLoad.promise;
+    });
+
+    expect(screen.getByDisplayValue(/Account two style/)).toBeTruthy();
+    expect(screen.queryByDisplayValue(/Account one stale style/)).toBeNull();
+  });
+
   it("filters audit events to entries that used Hermes memory", async () => {
     const api = {
       listHermesAuditLog: vi.fn(async () => ({
@@ -129,6 +185,56 @@ describe("Hermes learning panels", () => {
         limit: 50,
       });
     });
+  });
+
+  it("ignores stale audit loads after switching accounts", async () => {
+    const accountOneLoad = deferred<{
+      items: ReturnType<typeof auditEventFixture>[];
+    }>();
+    const api = {
+      listHermesAuditLog: vi.fn(async (input: { accountId: string }) => {
+        if (input.accountId === "account_1") {
+          return accountOneLoad.promise;
+        }
+        return {
+          items: [
+            auditEventFixture({
+              id: "audit_account_2",
+              skillTitle: "账号二翻译",
+            }),
+          ],
+        };
+      }),
+    } as unknown as EmailHubApi;
+
+    const { rerender } = render(
+      <HermesAuditLogPanel api={api} accountId="account_1" />,
+    );
+
+    await waitFor(() => {
+      expect(api.listHermesAuditLog).toHaveBeenCalledWith({
+        accountId: "account_1",
+        limit: 50,
+      });
+    });
+    rerender(<HermesAuditLogPanel api={api} accountId="account_2" />);
+
+    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
+    expect(await within(auditPanel).findByText("账号二翻译")).toBeTruthy();
+    await act(async () => {
+      accountOneLoad.resolve({
+        items: [
+          auditEventFixture({
+            id: "audit_account_1",
+            skillTitle: "账号一旧审计",
+          }),
+        ],
+      });
+      await accountOneLoad.promise;
+    });
+
+    expect(within(auditPanel).getByText("账号二翻译")).toBeTruthy();
+    expect(within(auditPanel).queryByText("账号一旧审计")).toBeNull();
   });
 
   it("clears stale audit filters when focusing Hermes memory usage", async () => {
@@ -251,4 +357,14 @@ function auditEventFixture(
     action: overrides.action ?? { skillId: "translate_text" },
     createdAt: "2026-06-15T09:30:00.000Z",
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
