@@ -296,6 +296,48 @@ app also shows the same EmailEngine setup status in Add Mail and Sync Center so
 operators can see why onboarding, sync, attachment download, or send is not
 available.
 
+For a repeatable EmailEngine-first launch gate, run the layered verifier instead
+of relying on a handwritten checklist:
+
+```powershell
+npm run verify:emailengine-launch:offline
+```
+
+The offline gate builds the backend and frontend, runs both backend and frontend
+tests, runs the heavy sync-queue stress gate, and validates the production Docker
+compose overlay. It uses `.env` by default for compose interpolation and falls
+back to `.env.example`; set `EMAILHUB_ENV_FILE=/path/to/env` when validating a
+specific deployment file.
+
+After the Docker stack is running, run the live gate from the host:
+
+```powershell
+$env:EMAILHUB_API_BASE_URL = "http://127.0.0.1:8080"
+npm run verify:emailengine-launch:live
+```
+
+The live gate calls `/health`, `/api/mail-engine/health`, and the signed webhook
+smoke. It fails if API readiness is down, EmailEngine launch readiness is not
+`ready`, or token-backed onboarding, attachment download, and send capabilities
+are not all available.
+
+For quick core regression while iterating on the launch path, run:
+
+```powershell
+npm run verify:emailengine-launch:core
+```
+
+For final EmailEngine-first sign-off, include the GreenMail-backed real
+onboarding and webhook checks:
+
+```powershell
+npm run verify:emailengine-launch
+```
+
+That default full gate runs `:core` plus the GreenMail gate below, so the final
+launch check cannot accidentally skip the path where EmailEngine registers a
+real IMAP/SMTP account and emits webhooks back into Email Hub.
+
 After the stack is healthy, run the EmailEngine webhook smoke check from the
 host:
 
@@ -344,6 +386,12 @@ sync/read-model path, it is reported as `read_model_sync`. By default this smoke
 uses a unique `emailhub-smoke-<uuid>@example.com` mailbox so repeated runs do not
 reuse old onboarding or sync-center state; set `EMAILHUB_SMOKE_MAIL_EMAIL` when
 you need a fixed mailbox.
+
+The same GreenMail-backed checks are also grouped as:
+
+```powershell
+npm run verify:emailengine-launch:greenmail
+```
 
 `/health` checks API readiness plus a Postgres `SELECT 1`; EmailEngine
 capability and launch diagnostics remain at `/api/mail-engine/health`.

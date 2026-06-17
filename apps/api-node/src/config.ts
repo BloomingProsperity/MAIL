@@ -3,6 +3,10 @@ import type { ImapSmtpProviderPresetOverrides } from "./accounts/imap-smtp-onboa
 
 export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const webhookSecret = env.EMAILENGINE_WEBHOOK_SECRET ?? "dev-emailhub-secret";
+  const authServerSecret =
+    env.EMAILENGINE_AUTH_SERVER_SECRET ?? "dev-emailhub-secret";
+  const emailEngineServiceSecret =
+    env.EENGINE_SECRET ?? "dev-emailhub-secret";
   return {
     apiName: "email-hub-api",
     emailEngineUrl: env.EMAILENGINE_URL ?? "http://emailengine:3000",
@@ -16,8 +20,12 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     emailEnginePreparedTokenConfigured:
       typeof env.EENGINE_PREPARED_TOKEN === "string" &&
       env.EENGINE_PREPARED_TOKEN.trim().length > 0,
-    emailEngineAuthServerSecret:
-      env.EMAILENGINE_AUTH_SERVER_SECRET ?? "dev-emailhub-secret",
+    emailEngineAuthServerSecret: authServerSecret,
+    emailEngineAuthServerSecretUsesDefault:
+      !env.EMAILENGINE_AUTH_SERVER_SECRET ||
+      authServerSecret === "dev-emailhub-secret",
+    emailEngineServiceSecretUsesDefault:
+      !env.EENGINE_SECRET || emailEngineServiceSecret === "dev-emailhub-secret",
     oauthProvidersConfigured: {
       gmail:
         typeof env.GOOGLE_OAUTH_CLIENT_ID === "string" &&

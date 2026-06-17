@@ -259,6 +259,51 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_ATTEMPTS=60");
     expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_POLL_MS=2000");
   });
+
+  it("exposes layered EmailEngine-first launch verification gates", async () => {
+    const rootPackage = JSON.parse(await readProjectFile("package.json"));
+    const apiPackage = JSON.parse(
+      await readProjectFile("apps", "api-node", "package.json"),
+    );
+    const readme = await readProjectFile("README.md");
+
+    expect(apiPackage.scripts["verify:emailengine-live"]).toBe(
+      "tsx src/emailengine-launch-verify.ts",
+    );
+    expect(rootPackage.scripts["compose:config:prod"]).toContain(
+      "infra/docker-compose.prod.yml config >/dev/null",
+    );
+    expect(rootPackage.scripts["compose:config:prod"]).toContain(
+      "EMAILHUB_ENV_FILE",
+    );
+    expect(rootPackage.scripts["compose:config:prod"]).not.toContain("/tmp/");
+    expect(rootPackage.scripts["verify:emailengine-launch:offline"]).toContain(
+      "npm run test:backend",
+    );
+    expect(rootPackage.scripts["verify:emailengine-launch:offline"]).toContain(
+      "npm run build && npm test",
+    );
+    expect(rootPackage.scripts["verify:emailengine-launch:offline"]).toContain(
+      "npm run stress:sync-queue:heavy",
+    );
+    expect(rootPackage.scripts["verify:emailengine-launch:live"]).toBe(
+      "npm run verify:emailengine-live && npm run smoke:emailengine-webhook",
+    );
+    expect(rootPackage.scripts["verify:emailengine-launch:greenmail"]).toBe(
+      "npm run smoke:imap-smtp-onboarding && npm run smoke:emailengine-real-webhook",
+    );
+    expect(rootPackage.scripts["verify:emailengine-launch:core"]).toBe(
+      "npm run verify:emailengine-launch:offline && npm run verify:emailengine-launch:live",
+    );
+    expect(rootPackage.scripts["verify:emailengine-launch"]).toBe(
+      "npm run verify:emailengine-launch:core && npm run verify:emailengine-launch:greenmail",
+    );
+    expect(readme).toContain("npm run verify:emailengine-launch:offline");
+    expect(readme).toContain("npm run verify:emailengine-launch:live");
+    expect(readme).toContain("npm run verify:emailengine-launch:greenmail");
+    expect(readme).toContain("npm run verify:emailengine-launch:core");
+    expect(readme).toContain("EMAILHUB_API_BASE_URL");
+  });
 });
 
 function serviceSection(compose: string, serviceName: string): string {

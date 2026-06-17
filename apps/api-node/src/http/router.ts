@@ -421,6 +421,8 @@ export interface ApiConfig {
   emailEngineWebhookSecretConfigured?: boolean;
   emailEngineWebhookSecretUsesDefault?: boolean;
   emailEngineAuthServerSecret?: string;
+  emailEngineAuthServerSecretUsesDefault?: boolean;
+  emailEngineServiceSecretUsesDefault?: boolean;
   oauthProvidersConfigured?: MailProviderCapabilityOptions["oauthProvidersConfigured"];
   mailEngineHealthProbe?: EmailEngineHealthProbe;
   emailEngineAuthServerService?: EmailEngineAuthServerService;
@@ -8321,6 +8323,12 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
   const webhookSecretUsesDefault =
     config.emailEngineWebhookSecretUsesDefault === true ||
     config.emailEngineWebhookSecret === "dev-emailhub-secret";
+  const authServerSecretUsesDefault =
+    config.emailEngineAuthServerSecretUsesDefault === true ||
+    (config.emailEngineAuthServerSecret !== undefined &&
+      config.emailEngineAuthServerSecret === "dev-emailhub-secret");
+  const emailEngineServiceSecretUsesDefault =
+    config.emailEngineServiceSecretUsesDefault === true;
   const probeResult = await checkEmailEngineRuntime(config, urlConfigured);
   const httpAvailable =
     probeResult.http === "ok" || probeResult.http === "skipped";
@@ -8354,6 +8362,10 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
     ...(webhookSecretConfigured && webhookSecretUsesDefault
       ? ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"]
       : []),
+    ...(authServerSecretUsesDefault
+      ? ["EMAILENGINE_AUTH_SERVER_SECRET_DEFAULT"]
+      : []),
+    ...(emailEngineServiceSecretUsesDefault ? ["EENGINE_SECRET_DEFAULT"] : []),
     ...(accessTokenConfigured && preparedTokenConfigured === false
       ? ["EENGINE_PREPARED_TOKEN_MISSING"]
       : []),
@@ -8438,6 +8450,27 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
             label: "替换默认回调密钥",
             env: ["EMAILENGINE_WEBHOOK_SECRET", "EENGINE_SECRET"],
             effect: "生产环境不应继续使用开发默认密钥。",
+          },
+        ]
+      : []),
+    ...(authServerSecretUsesDefault
+      ? [
+          {
+            code: "rotate_emailengine_auth_server_secret",
+            label: "替换默认 EmailEngine 授权服务密钥",
+            env: ["EMAILENGINE_AUTH_SERVER_SECRET", "EMAILENGINE_AUTH_SERVER_URL"],
+            effect:
+              "生产环境不应继续使用开发默认授权服务密钥向 EmailEngine 提供 OAuth 凭据。",
+          },
+        ]
+      : []),
+    ...(emailEngineServiceSecretUsesDefault
+      ? [
+          {
+            code: "rotate_emailengine_service_secret",
+            label: "替换默认 EmailEngine 服务密钥",
+            env: ["EENGINE_SECRET"],
+            effect: "生产环境不应继续使用开发默认 EmailEngine 服务密钥。",
           },
         ]
       : []),
