@@ -48,10 +48,13 @@ with more than smoke-level tests.
   delivers a unique message, queues a Sync Center manual resync, calls the
   public `mark_read` route, and requires the returned engine command id to reach
   a `processed` worker diagnostic in the `engine_commands` lane, so local
-  optimistic state alone cannot satisfy the gate. Real webhook, send,
-  attachment-download, and mail-action smokes now default to fresh generated
-  GreenMail mailboxes and only reuse a fixed mailbox when the operator sets the
-  corresponding `EMAILHUB_SMOKE_*` address and reuse flag explicitly. The default
+  optimistic state alone cannot satisfy the gate. The real webhook smoke also
+  requires fallback `read_model_sync` evidence to have an EmailEngine webhook
+  diagnostic at or after the smoke delivery start, so stale account diagnostics
+  cannot satisfy the gate. Real webhook, send, attachment-download, and
+  mail-action smokes now default to fresh generated GreenMail mailboxes and only
+  reuse a fixed mailbox when the operator sets the corresponding
+  `EMAILHUB_SMOKE_*` address and reuse flag explicitly. The default
   `verify:emailengine-launch` now runs the core gate, strict DB gate, and
   GreenMail checks, while `verify:emailengine-launch:core` remains available for
   faster iteration before final sign-off.

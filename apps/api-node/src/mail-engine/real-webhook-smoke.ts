@@ -80,7 +80,6 @@ export async function runEmailEngineRealWebhookSmoke(
   const now = input.now ?? (() => new Date());
   const messageId = `emailhub-real-webhook-${uniqueId}@emailhub-smoke.local`;
   const subject = `[EmailHub Real Webhook Smoke] ${uniqueId}`;
-  const smokeStartedAt = now().toISOString();
 
   const onboarding =
     (input.reuseExistingReadyAccount
@@ -126,7 +125,6 @@ export async function runEmailEngineRealWebhookSmoke(
     apiBaseUrl,
     fetchImpl,
     accountId: onboarding.accountId,
-    smokeStartedAt,
     notBefore: deliveryStartedAt,
     expectedRfcMessageId: delivery.messageId,
     subject,
@@ -280,7 +278,6 @@ async function waitForDeliveredMessageObservation(input: {
   apiBaseUrl: string;
   fetchImpl: typeof fetch;
   accountId: string;
-  smokeStartedAt: string;
   notBefore: string;
   expectedRfcMessageId: string;
   subject: string;
@@ -307,7 +304,7 @@ async function waitForDeliveredMessageObservation(input: {
       isCurrentAccountWebhookDiagnostic(
         entry,
         input.accountId,
-        input.smokeStartedAt,
+        input.notBefore,
       ),
     );
     const readModelMessage = await findExpectedMessageInReadModel(input);

@@ -437,10 +437,11 @@ When the message detail exposes `bodyText`, `bodyHtml`, or `snippet`, the smoke
 also requires that text to contain the unique smoke id. If EmailEngine emits a
 matching `message_upserted` event, the result is reported as
 `message_upserted_webhook`; if the message arrives through the initial
-sync/read-model path, it is reported as `read_model_sync`. By default this smoke
-uses a unique `emailhub-smoke-<uuid>@example.com` mailbox so repeated runs do not
-reuse old onboarding or sync-center state; set `EMAILHUB_SMOKE_MAIL_EMAIL` when
-you need a fixed mailbox.
+sync/read-model path, it is reported as `read_model_sync`, but only when the
+account webhook diagnostic is at or after the smoke delivery start. By default
+this smoke uses a unique `emailhub-smoke-<uuid>@example.com` mailbox so repeated
+runs do not reuse old onboarding or sync-center state; set
+`EMAILHUB_SMOKE_MAIL_EMAIL` when you need a fixed mailbox.
 
 To prove the outgoing EmailEngine submit path, worker scheduled-send lane, SMTP
 delivery, webhook/sync, and read model all work together, run:
