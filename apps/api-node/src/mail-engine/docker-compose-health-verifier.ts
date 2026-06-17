@@ -339,6 +339,7 @@ async function checkHostHttpEndpoint(
     timeoutMs: number;
   },
 ): Promise<DockerComposeHostHttpCheck> {
+  const reportUrl = redactReportUrl(check.url);
   try {
     const response = await input.httpGet({
       url: check.url,
@@ -349,7 +350,7 @@ async function checkHostHttpEndpoint(
       return {
         ok: response.status >= 200 && response.status < 300,
         name: check.name,
-        url: check.url,
+        url: reportUrl,
         status: response.status,
         ...(response.status >= 200 && response.status < 300
           ? {}
@@ -368,7 +369,7 @@ async function checkHostHttpEndpoint(
     return {
       ok: ready,
       name: check.name,
-      url: check.url,
+      url: reportUrl,
       status: response.status,
       ...(readinessStatus ? { readinessStatus } : {}),
       ...(ready ? {} : { detail: "mail_engine_not_ready" }),
@@ -377,9 +378,22 @@ async function checkHostHttpEndpoint(
     return {
       ok: false,
       name: check.name,
-      url: check.url,
+      url: reportUrl,
       detail: "http_request_failed",
     };
+  }
+}
+
+function redactReportUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "[invalid_url]";
   }
 }
 

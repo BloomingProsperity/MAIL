@@ -274,6 +274,49 @@ describe("Docker compose health verifier", () => {
     ]);
   });
 
+  it("redacts sensitive host HTTP probe URL parts from results", async () => {
+    const requestedUrls: string[] = [];
+    const sensitiveUrl =
+      "http://user:secret@127.0.0.1:8080/api/mail-engine/health?access_token=abc#frag";
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      runCommand: healthyComposeCommand,
+      hostChecks: [
+        {
+          name: "mail_engine_readiness",
+          url: sensitiveUrl,
+          expect: "mail_engine_ready",
+        },
+      ],
+      httpGet: async (input) => {
+        requestedUrls.push(input.url);
+        return {
+          status: 401,
+          body: JSON.stringify({ error: "unauthorized" }),
+        };
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(requestedUrls).toEqual([sensitiveUrl]);
+    expect(result.hostChecks.mail_engine_readiness).toEqual({
+      ok: false,
+      name: "mail_engine_readiness",
+      url: "http://127.0.0.1:8080/api/mail-engine/health",
+      status: 401,
+      detail: "mail_engine_not_ready",
+    });
+    expect(result.requiredFollowUps).toEqual([
+      "Fix host HTTP check: mail_engine_readiness url=http://127.0.0.1:8080/api/mail-engine/health detail=mail_engine_not_ready.",
+    ]);
+    const serializedResult = JSON.stringify(result);
+    expect(serializedResult).not.toContain("user:secret");
+    expect(serializedResult).not.toContain("access_token=abc");
+    expect(serializedResult).not.toContain("#frag");
+  });
+
   it("passes runtime env invariants for production Docker services", async () => {
     const calls: unknown[] = [];
     const result = await verifyDockerComposeHealth({
