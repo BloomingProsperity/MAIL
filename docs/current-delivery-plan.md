@@ -46,7 +46,10 @@ with more than smoke-level tests.
   protected API probes without echoing it in the JSON report. It can also wait
   through bounded transient Docker/HTTP startup states while failing
   immediately on proven configuration gaps such as degraded EmailEngine
-  readiness.
+  readiness. The launch verifier CLI now keeps the legacy script entrypoint but
+  routes top-level failures through a tested runner that redacts bearer tokens,
+  API tokens, PAT-shaped strings, URL userinfo/query fragments, and private
+  host details before writing JSON errors.
   `verify:emailengine-launch:strict-db`
   requires `TEST_DATABASE_URL` and runs the real Postgres `sync_jobs`
   concurrency gate, failing immediately instead of silently skipping when no
