@@ -87,6 +87,11 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         },
         {
           service: "api",
+          name: "EMAILENGINE_URL",
+          expected: "http://emailengine:3000",
+        },
+        {
+          service: "api",
           name: "EENGINE_PREPARED_TOKEN",
           expected: "prepared-token",
         },
@@ -109,6 +114,11 @@ describe("EmailEngine Docker health verify CLI runner", () => {
           service: "worker",
           name: "EMAILENGINE_ACCESS_TOKEN",
           expected: "engine-token",
+        },
+        {
+          service: "worker",
+          name: "EMAILENGINE_URL",
+          expected: "http://emailengine:3000",
         },
         {
           service: "worker",
@@ -490,6 +500,11 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         },
         {
           service: "api",
+          name: "EMAILENGINE_URL",
+          expected: "http://emailengine:3000",
+        },
+        {
+          service: "api",
           name: "EENGINE_PREPARED_TOKEN",
           expected: "prepared-token",
         },
@@ -507,6 +522,11 @@ describe("EmailEngine Docker health verify CLI runner", () => {
           service: "worker",
           name: "EMAILENGINE_ACCESS_TOKEN",
           expected: "engine-token",
+        },
+        {
+          service: "worker",
+          name: "EMAILENGINE_URL",
+          expected: "http://emailengine:3000",
         },
         {
           service: "worker",

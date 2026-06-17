@@ -311,7 +311,10 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain(
       "infra/docker-compose.prod.yml sets this to true",
     );
-    expect(readme).toContain("-f infra/docker-compose.prod.yml");
+    expect(readme).toContain("npm run compose:up:prod:detached");
+    expect(readme).toContain(
+      "The production startup script runs the EmailEngine env preflight before Docker",
+    );
     expect(readme).toContain("readiness.status=ready");
     expect(readme).toContain("missing EmailEngine tokens");
     expect(readme).toContain("default EmailEngine webhook/auth/service secret");

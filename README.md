@@ -304,10 +304,12 @@ digest only after running the launch verifier against that image.
 For production-style self-hosting, add the strict overlay:
 
 ```powershell
-docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.prod.yml up --build -d
+npm run compose:up:prod:detached
 ```
 
-The production overlay changes API container health to require
+The production startup script runs the EmailEngine env preflight before Docker,
+then starts the base compose file with the strict production overlay. The overlay
+changes API container health to require
 `/api/mail-engine/health` with `readiness.status=ready`, and forces the worker to
 require both `EMAILENGINE_ACCESS_TOKEN` and `EENGINE_PREPARED_TOKEN`. A stack with
 missing EmailEngine tokens, rejected API auth, missing prepared token, or the

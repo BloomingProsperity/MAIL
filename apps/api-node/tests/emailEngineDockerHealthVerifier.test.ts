@@ -238,6 +238,54 @@ describe("Docker compose health verifier", () => {
     ]);
   });
 
+  it("fails when a running container includes an unexpected compose overlay", async () => {
+    const unexpectedOverlay = "/repo/infra/docker-compose.old.yml";
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      requiredComposeFiles: [
+        "infra/docker-compose.yml",
+        "infra/docker-compose.prod.yml",
+      ],
+      runCommand: async (input) => {
+        if (input.args.includes("inspect")) {
+          const containerId = String(input.args.at(-1));
+          return {
+            exitCode: 0,
+            stdout: containerId.startsWith("worker_")
+              ? `/repo/infra/docker-compose.yml,/repo/infra/docker-compose.prod.yml,${unexpectedOverlay}\n`
+              : "/repo/infra/docker-compose.yml,/repo/infra/docker-compose.prod.yml\n",
+            stderr: "",
+          };
+        }
+        if (input.args.includes("--format")) {
+          return healthyComposeCommand();
+        }
+        if (input.args.includes("-q")) {
+          const serviceName = input.args.at(-1);
+          return {
+            exitCode: 0,
+            stdout: `${serviceName}_container\n`,
+            stderr: "",
+          };
+        }
+        throw new Error(`unexpected docker command: ${input.args.join(" ")}`);
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.composeFileChecks.worker).toEqual({
+      ok: false,
+      service: "worker",
+      unexpectedFiles: [unexpectedOverlay],
+      detail: "config_file_unexpected",
+    });
+    expect(result.requiredFollowUps).toEqual([
+      `Restart Docker compose service worker without unexpected compose files: ${unexpectedOverlay}.`,
+    ]);
+  });
+
   it("fails when host EmailEngine readiness is not ready", async () => {
     const result = await verifyDockerComposeHealth({
       projectRoot: "/repo",
@@ -910,8 +958,12 @@ function composeFileChecksForServices(
     string,
     {
       ok: boolean;
-      detail?: "config_file_missing";
+      detail?:
+        | "config_file_missing"
+        | "config_file_unexpected"
+        | "config_file_mismatch";
       missingFiles?: string[];
+      unexpectedFiles?: string[];
     }
   >,
 ) {
@@ -922,6 +974,9 @@ function composeFileChecksForServices(
         ok: check.ok,
         service: serviceName,
         ...(check.missingFiles ? { missingFiles: check.missingFiles } : {}),
+        ...(check.unexpectedFiles
+          ? { unexpectedFiles: check.unexpectedFiles }
+          : {}),
         ...(check.detail ? { detail: check.detail } : {}),
       },
     ]),

@@ -242,6 +242,11 @@ export function dockerHealthEnvInvariants(
     },
     {
       service: "api",
+      name: "EMAILENGINE_URL",
+      expected: "http://emailengine:3000",
+    },
+    {
+      service: "api",
       name: "EENGINE_PREPARED_TOKEN",
       expected: preparedToken,
     },
@@ -264,6 +269,11 @@ export function dockerHealthEnvInvariants(
       service: "worker",
       name: "EMAILENGINE_ACCESS_TOKEN",
       expected: emailEngineAccessToken,
+    },
+    {
+      service: "worker",
+      name: "EMAILENGINE_URL",
+      expected: "http://emailengine:3000",
     },
     {
       service: "worker",

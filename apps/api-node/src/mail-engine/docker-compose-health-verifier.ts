@@ -94,10 +94,13 @@ export interface DockerComposeConfigFileCheck {
   ok: boolean;
   service: string;
   missingFiles?: string[];
+  unexpectedFiles?: string[];
   detail?:
     | "container_id_read_failed"
     | "config_files_read_failed"
-    | "config_file_missing";
+    | "config_file_missing"
+    | "config_file_unexpected"
+    | "config_file_mismatch";
 }
 
 export type DockerComposeHttpGetter = (input: {
@@ -227,11 +230,7 @@ async function verifyDockerComposeHealthOnce(input: {
   requiredFollowUps.push(
     ...Object.values(composeFileChecks)
       .filter((check) => !check.ok)
-      .map((check) =>
-        check.detail === "config_file_missing"
-          ? `Restart Docker compose service ${check.service} with required compose files: ${(check.missingFiles ?? []).join(", ")}.`
-          : `Inspect Docker compose config file labels for service ${check.service}.`,
-      ),
+      .map(composeConfigFileFollowUp),
   );
   const hostChecks: Record<string, DockerComposeHostHttpCheck> = Object.fromEntries(
     await Promise.all(
@@ -415,16 +414,60 @@ async function checkComposeConfigFileLabels(
   const missingFiles = input.requiredComposeFiles.filter(
     (file) => !composeConfigFileIncluded(actualFiles, file),
   );
+  const unexpectedFiles = actualFiles.filter(
+    (file) =>
+      !input.requiredComposeFiles.some((expectedFile) =>
+        composeConfigFileIncluded([file], expectedFile),
+      ),
+  );
+  const detail = composeConfigFileCheckDetail({
+    missingFiles,
+    unexpectedFiles,
+  });
   return {
-    ok: missingFiles.length === 0,
+    ok: detail === undefined,
     service: input.service,
-    ...(missingFiles.length > 0
-      ? {
-          missingFiles,
-          detail: "config_file_missing" as const,
-        }
-      : {}),
+    ...(missingFiles.length > 0 ? { missingFiles } : {}),
+    ...(unexpectedFiles.length > 0 ? { unexpectedFiles } : {}),
+    ...(detail ? { detail } : {}),
   };
+}
+
+function composeConfigFileCheckDetail(input: {
+  missingFiles: string[];
+  unexpectedFiles: string[];
+}): DockerComposeConfigFileCheck["detail"] | undefined {
+  if (input.missingFiles.length > 0 && input.unexpectedFiles.length > 0) {
+    return "config_file_mismatch";
+  }
+  if (input.missingFiles.length > 0) {
+    return "config_file_missing";
+  }
+  if (input.unexpectedFiles.length > 0) {
+    return "config_file_unexpected";
+  }
+  return undefined;
+}
+
+function composeConfigFileFollowUp(check: DockerComposeConfigFileCheck): string {
+  if (
+    check.detail === "config_file_missing" ||
+    check.detail === "config_file_unexpected" ||
+    check.detail === "config_file_mismatch"
+  ) {
+    const expected = (check.missingFiles ?? []).join(", ");
+    const unexpected = (check.unexpectedFiles ?? []).join(", ");
+    return [
+      `Restart Docker compose service ${check.service}`,
+      expected ? `with required compose files: ${expected}` : "",
+      unexpected ? `without unexpected compose files: ${unexpected}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .concat(".");
+  }
+
+  return `Inspect Docker compose config file labels for service ${check.service}.`;
 }
 
 function parseComposeConfigFilesLabel(value: string): string[] {
