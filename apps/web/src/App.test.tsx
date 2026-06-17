@@ -326,6 +326,64 @@ describe("Email Hub first UI baseline", () => {
     expect(within(plan).getByText("用户习惯学习：已写入 procedural_memory")).toBeTruthy();
   });
 
+  it("explains when Hermes action plan creation is disabled by skill settings", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.createHermesActionPlan).mockRejectedValueOnce(
+      new ApiRequestError(403, "hermes_skill_disabled", {
+        error: "hermes_skill_disabled",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: {
+        value: "帮我创建一个规则，把验证码邮件放到验证码分组",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    expect(
+      await screen.findByText(
+        "Hermes 执行计划能力已禁用，请到设置里的能力选项启用“执行计划”。",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Hermes 执行计划")).toBeNull();
+    expect(api.searchMailWithHermes).not.toHaveBeenCalled();
+  });
+
+  it("explains when Hermes action plan confirmation is disabled by skill settings", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.confirmHermesActionPlan).mockRejectedValueOnce(
+      new ApiRequestError(403, "hermes_skill_disabled", {
+        error: "hermes_skill_disabled",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: {
+        value: "把验证码邮件自动放到左侧验证码，账号里的所有验证码邮件都这样处理",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    const plan = await screen.findByLabelText("Hermes 执行计划");
+    fireEvent.click(within(plan).getByRole("button", { name: "确认计划" }));
+
+    expect(
+      await screen.findByText(
+        "Hermes 执行计划能力已禁用，请到设置里的能力选项启用“执行计划”。",
+      ),
+    ).toBeTruthy();
+    expect(within(plan).getByRole("button", { name: "确认计划" })).toBeTruthy();
+  });
+
   it("loads account labels into the directory and filters mail by label", async () => {
     const api = createApiFixture();
 

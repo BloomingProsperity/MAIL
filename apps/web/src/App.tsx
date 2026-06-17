@@ -960,8 +960,8 @@ export function App(props: AppProps = {}) {
         setHermesDockNotice(
           `Hermes 已生成执行计划，shadow simulation 命中 ${plan.simulation?.matchedCount ?? 0} 封邮件。`,
         );
-      } catch {
-        setHermesDockNotice("Hermes 执行计划暂时不可用。");
+      } catch (error) {
+        setHermesDockNotice(hermesActionPlanErrorNotice(error, "create"));
       } finally {
         setHermesDockBusy(false);
       }
@@ -1038,8 +1038,8 @@ export function App(props: AppProps = {}) {
           ? `Hermes 执行计划已完成：${rule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。${target ? `已打开${target.label}。` : ""}`
           : `Hermes 执行计划已完成：${rule.title}${target ? `，已打开${target.label}` : ""}。`,
       );
-    } catch {
-      setHermesDockNotice("Hermes 执行计划确认失败。");
+    } catch (error) {
+      setHermesDockNotice(hermesActionPlanErrorNotice(error, "confirm"));
     } finally {
       setHermesDockBusy(false);
     }
@@ -11569,6 +11569,24 @@ function isHermesRuleCommand(value: string): boolean {
       value,
     )
   );
+}
+
+function hermesActionPlanErrorNotice(
+  error: unknown,
+  action: "create" | "confirm",
+): string {
+  if (error instanceof ApiRequestError) {
+    if (error.code === "hermes_skill_disabled") {
+      return "Hermes 执行计划能力已禁用，请到设置里的能力选项启用“执行计划”。";
+    }
+    if (error.code === "hermes_action_plans_unavailable") {
+      return "Hermes 执行计划存储暂时不可用，请检查后端配置。";
+    }
+  }
+
+  return action === "create"
+    ? "Hermes 执行计划暂时不可用。"
+    : "Hermes 执行计划确认失败。";
 }
 
 function hermesRulePreview(
