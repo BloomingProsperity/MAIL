@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveDockerComposeHostBaseUrl } from "./mail-engine/docker-compose-host-urls.js";
 import { verifyDockerComposeHealth } from "./mail-engine/docker-compose-health-verifier.js";
 
 const projectRoot =
@@ -15,18 +16,21 @@ const composeFiles = [
   "infra/docker-compose.yml",
   "infra/docker-compose.prod.yml",
 ];
-const apiBaseUrl = normalizeBaseUrl(
-  process.env.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080",
-  "http://127.0.0.1:8080",
-);
-const webBaseUrl = normalizeBaseUrl(
-  process.env.EMAILHUB_WEB_BASE_URL ?? "http://127.0.0.1:5173",
-  "http://127.0.0.1:5173",
-);
+const apiBaseUrl = resolveDockerComposeHostBaseUrl({
+  explicitBaseUrl: process.env.EMAILHUB_API_BASE_URL,
+  bind: process.env.API_BIND,
+  fallback: "http://127.0.0.1:8080",
+});
+const webBaseUrl = resolveDockerComposeHostBaseUrl({
+  explicitBaseUrl: process.env.EMAILHUB_WEB_BASE_URL,
+  bind: process.env.WEB_BIND,
+  fallback: "http://127.0.0.1:5173",
+});
 const httpTimeoutMs = readPositiveInteger(
   process.env.EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS,
   5_000,
 );
+const apiHeaders = bearerTokenHeaders(process.env.EMAILHUB_API_TOKEN);
 
 try {
   const result = await verifyDockerComposeHealth({
@@ -39,11 +43,13 @@ try {
         name: "api_health",
         url: `${apiBaseUrl}/health`,
         expect: "http_ok",
+        ...(apiHeaders ? { headers: apiHeaders } : {}),
       },
       {
         name: "mail_engine_readiness",
         url: `${apiBaseUrl}/api/mail-engine/health`,
         expect: "mail_engine_ready",
+        ...(apiHeaders ? { headers: apiHeaders } : {}),
       },
       {
         name: "web_home",
@@ -74,12 +80,14 @@ try {
   process.exitCode = 1;
 }
 
-function normalizeBaseUrl(value: string, fallback: string): string {
-  const trimmed = value.trim();
-  return (trimmed || fallback).replace(/\/+$/, "");
-}
-
 function readPositiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function bearerTokenHeaders(
+  token: string | undefined,
+): Record<string, string> | undefined {
+  const trimmed = token?.trim();
+  return trimmed ? { authorization: `Bearer ${trimmed}` } : undefined;
 }

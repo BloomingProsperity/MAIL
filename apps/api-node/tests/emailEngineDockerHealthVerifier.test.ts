@@ -150,6 +150,55 @@ describe("Docker compose health verifier", () => {
     ]);
   });
 
+  it("passes host HTTP probe headers without leaking them in results", async () => {
+    const httpCalls: unknown[] = [];
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      runCommand: healthyComposeCommand,
+      hostChecks: [
+        {
+          name: "mail_engine_readiness",
+          url: "http://127.0.0.1:8080/api/mail-engine/health",
+          expect: "mail_engine_ready",
+          headers: {
+            authorization: "Bearer secret-token",
+          },
+        },
+      ],
+      httpGet: async (input) => {
+        httpCalls.push(input);
+        return {
+          status: 401,
+          body: JSON.stringify({ error: "unauthorized" }),
+        };
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(httpCalls).toEqual([
+      {
+        url: "http://127.0.0.1:8080/api/mail-engine/health",
+        timeoutMs: 5_000,
+        headers: {
+          authorization: "Bearer secret-token",
+        },
+      },
+    ]);
+    expect(result.hostChecks.mail_engine_readiness).toEqual({
+      ok: false,
+      name: "mail_engine_readiness",
+      url: "http://127.0.0.1:8080/api/mail-engine/health",
+      status: 401,
+      detail: "mail_engine_not_ready",
+    });
+    expect(JSON.stringify(result)).not.toContain("secret-token");
+    expect(result.requiredFollowUps).toEqual([
+      "Fix host HTTP check: mail_engine_readiness url=http://127.0.0.1:8080/api/mail-engine/health detail=mail_engine_not_ready.",
+    ]);
+  });
+
   it("fails when a required service is missing or unhealthy", async () => {
     const result = await verifyDockerComposeHealth({
       projectRoot: "/repo",

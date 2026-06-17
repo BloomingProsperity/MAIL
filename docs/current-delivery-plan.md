@@ -41,7 +41,10 @@ with more than smoke-level tests.
   provider identity, API health status, host-reachable web/API endpoints,
   required Docker Compose service health for `postgres`, `redis-engine`,
   `emailengine`, `api`, `worker`, and `web`, and the signed webhook idempotency
-  smoke. `verify:emailengine-launch:strict-db`
+  smoke. The Docker health verifier now follows `API_BIND`/`WEB_BIND` when
+  explicit host probe base URLs are omitted and sends `EMAILHUB_API_TOKEN` to
+  protected API probes without echoing it in the JSON report.
+  `verify:emailengine-launch:strict-db`
   requires `TEST_DATABASE_URL` and runs the real Postgres `sync_jobs`
   concurrency gate, failing immediately instead of silently skipping when no
   disposable test database is configured.

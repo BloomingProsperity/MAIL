@@ -589,6 +589,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("EMAILHUB_API_BASE_URL=http://127.0.0.1:8080");
     expect(envExample).toContain("EMAILHUB_WEB_BASE_URL=http://127.0.0.1:5173");
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS=5000");
+    expect(dockerHealthScript).toContain("process.env.API_BIND");
+    expect(dockerHealthScript).toContain("process.env.WEB_BIND");
+    expect(dockerHealthScript).toContain("process.env.EMAILHUB_API_TOKEN");
     expect(dockerHealthScript).toContain('name: "api_health"');
     expect(dockerHealthScript).toContain('name: "mail_engine_readiness"');
     expect(dockerHealthScript).toContain('name: "web_home"');
@@ -619,6 +622,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(readme).toContain("EMAILHUB_API_BASE_URL");
     expect(readme).toContain("EMAILHUB_WEB_BASE_URL");
     expect(readme).toContain("EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS");
+    expect(readme).toContain("API_BIND");
+    expect(readme).toContain("WEB_BIND");
+    expect(readme).toContain("EMAILHUB_API_TOKEN");
   });
 
   it("keeps the web Dockerfile compatible with npm workspaces", async () => {

@@ -34,6 +34,7 @@ export interface DockerComposeHostHttpCheckInput {
   name: string;
   url: string;
   expect: "http_ok" | "mail_engine_ready";
+  headers?: Record<string, string>;
 }
 
 export interface DockerComposeHostHttpCheck {
@@ -48,6 +49,7 @@ export interface DockerComposeHostHttpCheck {
 export type DockerComposeHttpGetter = (input: {
   url: string;
   timeoutMs: number;
+  headers?: Record<string, string>;
 }) => Promise<{
   status: number;
   body: string;
@@ -174,6 +176,7 @@ async function checkHostHttpEndpoint(
     const response = await input.httpGet({
       url: check.url,
       timeoutMs: input.timeoutMs,
+      ...(check.headers ? { headers: check.headers } : {}),
     });
     if (check.expect === "http_ok") {
       return {
@@ -328,11 +331,13 @@ async function runDockerComposeCommand(input: {
 async function fetchHttpEndpoint(input: {
   url: string;
   timeoutMs: number;
+  headers?: Record<string, string>;
 }): Promise<{ status: number; body: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
   try {
     const response = await fetch(input.url, {
+      ...(input.headers ? { headers: input.headers } : {}),
       signal: controller.signal,
     });
     return {

@@ -406,7 +406,12 @@ npm run verify:emailengine-launch:docker-health
 The Docker health gate checks both Docker Compose service health and host
 reachability. It probes `EMAILHUB_API_BASE_URL/health`,
 `EMAILHUB_API_BASE_URL/api/mail-engine/health`, and `EMAILHUB_WEB_BASE_URL/`
-with `EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS` as the per-request timeout.
+with `EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS` as the per-request timeout. If those
+base URLs are not set, the verifier derives host probes from `API_BIND` and
+`WEB_BIND`, so alternate local ports such as `WEB_BIND=127.0.0.1:5174` are
+checked correctly. Protected production stacks should export
+`EMAILHUB_API_TOKEN`; the verifier sends it to API host probes without printing
+the token in JSON results.
 
 For quick core regression while iterating on the launch path, run:
 
