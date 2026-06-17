@@ -405,9 +405,20 @@ export function HermesAuditLogPanel(props: HermesAuditLogPanelProps) {
     [events, memoryEventsOnly],
   );
 
-  async function loadAuditEvents(overrides: { memoryId?: string } = {}) {
+  async function loadAuditEvents(
+    overrides: {
+      memoryId?: string;
+      clearSkillAndMessageFilters?: boolean;
+    } = {},
+  ) {
     const limit = Number.parseInt(limitText, 10);
     const safeLimit = Number.isInteger(limit) && limit >= 1 ? Math.min(limit, 100) : 50;
+    const effectiveSkillId = overrides.clearSkillAndMessageFilters
+      ? ""
+      : skillFilter.trim();
+    const effectiveMessageId = overrides.clearSkillAndMessageFilters
+      ? ""
+      : messageIdFilter.trim();
     const effectiveMemoryId =
       overrides.memoryId !== undefined ? overrides.memoryId : memoryIdFilter.trim();
 
@@ -428,10 +439,8 @@ export function HermesAuditLogPanel(props: HermesAuditLogPanelProps) {
     try {
       const page = await props.api.listHermesAuditLog({
         accountId: props.accountId,
-        ...(skillFilter.trim() ? { skillId: skillFilter.trim() } : {}),
-        ...(messageIdFilter.trim()
-          ? { messageId: messageIdFilter.trim() }
-          : {}),
+        ...(effectiveSkillId ? { skillId: effectiveSkillId } : {}),
+        ...(effectiveMessageId ? { messageId: effectiveMessageId } : {}),
         ...(effectiveMemoryId ? { memoryId: effectiveMemoryId } : {}),
         limit: safeLimit,
       });
@@ -460,8 +469,13 @@ export function HermesAuditLogPanel(props: HermesAuditLogPanelProps) {
       return;
     }
 
+    setSkillFilter("");
+    setMessageIdFilter("");
     setMemoryIdFilter(props.focusedMemoryId);
-    void loadAuditEvents({ memoryId: props.focusedMemoryId });
+    void loadAuditEvents({
+      memoryId: props.focusedMemoryId,
+      clearSkillAndMessageFilters: true,
+    });
     // Focus changes are user-triggered by the memory panel.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.focusedMemoryId]);

@@ -94,6 +94,84 @@ describe("Hermes learning panels", () => {
       });
     });
   });
+
+  it("clears stale audit filters when focusing Hermes memory usage", async () => {
+    const api = {
+      listHermesAuditLog: vi.fn(async () => ({ items: [] })),
+    } as unknown as EmailHubApi;
+
+    const { rerender } = render(
+      <HermesAuditLogPanel api={api} accountId="account_1" />,
+    );
+
+    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
+    await waitFor(() => {
+      expect(api.listHermesAuditLog).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+      });
+    });
+
+    fireEvent.change(
+      within(auditPanel).getByLabelText("Hermes audit skill filter"),
+      {
+        target: { value: "translate_text" },
+      },
+    );
+    fireEvent.change(
+      within(auditPanel).getByLabelText("Hermes audit message filter"),
+      {
+        target: { value: "message_1" },
+      },
+    );
+    fireEvent.click(within(auditPanel).getByRole("button", { name: "刷新审计" }));
+    await waitFor(() => {
+      expect(api.listHermesAuditLog).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        skillId: "translate_text",
+        messageId: "message_1",
+        limit: 50,
+      });
+    });
+
+    rerender(
+      <HermesAuditLogPanel
+        api={api}
+        accountId="account_1"
+        focusedMemoryId="memory_1"
+        focusedMemoryLabel="写作风格 · global"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(api.listHermesAuditLog).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        memoryId: "memory_1",
+        limit: 50,
+      });
+    });
+    expect(
+      (
+        within(auditPanel).getByLabelText(
+          "Hermes audit skill filter",
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("");
+    expect(
+      (
+        within(auditPanel).getByLabelText(
+          "Hermes audit message filter",
+        ) as HTMLInputElement
+      ).value,
+    ).toBe("");
+    expect(
+      (
+        within(auditPanel).getByLabelText(
+          "Hermes audit memory filter",
+        ) as HTMLInputElement
+      ).value,
+    ).toBe("memory_1");
+  });
 });
 
 function memoryFixture(
