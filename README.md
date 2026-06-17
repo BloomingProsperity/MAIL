@@ -308,7 +308,8 @@ The production overlay changes API container health to require
 `/api/mail-engine/health` with `readiness.status=ready`, and forces the worker to
 require both `EMAILENGINE_ACCESS_TOKEN` and `EENGINE_PREPARED_TOKEN`. A stack with
 missing EmailEngine tokens, rejected API auth, missing prepared token, or the
-default webhook secret will stay unhealthy instead of appearing launched.
+default EmailEngine webhook/auth/service secret will fail startup or stay
+unhealthy instead of appearing launched.
 
 Default entry points:
 
@@ -336,6 +337,9 @@ real mailboxes:
   except `/health`, EmailEngine webhooks, and the EmailEngine auth-server
   callback. Set `EMAILHUB_REQUIRE_API_TOKEN=true` for exposed self-hosted
   stacks; `infra/docker-compose.prod.yml` does this automatically.
+- `EMAILHUB_ALLOW_DEV_SECRETS`: keep `true` only for local development. The
+  production overlay forces this to `false`, so default EmailEngine shared
+  secrets are rejected during API startup.
 - `VITE_EMAILHUB_API_TOKEN`: same token when the bundled static web app calls
   the API directly from a trusted self-hosted browser session.
 - `EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES`: max bytes streamed through the API
@@ -346,8 +350,9 @@ real mailboxes:
 - `EENGINE_PREPARED_TOKEN`: EmailEngine prepared token for unattended container startup.
 - `EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS`: accepted skew for the signed
   EmailEngine webhook `date` field, defaulting to 600 seconds.
-- `EMAILENGINE_WEBHOOK_SECRET` and `EENGINE_SECRET`: rotate both away from
-  `dev-emailhub-secret` for production.
+- `EMAILENGINE_WEBHOOK_SECRET`, `EMAILENGINE_AUTH_SERVER_SECRET`, and
+  `EENGINE_SECRET`: rotate all three away from `dev-emailhub-secret` for
+  production.
 
 Then check the launch readiness endpoint:
 

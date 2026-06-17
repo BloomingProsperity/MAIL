@@ -2,11 +2,26 @@ import type { ApiConfig } from "./http/router.js";
 import type { ImapSmtpProviderPresetOverrides } from "./accounts/imap-smtp-onboarding.js";
 
 export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
-  const webhookSecret = env.EMAILENGINE_WEBHOOK_SECRET ?? "dev-emailhub-secret";
-  const authServerSecret =
-    env.EMAILENGINE_AUTH_SERVER_SECRET ?? "dev-emailhub-secret";
-  const emailEngineServiceSecret =
-    env.EENGINE_SECRET ?? "dev-emailhub-secret";
+  const devSecretsAllowed =
+    env.NODE_ENV === "production"
+      ? false
+      : env.EMAILHUB_ALLOW_DEV_SECRETS === "true" ||
+        env.NODE_ENV === "development";
+  const webhookSecret = readSharedSecret({
+    env,
+    key: "EMAILENGINE_WEBHOOK_SECRET",
+    devSecretsAllowed,
+  });
+  const authServerSecret = readSharedSecret({
+    env,
+    key: "EMAILENGINE_AUTH_SERVER_SECRET",
+    devSecretsAllowed,
+  });
+  const emailEngineServiceSecret = readSharedSecret({
+    env,
+    key: "EENGINE_SECRET",
+    devSecretsAllowed,
+  });
   const apiAccessToken = env.EMAILHUB_API_TOKEN?.trim() ?? "";
   const apiAccessTokenRequired =
     env.EMAILHUB_REQUIRE_API_TOKEN === "true" || env.NODE_ENV === "production";
@@ -125,4 +140,24 @@ function readBoundedIntegerValue(
 
 function isProductionApiToken(value: string): boolean {
   return value.length > 0 && value !== "dev-emailhub-token";
+}
+
+const DEV_EMAILENGINE_SECRET = "dev-emailhub-secret";
+
+function readSharedSecret(input: {
+  env: NodeJS.ProcessEnv;
+  key:
+    | "EMAILENGINE_WEBHOOK_SECRET"
+    | "EMAILENGINE_AUTH_SERVER_SECRET"
+    | "EENGINE_SECRET";
+  devSecretsAllowed: boolean;
+}): string {
+  const value = input.env[input.key]?.trim() || DEV_EMAILENGINE_SECRET;
+  if (!input.devSecretsAllowed && value === DEV_EMAILENGINE_SECRET) {
+    throw new Error(
+      `${input.key} must be set to a non-default value unless NODE_ENV=development or EMAILHUB_ALLOW_DEV_SECRETS=true outside production`,
+    );
+  }
+
+  return value;
 }

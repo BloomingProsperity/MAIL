@@ -701,34 +701,43 @@ describe("API routes", () => {
     );
   });
 
-  it("warns when EmailEngine webhook secrets are still using development defaults", async () => {
+  it("warns when EmailEngine shared secrets are still using development defaults", async () => {
     await withApi(
       async (baseUrl) => {
         const response = await fetch(`${baseUrl}/api/mail-engine/health`);
 
         expect(response.status).toBe(200);
-        expect(await response.json()).toMatchObject({
+        const body = await response.json();
+        expect(body).toMatchObject({
           provider: "emailengine",
           ok: true,
           missing: [],
-          warnings: ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"],
           readiness: {
             status: "degraded",
-            setupActions: [
-              {
-                code: "rotate_emailengine_webhook_secret",
-                label: "替换默认回调密钥",
-                env: ["EMAILENGINE_WEBHOOK_SECRET", "EENGINE_SECRET"],
-                effect: "生产环境不应继续使用开发默认密钥。",
-              },
-            ],
           },
         });
+        expect(body.warnings).toEqual([
+          "EMAILENGINE_WEBHOOK_SECRET_DEFAULT",
+          "EMAILENGINE_AUTH_SERVER_SECRET_DEFAULT",
+          "EENGINE_SECRET_DEFAULT",
+        ]);
+        expect(
+          body.readiness.setupActions.map(
+            (action: { code: string }) => action.code,
+          ),
+        ).toEqual([
+          "rotate_emailengine_webhook_secret",
+          "rotate_emailengine_auth_server_secret",
+          "rotate_emailengine_service_secret",
+        ]);
       },
       {
         emailEngineAccessTokenConfigured: true,
         emailEngineWebhookSecret: "dev-emailhub-secret",
         emailEngineWebhookSecretUsesDefault: true,
+        emailEngineAuthServerSecret: "dev-emailhub-secret",
+        emailEngineAuthServerSecretUsesDefault: true,
+        emailEngineServiceSecretUsesDefault: true,
       },
     );
   });

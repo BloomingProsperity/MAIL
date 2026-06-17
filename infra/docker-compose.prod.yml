@@ -1,6 +1,8 @@
 services:
   api:
     environment:
+      NODE_ENV: production
+      EMAILHUB_ALLOW_DEV_SECRETS: "false"
       EMAILHUB_REQUIRE_API_TOKEN: "true"
     healthcheck:
       test:

@@ -63,6 +63,7 @@ describe("EmailEngine Docker configuration", () => {
 
   it("reads the prepared token flag without exposing token values", () => {
     const config = readApiConfig({
+      NODE_ENV: "development",
       EMAILENGINE_ACCESS_TOKEN: "raw-secret-token",
       EENGINE_PREPARED_TOKEN: "prepared-secret-token",
     } as NodeJS.ProcessEnv);
@@ -72,24 +73,78 @@ describe("EmailEngine Docker configuration", () => {
     expect(JSON.stringify(config)).not.toContain("prepared-secret-token");
   });
 
+  it("rejects default EmailEngine shared secrets outside explicit development", () => {
+    expect(() =>
+      readApiConfig({ EMAILHUB_API_TOKEN: "prod-api-token" } as NodeJS.ProcessEnv),
+    ).toThrow(/EMAILENGINE_WEBHOOK_SECRET/);
+    expect(() =>
+      readApiConfig({
+        NODE_ENV: "production",
+        EMAILHUB_ALLOW_DEV_SECRETS: "true",
+        EMAILHUB_API_TOKEN: "prod-api-token",
+        EMAILENGINE_WEBHOOK_SECRET: "dev-emailhub-secret",
+        EMAILENGINE_AUTH_SERVER_SECRET: "prod-auth-secret",
+        EENGINE_SECRET: "prod-service-secret",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/EMAILENGINE_WEBHOOK_SECRET/);
+    expect(() =>
+      readApiConfig({
+        NODE_ENV: "production",
+        EMAILHUB_API_TOKEN: "prod-api-token",
+        EMAILENGINE_WEBHOOK_SECRET: "prod-webhook-secret",
+        EMAILENGINE_AUTH_SERVER_SECRET: "dev-emailhub-secret",
+        EENGINE_SECRET: "prod-service-secret",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/EMAILENGINE_AUTH_SERVER_SECRET/);
+    expect(() =>
+      readApiConfig({
+        NODE_ENV: "production",
+        EMAILHUB_API_TOKEN: "prod-api-token",
+        EMAILENGINE_WEBHOOK_SECRET: "prod-webhook-secret",
+        EMAILENGINE_AUTH_SERVER_SECRET: "prod-auth-secret",
+        EENGINE_SECRET: "dev-emailhub-secret",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/EENGINE_SECRET/);
+
+    expect(() =>
+      readApiConfig({
+        EMAILHUB_ALLOW_DEV_SECRETS: "true",
+      } as NodeJS.ProcessEnv),
+    ).not.toThrow();
+  });
+
   it("requires a non-default API token when production API protection is enabled", () => {
     expect(() =>
-      readApiConfig({ NODE_ENV: "production" } as NodeJS.ProcessEnv),
+      readApiConfig({
+        NODE_ENV: "production",
+        EMAILENGINE_WEBHOOK_SECRET: "prod-webhook-secret",
+        EMAILENGINE_AUTH_SERVER_SECRET: "prod-auth-secret",
+        EENGINE_SECRET: "prod-service-secret",
+      } as NodeJS.ProcessEnv),
     ).toThrow(/EMAILHUB_API_TOKEN/);
     expect(() =>
       readApiConfig({
         EMAILHUB_REQUIRE_API_TOKEN: "true",
         EMAILHUB_API_TOKEN: "dev-emailhub-token",
+        EMAILENGINE_WEBHOOK_SECRET: "prod-webhook-secret",
+        EMAILENGINE_AUTH_SERVER_SECRET: "prod-auth-secret",
+        EENGINE_SECRET: "prod-service-secret",
       } as NodeJS.ProcessEnv),
     ).toThrow(/EMAILHUB_API_TOKEN/);
 
     const config = readApiConfig({
       NODE_ENV: "production",
       EMAILHUB_API_TOKEN: "prod-api-token",
+      EMAILENGINE_WEBHOOK_SECRET: "prod-webhook-secret",
+      EMAILENGINE_AUTH_SERVER_SECRET: "prod-auth-secret",
+      EENGINE_SECRET: "prod-service-secret",
     } as NodeJS.ProcessEnv);
 
     expect(config.apiAccessTokenConfigured).toBe(true);
     expect(config.apiAccessTokenRequired).toBe(true);
+    expect(config.emailEngineWebhookSecretUsesDefault).toBe(false);
+    expect(config.emailEngineAuthServerSecretUsesDefault).toBe(false);
+    expect(config.emailEngineServiceSecretUsesDefault).toBe(false);
     expect(config.maxAttachmentDownloadBytes).toBe(25 * 1024 * 1024);
     expect(config.emailEngineWebhookMaxSkewMs).toBe(10 * 60 * 1000);
     expect(JSON.stringify(config)).not.toContain("prod-api-token");
@@ -105,9 +160,15 @@ describe("EmailEngine Docker configuration", () => {
 
     expect(envExample).toContain("EMAILHUB_API_TOKEN=");
     expect(envExample).toContain("EMAILHUB_REQUIRE_API_TOKEN=false");
+    expect(envExample).toContain("EMAILHUB_ALLOW_DEV_SECRETS=true");
+    expect(envExample).toContain("NODE_ENV=development");
     expect(envExample).toContain("VITE_EMAILHUB_API_TOKEN=");
     expect(envExample).toContain("EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES=26214400");
     expect(envExample).toContain("EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS=600");
+    expect(api).toContain("NODE_ENV: ${NODE_ENV:-development}");
+    expect(api).toContain(
+      "EMAILHUB_ALLOW_DEV_SECRETS: ${EMAILHUB_ALLOW_DEV_SECRETS:-true}",
+    );
     expect(api).toContain("EMAILHUB_API_TOKEN: ${EMAILHUB_API_TOKEN:-}");
     expect(api).toContain(
       "EMAILHUB_REQUIRE_API_TOKEN: ${EMAILHUB_REQUIRE_API_TOKEN:-false}",
@@ -115,11 +176,14 @@ describe("EmailEngine Docker configuration", () => {
     expect(api).toContain(
       "EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES: ${EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES:-26214400}",
     );
+    expect(api).toContain("EENGINE_SECRET: ${EENGINE_SECRET:-dev-emailhub-secret}");
     expect(api).toContain(
       "EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS: ${EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS:-600}",
     );
     expect(web).toContain("VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-}");
     expect(webDockerfile).toContain("ARG VITE_EMAILHUB_API_TOKEN=");
+    expect(prodCompose).toContain("NODE_ENV: production");
+    expect(prodCompose).toContain('EMAILHUB_ALLOW_DEV_SECRETS: "false"');
     expect(prodCompose).toContain('EMAILHUB_REQUIRE_API_TOKEN: "true"');
     expect(prodCompose).toContain("authorization:'Bearer '+token");
   });
@@ -230,7 +294,7 @@ describe("EmailEngine Docker configuration", () => {
     expect(readme).toContain("-f infra/docker-compose.prod.yml");
     expect(readme).toContain("readiness.status=ready");
     expect(readme).toContain("missing EmailEngine tokens");
-    expect(readme).toContain("default webhook secret");
+    expect(readme).toContain("default EmailEngine webhook/auth/service secret");
   });
 
   it("shares compose attachment blobs between API and worker with cleanup controls", async () => {
