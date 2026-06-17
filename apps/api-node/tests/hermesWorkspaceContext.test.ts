@@ -82,6 +82,7 @@ describe("Hermes workspace context service", () => {
                 },
                 confidence: 0.9,
                 enabled: true,
+                sortOrder: 1000,
                 createdAt: "2026-06-16T00:00:00.000Z",
                 approvedAt: "2026-06-16T00:00:00.000Z",
               },

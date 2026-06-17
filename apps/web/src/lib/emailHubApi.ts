@@ -511,6 +511,7 @@ export interface HermesRuleDto {
   action: Record<string, unknown>;
   confidence: number;
   enabled: boolean;
+  sortOrder: number;
   createdAt: string;
   approvedAt?: string;
 }
@@ -1943,7 +1944,8 @@ export interface EmailHubApi {
   updateHermesRule(input: {
     accountId: string;
     ruleId: string;
-    enabled: boolean;
+    enabled?: boolean;
+    sortOrder?: number;
   }): Promise<HermesRuleDto>;
   runHermesRule(input: {
     accountId: string;
@@ -2842,10 +2844,11 @@ export function createEmailHubApi(
         `/api/hermes/rules/${encodePath(input.ruleId)}`,
         {
           method: "PATCH",
-          body: JSON.stringify({
+          body: JSON.stringify(cleanObject({
             accountId: input.accountId,
             enabled: input.enabled,
-          }),
+            sortOrder: input.sortOrder,
+          })),
         },
       );
     },

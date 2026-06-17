@@ -37,6 +37,7 @@ export interface HermesRule {
   action: Record<string, unknown>;
   confidence: number;
   enabled: boolean;
+  sortOrder: number;
   createdAt: string;
   approvedAt?: string;
 }
@@ -154,7 +155,8 @@ export interface ListHermesRulesInput {
 export interface UpdateHermesRuleInput {
   accountId: string;
   ruleId: string;
-  enabled: boolean;
+  enabled?: boolean;
+  sortOrder?: number;
 }
 
 export interface HermesRuleStore {
@@ -209,7 +211,7 @@ export interface HermesRuleStore {
     input: ListHermesRuleExecutionsInput,
   ): Promise<{ items: HermesRuleExecution[] }>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
-  updateRuleEnabled(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
+  updateRule(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
   upsertSavedView(input: SavedViewDefinition): Promise<void>;
 }
 
@@ -241,7 +243,7 @@ export interface HermesRuleService {
     input: ListHermesRuleExecutionsInput,
   ): Promise<{ items: HermesRuleExecution[] }>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
-  updateRuleEnabled(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
+  updateRule(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
 }
 
 export interface CreateHermesRuleServiceOptions {
@@ -512,11 +514,20 @@ export function createHermesRuleService(
       });
     },
 
-    async updateRuleEnabled(input) {
-      return options.store.updateRuleEnabled({
+    async updateRule(input) {
+      if (input.enabled === undefined && input.sortOrder === undefined) {
+        throw new InvalidHermesRuleRequestError();
+      }
+
+      return options.store.updateRule({
         accountId: requireString(input.accountId),
         ruleId: requireString(input.ruleId),
-        enabled: requireBoolean(input.enabled),
+        ...(input.enabled !== undefined
+          ? { enabled: requireBoolean(input.enabled) }
+          : {}),
+        ...(input.sortOrder !== undefined
+          ? { sortOrder: positiveInteger(input.sortOrder, 0, 1_000_000) }
+          : {}),
       });
     },
   };
@@ -538,7 +549,10 @@ export function createInMemoryHermesRuleStore(
 } {
   const behaviors = [...(seed.observedBehaviors ?? [])];
   const candidates = [...(seed.candidates ?? [])];
-  const rules = [...(seed.rules ?? [])];
+  const rules = (seed.rules ?? []).map((rule, index) => ({
+    ...rule,
+    sortOrder: rule.sortOrder ?? (index + 1) * 1000,
+  }));
   const messages = [...(seed.messages ?? [])];
   const savedViews = [...(seed.savedViews ?? [])];
   const labelAssignments = new Set<string>();
@@ -663,6 +677,7 @@ export function createInMemoryHermesRuleStore(
         action: { ...(input.actionOverride ?? candidate.action) },
         confidence: candidate.confidence,
         enabled: true,
+        sortOrder: nextRuleSortOrder(rules, input.accountId),
         createdAt: input.approvedAt,
         approvedAt: input.approvedAt,
       };
@@ -756,12 +771,13 @@ export function createInMemoryHermesRuleStore(
               (typeof input.enabled !== "boolean" ||
                 rule.enabled === input.enabled),
           )
+          .sort(compareRulesForList)
           .slice(0, input.limit)
           .map((rule) => ({ ...rule })),
       };
     },
 
-    async updateRuleEnabled(input) {
+    async updateRule(input) {
       const rule = rules.find(
         (item) => item.accountId === input.accountId && item.id === input.ruleId,
       );
@@ -769,7 +785,12 @@ export function createInMemoryHermesRuleStore(
         return undefined;
       }
 
-      rule.enabled = input.enabled;
+      if (input.enabled !== undefined) {
+        rule.enabled = input.enabled;
+      }
+      if (input.sortOrder !== undefined) {
+        rule.sortOrder = input.sortOrder;
+      }
       return { ...rule };
     },
 
@@ -1333,6 +1354,22 @@ function candidateDraftFor(
 
 function confidenceFromEvidence(count: number): number {
   return Number(Math.min(0.95, 0.65 + count * 0.1).toFixed(2));
+}
+
+function nextRuleSortOrder(rules: HermesRule[], accountId: string): number {
+  const maxSortOrder = rules
+    .filter((rule) => rule.accountId === accountId)
+    .reduce((max, rule) => Math.max(max, rule.sortOrder), 0);
+
+  return maxSortOrder + 1000;
+}
+
+function compareRulesForList(a: HermesRule, b: HermesRule): number {
+  return (
+    a.sortOrder - b.sortOrder ||
+    b.createdAt.localeCompare(a.createdAt) ||
+    b.id.localeCompare(a.id)
+  );
 }
 
 function subtractDays(now: string, days: number): string {

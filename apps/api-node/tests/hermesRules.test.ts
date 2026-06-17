@@ -469,6 +469,7 @@ describe("Hermes rule learning service", () => {
           },
           confidence: 0.9,
           enabled: true,
+          sortOrder: 1000,
           createdAt: "2026-06-13T10:10:00.000Z",
           approvedAt: "2026-06-13T10:10:00.000Z",
         },
@@ -548,6 +549,7 @@ describe("Hermes rule learning service", () => {
           },
           confidence: 0.9,
           enabled: false,
+          sortOrder: 1000,
           createdAt: "2026-06-13T10:10:00.000Z",
         },
       ],
@@ -824,6 +826,7 @@ describe("Hermes rule learning service", () => {
       },
       confidence: 0.85,
       enabled: true,
+      sortOrder: 1000,
       createdAt: "2026-06-13T10:10:00.000Z",
       approvedAt: "2026-06-13T10:10:00.000Z",
     });
@@ -855,6 +858,7 @@ describe("Hermes rule learning service", () => {
           },
           confidence: 0.9,
           enabled: true,
+          sortOrder: 1000,
           createdAt: "2026-06-13T10:10:00.000Z",
           approvedAt: "2026-06-13T10:10:00.000Z",
         },
@@ -867,7 +871,7 @@ describe("Hermes rule learning service", () => {
     });
 
     await expect(
-      service.updateRuleEnabled({
+      service.updateRule({
         accountId: "account_1",
         ruleId: "rule_codes",
         enabled: false,
@@ -883,7 +887,7 @@ describe("Hermes rule learning service", () => {
     });
 
     await expect(
-      service.updateRuleEnabled({
+      service.updateRule({
         accountId: "account_1",
         ruleId: "rule_codes",
         enabled: true,
@@ -891,6 +895,84 @@ describe("Hermes rule learning service", () => {
     ).resolves.toMatchObject({
       id: "rule_codes",
       enabled: true,
+    });
+  });
+
+  it("orders approved rules by editable account-scoped priority", async () => {
+    const store = createInMemoryHermesRuleStore({
+      rules: [
+        {
+          id: "rule_late",
+          accountId: "account_1",
+          title: "Late rule",
+          ruleType: "sender_priority",
+          condition: { senderEmail: "late@example.com" },
+          action: { type: "classify_sender", bucket: "P2 Important" },
+          confidence: 0.8,
+          enabled: true,
+          sortOrder: 3000,
+          createdAt: "2026-06-13T10:30:00.000Z",
+        },
+        {
+          id: "rule_first",
+          accountId: "account_1",
+          title: "First rule",
+          ruleType: "sender_feed",
+          condition: { senderEmail: "first@example.com" },
+          action: { type: "classify_sender", bucket: "P6 Feed" },
+          confidence: 0.9,
+          enabled: true,
+          sortOrder: 1000,
+          createdAt: "2026-06-13T10:00:00.000Z",
+        },
+        {
+          id: "rule_second",
+          accountId: "account_1",
+          title: "Second rule",
+          ruleType: "sender_feed",
+          condition: { senderEmail: "second@example.com" },
+          action: { type: "classify_sender", bucket: "P6 Feed" },
+          confidence: 0.7,
+          enabled: true,
+          sortOrder: 2000,
+          createdAt: "2026-06-13T10:10:00.000Z",
+        },
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      createId: nextId([]),
+      now: () => "2026-06-13T10:20:00.000Z",
+    });
+
+    await expect(
+      service.listRules({ accountId: "account_1", limit: 10 }),
+    ).resolves.toMatchObject({
+      items: [
+        { id: "rule_first", sortOrder: 1000 },
+        { id: "rule_second", sortOrder: 2000 },
+        { id: "rule_late", sortOrder: 3000 },
+      ],
+    });
+
+    await expect(
+      service.updateRule({
+        accountId: "account_1",
+        ruleId: "rule_late",
+        sortOrder: 500,
+      }),
+    ).resolves.toMatchObject({
+      id: "rule_late",
+      sortOrder: 500,
+    });
+    await expect(
+      service.listRules({ accountId: "account_1", limit: 10 }),
+    ).resolves.toMatchObject({
+      items: [
+        { id: "rule_late", sortOrder: 500 },
+        { id: "rule_first", sortOrder: 1000 },
+        { id: "rule_second", sortOrder: 2000 },
+      ],
     });
   });
 

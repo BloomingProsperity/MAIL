@@ -1584,6 +1584,134 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("Hermes 规则已恢复：启用验证码智能分组。")).toBeTruthy();
   });
 
+  it("lets users reorder Hermes rules from Settings", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listHermesRules).mockResolvedValueOnce({
+      items: [
+        {
+          id: "rule_codes",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "verification", "otp"] },
+          action: {
+            type: "apply_label",
+            labelId: "label_code",
+            labelName: "验证码",
+            labelColor: "blue",
+            applyToHistory: true,
+            providerWriteback: false,
+            requiresConfirmation: false,
+          },
+          confidence: 0.9,
+          enabled: true,
+          sortOrder: 1000,
+          createdAt: "2026-06-13T10:02:00.000Z",
+          approvedAt: "2026-06-13T10:02:00.000Z",
+        },
+        {
+          id: "rule_receipts",
+          accountId: "account_1",
+          candidateId: "candidate_receipts",
+          title: "启用发票/账单智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["发票", "invoice", "receipt"] },
+          action: {
+            type: "apply_label",
+            labelId: "label_receipts",
+            labelName: "发票/账单",
+            labelColor: "green",
+            applyToHistory: true,
+            providerWriteback: false,
+            requiresConfirmation: false,
+          },
+          confidence: 0.82,
+          enabled: true,
+          sortOrder: 2000,
+          createdAt: "2026-06-13T10:15:00.000Z",
+          approvedAt: "2026-06-13T10:15:00.000Z",
+        },
+      ],
+    });
+    vi.mocked(api.updateHermesRule).mockImplementation(async (input) => ({
+      id: input.ruleId,
+      accountId: input.accountId,
+      candidateId:
+        input.ruleId === "rule_codes" ? "candidate_codes" : "candidate_receipts",
+      title:
+        input.ruleId === "rule_codes"
+          ? "启用验证码智能分组"
+          : "启用发票/账单智能分组",
+      ruleType: "content_label",
+      condition:
+        input.ruleId === "rule_codes"
+          ? { anyKeywords: ["验证码", "verification", "otp"] }
+          : { anyKeywords: ["发票", "invoice", "receipt"] },
+      action:
+        input.ruleId === "rule_codes"
+          ? {
+              type: "apply_label",
+              labelId: "label_code",
+              labelName: "验证码",
+              labelColor: "blue",
+              applyToHistory: true,
+              providerWriteback: false,
+              requiresConfirmation: false,
+            }
+          : {
+              type: "apply_label",
+              labelId: "label_receipts",
+              labelName: "发票/账单",
+              labelColor: "green",
+              applyToHistory: true,
+              providerWriteback: false,
+              requiresConfirmation: false,
+            },
+      confidence: input.ruleId === "rule_codes" ? 0.9 : 0.82,
+      enabled: input.enabled ?? true,
+      sortOrder: input.sortOrder ?? (input.ruleId === "rule_codes" ? 1000 : 2000),
+      createdAt:
+        input.ruleId === "rule_codes"
+          ? "2026-06-13T10:02:00.000Z"
+          : "2026-06-13T10:15:00.000Z",
+      approvedAt:
+        input.ruleId === "rule_codes"
+          ? "2026-06-13T10:02:00.000Z"
+          : "2026-06-13T10:15:00.000Z",
+    } satisfies HermesRuleDto));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Move Hermes rule down 启用验证码智能分组",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.updateHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        sortOrder: 2000,
+      });
+      expect(api.updateHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        ruleId: "rule_receipts",
+        sortOrder: 1000,
+      });
+    });
+    expect(
+      await screen.findByText("Hermes 规则顺序已调整：启用验证码智能分组。"),
+    ).toBeTruthy();
+    expect(within(rulePanel).getByText(/启用发票\/账单智能分组/)).toBeTruthy();
+  });
+
   it("lets users manually run an approved Hermes rule from Settings", async () => {
     const api = createApiFixture();
 
@@ -8280,6 +8408,7 @@ function createApiFixture(): EmailHubApi {
           },
           confidence: 0.9,
           enabled: true,
+          sortOrder: 1000,
           createdAt: "2026-06-13T10:02:00.000Z",
           approvedAt: "2026-06-13T10:02:00.000Z",
         },
@@ -8477,6 +8606,7 @@ function createApiFixture(): EmailHubApi {
         },
         confidence: 0.9,
         enabled: true,
+        sortOrder: 1000,
         createdAt: "2026-06-13T10:02:00.000Z",
         approvedAt: "2026-06-13T10:02:00.000Z",
       },
@@ -8537,6 +8667,7 @@ function createApiFixture(): EmailHubApi {
           },
           confidence: 0.9,
           enabled: true,
+          sortOrder: 1000,
           createdAt: "2026-06-13T10:02:00.000Z",
           approvedAt: "2026-06-13T10:02:00.000Z",
         },
@@ -8559,7 +8690,8 @@ function createApiFixture(): EmailHubApi {
         requiresConfirmation: false,
       },
       confidence: 0.9,
-      enabled: input.enabled,
+      enabled: input.enabled ?? true,
+      sortOrder: input.sortOrder ?? 1000,
       createdAt: "2026-06-13T10:02:00.000Z",
       approvedAt: "2026-06-13T10:02:00.000Z",
     } satisfies HermesRuleDto)),
@@ -8663,6 +8795,7 @@ function createApiFixture(): EmailHubApi {
       },
       confidence: 0.9,
       enabled: true,
+      sortOrder: 1000,
       createdAt: "2026-06-13T10:02:00.000Z",
       approvedAt: "2026-06-13T10:02:00.000Z",
     } satisfies HermesRuleDto)),

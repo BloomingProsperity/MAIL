@@ -331,6 +331,22 @@ describe("mail engine runtime migration", () => {
     expect(sql).toMatch(/ON hermes_rule_runs \(account_id, mode, created_at DESC, id DESC\)/i);
   });
 
+  it("adds durable Hermes rule ordering", async () => {
+    const sql = await readMigrationFile("0047_hermes_rule_sort_order.sql");
+
+    expect(sql).toMatch(/ALTER TABLE hermes_rules/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS sort_order INTEGER/i);
+    expect(sql).toMatch(/ROW_NUMBER\(\) OVER/i);
+    expect(sql).toMatch(/ALTER COLUMN sort_order SET DEFAULT 1000/i);
+    expect(sql).toMatch(/ALTER COLUMN sort_order SET NOT NULL/i);
+    expect(sql).toMatch(/hermes_rules_sort_order_chk/i);
+    expect(sql).toMatch(/CHECK \(sort_order BETWEEN 0 AND 1000000\)/i);
+    expect(sql).toMatch(/hermes_rules_account_sort_idx/i);
+    expect(sql).toMatch(
+      /ON hermes_rules \(account_id, sort_order ASC, created_at DESC, id DESC\)/i,
+    );
+  });
+
   it("adds durable Hermes action plans with candidate and simulation binding", async () => {
     const sql = await readMigrationFile("0041_hermes_action_plans.sql");
 

@@ -46,6 +46,7 @@ interface RuleRow extends Record<string, unknown> {
   action: Record<string, unknown>;
   confidence: string | number;
   enabled: boolean;
+  sort_order: string | number;
   created_at: string;
   approved_at?: string | null;
 }
@@ -359,10 +360,30 @@ export function createPostgresHermesRuleStore(
               condition,
               action,
               confidence,
+              sort_order,
               enabled,
               approved_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9)
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6,
+              $7,
+              $8,
+              COALESCE(
+                (
+                  SELECT MAX(sort_order) + 1000
+                  FROM hermes_rules
+                  WHERE account_id = $2
+                ),
+                1000
+              ),
+              TRUE,
+              $9
+            )
             RETURNING
               id,
               account_id,
@@ -372,6 +393,7 @@ export function createPostgresHermesRuleStore(
               condition,
               action,
               confidence,
+              sort_order,
               enabled,
               created_at,
               approved_at
@@ -405,6 +427,7 @@ export function createPostgresHermesRuleStore(
             condition,
             action,
             confidence,
+            sort_order,
             enabled,
             created_at,
             approved_at
@@ -565,13 +588,14 @@ export function createPostgresHermesRuleStore(
             condition,
             action,
             confidence,
+            sort_order,
             enabled,
             created_at,
             approved_at
           FROM hermes_rules
           WHERE account_id = $1
             AND ($2::boolean IS NULL OR enabled = $2)
-          ORDER BY created_at DESC, id DESC
+          ORDER BY sort_order ASC, created_at DESC, id DESC
           LIMIT $3
         `,
         [input.accountId, input.enabled ?? null, input.limit],
@@ -580,11 +604,12 @@ export function createPostgresHermesRuleStore(
       return { items: result.rows.map(ruleFromRow) };
     },
 
-    async updateRuleEnabled(input) {
+    async updateRule(input) {
       const result = await client.query<RuleRow>(
         `
           UPDATE hermes_rules
-          SET enabled = $3
+          SET enabled = COALESCE($3::boolean, enabled),
+              sort_order = COALESCE($4::integer, sort_order)
           WHERE account_id = $1
             AND id = $2
           RETURNING
@@ -596,11 +621,12 @@ export function createPostgresHermesRuleStore(
             condition,
             action,
             confidence,
+            sort_order,
             enabled,
             created_at,
             approved_at
         `,
-        [input.accountId, input.ruleId, input.enabled],
+        [input.accountId, input.ruleId, input.enabled ?? null, input.sortOrder ?? null],
       );
 
       return result.rows[0] ? ruleFromRow(result.rows[0]) : undefined;
@@ -805,6 +831,7 @@ function ruleFromRow(row: RuleRow): HermesRule {
     action: row.action,
     confidence: Number(row.confidence),
     enabled: row.enabled,
+    sortOrder: Number(row.sort_order),
     createdAt: row.created_at,
     ...(row.approved_at ? { approvedAt: row.approved_at } : {}),
   };

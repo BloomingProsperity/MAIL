@@ -9392,6 +9392,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       },
       confidence: 0.9,
       enabled: true,
+      sortOrder: 1000,
       createdAt: "2026-06-15T08:00:00.000Z",
       approvedAt: "2026-06-15T08:00:00.000Z",
     },
@@ -9439,7 +9440,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
 
   async function loadRules() {
     if (!props.api) {
-      setRules(previewRules);
+      setRules(normalizeHermesRuleSortOrders(previewRules));
       setRuleNotice("本地预览规则，连接后会读取真实 Hermes 规则。");
       return;
     }
@@ -9469,7 +9470,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
           limit: 50,
         })
         .catch(() => ({ items: [] as HermesRuleCandidateDto[] }));
-      setRules(page.items);
+      setRules(normalizeHermesRuleSortOrders(page.items));
       setRuleExecutions(latestExecutionsByRuleId(executionsPage.items));
       setCandidateDrafts(candidatesPage.items);
       setCandidateEdits(hermesRuleCandidateEditMap(candidatesPage.items));
@@ -9497,8 +9498,10 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
   async function setRuleEnabled(rule: HermesRuleDto, enabled: boolean) {
     if (!props.api) {
       setRules((current) =>
-        current.map((item) =>
-          item.id === rule.id ? { ...item, enabled } : item,
+        normalizeHermesRuleSortOrders(
+          current.map((item) =>
+            item.id === rule.id ? { ...item, enabled } : item,
+          ),
         ),
       );
       setRuleNotice(enabled ? "预览规则已恢复。" : "预览规则已停用。");
@@ -9519,7 +9522,9 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
         enabled,
       });
       setRules((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
+        normalizeHermesRuleSortOrders(
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        ),
       );
       setRuleNotice(
         enabled
@@ -9528,6 +9533,70 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       );
     } catch {
       setRuleNotice("Hermes 规则更新失败。");
+    } finally {
+      setBusyRuleId("");
+    }
+  }
+
+  async function moveRule(rule: HermesRuleDto, direction: "up" | "down") {
+    const orderedRules = normalizeHermesRuleSortOrders(rules);
+    const index = orderedRules.findIndex((item) => item.id === rule.id);
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    const target = orderedRules[swapIndex];
+    if (!target) {
+      return;
+    }
+
+    if (!props.api) {
+      setRules((current) =>
+        normalizeHermesRuleSortOrders(
+          current.map((item) => {
+            if (item.id === rule.id) {
+              return { ...item, sortOrder: target.sortOrder };
+            }
+            if (item.id === target.id) {
+              return { ...item, sortOrder: rule.sortOrder };
+            }
+            return item;
+          }),
+        ),
+      );
+      setRuleNotice("预览规则顺序已调整。");
+      return;
+    }
+
+    if (!props.accountId) {
+      setRuleNotice("请先添加邮箱并完成同步，再调整 Hermes 规则顺序。");
+      return;
+    }
+
+    setBusyRuleId(`order:${rule.id}`);
+    setRuleNotice("正在调整 Hermes 规则顺序...");
+    try {
+      const [updatedRule, updatedTarget] = await Promise.all([
+        props.api.updateHermesRule({
+          accountId: props.accountId,
+          ruleId: rule.id,
+          sortOrder: target.sortOrder,
+        }),
+        props.api.updateHermesRule({
+          accountId: props.accountId,
+          ruleId: target.id,
+          sortOrder: rule.sortOrder,
+        }),
+      ]);
+      setRules((current) =>
+        normalizeHermesRuleSortOrders(
+          current.map((item) => {
+            if (item.id === updatedRule.id) return updatedRule;
+            if (item.id === updatedTarget.id) return updatedTarget;
+            return item;
+          }),
+        ),
+      );
+      setRuleNotice(`Hermes 规则顺序已调整：${rule.title}。`);
+    } catch {
+      setRuleNotice("Hermes 规则顺序调整失败。");
     } finally {
       setBusyRuleId("");
     }
@@ -9783,7 +9852,9 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
         enabled: true,
         approvedAt: new Date().toISOString(),
       };
-      setRules((current) => [previewRule, ...current]);
+      setRules((current) =>
+        normalizeHermesRuleSortOrders([previewRule, ...current]),
+      );
       setCandidateDrafts((current) =>
         current.map((item) =>
           item.id === candidate.id ? { ...item, status: "approved" } : item,
@@ -9815,10 +9886,12 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
         candidateId: plan.candidate.id,
       });
       const approvedRule = confirmation.rule;
-      setRules((current) => [
-        approvedRule,
-        ...current.filter((rule) => rule.id !== approvedRule.id),
-      ]);
+      setRules((current) =>
+        normalizeHermesRuleSortOrders([
+          approvedRule,
+          ...current.filter((rule) => rule.id !== approvedRule.id),
+        ]),
+      );
       setCandidateDrafts((current) =>
         current.map((item) =>
           item.id === candidate.id ? { ...item, status: "approved" } : item,
@@ -9990,10 +10063,11 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       </div>
 
       <div className="task-list">
-        {rules.map((rule) => {
+        {normalizeHermesRuleSortOrders(rules).map((rule, index, orderedRules) => {
           const execution = ruleExecutions[rule.id];
           const isToggling = busyRuleId === `toggle:${rule.id}`;
           const isRunning = busyRuleId === `run:${rule.id}`;
+          const isOrdering = busyRuleId === `order:${rule.id}`;
           return (
             <div className="task-row" key={rule.id}>
               <Sparkles size={19} />
@@ -10002,6 +10076,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
                 <span>
                   {formatHermesRuleType(rule.ruleType)} ·{" "}
                   {formatHermesRuleAction(rule.action)} ·{" "}
+                  顺序 {rule.sortOrder.toLocaleString()} ·{" "}
                   {rule.enabled ? "已启用" : "已停用"} ·{" "}
                   {Math.round(rule.confidence * 100)}%
                 </span>
@@ -10015,8 +10090,29 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
               <div className="task-actions">
                 <button
                   type="button"
+                  aria-label={`Move Hermes rule up ${rule.title}`}
+                  disabled={index === 0 || isOrdering || isRunning || isToggling}
+                  onClick={() => void moveRule(rule, "up")}
+                >
+                  上移
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Move Hermes rule down ${rule.title}`}
+                  disabled={
+                    index === orderedRules.length - 1 ||
+                    isOrdering ||
+                    isRunning ||
+                    isToggling
+                  }
+                  onClick={() => void moveRule(rule, "down")}
+                >
+                  下移
+                </button>
+                <button
+                  type="button"
                   aria-label={`Run Hermes rule ${rule.title}`}
-                  disabled={!rule.enabled || isRunning || isToggling}
+                  disabled={!rule.enabled || isRunning || isToggling || isOrdering}
                   onClick={() => void runRuleNow(rule)}
                 >
                   {isRunning ? "运行中" : "运行"}
@@ -10024,7 +10120,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
                 <button
                   type="button"
                   aria-label={`${rule.enabled ? "Disable" : "Enable"} Hermes rule ${rule.title}`}
-                  disabled={isRunning || isToggling}
+                  disabled={isRunning || isToggling || isOrdering}
                   onClick={() => void setRuleEnabled(rule, !rule.enabled)}
                 >
                   {rule.enabled ? "停用" : "恢复"}
@@ -10048,6 +10144,39 @@ function latestExecutionsByRuleId(
     }
   }
   return result;
+}
+
+function normalizeHermesRuleSortOrders(
+  rules: HermesRuleDto[],
+): HermesRuleDto[] {
+  return rules
+    .map((rule, index) => ({
+      ...rule,
+      sortOrder: hermesRuleSortOrderValue(rule, (index + 1) * 1000),
+    }))
+    .sort(compareHermesRulesByOrder);
+}
+
+function hermesRuleSortOrderValue(
+  rule: HermesRuleDto,
+  fallback: number,
+): number {
+  const sortOrder = Number(
+    (rule as HermesRuleDto & { sortOrder?: unknown }).sortOrder,
+  );
+  return Number.isFinite(sortOrder) ? sortOrder : fallback;
+}
+
+function compareHermesRulesByOrder(
+  a: HermesRuleDto,
+  b: HermesRuleDto,
+): number {
+  return (
+    hermesRuleSortOrderValue(a, Number.MAX_SAFE_INTEGER) -
+      hermesRuleSortOrderValue(b, Number.MAX_SAFE_INTEGER) ||
+    b.createdAt.localeCompare(a.createdAt) ||
+    b.id.localeCompare(a.id)
+  );
 }
 
 function HermesMemoryManagerPanel(props: {

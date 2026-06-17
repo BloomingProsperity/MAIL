@@ -368,6 +368,7 @@ describe("Hermes rule routes", () => {
           action: { type: "classify_sender", bucket: "P2 Important" },
           confidence: 0.85,
           enabled: true,
+          sortOrder: 1000,
           createdAt: "2026-06-13T10:10:00.000Z",
           approvedAt: "2026-06-13T10:10:00.000Z",
         };
@@ -406,7 +407,7 @@ describe("Hermes rule routes", () => {
   it("updates an enabled rule without approving another candidate", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {
-      async updateRuleEnabled(input: unknown) {
+      async updateRule(input: unknown) {
         calls.push(input);
         return {
           id: "rule_codes",
@@ -418,6 +419,7 @@ describe("Hermes rule routes", () => {
           action: { type: "apply_label", labelId: "label_codes" },
           confidence: 0.9,
           enabled: false,
+          sortOrder: 2000,
           createdAt: "2026-06-13T10:10:00.000Z",
           approvedAt: "2026-06-13T10:10:00.000Z",
         };
@@ -436,6 +438,7 @@ describe("Hermes rule routes", () => {
         expect(await response.json()).toMatchObject({
           id: "rule_codes",
           enabled: false,
+          sortOrder: 2000,
         });
       },
       { hermesRuleService },
@@ -446,6 +449,55 @@ describe("Hermes rule routes", () => {
         accountId: "account_1",
         ruleId: "rule_codes",
         enabled: false,
+      },
+    ]);
+  });
+
+  it("updates Hermes rule order without toggling the rule", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async updateRule(input: unknown) {
+        calls.push(input);
+        return {
+          id: "rule_codes",
+          accountId: "account_1",
+          candidateId: "candidate_codes",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: { type: "apply_label", labelId: "label_codes" },
+          confidence: 0.9,
+          enabled: true,
+          sortOrder: 500,
+          createdAt: "2026-06-13T10:10:00.000Z",
+          approvedAt: "2026-06-13T10:10:00.000Z",
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/hermes/rules/rule_codes`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ accountId: "account_1", sortOrder: 500 }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          id: "rule_codes",
+          enabled: true,
+          sortOrder: 500,
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        sortOrder: 500,
       },
     ]);
   });
@@ -600,7 +652,7 @@ describe("Hermes rule routes", () => {
   it("returns 404 when updating a missing Hermes rule", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {
-      async updateRuleEnabled(input: unknown) {
+      async updateRule(input: unknown) {
         calls.push(input);
         return undefined;
       },
@@ -635,7 +687,7 @@ describe("Hermes rule routes", () => {
   it("rejects invalid Hermes rule updates before hitting the service", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {
-      async updateRuleEnabled(input: unknown) {
+      async updateRule(input: unknown) {
         calls.push(input);
         return undefined;
       },

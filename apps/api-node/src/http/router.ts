@@ -1890,7 +1890,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (hermesRuleRoute.action === "update" && request.method === "PATCH") {
-          const result = await config.hermesRuleService.updateRuleEnabled(
+          const result = await config.hermesRuleService.updateRule(
             parseHermesRuleUpdateInput(
               hermesRuleRoute.ruleId,
               await readRequestBody(),
@@ -7369,23 +7369,42 @@ function parseHermesRuleUpdateInput(
 ): {
   accountId: string;
   ruleId: string;
-  enabled: boolean;
+  enabled?: boolean;
+  sortOrder?: number;
 } {
   const payload = JSON.parse(body) as {
     accountId?: unknown;
     enabled?: unknown;
+    sortOrder?: unknown;
   };
   if (!isNonEmptyString(ruleId) || !isNonEmptyString(payload.accountId)) {
     throw new InvalidHermesRuleRequestError();
   }
-  if (typeof payload.enabled !== "boolean") {
+  if (
+    payload.enabled !== undefined &&
+    typeof payload.enabled !== "boolean"
+  ) {
+    throw new InvalidHermesRuleRequestError();
+  }
+  if (
+    payload.sortOrder !== undefined &&
+    (!Number.isInteger(payload.sortOrder) ||
+      (payload.sortOrder as number) < 0 ||
+      (payload.sortOrder as number) > 1_000_000)
+  ) {
+    throw new InvalidHermesRuleRequestError();
+  }
+  if (payload.enabled === undefined && payload.sortOrder === undefined) {
     throw new InvalidHermesRuleRequestError();
   }
 
   return {
     accountId: payload.accountId,
     ruleId,
-    enabled: payload.enabled,
+    ...(payload.enabled !== undefined ? { enabled: payload.enabled } : {}),
+    ...(payload.sortOrder !== undefined
+      ? { sortOrder: payload.sortOrder as number }
+      : {}),
   };
 }
 

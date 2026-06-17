@@ -418,6 +418,7 @@ describe("postgres Hermes rule store", () => {
                 action,
                 confidence: "0.850",
                 enabled: true,
+                sort_order: 1000,
                 created_at: "2026-06-13T10:10:00.000Z",
                 approved_at: "2026-06-13T10:10:00.000Z",
               },
@@ -465,6 +466,7 @@ describe("postgres Hermes rule store", () => {
       accountId: "account_1",
       candidateId: "candidate_1",
       enabled: true,
+      sortOrder: 1000,
       action: {
         type: "apply_label",
         labelId: "label_codes",
@@ -510,6 +512,7 @@ describe("postgres Hermes rule store", () => {
         },
         confidence: 0.9,
         enabled: true,
+        sortOrder: 1000,
         createdAt: "2026-06-13T10:10:00.000Z",
         approvedAt: "2026-06-13T10:10:00.000Z",
       },
@@ -693,6 +696,75 @@ describe("postgres Hermes rule store", () => {
     ]);
   });
 
+  it("lists approved rules in account priority order", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "rule_first",
+              account_id: "account_1",
+              candidate_id: "candidate_first",
+              title: "First rule",
+              rule_type: "sender_priority",
+              condition: { senderEmail: "first@example.com" },
+              action: { type: "classify_sender", bucket: "P2 Important" },
+              confidence: "0.900",
+              sort_order: 1000,
+              enabled: true,
+              created_at: "2026-06-13T10:00:00.000Z",
+              approved_at: "2026-06-13T10:00:00.000Z",
+            },
+            {
+              id: "rule_second",
+              account_id: "account_1",
+              candidate_id: "candidate_second",
+              title: "Second rule",
+              rule_type: "sender_feed",
+              condition: { senderEmail: "second@example.com" },
+              action: { type: "classify_sender", bucket: "P6 Feed" },
+              confidence: "0.700",
+              sort_order: 2000,
+              enabled: true,
+              created_at: "2026-06-13T10:30:00.000Z",
+              approved_at: "2026-06-13T10:30:00.000Z",
+            },
+          ],
+        };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    const result = await store.listRules({
+      accountId: "account_1",
+      enabled: true,
+      limit: 20,
+    });
+
+    expect(queries[0].text).toMatch(/FROM hermes_rules/i);
+    expect(queries[0].text).toMatch(/\(\$2::boolean IS NULL OR enabled = \$2\)/i);
+    expect(queries[0].text).toMatch(
+      /ORDER BY sort_order ASC, created_at DESC, id DESC/i,
+    );
+    expect(queries[0].values).toEqual(["account_1", true, 20]);
+    expect(result).toEqual({
+      items: [
+        expect.objectContaining({
+          id: "rule_first",
+          sortOrder: 1000,
+          enabled: true,
+        }),
+        expect.objectContaining({
+          id: "rule_second",
+          sortOrder: 2000,
+          enabled: true,
+        }),
+      ],
+    });
+  });
+
   it("updates rule enabled state by account and rule id", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {
@@ -710,6 +782,7 @@ describe("postgres Hermes rule store", () => {
               action: { type: "apply_label", labelId: "label_codes" },
               confidence: "0.900",
               enabled: false,
+              sort_order: 2000,
               created_at: "2026-06-13T10:10:00.000Z",
               approved_at: "2026-06-13T10:10:00.000Z",
             },
@@ -719,21 +792,31 @@ describe("postgres Hermes rule store", () => {
     };
     const store = createPostgresHermesRuleStore(client);
 
-    const result = await store.updateRuleEnabled({
+    const result = await store.updateRule({
       accountId: "account_1",
       ruleId: "rule_codes",
       enabled: false,
+      sortOrder: 2000,
     });
 
     expect(queries[0].text).toMatch(/UPDATE hermes_rules/i);
-    expect(queries[0].text).toMatch(/SET enabled = \$3/i);
+    expect(queries[0].text).toMatch(/enabled = COALESCE\(\$3::boolean, enabled\)/i);
+    expect(queries[0].text).toMatch(
+      /sort_order = COALESCE\(\$4::integer, sort_order\)/i,
+    );
     expect(queries[0].text).toMatch(/WHERE account_id = \$1/i);
     expect(queries[0].text).toMatch(/AND id = \$2/i);
-    expect(queries[0].values).toEqual(["account_1", "rule_codes", false]);
+    expect(queries[0].values).toEqual([
+      "account_1",
+      "rule_codes",
+      false,
+      2000,
+    ]);
     expect(result).toMatchObject({
       id: "rule_codes",
       accountId: "account_1",
       enabled: false,
+      sortOrder: 2000,
     });
   });
 });
