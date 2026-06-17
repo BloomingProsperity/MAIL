@@ -198,7 +198,12 @@ with more than smoke-level tests.
   translation/summary caches, completed action plans, feedback, audit events,
   and skill runs using `HERMES_RETENTION_DAYS`,
   `HERMES_RETENTION_CLEANUP_INTERVAL_MS`, and
-  `HERMES_RETENTION_CLEANUP_LIMIT`.
+  `HERMES_RETENTION_CLEANUP_LIMIT`. The API and Settings data-maintenance panel
+  expose the same bounded Hermes retention boundary through
+  `GET /api/maintenance/hermes-retention` and
+  `POST /api/maintenance/hermes-retention/cleanup`, with capped per-table
+  expired-row estimates so small self-hosted machines can inspect and prune
+  Hermes cache/audit/skill-run pressure without full-table maintenance scans.
 - Failure: missing endpoint/model/key, external auth required, provider failure,
   prompt output parse failure.
 - Tests: provider catalog/probe, runtime config, audit log, memory context,
@@ -439,7 +444,11 @@ with more than smoke-level tests.
   `POST /api/maintenance/compose-attachments/cleanup`, so self-hosted admins can
   inspect stale uploads, protected draft references, invalid metadata, scan
   limits, and manually prune unreferenced or broken local files without shell
-  access. Forwarded
+  access. The same Settings maintenance panel now shows Hermes retention status
+  across translation/summary caches, completed action plans, feedback, audit
+  events, and skill runs, and can run bounded
+  `POST /api/maintenance/hermes-retention/cleanup` batches without shell access.
+  Forwarded
   provider attachments are still
   snapshotted at draft creation through the bounded EmailEngine attachment
   download adapter, so the private transport manifest keeps both

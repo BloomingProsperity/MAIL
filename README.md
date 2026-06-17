@@ -149,7 +149,11 @@ POST /api/hermes/rules/:candidateId/approve
 per-run context and memory limits, retention cleanup policy, and self-hosted
 machine guidance. Settings shows the same profile above the editable skill
 cards so operators can see the pressure created by Hermes before raising
-budgets.
+budgets. For live self-hosted maintenance, `GET /api/maintenance/hermes-retention`
+returns capped per-table expired-row estimates and
+`POST /api/maintenance/hermes-retention/cleanup` runs bounded cleanup batches
+for Hermes translation/summary caches, completed action plans, feedback, audit
+events, and skill runs.
 
 `email_search_qa` searches app-owned Postgres message DTOs first, then asks Hermes to answer from those matches. It returns `answerText`, `searchQuery`, and match summaries, and records the matched message ids in `hermes_audit_events`.
 The web app routes the compact bottom Hermes dock through this same

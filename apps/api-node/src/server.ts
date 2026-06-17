@@ -78,6 +78,10 @@ import {
   createLocalComposeAttachmentMaintenanceBlobStore,
   createPostgresComposeAttachmentReferenceStore,
 } from "./maintenance/compose-attachment-maintenance.js";
+import {
+  createHermesRetentionMaintenanceService,
+  createPostgresHermesRetentionMaintenanceStore,
+} from "./maintenance/hermes-retention-maintenance.js";
 import { createPostgresMailComposeStore } from "./mail-compose/postgres-mail-compose-store.js";
 import { createPostgresSendIdentityStore } from "./mail-compose/postgres-send-identity-store.js";
 import { createPostgresMailThreadingStore } from "./mail-compose/postgres-threading-store.js";
@@ -161,6 +165,7 @@ logger.info("api_configuration_loaded", {
 });
 
 if (pool) {
+  const hermesRetentionPolicy = config.hermesRetentionPolicy ?? {};
   const composeAttachmentBlobDir =
     process.env.COMPOSE_ATTACHMENT_BLOB_DIR ??
     "/tmp/email-hub-compose-attachments";
@@ -191,6 +196,14 @@ if (pool) {
         min: 1,
         max: 10000,
       }),
+    });
+  config.hermesRetentionMaintenanceService =
+    createHermesRetentionMaintenanceService({
+      store: createPostgresHermesRetentionMaintenanceStore(pool),
+      now: () => new Date(),
+      retentionMs:
+        (hermesRetentionPolicy.retentionDays ?? 30) * 24 * 60 * 60 * 1000,
+      cleanupLimit: hermesRetentionPolicy.cleanupLimit ?? 500,
     });
   const accountOnboardingStore = createPostgresAccountOnboardingStore(pool, {
     createId: randomUUID,

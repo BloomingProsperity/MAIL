@@ -25,6 +25,8 @@ import type {
   HermesQuickReplyResult,
   HermesReplyDraftResult,
   HermesRewritePolishResult,
+  HermesRetentionMaintenanceCleanupResultDto,
+  HermesRetentionMaintenanceStatusDto,
   HermesRuleCandidateDto,
   HermesRuleDto,
   HermesRuleExecutionDto,
@@ -94,7 +96,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(dock.className).toContain("is-open");
     const commandInput = within(dock).getByLabelText("Hermes 指令") as HTMLInputElement;
-    expect(commandInput.placeholder).toBe("搜索邮件、写回复、整理收件箱...");
+    expect(commandInput.placeholder).toBe("搜索邮件、创建规则、整理收件箱...");
     expect(commandInput.value).toBe("");
     expect(within(dock).queryByRole("button", { name: "搜索邮件" })).toBeNull();
 
@@ -1388,9 +1390,12 @@ describe("Email Hub first UI baseline", () => {
     const maintenancePanel = await screen.findByLabelText("数据维护面板");
     await waitFor(() => {
       expect(api.getComposeAttachmentMaintenanceStatus).toHaveBeenCalled();
+      expect(api.getHermesRetentionMaintenanceStatus).toHaveBeenCalled();
     });
     expect(within(maintenancePanel).getByText("未引用附件")).toBeTruthy();
     expect(within(maintenancePanel).getByText("2 MB 可清理")).toBeTruthy();
+    expect(within(maintenancePanel).getByText("Hermes 过期记录")).toBeTruthy();
+    expect(within(maintenancePanel).getByText("Skill 运行记录")).toBeTruthy();
 
     fireEvent.change(within(maintenancePanel).getByLabelText("清理最小保留小时"), {
       target: { value: "48" },
@@ -1410,6 +1415,31 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(
       await within(maintenancePanel).findByText("已清理 2 个未引用附件，释放 4 KB。"),
+    ).toBeTruthy();
+
+    fireEvent.change(within(maintenancePanel).getByLabelText("Hermes 保留天数"), {
+      target: { value: "14" },
+    });
+    fireEvent.change(
+      within(maintenancePanel).getByLabelText("Hermes 清理批量上限"),
+      {
+        target: { value: "25" },
+      },
+    );
+    fireEvent.click(
+      within(maintenancePanel).getByRole("button", {
+        name: "清理 Hermes 过期数据",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.cleanupHermesRetention).toHaveBeenCalledWith({
+        retentionDays: 14,
+        limit: 25,
+      });
+    });
+    expect(
+      await within(maintenancePanel).findByText("已清理 21 条 Hermes 过期记录。"),
     ).toBeTruthy();
   });
 
@@ -6871,6 +6901,68 @@ function hermesResourceProfileFixture(
   };
 }
 
+function hermesRetentionMaintenanceStatusFixture(
+  overrides: Partial<HermesRetentionMaintenanceStatusDto> = {},
+): HermesRetentionMaintenanceStatusDto {
+  return {
+    generatedAt: "2026-06-17T12:00:00.000Z",
+    retentionMs: 30 * 24 * 60 * 60 * 1000,
+    retentionDays: 30,
+    cleanupLimit: 500,
+    cutoff: "2026-05-18T12:00:00.000Z",
+    tables: [
+      {
+        table: "hermes_skill_runs",
+        timestampColumn: "created_at",
+        expiredRows: 12,
+        scanLimit: 500,
+        scanLimited: false,
+      },
+      {
+        table: "hermes_audit_events",
+        timestampColumn: "created_at",
+        expiredRows: 6,
+        scanLimit: 500,
+        scanLimited: false,
+      },
+    ],
+    expiredRows: 18,
+    scanLimited: false,
+    ...overrides,
+  };
+}
+
+function hermesRetentionMaintenanceCleanupFixture(
+  overrides: Partial<HermesRetentionMaintenanceCleanupResultDto> = {},
+): HermesRetentionMaintenanceCleanupResultDto {
+  return {
+    generatedAt: "2026-06-17T12:05:00.000Z",
+    retentionMs: 14 * 24 * 60 * 60 * 1000,
+    retentionDays: 14,
+    cleanupLimit: 25,
+    cutoff: "2026-06-03T12:05:00.000Z",
+    cleanup: {
+      messageTranslations: 1,
+      messageSummaries: 2,
+      actionPlans: 3,
+      feedback: 4,
+      auditEvents: 5,
+      skillRuns: 6,
+      deleted: 21,
+    },
+    after: hermesRetentionMaintenanceStatusFixture({
+      generatedAt: "2026-06-17T12:05:00.000Z",
+      retentionMs: 14 * 24 * 60 * 60 * 1000,
+      retentionDays: 14,
+      cleanupLimit: 25,
+      cutoff: "2026-06-03T12:05:00.000Z",
+      expiredRows: 0,
+      tables: [],
+    }),
+    ...overrides,
+  };
+}
+
 function createApiFixture(): EmailHubApi {
   return {
     listMailboxes: vi.fn(async () => ({
@@ -7725,6 +7817,12 @@ function createApiFixture(): EmailHubApi {
             invalid: 0,
           },
         }) satisfies ComposeAttachmentMaintenanceCleanupResultDto,
+    ),
+    getHermesRetentionMaintenanceStatus: vi.fn(
+      async () => hermesRetentionMaintenanceStatusFixture(),
+    ),
+    cleanupHermesRetention: vi.fn(
+      async () => hermesRetentionMaintenanceCleanupFixture(),
     ),
     createDomain: vi.fn(async () => ({
       id: "domain_1",

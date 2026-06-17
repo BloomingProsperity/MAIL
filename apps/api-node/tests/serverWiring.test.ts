@@ -191,6 +191,17 @@ describe("server wiring", () => {
     expect(source).toMatch(/COMPOSE_ATTACHMENT_CLEANUP_LIMIT/);
   });
 
+  it("wires Hermes retention maintenance into self-hosted cleanup controls", async () => {
+    const serverUrl = new URL("../src/server.ts", import.meta.url);
+    const source = await readFile(serverUrl, "utf8");
+
+    expect(source).toMatch(/createHermesRetentionMaintenanceService/);
+    expect(source).toMatch(/createPostgresHermesRetentionMaintenanceStore/);
+    expect(source).toMatch(/config\.hermesRetentionMaintenanceService\s*=/);
+    expect(source).toMatch(/HERMES_RETENTION_DAYS/);
+    expect(source).toMatch(/HERMES_RETENTION_CLEANUP_LIMIT/);
+  });
+
   it("registers graceful shutdown for the HTTP server and Postgres pool", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");

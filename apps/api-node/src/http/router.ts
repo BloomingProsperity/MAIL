@@ -165,6 +165,7 @@ import {
   type ComposeAttachmentBlobStore,
 } from "../mail-compose/compose-attachment-blob-store.js";
 import type { ComposeAttachmentMaintenanceService } from "../maintenance/compose-attachment-maintenance.js";
+import type { HermesRetentionMaintenanceService } from "../maintenance/hermes-retention-maintenance.js";
 import {
   InvalidMailActionRequestError,
   type MailAction,
@@ -438,6 +439,7 @@ export interface ApiConfig {
   attachmentDownloadService?: AttachmentDownloadService;
   composeAttachmentBlobStore?: ComposeAttachmentBlobStore;
   composeAttachmentMaintenanceService?: ComposeAttachmentMaintenanceService;
+  hermesRetentionMaintenanceService?: HermesRetentionMaintenanceService;
   accountOnboardingService?: AccountOnboardingService;
   accountImportService?: AccountCsvImportService;
   accountTransferService?: AccountTransferService;
@@ -590,6 +592,45 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
             202,
             await config.composeAttachmentMaintenanceService.cleanup(
               parseComposeAttachmentMaintenanceCleanupInput(
+                await readRequestBody(),
+              ),
+            ),
+          );
+          return;
+        }
+      }
+
+      const hermesRetentionMaintenanceRoute =
+        parseHermesRetentionMaintenanceRoute(request.url);
+      if (hermesRetentionMaintenanceRoute) {
+        if (!config.hermesRetentionMaintenanceService) {
+          writeJson(response, 503, {
+            error: "hermes_retention_maintenance_unavailable",
+          });
+          return;
+        }
+
+        if (
+          hermesRetentionMaintenanceRoute === "status" &&
+          request.method === "GET"
+        ) {
+          writeJson(
+            response,
+            200,
+            await config.hermesRetentionMaintenanceService.getStatus(),
+          );
+          return;
+        }
+
+        if (
+          hermesRetentionMaintenanceRoute === "cleanup" &&
+          request.method === "POST"
+        ) {
+          writeJson(
+            response,
+            202,
+            await config.hermesRetentionMaintenanceService.cleanup(
+              parseHermesRetentionMaintenanceCleanupInput(
                 await readRequestBody(),
               ),
             ),
@@ -3079,6 +3120,11 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         return;
       }
 
+      if (error instanceof InvalidHermesRetentionMaintenanceRequestError) {
+        writeJson(response, 400, { error: error.code });
+        return;
+      }
+
       if (
         error instanceof RequestBodyTooLargeError ||
         error instanceof ComposeAttachmentBlobTooLargeError
@@ -3648,6 +3694,24 @@ function parseComposeAttachmentMaintenanceRoute(
   return undefined;
 }
 
+function parseHermesRetentionMaintenanceRoute(
+  requestUrl: string | undefined,
+): "status" | "cleanup" | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const pathname = new URL(requestUrl, "http://localhost").pathname;
+  if (pathname === "/api/maintenance/hermes-retention") {
+    return "status";
+  }
+  if (pathname === "/api/maintenance/hermes-retention/cleanup") {
+    return "cleanup";
+  }
+
+  return undefined;
+}
+
 function parseComposeAttachmentMaintenanceCleanupInput(body: string): {
   minAgeMs?: number;
   limit?: number;
@@ -3694,6 +3758,63 @@ function parseComposeAttachmentMaintenanceCleanupInput(body: string): {
         }
       : {}),
   };
+}
+
+function parseHermesRetentionMaintenanceCleanupInput(body: string): {
+  retentionDays?: number;
+  limit?: number;
+} {
+  if (!body.trim()) {
+    return {};
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    throw new InvalidHermesRetentionMaintenanceRequestError();
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new InvalidHermesRetentionMaintenanceRequestError();
+  }
+
+  const record = payload as {
+    retentionDays?: unknown;
+    limit?: unknown;
+  };
+  return {
+    ...(record.retentionDays !== undefined
+      ? {
+          retentionDays: readHermesRetentionMaintenanceInteger(
+            record.retentionDays,
+            1,
+            365,
+          ),
+        }
+      : {}),
+    ...(record.limit !== undefined
+      ? {
+          limit: readHermesRetentionMaintenanceInteger(record.limit, 1, 10000),
+        }
+      : {}),
+  };
+}
+
+function readHermesRetentionMaintenanceInteger(
+  value: unknown,
+  min: number,
+  max: number,
+): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < min ||
+    value > max
+  ) {
+    throw new InvalidHermesRetentionMaintenanceRequestError();
+  }
+
+  return value;
 }
 
 function readComposeAttachmentMaintenanceInteger(
@@ -8590,6 +8711,14 @@ class InvalidComposeAttachmentMaintenanceRequestError extends Error {
 
   constructor() {
     super("invalid_compose_attachment_maintenance_request");
+  }
+}
+
+class InvalidHermesRetentionMaintenanceRequestError extends Error {
+  readonly code = "invalid_hermes_retention_maintenance_request";
+
+  constructor() {
+    super("invalid_hermes_retention_maintenance_request");
   }
 }
 

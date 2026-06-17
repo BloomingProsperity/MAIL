@@ -206,6 +206,85 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("reads and runs Hermes retention maintenance through backend routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          generatedAt: "2026-06-17T12:00:00.000Z",
+          retentionMs: 2592000000,
+          retentionDays: 30,
+          cleanupLimit: 500,
+          cutoff: "2026-05-18T12:00:00.000Z",
+          tables: [
+            {
+              table: "hermes_skill_runs",
+              timestampColumn: "created_at",
+              expiredRows: 12,
+              scanLimit: 500,
+              scanLimited: false,
+            },
+          ],
+          expiredRows: 12,
+          scanLimited: false,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          generatedAt: "2026-06-17T12:05:00.000Z",
+          retentionMs: 1209600000,
+          retentionDays: 14,
+          cleanupLimit: 25,
+          cutoff: "2026-06-03T12:05:00.000Z",
+          cleanup: {
+            messageTranslations: 1,
+            messageSummaries: 2,
+            actionPlans: 3,
+            feedback: 4,
+            auditEvents: 5,
+            skillRuns: 6,
+            deleted: 21,
+          },
+          after: {
+            generatedAt: "2026-06-17T12:05:00.000Z",
+            retentionMs: 1209600000,
+            retentionDays: 14,
+            cleanupLimit: 25,
+            cutoff: "2026-06-03T12:05:00.000Z",
+            tables: [],
+            expiredRows: 0,
+            scanLimited: false,
+          },
+        }),
+      );
+    const api = createEmailHubApi({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: fetchMock as any,
+    });
+
+    const status = await api.getHermesRetentionMaintenanceStatus();
+    const cleanup = await api.cleanupHermesRetention({
+      retentionDays: 14,
+      limit: 25,
+    });
+
+    expect(status.expiredRows).toBe(12);
+    expect(cleanup.cleanup.deleted).toBe(21);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8080/api/maintenance/hermes-retention",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8080/api/maintenance/hermes-retention/cleanup",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ retentionDays: 14, limit: 25 }),
+      }),
+    );
+  });
+
   it("loads smart-sorted messages with local mailbox ids only", async () => {
     const fetchMock = vi.fn(async (url: string) =>
       jsonResponse({

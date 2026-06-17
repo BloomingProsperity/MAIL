@@ -60,6 +60,8 @@ import type {
   HermesRuleExecutionDto,
   HermesRuleHistoryBackfillDto,
   HermesRuleSimulationDto,
+  HermesRetentionMaintenanceCleanupResultDto,
+  HermesRetentionMaintenanceStatusDto,
   HermesResourceProfileDto,
   HermesRuntimeMode,
   HermesSkillDto,
@@ -10757,9 +10759,17 @@ function ComposeAttachmentMaintenancePanel(props: { api?: EmailHubApi }) {
   const [status, setStatus] = useState<ComposeAttachmentMaintenanceStatusDto>(
     previewComposeAttachmentMaintenanceStatus(),
   );
+  const [hermesStatus, setHermesStatus] =
+    useState<HermesRetentionMaintenanceStatusDto>(
+      previewHermesRetentionMaintenanceStatus(),
+    );
   const [minAgeHours, setMinAgeHours] = useState("168");
   const [limit, setLimit] = useState("100");
-  const [busy, setBusy] = useState<"" | "refresh" | "cleanup">("");
+  const [retentionDays, setRetentionDays] = useState("30");
+  const [hermesLimit, setHermesLimit] = useState("500");
+  const [busy, setBusy] = useState<
+    "" | "refresh" | "cleanup" | "hermes-cleanup"
+  >("");
   const [notice, setNotice] = useState("正在读取数据维护状态...");
 
   useEffect(() => {
@@ -10767,6 +10777,7 @@ function ComposeAttachmentMaintenancePanel(props: { api?: EmailHubApi }) {
 
     if (!props.api) {
       setStatus(previewComposeAttachmentMaintenanceStatus());
+      setHermesStatus(previewHermesRetentionMaintenanceStatus());
       setNotice("本地预览维护状态，连接后会读取真实缓存。");
       return () => {
         alive = false;
@@ -10774,11 +10785,14 @@ function ComposeAttachmentMaintenancePanel(props: { api?: EmailHubApi }) {
     }
 
     setBusy("refresh");
-    void props.api
-      .getComposeAttachmentMaintenanceStatus()
-      .then((nextStatus) => {
+    void Promise.all([
+      props.api.getComposeAttachmentMaintenanceStatus(),
+      props.api.getHermesRetentionMaintenanceStatus(),
+    ])
+      .then(([nextStatus, nextHermesStatus]) => {
         if (!alive) return;
         setStatus(nextStatus);
+        setHermesStatus(nextHermesStatus);
         setNotice("数据维护状态已同步。");
       })
       .catch(() => {
@@ -10799,14 +10813,19 @@ function ComposeAttachmentMaintenancePanel(props: { api?: EmailHubApi }) {
   async function refreshStatus() {
     if (!props.api) {
       setStatus(previewComposeAttachmentMaintenanceStatus());
+      setHermesStatus(previewHermesRetentionMaintenanceStatus());
       setNotice("本地预览维护状态已刷新。");
       return;
     }
 
     setBusy("refresh");
     try {
-      const nextStatus = await props.api.getComposeAttachmentMaintenanceStatus();
+      const [nextStatus, nextHermesStatus] = await Promise.all([
+        props.api.getComposeAttachmentMaintenanceStatus(),
+        props.api.getHermesRetentionMaintenanceStatus(),
+      ]);
       setStatus(nextStatus);
+      setHermesStatus(nextHermesStatus);
       setNotice("数据维护状态已刷新。");
     } catch {
       setNotice("刷新失败，请稍后再试。");
@@ -10854,12 +10873,55 @@ function ComposeAttachmentMaintenancePanel(props: { api?: EmailHubApi }) {
     }
   }
 
+  async function cleanupHermesRetention(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const parsedRetentionDays = readMaintenanceInteger(retentionDays, 1, 365);
+    const parsedLimit = readMaintenanceInteger(hermesLimit, 1, 10000);
+    if (!parsedRetentionDays || !parsedLimit) {
+      setNotice("请输入有效的 Hermes 保留天数和批量上限。");
+      return;
+    }
+
+    if (!props.api) {
+      setHermesStatus({
+        ...hermesStatus,
+        generatedAt: new Date().toISOString(),
+        retentionDays: parsedRetentionDays,
+        retentionMs: parsedRetentionDays * 24 * 60 * 60 * 1000,
+        cleanupLimit: parsedLimit,
+        expiredRows: 0,
+        scanLimited: false,
+        tables: hermesStatus.tables.map((table) => ({
+          ...table,
+          expiredRows: 0,
+          scanLimited: false,
+        })),
+      });
+      setNotice("预览清理完成：Hermes 过期数据已归零。");
+      return;
+    }
+
+    setBusy("hermes-cleanup");
+    try {
+      const result = await props.api.cleanupHermesRetention({
+        retentionDays: parsedRetentionDays,
+        limit: parsedLimit,
+      });
+      setHermesStatus(hermesRetentionStatusFromCleanup(result));
+      setNotice(`已清理 ${result.cleanup.deleted} 条 Hermes 过期记录。`);
+    } catch {
+      setNotice("Hermes 清理失败，请检查服务状态后重试。");
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <section className="settings-panel" aria-label="数据维护面板">
       <header className="settings-panel-head">
         <div>
           <h2>数据维护</h2>
-          <p>检查自托管部署里的临时上传、审计和隐私数据，清理动作始终有批量上限。</p>
+          <p>检查自托管部署里的临时上传、Hermes 缓存、审计和隐私数据，清理动作始终有批量上限。</p>
         </div>
         <button
           className="ghost-button"
@@ -10896,6 +10958,52 @@ function ComposeAttachmentMaintenancePanel(props: { api?: EmailHubApi }) {
           <p>缓存总量 {formatByteSize(status.totalBytes)}</p>
         </article>
       </div>
+
+      <div className="settings-card-grid maintenance-grid">
+        <article className="settings-module maintenance-stat">
+          <span>Hermes 过期记录</span>
+          <strong>{hermesStatus.expiredRows.toLocaleString()}</strong>
+          <p>{hermesStatus.scanLimited ? "超过扫描上限" : "当前可清理"}</p>
+        </article>
+        <article className="settings-module maintenance-stat">
+          <span>Hermes 保留天数</span>
+          <strong>{hermesStatus.retentionDays.toLocaleString()}</strong>
+          <p>截止 {formatMailDate(hermesStatus.cutoff)}</p>
+        </article>
+        <article className="settings-module maintenance-stat">
+          <span>Hermes 批量上限</span>
+          <strong>{hermesStatus.cleanupLimit.toLocaleString()}</strong>
+          <p>每次清理每张表</p>
+        </article>
+        <article className="settings-module maintenance-stat">
+          <span>Hermes 受管表</span>
+          <strong>{hermesStatus.tables.length.toLocaleString()}</strong>
+          <p>缓存、审计、计划和 skill run</p>
+        </article>
+      </div>
+
+      <section className="settings-module hermes-retention-table-list">
+        <div className="sync-diagnostics-header">
+          <div>
+            <h3>Hermes 保留范围</h3>
+            <p>{hermesStatus.scanLimited ? "部分表仍有更多过期记录" : "扫描结果在批量上限内"}</p>
+          </div>
+        </div>
+        <div className="task-list">
+          {hermesStatus.tables.map((table) => (
+            <div className="task-row" key={table.table}>
+              <Sparkles size={18} />
+              <div>
+                <strong>{formatHermesRetentionTableName(table.table)}</strong>
+                <span>
+                  {table.expiredRows.toLocaleString()} 条过期
+                  {table.scanLimited ? " · 已截断" : ""}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <form className="settings-module maintenance-cleanup" onSubmit={cleanupUploads}>
         <div>
@@ -10937,6 +11045,46 @@ function ComposeAttachmentMaintenancePanel(props: { api?: EmailHubApi }) {
         </button>
       </form>
 
+      <form
+        className="settings-module maintenance-cleanup"
+        aria-label="Hermes retention cleanup"
+        onSubmit={cleanupHermesRetention}
+      >
+        <div>
+          <h3>Hermes 清理</h3>
+          <p>{`默认删除超过 ${hermesStatus.retentionDays} 天的缓存、计划、反馈、审计和 skill run。`}</p>
+        </div>
+        <label>
+          <span>保留天数</span>
+          <input
+            aria-label="Hermes 保留天数"
+            type="number"
+            min={1}
+            max={365}
+            value={retentionDays}
+            onChange={(event) => setRetentionDays(event.currentTarget.value)}
+          />
+        </label>
+        <label>
+          <span>批量上限</span>
+          <input
+            aria-label="Hermes 清理批量上限"
+            type="number"
+            min={1}
+            max={10000}
+            value={hermesLimit}
+            onChange={(event) => setHermesLimit(event.currentTarget.value)}
+          />
+        </label>
+        <button
+          className="primary-button"
+          type="submit"
+          disabled={busy === "hermes-cleanup"}
+        >
+          {busy === "hermes-cleanup" ? "清理中" : "清理 Hermes 过期数据"}
+        </button>
+      </form>
+
       <div className="backend-notice" role="status">
         {notice}
       </div>
@@ -10966,6 +11114,40 @@ function previewComposeAttachmentMaintenanceStatus(): ComposeAttachmentMaintenan
   };
 }
 
+function previewHermesRetentionMaintenanceStatus(): HermesRetentionMaintenanceStatusDto {
+  return {
+    generatedAt: "2026-06-16T00:00:00.000Z",
+    retentionMs: 30 * 24 * 60 * 60 * 1000,
+    retentionDays: 30,
+    cleanupLimit: 500,
+    cutoff: "2026-05-17T00:00:00.000Z",
+    expiredRows: 18,
+    scanLimited: false,
+    tables: [
+      hermesRetentionTableStatus("hermes_message_translations", "updated_at", 3),
+      hermesRetentionTableStatus("hermes_message_summaries", "updated_at", 2),
+      hermesRetentionTableStatus("hermes_action_plans", "created_at", 4),
+      hermesRetentionTableStatus("hermes_feedback", "created_at", 1),
+      hermesRetentionTableStatus("hermes_audit_events", "created_at", 5),
+      hermesRetentionTableStatus("hermes_skill_runs", "created_at", 3),
+    ],
+  };
+}
+
+function hermesRetentionTableStatus(
+  table: string,
+  timestampColumn: string,
+  expiredRows: number,
+): HermesRetentionMaintenanceStatusDto["tables"][number] {
+  return {
+    table,
+    timestampColumn,
+    expiredRows,
+    scanLimit: 500,
+    scanLimited: false,
+  };
+}
+
 function composeMaintenanceStatusFromCleanup(
   result: ComposeAttachmentMaintenanceCleanupResultDto,
 ): ComposeAttachmentMaintenanceStatusDto {
@@ -10977,6 +11159,25 @@ function composeMaintenanceStatusFromCleanup(
     protectedStorageKeyCount: result.protectedStorageKeyCount,
     ...result.after,
   };
+}
+
+function hermesRetentionStatusFromCleanup(
+  result: HermesRetentionMaintenanceCleanupResultDto,
+): HermesRetentionMaintenanceStatusDto {
+  return result.after;
+}
+
+function formatHermesRetentionTableName(table: string): string {
+  const labels: Record<string, string> = {
+    hermes_message_translations: "邮件翻译缓存",
+    hermes_message_summaries: "邮件总结缓存",
+    hermes_action_plans: "执行计划",
+    hermes_feedback: "草稿反馈",
+    hermes_audit_events: "审计日志",
+    hermes_skill_runs: "Skill 运行记录",
+  };
+
+  return labels[table] ?? table;
 }
 
 function readMaintenanceInteger(
@@ -11814,7 +12015,7 @@ function HermesDock(props: {
               className="dock-command-input"
               aria-label="Hermes 指令"
               value={props.prompt}
-              placeholder="搜索邮件、写回复、整理收件箱..."
+              placeholder="搜索邮件、创建规则、整理收件箱..."
               onChange={(event) => {
                 props.onPromptChange(event.target.value);
                 showDock();

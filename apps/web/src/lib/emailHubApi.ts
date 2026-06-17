@@ -1349,6 +1349,48 @@ export interface ComposeAttachmentMaintenanceCleanupResultDto {
   after: ComposeAttachmentMaintenanceInspectionDto;
 }
 
+export interface HermesRetentionTableStatusDto {
+  table: string;
+  timestampColumn: string;
+  expiredRows: number;
+  scanLimit: number;
+  scanLimited: boolean;
+}
+
+export interface HermesRetentionMaintenanceStatusDto {
+  generatedAt: string;
+  retentionMs: number;
+  retentionDays: number;
+  cleanupLimit: number;
+  cutoff: string;
+  tables: HermesRetentionTableStatusDto[];
+  expiredRows: number;
+  scanLimited: boolean;
+}
+
+export interface HermesRetentionMaintenanceCleanupInput {
+  retentionDays?: number;
+  limit?: number;
+}
+
+export interface HermesRetentionMaintenanceCleanupResultDto {
+  generatedAt: string;
+  retentionMs: number;
+  retentionDays: number;
+  cleanupLimit: number;
+  cutoff: string;
+  cleanup: {
+    messageTranslations: number;
+    messageSummaries: number;
+    actionPlans: number;
+    feedback: number;
+    auditEvents: number;
+    skillRuns: number;
+    deleted: number;
+  };
+  after: HermesRetentionMaintenanceStatusDto;
+}
+
 export type FollowUpKind = "manual" | "needs_reply" | "waiting_on_them";
 export type FollowUpStatus = "open" | "due" | "done" | "cancelled";
 export type FollowUpListStatus = FollowUpStatus | "all";
@@ -2002,6 +2044,10 @@ export interface EmailHubApi {
   cleanupComposeAttachments(
     input?: ComposeAttachmentMaintenanceCleanupInput,
   ): Promise<ComposeAttachmentMaintenanceCleanupResultDto>;
+  getHermesRetentionMaintenanceStatus(): Promise<HermesRetentionMaintenanceStatusDto>;
+  cleanupHermesRetention(
+    input?: HermesRetentionMaintenanceCleanupInput,
+  ): Promise<HermesRetentionMaintenanceCleanupResultDto>;
   createDomain(input: { domain: string }): Promise<DomainDto>;
   listDomains(): Promise<Page<DomainDto>>;
   createDomainDestination(input: {
@@ -3126,6 +3172,22 @@ export function createEmailHubApi(
         fetchImpl,
         baseUrl,
         "/api/maintenance/compose-attachments/cleanup",
+        {
+          method: "POST",
+          body: JSON.stringify(cleanObject(input)),
+        },
+      );
+    },
+
+    getHermesRetentionMaintenanceStatus() {
+      return request(fetchImpl, baseUrl, "/api/maintenance/hermes-retention");
+    },
+
+    cleanupHermesRetention(input = {}) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        "/api/maintenance/hermes-retention/cleanup",
         {
           method: "POST",
           body: JSON.stringify(cleanObject(input)),
