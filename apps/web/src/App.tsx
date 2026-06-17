@@ -43,6 +43,7 @@ import type {
   DomainDestinationDto,
   DomainDto,
   EmailHubApi,
+  ApiHealthDto,
   FollowUpDto,
   GatekeeperMode,
   GatekeeperSenderDto,
@@ -6785,6 +6786,20 @@ function mailEngineUnavailableRows(): Array<{ label: string; value: string }> {
   }));
 }
 
+function formatApiDatabaseHealth(
+  status: "ok" | "unavailable" | undefined,
+): string {
+  if (status === "ok") {
+    return "可用";
+  }
+
+  if (status === "unavailable") {
+    return "不可用";
+  }
+
+  return "未探测";
+}
+
 function MailEngineLaunchActivityPanel(props: {
   events: OperationalEventDto[];
   notice: string;
@@ -8032,6 +8047,8 @@ function SyncCenterPage(props: {
   );
   const [diagnosticNotice, setDiagnosticNotice] = useState("");
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
+  const [apiHealth, setApiHealth] = useState<ApiHealthDto | undefined>();
+  const [apiHealthUnavailable, setApiHealthUnavailable] = useState(false);
   const [mailEngineHealth, setMailEngineHealth] =
     useState<MailEngineHealthDto | undefined>();
   const [mailEngineHealthUnavailable, setMailEngineHealthUnavailable] =
@@ -8331,6 +8348,34 @@ function SyncCenterPage(props: {
 
   useEffect(() => {
     if (!props.api) {
+      setApiHealth(undefined);
+      setApiHealthUnavailable(false);
+      return;
+    }
+
+    let alive = true;
+    props.api
+      .getApiHealth()
+      .then((health) => {
+        if (alive) {
+          setApiHealth(health);
+          setApiHealthUnavailable(false);
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setApiHealth(undefined);
+          setApiHealthUnavailable(true);
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [props.api]);
+
+  useEffect(() => {
+    if (!props.api) {
       setMailEngineHealth(undefined);
       setMailEngineHealthUnavailable(false);
       return;
@@ -8413,6 +8458,9 @@ function SyncCenterPage(props: {
         </div>
       </header>
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
+      {props.api && (apiHealth || apiHealthUnavailable) ? (
+        <ApiHealthPanel health={apiHealth} unavailable={apiHealthUnavailable} />
+      ) : null}
       {props.api && (mailEngineHealth || mailEngineHealthUnavailable) ? (
         <MailEngineReadinessPanel
           health={mailEngineHealth}
@@ -8758,6 +8806,42 @@ function SyncCenterPage(props: {
           ) : null}
         </section>
       ) : null}
+    </section>
+  );
+}
+
+function ApiHealthPanel(props: { health?: ApiHealthDto; unavailable?: boolean }) {
+  const degraded = props.unavailable || props.health?.ok === false;
+  const databaseStatus = props.health?.checks?.database;
+  return (
+    <section
+      className={`page-panel api-health-panel ${
+        degraded ? "is-degraded" : "is-ready"
+      }`}
+      aria-label="API 运行体检"
+    >
+      <div>
+        <strong>{degraded ? "后端运行需要检查" : "后端运行正常"}</strong>
+        <span>
+          {props.unavailable
+            ? "无法读取 API /health，请检查后端进程、网络和 API Token。"
+            : props.health?.ok
+              ? "API 正常响应，数据库探测结果如下。"
+              : "API 已响应，但依赖探测未全部通过。"}
+        </span>
+      </div>
+      <div className="api-health-grid">
+        <p>
+          <strong>
+            {props.health?.ok ? "可用" : props.unavailable ? "未知" : "异常"}
+          </strong>
+          <span>API</span>
+        </p>
+        <p>
+          <strong>{formatApiDatabaseHealth(databaseStatus)}</strong>
+          <span>数据库</span>
+        </p>
+      </div>
     </section>
   );
 }

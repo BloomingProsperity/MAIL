@@ -170,6 +170,34 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("loads API health for Sync Center launch guidance", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        service: "email-hub-api",
+        ok: true,
+        checks: {
+          database: "ok",
+        },
+      }),
+    );
+    const api = createEmailHubApi({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: fetchMock as any,
+    });
+
+    await expect(api.getApiHealth()).resolves.toEqual({
+      service: "email-hub-api",
+      ok: true,
+      checks: {
+        database: "ok",
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/health",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("reads and runs compose attachment maintenance through backend routes", async () => {
     const fetchMock = vi
       .fn()

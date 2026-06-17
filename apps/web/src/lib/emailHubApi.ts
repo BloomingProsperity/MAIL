@@ -1284,6 +1284,14 @@ export interface MailEngineSetupActionDto {
   effect: string;
 }
 
+export interface ApiHealthDto {
+  service: string;
+  ok: boolean;
+  checks?: {
+    database?: "ok" | "unavailable";
+  };
+}
+
 export interface MailEngineHealthDto {
   provider: "emailengine";
   ok: boolean;
@@ -2050,6 +2058,7 @@ export interface EmailHubApi {
     accountId: string;
   }): Promise<SyncRetryFailedResult>;
   getMailNavigationSummary(): Promise<MailNavigationSummaryDto>;
+  getApiHealth(): Promise<ApiHealthDto>;
   getMailEngineHealth(): Promise<MailEngineHealthDto>;
   getMailProviderCapabilities(): Promise<MailProviderCapabilitiesResponse>;
   getComposeAttachmentMaintenanceStatus(): Promise<ComposeAttachmentMaintenanceStatusDto>;
@@ -3177,6 +3186,10 @@ export function createEmailHubApi(
 
     getMailNavigationSummary() {
       return request(fetchImpl, baseUrl, "/api/mail-navigation/summary");
+    },
+
+    getApiHealth() {
+      return request(fetchImpl, baseUrl, "/health");
     },
 
     getMailEngineHealth() {

@@ -6,6 +6,7 @@ import type {
   ComposeAttachmentMaintenanceCleanupResultDto,
   ComposeAttachmentMaintenanceStatusDto,
   EmailHubApi,
+  ApiHealthDto,
   FollowUpDto,
   FollowUpPage,
   HermesActionItemExtractResult,
@@ -4638,6 +4639,52 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
   });
 
+  it("shows API database health in Sync Center", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getApiHealth).mockResolvedValueOnce({
+      service: "email-hub-api",
+      ok: true,
+      checks: {
+        database: "ok",
+      },
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+
+    const panel = await screen.findByRole("region", {
+      name: "API 运行体检",
+    });
+    expect(within(panel).getByText("后端运行正常")).toBeTruthy();
+    expect(within(panel).getByText("API 正常响应，数据库探测结果如下。")).toBeTruthy();
+    expect(within(panel).getByText("API")).toBeTruthy();
+    expect(within(panel).getByText("数据库")).toBeTruthy();
+    expect(within(panel).getAllByText("可用").length).toBeGreaterThanOrEqual(2);
+    await waitFor(() => {
+      expect(api.getApiHealth).toHaveBeenCalled();
+    });
+  });
+
+  it("keeps API health visible when Sync Center health fetch fails", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getApiHealth).mockRejectedValueOnce(new Error("offline"));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+
+    const panel = await screen.findByRole("region", {
+      name: "API 运行体检",
+    });
+    expect(within(panel).getByText("后端运行需要检查")).toBeTruthy();
+    expect(
+      within(panel).getByText(
+        "无法读取 API /health，请检查后端进程、网络和 API Token。",
+      ),
+    ).toBeTruthy();
+    expect(within(panel).getByText("未知")).toBeTruthy();
+    expect(within(panel).getByText("未探测")).toBeTruthy();
+  });
+
   it("shows EmailEngine readiness in Sync Center", async () => {
     const api = createApiFixture();
     vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
@@ -8900,6 +8947,16 @@ function createApiFixture(): EmailHubApi {
           { id: "social", label: "社交/社区", count: 6, tone: "blue" },
         ],
       }) satisfies MailNavigationSummaryDto,
+    ),
+    getApiHealth: vi.fn(
+      async () =>
+        ({
+          service: "email-hub-api",
+          ok: true,
+          checks: {
+            database: "ok",
+          },
+        }) satisfies ApiHealthDto,
     ),
     getMailProviderCapabilities: vi.fn(async () => ({
       providers: [
