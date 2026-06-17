@@ -11,6 +11,7 @@ export interface Queryable {
 }
 
 export interface HermesRetentionCleanupCounts {
+  staleActionPlanConfirmations: number;
   messageTranslations: number;
   messageSummaries: number;
   actionPlans: number;
@@ -53,6 +54,12 @@ export function createPostgresHermesRetentionCleanupStore(
   return {
     async cleanupExpired(input) {
       return {
+        staleActionPlanConfirmations: await failStaleActionPlanConfirmations({
+          client,
+          cutoff: input.cutoff,
+          limit: input.limit,
+          failureMessage: "confirmation_timed_out",
+        }),
         messageTranslations: await deleteByTimestamp({
           client,
           table: "hermes_message_translations",
@@ -169,6 +176,36 @@ async function deleteByTimestamp(input: {
       )
     `,
     [input.cutoff, input.limit],
+  );
+
+  return result.rowCount ?? 0;
+}
+
+async function failStaleActionPlanConfirmations(input: {
+  client: Queryable;
+  cutoff: Date;
+  limit: number;
+  failureMessage: string;
+}): Promise<number> {
+  const result = await input.client.query(
+    `
+      WITH stale_plans AS (
+        SELECT id
+        FROM hermes_action_plans
+        WHERE status = 'confirming'
+          AND confirming_at < $1
+        ORDER BY confirming_at ASC, id ASC
+        LIMIT $2
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE hermes_action_plans
+      SET status = 'failed',
+          failure_message = $3
+      WHERE id IN (SELECT id FROM stale_plans)
+        AND status = 'confirming'
+        AND confirming_at < $1
+    `,
+    [input.cutoff, input.limit, input.failureMessage],
   );
 
   return result.rowCount ?? 0;

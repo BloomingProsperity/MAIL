@@ -7,9 +7,9 @@ import {
 } from "../src/hermes-retention-cleanup-runner";
 
 describe("Hermes retention cleanup runner", () => {
-  it("deletes expired Hermes cache, audit, and run rows in bounded batches", async () => {
+  it("fails stale confirmations and deletes expired Hermes rows in bounded batches", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
-    const rowCounts = [2, 3, 1, 4, 5, 6];
+    const rowCounts = [1, 2, 3, 4, 5, 6, 7];
     const store = createPostgresHermesRetentionCleanupStore({
       async query(text: string, values?: unknown[]) {
         queries.push({ text, values });
@@ -21,14 +21,16 @@ describe("Hermes retention cleanup runner", () => {
     const result = await store.cleanupExpired({ cutoff, limit: 500 });
 
     expect(result).toEqual({
+      staleActionPlanConfirmations: 1,
       messageTranslations: 2,
       messageSummaries: 3,
-      actionPlans: 1,
-      feedback: 4,
-      auditEvents: 5,
-      skillRuns: 6,
+      actionPlans: 4,
+      feedback: 5,
+      auditEvents: 6,
+      skillRuns: 7,
     });
     expect(queries.map((query) => query.text)).toEqual([
+      expect.stringContaining("WITH stale_plans AS"),
       expect.stringContaining("FROM hermes_message_translations"),
       expect.stringContaining("FROM hermes_message_summaries"),
       expect.stringContaining("FROM hermes_action_plans"),
@@ -36,8 +38,15 @@ describe("Hermes retention cleanup runner", () => {
       expect.stringContaining("FROM hermes_audit_events"),
       expect.stringContaining("FROM hermes_skill_runs"),
     ]);
-    expect(queries[2].text).toContain("status = 'completed'");
-    expect(queries[0].values).toEqual([cutoff, 500]);
+    expect(queries[0].text).toContain("status = 'confirming'");
+    expect(queries[0].text).toContain("FOR UPDATE SKIP LOCKED");
+    expect(queries[0].values).toEqual([
+      cutoff,
+      500,
+      "confirmation_timed_out",
+    ]);
+    expect(queries[3].text).toContain("status = 'completed'");
+    expect(queries[1].values).toEqual([cutoff, 500]);
   });
 
   it("reports processed cleanup totals and cutoff time", async () => {
@@ -48,6 +57,7 @@ describe("Hermes retention cleanup runner", () => {
       store: {
         async cleanupExpired() {
           return {
+            staleActionPlanConfirmations: 1,
             messageTranslations: 1,
             messageSummaries: 0,
             actionPlans: 0,
@@ -62,7 +72,8 @@ describe("Hermes retention cleanup runner", () => {
     expect(result).toEqual({
       status: "processed",
       cutoff: "2026-05-17T00:00:00.000Z",
-      deleted: 6,
+      deleted: 7,
+      staleActionPlanConfirmations: 1,
       messageTranslations: 1,
       messageSummaries: 0,
       actionPlans: 0,
@@ -83,6 +94,7 @@ describe("Hermes retention cleanup runner", () => {
         async cleanupExpired() {
           runs += 1;
           return {
+            staleActionPlanConfirmations: 0,
             messageTranslations: 0,
             messageSummaries: 0,
             actionPlans: 0,
