@@ -14,6 +14,7 @@ export interface EmailEngineLaunchVerificationResult {
     apiHealth: LaunchGateCheck;
     emailEngineReadiness: LaunchGateCheck;
     tokenBackedCapabilities: LaunchGateCheck;
+    launchReadinessClean: LaunchGateCheck;
   };
   readiness?: {
     status?: string;
@@ -111,16 +112,23 @@ export async function verifyEmailEngineLaunch(
         ? `missing_capabilities:${missingCapabilities.join(",")}`
         : "imap_smtp_onboarding, attachment_download, and send are available",
   };
+  const launchReadinessClean = buildLaunchReadinessCleanCheck({
+    missing,
+    warnings,
+    setupActions,
+  });
   const requiredFollowUps = buildRequiredFollowUps({
     apiHealthCheck,
     emailEngineReadinessCheck,
     missingCapabilities,
+    launchReadinessClean,
     setupActions,
   });
   const ok =
     apiHealthCheck.ok &&
     emailEngineReadinessCheck.ok &&
-    tokenBackedCapabilities.ok;
+    tokenBackedCapabilities.ok &&
+    launchReadinessClean.ok;
 
   return {
     ok,
@@ -131,6 +139,7 @@ export async function verifyEmailEngineLaunch(
       apiHealth: apiHealthCheck,
       emailEngineReadiness: emailEngineReadinessCheck,
       tokenBackedCapabilities,
+      launchReadinessClean,
     },
     readiness: {
       status: readinessStatus,
@@ -182,6 +191,7 @@ function buildRequiredFollowUps(input: {
   apiHealthCheck: LaunchGateCheck;
   emailEngineReadinessCheck: LaunchGateCheck;
   missingCapabilities: string[];
+  launchReadinessClean: LaunchGateCheck;
   setupActions: LaunchSetupAction[];
 }): string[] {
   const followUps = [
@@ -217,9 +227,40 @@ function buildRequiredFollowUps(input: {
           )}.`,
         ]
       : []),
+    ...(!input.launchReadinessClean.ok
+      ? [
+          `Resolve EmailEngine launch readiness warnings before launch: ${input.launchReadinessClean.detail ?? "launch_readiness_not_clean"}.`,
+        ]
+      : []),
   ];
 
   return [...new Set(followUps)].filter((item) => item.length > 0);
+}
+
+function buildLaunchReadinessCleanCheck(input: {
+  missing: string[];
+  warnings: string[];
+  setupActions: LaunchSetupAction[];
+}): LaunchGateCheck {
+  const details = [
+    input.missing.length > 0 ? `missing:${input.missing.join(",")}` : undefined,
+    input.warnings.length > 0
+      ? `warnings:${input.warnings.join(",")}`
+      : undefined,
+    input.setupActions.length > 0
+      ? `setup_actions:${input.setupActions
+          .map((action) => action.code ?? "emailengine_setup_action")
+          .join(",")}`
+      : undefined,
+  ].filter((item): item is string => Boolean(item));
+
+  return {
+    ok: details.length === 0,
+    detail:
+      details.length > 0
+        ? details.join(";")
+        : "no missing env, warnings, or setup actions",
+  };
 }
 
 function emailEngineReadinessFollowUp(detail: string | undefined): string {

@@ -199,6 +199,10 @@ function launchResult(input: {
         detail:
           "imap_smtp_onboarding, attachment_download, and send are available",
       },
+      launchReadinessClean: {
+        ok: input.ok,
+        detail: "no missing env, warnings, or setup actions",
+      },
     },
     readiness: {
       status: "ready",

@@ -50,6 +50,10 @@ describe("EmailEngine launch verifier", () => {
           detail:
             "imap_smtp_onboarding, attachment_download, and send are available",
         },
+        launchReadinessClean: {
+          ok: true,
+          detail: "no missing env, warnings, or setup actions",
+        },
       },
       readiness: {
         status: "ready",
@@ -118,6 +122,11 @@ describe("EmailEngine launch verifier", () => {
       detail:
         "missing_capabilities:imapSmtpOnboarding,attachmentDownload,send",
     });
+    expect(result.checks.launchReadinessClean).toEqual({
+      ok: false,
+      detail:
+        "missing:EMAILENGINE_ACCESS_TOKEN;warnings:EMAILENGINE_WEBHOOK_SECRET_DEFAULT;setup_actions:set_emailengine_access_token",
+    });
     expect(result.readiness).toMatchObject({
       status: "degraded",
       missing: ["EMAILENGINE_ACCESS_TOKEN"],
@@ -126,8 +135,58 @@ describe("EmailEngine launch verifier", () => {
     expect(result.requiredFollowUps).toEqual([
       "set_emailengine_access_token | 设置 EmailEngine 访问令牌 | env=EMAILENGINE_ACCESS_TOKEN,EENGINE_PREPARED_TOKEN",
       "Wire token-backed EmailEngine capabilities before launch: imapSmtpOnboarding, attachmentDownload, send.",
+      "Resolve EmailEngine launch readiness warnings before launch: missing:EMAILENGINE_ACCESS_TOKEN;warnings:EMAILENGINE_WEBHOOK_SECRET_DEFAULT;setup_actions:set_emailengine_access_token.",
     ]);
     expect(JSON.stringify(result)).not.toContain("secret-token");
+  });
+
+  it("fails closed when readiness claims ready but launch warnings remain", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockResolvedValueOnce(
+        Response.json({
+          provider: "emailengine",
+          ok: true,
+          capabilities: {
+            imapSmtpOnboarding: true,
+            attachmentDownload: true,
+            send: true,
+          },
+          missing: [],
+          warnings: ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"],
+          readiness: {
+            status: "ready",
+            setupActions: [
+              {
+                code: "rotate_emailengine_webhook_secret",
+                label: "替换默认回调密钥",
+                env: ["EMAILENGINE_WEBHOOK_SECRET", "EENGINE_SECRET"],
+              },
+            ],
+          },
+        }),
+      );
+
+    const result = await verifyEmailEngineLaunch({
+      apiBaseUrl: "http://127.0.0.1:8080",
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.checks.emailEngineReadiness).toMatchObject({
+      ok: true,
+      status: "ready",
+    });
+    expect(result.checks.launchReadinessClean).toEqual({
+      ok: false,
+      detail:
+        "warnings:EMAILENGINE_WEBHOOK_SECRET_DEFAULT;setup_actions:rotate_emailengine_webhook_secret",
+    });
+    expect(result.requiredFollowUps).toEqual([
+      "Resolve EmailEngine launch readiness warnings before launch: warnings:EMAILENGINE_WEBHOOK_SECRET_DEFAULT;setup_actions:rotate_emailengine_webhook_secret.",
+    ]);
+    expect(JSON.stringify(result)).not.toContain("dev-emailhub-secret");
   });
 
   it("fails when API health is unavailable even if EmailEngine readiness looks ready", async () => {
