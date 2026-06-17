@@ -197,6 +197,39 @@ describe("Hermes provider probe service", () => {
     expect(JSON.stringify(result)).not.toMatch(/sk-private|bad key|prompt/i);
   });
 
+  it("treats provider redirects to private networks as sanitized connection failures", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createHermesProviderProbeService({
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: "http://169.254.169.254/latest/meta-data",
+          },
+        });
+      },
+      now: () => new Date("2026-06-14T09:00:00.000Z"),
+    });
+
+    const result = await service.probe({
+      providerKey: "custom",
+      endpointUrl: "https://models.example.test/v1/chat/completions",
+      model: "mail-llm",
+      apiKey: "sk-private",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: "connection_failed",
+      providerKey: "custom",
+      endpointUrl: "https://models.example.test/v1/chat/completions",
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init?.redirect).toBe("manual");
+    expect(JSON.stringify(result)).not.toMatch(/169\.254|meta-data|sk-private/i);
+  });
+
   it("rejects malformed provider probe input before any network call", async () => {
     const service = createHermesProviderProbeService({
       fetchImpl: vi.fn() as any,

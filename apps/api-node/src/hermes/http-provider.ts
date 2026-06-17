@@ -65,9 +65,14 @@ export function createHermesHttpTextProvider(
 
       const response = await fetchImpl(options.endpointUrl, {
         method: "POST",
+        redirect: "manual",
         headers,
         body: JSON.stringify(buildProviderRequestBody(transport, options, input)),
       });
+
+      if (response.status >= 300 && response.status < 400) {
+        throw new Error("Hermes provider redirect blocked");
+      }
 
       if (!response.ok) {
         throw new Error(`Hermes provider failed: ${response.status}`);

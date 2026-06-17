@@ -845,7 +845,11 @@ generateContent transports when the selected provider requires them. Known
 native providers may define default endpoints or model-based endpoint
 templates in the backend catalog, so Settings can ask for provider, model, and
 key without exposing raw API path details. Unknown providers stay supported
-through the custom OpenAI-compatible endpoint path. Hermes version/update
+through the custom OpenAI-compatible endpoint path. Provider requests and
+provider probes use manual redirect handling; a 3xx response fails the request
+instead of following `Location`, so an allowed public endpoint cannot redirect
+Hermes into private, link-local, loopback, or Docker service networks.
+Hermes version/update
 status is stored separately from provider credentials; Docker operators remain
 in control of when an external Hermes service is actually upgraded.
 

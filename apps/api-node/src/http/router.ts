@@ -3931,9 +3931,23 @@ function isAdminOnlyForAccountScopedTokenRoute(
   const pathname = new URL(requestUrl, "http://localhost").pathname;
   return (
     pathname === "/api/messages" ||
+    pathname === "/api/maintenance/compose-attachments" ||
+    pathname === "/api/maintenance/compose-attachments/cleanup" ||
+    pathname === "/api/maintenance/hermes-retention" ||
+    pathname === "/api/maintenance/hermes-retention/cleanup" ||
+    pathname === "/api/mail-engine/health" ||
+    pathname === "/api/mail-providers/capabilities" ||
+    pathname.startsWith("/api/mail-providers/capabilities/") ||
     pathname === "/api/sync-center/accounts" ||
     pathname.startsWith("/api/sync-center/reauthorizations") ||
     pathname === "/api/mail-navigation/summary" ||
+    pathname === "/api/hermes/providers" ||
+    pathname.startsWith("/api/hermes/providers/") ||
+    pathname === "/api/hermes/resource-profile" ||
+    pathname === "/api/hermes/runtime" ||
+    pathname.startsWith("/api/hermes/runtime/") ||
+    isHermesGlobalSkillAdminRoute(pathname) ||
+    pathname === "/api/hermes/translation-preferences" ||
     pathname === "/api/hermes/workspace/context" ||
     pathname === "/api/hermes/audit-log" ||
     pathname === "/api/hermes/rule-runs" ||
@@ -3953,6 +3967,28 @@ function isAdminOnlyForAccountScopedTokenRoute(
     pathname.startsWith("/api/accounts/transfer/") ||
     pathname.startsWith("/api/hermes/rules")
   );
+}
+
+function isHermesGlobalSkillAdminRoute(pathname: string): boolean {
+  if (pathname === "/api/hermes/skills") {
+    return true;
+  }
+  if (/^\/api\/hermes\/skills\/[^/]+\/settings$/.test(pathname)) {
+    return true;
+  }
+
+  return [
+    "/api/hermes/skills/translate_text/run",
+    "/api/hermes/skills/reply_draft/run",
+    "/api/hermes/skills/quick_reply/run",
+    "/api/hermes/skills/rewrite_polish/run",
+    "/api/hermes/skills/thread_summarize/run",
+    "/api/hermes/skills/action_item_extract/run",
+    "/api/hermes/skills/label_suggest/run",
+    "/api/hermes/skills/newsletter_cleanup/run",
+    "/api/hermes/skills/priority_triage/run",
+    "/api/hermes/skills/followup_tracker/run",
+  ].includes(pathname);
 }
 
 function rejectAccountScopedAccess(

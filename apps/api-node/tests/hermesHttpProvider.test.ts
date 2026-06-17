@@ -25,6 +25,7 @@ describe("Hermes HTTP text provider", () => {
     expect(result).toBe("你好，张三");
     expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
     expect(calls[0].init?.method).toBe("POST");
+    expect(calls[0].init?.redirect).toBe("manual");
     expect(calls[0].init?.headers).toMatchObject({
       "content-type": "application/json",
       authorization: "Bearer hermes-secret",
@@ -225,5 +226,39 @@ describe("Hermes HTTP text provider", () => {
         userPrompt: "private customer text",
       }),
     ).rejects.not.toThrow(/private customer text|hermes-secret/);
+  });
+
+  it("blocks provider redirects before they can reach private networks", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const provider = createHermesHttpTextProvider({
+      endpointUrl: "https://models.example.test/v1/chat/completions",
+      apiKey: "hermes-secret",
+      model: "mail-llm",
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: "http://169.254.169.254/latest/meta-data",
+          },
+        });
+      },
+    });
+
+    await expect(
+      provider.complete({
+        systemPrompt: "system",
+        userPrompt: "private customer text",
+      }),
+    ).rejects.toThrow("Hermes provider redirect blocked");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init?.redirect).toBe("manual");
+    await expect(
+      provider.complete({
+        systemPrompt: "system",
+        userPrompt: "private customer text",
+      }),
+    ).rejects.not.toThrow(/169\.254|meta-data|private customer text|hermes-secret/);
   });
 });
