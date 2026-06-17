@@ -557,6 +557,65 @@ describe("Docker compose health verifier", () => {
     expect(JSON.stringify(result)).not.toContain("secret-token");
   });
 
+  it("checks JSON env invariant paths without leaking actual or expected values", async () => {
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      envInvariants: [
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["serviceSecret"],
+          expected: "expected-webhook-secret",
+        },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["authServer"],
+          expected:
+            "http://emailengine:expected-auth-secret@api:8080/api/mail-engine/auth-server",
+        },
+      ],
+      runCommand: async (input) => {
+        if (input.args.includes("ps")) {
+          return healthyComposeCommand();
+        }
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            serviceSecret: "actual-webhook-secret",
+            authServer:
+              "http://emailengine:expected-auth-secret@api:8080/api/mail-engine/auth-server",
+          }),
+          stderr: "",
+        };
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.envChecks).toEqual({
+      "emailengine.EENGINE_SETTINGS.serviceSecret": {
+        ok: false,
+        service: "emailengine",
+        name: "EENGINE_SETTINGS.serviceSecret",
+        detail: "env_value_mismatch",
+      },
+      "emailengine.EENGINE_SETTINGS.authServer": {
+        ok: true,
+        service: "emailengine",
+        name: "EENGINE_SETTINGS.authServer",
+      },
+    });
+    expect(result.requiredFollowUps).toEqual([
+      "Fix Docker env invariant: emailengine.EENGINE_SETTINGS.serviceSecret.",
+    ]);
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("actual-webhook-secret");
+    expect(serialized).not.toContain("expected-webhook-secret");
+    expect(serialized).not.toContain("expected-auth-secret");
+  });
+
   it("does not wait when runtime env invariants prove a configuration gap", async () => {
     const sleeps: number[] = [];
     const result = await verifyDockerComposeHealth({

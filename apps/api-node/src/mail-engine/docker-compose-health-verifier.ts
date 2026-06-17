@@ -59,13 +59,18 @@ export interface DockerComposeEnvInvariantInput {
   service: string;
   name: string;
   expected: string;
+  valuePath?: string[];
 }
 
 export interface DockerComposeEnvInvariantCheck {
   ok: boolean;
   service: string;
   name: string;
-  detail?: "env_read_failed" | "env_value_mismatch";
+  detail?:
+    | "env_read_failed"
+    | "env_json_parse_failed"
+    | "env_json_path_missing"
+    | "env_value_mismatch";
 }
 
 export interface DockerComposeConfigFileCheck {
@@ -432,16 +437,23 @@ async function checkComposeEnvInvariants(
         ],
         cwd: options.projectRoot,
       });
-      const actual = commandResult.stdout.trim();
+      const actual =
+        commandResult.exitCode === 0
+          ? readEnvInvariantActual(commandResult.stdout, invariant)
+          : undefined;
+      const detail =
+        commandResult.exitCode !== 0
+          ? "env_read_failed"
+          : actual?.detail
+            ? actual.detail
+            : actual?.value !== invariant.expected
+              ? "env_value_mismatch"
+              : undefined;
       const check: DockerComposeEnvInvariantCheck = {
-        ok: commandResult.exitCode === 0 && actual === invariant.expected,
+        ok: detail === undefined,
         service: invariant.service,
-        name: invariant.name,
-        ...(commandResult.exitCode !== 0
-          ? { detail: "env_read_failed" as const }
-          : actual !== invariant.expected
-            ? { detail: "env_value_mismatch" as const }
-            : {}),
+        name: envInvariantReportName(invariant),
+        ...(detail ? { detail } : {}),
       };
       return [envInvariantKey(invariant), check] as const;
     }),
@@ -450,11 +462,64 @@ async function checkComposeEnvInvariants(
   return Object.fromEntries(checks);
 }
 
+function readEnvInvariantActual(
+  stdout: string,
+  invariant: DockerComposeEnvInvariantInput,
+):
+  | {
+      value: string;
+      detail?: undefined;
+    }
+  | {
+      value?: undefined;
+      detail: NonNullable<DockerComposeEnvInvariantCheck["detail"]>;
+    } {
+  const rawValue = stdout.trim();
+  if (!invariant.valuePath || invariant.valuePath.length === 0) {
+    return { value: rawValue };
+  }
+
+  const parsed = parseJson(rawValue);
+  if (!parsed) {
+    return { detail: "env_json_parse_failed" };
+  }
+
+  const value = readJsonPathString(parsed, invariant.valuePath);
+  if (!value) {
+    return { detail: "env_json_path_missing" };
+  }
+
+  return { value };
+}
+
+function readJsonPathString(
+  value: unknown,
+  path: string[],
+): string | undefined {
+  let current = value;
+  for (const segment of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+
+  return readString(current);
+}
+
 function envInvariantKey(input: {
   service: string;
   name: string;
+  valuePath?: string[];
 }): string {
-  return `${input.service}.${input.name}`;
+  return `${input.service}.${envInvariantReportName(input)}`;
+}
+
+function envInvariantReportName(input: {
+  name: string;
+  valuePath?: string[];
+}): string {
+  return [input.name, ...(input.valuePath ?? [])].join(".");
 }
 
 function dockerComposeBaseArgs(
