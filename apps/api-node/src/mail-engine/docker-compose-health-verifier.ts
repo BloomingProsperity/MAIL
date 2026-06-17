@@ -6,6 +6,7 @@ export interface DockerComposeHealthVerifierOptions {
   projectRoot: string;
   requiredServices?: string[];
   hostChecks?: DockerComposeHostHttpCheckInput[];
+  envInvariants?: DockerComposeEnvInvariantInput[];
   httpTimeoutMs?: number;
   waitAttempts?: number;
   waitIntervalMs?: number;
@@ -24,6 +25,7 @@ export interface DockerComposeHealthVerificationResult {
   envFile: string;
   checks: Record<string, DockerComposeServiceCheck>;
   hostChecks: Record<string, DockerComposeHostHttpCheck>;
+  envChecks: Record<string, DockerComposeEnvInvariantCheck>;
   requiredFollowUps: string[];
 }
 
@@ -49,6 +51,19 @@ export interface DockerComposeHostHttpCheck {
   status?: number;
   readinessStatus?: string;
   detail?: string;
+}
+
+export interface DockerComposeEnvInvariantInput {
+  service: string;
+  name: string;
+  expected: string;
+}
+
+export interface DockerComposeEnvInvariantCheck {
+  ok: boolean;
+  service: string;
+  name: string;
+  detail?: "env_read_failed" | "env_value_mismatch";
 }
 
 export type DockerComposeHttpGetter = (input: {
@@ -120,10 +135,7 @@ async function verifyDockerComposeHealthOnce(input: {
   const commandResult = await (options.runCommand ?? runDockerComposeCommand)({
     command: "docker",
     args: [
-      "compose",
-      "--env-file",
-      options.envFile,
-      ...options.composeFiles.flatMap((file) => ["-f", file]),
+      ...dockerComposeBaseArgs(options),
       "ps",
       "--format",
       "json",
@@ -152,6 +164,7 @@ async function verifyDockerComposeHealthOnce(input: {
       envFile: options.envFile,
       checks,
       hostChecks: {},
+      envChecks: {},
       requiredFollowUps: [
         "Run the Docker compose stack before launch verification and inspect docker compose ps/logs.",
       ],
@@ -191,6 +204,17 @@ async function verifyDockerComposeHealthOnce(input: {
           `Fix host HTTP check: ${check.name} url=${check.url} detail=${check.detail ?? "unknown"}.`,
       ),
   );
+  const envChecks = Object.values(checks).every((check) => check.ok)
+    ? await checkComposeEnvInvariants(options)
+    : {};
+  requiredFollowUps.push(
+    ...Object.values(envChecks)
+      .filter((check) => !check.ok)
+      .map(
+        (check) =>
+          `Fix Docker env invariant: ${check.service}.${check.name}.`,
+      ),
+  );
 
   return {
     ok: requiredFollowUps.length === 0,
@@ -202,6 +226,7 @@ async function verifyDockerComposeHealthOnce(input: {
     envFile: options.envFile,
     checks,
     hostChecks,
+    envChecks,
     requiredFollowUps,
   };
 }
@@ -209,6 +234,10 @@ async function verifyDockerComposeHealthOnce(input: {
 function shouldRetryHealthCheck(
   result: DockerComposeHealthVerificationResult,
 ): boolean {
+  if (Object.values(result.envChecks).some((check) => !check.ok)) {
+    return false;
+  }
+
   return (
     Object.values(result.checks).some(isRetryableServiceCheck) ||
     Object.values(result.hostChecks).some(isRetryableHostCheck)
@@ -247,6 +276,60 @@ function isRetryableHostCheck(check: DockerComposeHostHttpCheck): boolean {
     check.detail === "mail_engine_not_ready" &&
     check.readinessStatus !== "degraded"
   );
+}
+
+async function checkComposeEnvInvariants(
+  options: DockerComposeHealthVerifierOptions,
+): Promise<Record<string, DockerComposeEnvInvariantCheck>> {
+  const runCommand = options.runCommand ?? runDockerComposeCommand;
+  const checks = await Promise.all(
+    (options.envInvariants ?? []).map(async (invariant) => {
+      const commandResult = await runCommand({
+        command: "docker",
+        args: [
+          ...dockerComposeBaseArgs(options),
+          "exec",
+          "-T",
+          invariant.service,
+          "printenv",
+          invariant.name,
+        ],
+        cwd: options.projectRoot,
+      });
+      const actual = commandResult.stdout.trim();
+      const check: DockerComposeEnvInvariantCheck = {
+        ok: commandResult.exitCode === 0 && actual === invariant.expected,
+        service: invariant.service,
+        name: invariant.name,
+        ...(commandResult.exitCode !== 0
+          ? { detail: "env_read_failed" as const }
+          : actual !== invariant.expected
+            ? { detail: "env_value_mismatch" as const }
+            : {}),
+      };
+      return [envInvariantKey(invariant), check] as const;
+    }),
+  );
+
+  return Object.fromEntries(checks);
+}
+
+function envInvariantKey(input: {
+  service: string;
+  name: string;
+}): string {
+  return `${input.service}.${input.name}`;
+}
+
+function dockerComposeBaseArgs(
+  options: DockerComposeHealthVerifierOptions,
+): string[] {
+  return [
+    "compose",
+    "--env-file",
+    options.envFile,
+    ...options.composeFiles.flatMap((file) => ["-f", file]),
+  ];
 }
 
 async function checkHostHttpEndpoint(

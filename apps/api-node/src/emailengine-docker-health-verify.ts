@@ -48,6 +48,28 @@ try {
     httpTimeoutMs,
     waitAttempts,
     waitIntervalMs,
+    envInvariants: [
+      {
+        service: "api",
+        name: "NODE_ENV",
+        expected: "production",
+      },
+      {
+        service: "api",
+        name: "EMAILHUB_ALLOW_DEV_SECRETS",
+        expected: "false",
+      },
+      {
+        service: "api",
+        name: "EMAILHUB_REQUIRE_API_TOKEN",
+        expected: "true",
+      },
+      {
+        service: "worker",
+        name: "WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN",
+        expected: "true",
+      },
+    ],
     hostChecks: [
       {
         name: "api_health",

@@ -49,7 +49,11 @@ with more than smoke-level tests.
   readiness. The launch verifier CLI now keeps the legacy script entrypoint but
   routes top-level failures through a tested runner that redacts bearer tokens,
   API tokens, PAT-shaped strings, URL userinfo/query fragments, and private
-  host details before writing JSON errors.
+  host details before writing JSON errors. The Docker health gate also reads a
+  small whitelist of running-container environment variables to prove the prod
+  overlay is actually active at runtime: API runs with `NODE_ENV=production`,
+  dev secrets disabled, API token enforcement enabled, and worker health checks
+  requiring the EmailEngine token.
   `verify:emailengine-launch:strict-db`
   requires `TEST_DATABASE_URL` and runs the real Postgres `sync_jobs`
   concurrency gate, failing immediately instead of silently skipping when no

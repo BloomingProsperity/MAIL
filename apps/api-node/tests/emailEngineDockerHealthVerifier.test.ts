@@ -274,6 +274,195 @@ describe("Docker compose health verifier", () => {
     ]);
   });
 
+  it("passes runtime env invariants for production Docker services", async () => {
+    const calls: unknown[] = [];
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      envInvariants: [
+        {
+          service: "api",
+          name: "NODE_ENV",
+          expected: "production",
+        },
+        {
+          service: "api",
+          name: "EMAILHUB_REQUIRE_API_TOKEN",
+          expected: "true",
+        },
+        {
+          service: "worker",
+          name: "WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN",
+          expected: "true",
+        },
+      ],
+      runCommand: async (input) => {
+        calls.push(input);
+        if (input.args.includes("ps")) {
+          return healthyComposeCommand();
+        }
+        const name = input.args[input.args.length - 1];
+        return {
+          exitCode: 0,
+          stdout: `${name === "NODE_ENV" ? "production" : "true"}\n`,
+          stderr: "",
+        };
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.envChecks).toEqual({
+      "api.NODE_ENV": {
+        ok: true,
+        service: "api",
+        name: "NODE_ENV",
+      },
+      "api.EMAILHUB_REQUIRE_API_TOKEN": {
+        ok: true,
+        service: "api",
+        name: "EMAILHUB_REQUIRE_API_TOKEN",
+      },
+      "worker.WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN": {
+        ok: true,
+        service: "worker",
+        name: "WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN",
+      },
+    });
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          args: expect.arrayContaining([
+            "exec",
+            "-T",
+            "api",
+            "printenv",
+            "NODE_ENV",
+          ]),
+        }),
+        expect.objectContaining({
+          args: expect.arrayContaining([
+            "exec",
+            "-T",
+            "worker",
+            "printenv",
+            "WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN",
+          ]),
+        }),
+      ]),
+    );
+  });
+
+  it("fails runtime env invariants without leaking actual values", async () => {
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      envInvariants: [
+        {
+          service: "api",
+          name: "EMAILHUB_REQUIRE_API_TOKEN",
+          expected: "true",
+        },
+        {
+          service: "worker",
+          name: "WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN",
+          expected: "true",
+        },
+      ],
+      runCommand: async (input) => {
+        if (input.args.includes("ps")) {
+          return healthyComposeCommand();
+        }
+        if (input.args.includes("EMAILHUB_REQUIRE_API_TOKEN")) {
+          return {
+            exitCode: 0,
+            stdout: "secret-token\n",
+            stderr: "",
+          };
+        }
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr: "permission denied secret-token",
+        };
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.envChecks).toEqual({
+      "api.EMAILHUB_REQUIRE_API_TOKEN": {
+        ok: false,
+        service: "api",
+        name: "EMAILHUB_REQUIRE_API_TOKEN",
+        detail: "env_value_mismatch",
+      },
+      "worker.WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN": {
+        ok: false,
+        service: "worker",
+        name: "WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN",
+        detail: "env_read_failed",
+      },
+    });
+    expect(result.requiredFollowUps).toEqual([
+      "Fix Docker env invariant: api.EMAILHUB_REQUIRE_API_TOKEN.",
+      "Fix Docker env invariant: worker.WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN.",
+    ]);
+    expect(JSON.stringify(result)).not.toContain("secret-token");
+  });
+
+  it("does not wait when runtime env invariants prove a configuration gap", async () => {
+    const sleeps: number[] = [];
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      waitAttempts: 3,
+      waitIntervalMs: 25,
+      hostChecks: [
+        {
+          name: "api_health",
+          url: "http://127.0.0.1:8080/health",
+          expect: "http_ok",
+        },
+      ],
+      envInvariants: [
+        {
+          service: "api",
+          name: "NODE_ENV",
+          expected: "production",
+        },
+      ],
+      runCommand: async (input) => {
+        if (input.args.includes("ps")) {
+          return healthyComposeCommand();
+        }
+        return {
+          exitCode: 0,
+          stdout: "development\n",
+          stderr: "",
+        };
+      },
+      httpGet: async () => ({
+        status: 503,
+        body: "starting",
+      }),
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts).toBe(1);
+    expect(result.envChecks["api.NODE_ENV"]).toEqual({
+      ok: false,
+      service: "api",
+      name: "NODE_ENV",
+      detail: "env_value_mismatch",
+    });
+    expect(sleeps).toEqual([]);
+  });
+
   it("fails when a required service is missing or unhealthy", async () => {
     const result = await verifyDockerComposeHealth({
       projectRoot: "/repo",
