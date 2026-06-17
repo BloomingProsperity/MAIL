@@ -141,9 +141,10 @@ describe("Docker compose health verifier", () => {
           return healthyComposeCommand();
         }
         if (input.args.includes("-q")) {
+          const serviceName = input.args.at(-1);
           return {
             exitCode: 0,
-            stdout: "api_container\n",
+            stdout: `${serviceName}_container\n`,
             stderr: "",
           };
         }
@@ -152,16 +153,23 @@ describe("Docker compose health verifier", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.composeFileChecks).toEqual({
-      api: {
-        ok: true,
-        service: "api",
-      },
-    });
+    expect(result.composeFileChecks).toEqual(
+      composeFileChecksForServices({
+        postgres: { ok: true },
+        "redis-engine": { ok: true },
+        emailengine: { ok: true },
+        api: { ok: true },
+        worker: { ok: true },
+        web: { ok: true },
+      }),
+    );
     expect(calls).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           args: expect.arrayContaining(["ps", "-q", "api"]),
+        }),
+        expect.objectContaining({
+          args: expect.arrayContaining(["ps", "-q", "worker"]),
         }),
         expect.objectContaining({
           args: expect.arrayContaining([
@@ -175,7 +183,7 @@ describe("Docker compose health verifier", () => {
     );
   });
 
-  it("fails when running containers were not started with the required prod compose overlay", async () => {
+  it("fails when any required container was not started with the required prod compose overlay", async () => {
     const result = await verifyDockerComposeHealth({
       projectRoot: "/repo",
       envFile: ".env",
@@ -186,9 +194,12 @@ describe("Docker compose health verifier", () => {
       ],
       runCommand: async (input) => {
         if (input.args.includes("inspect")) {
+          const containerId = String(input.args.at(-1));
           return {
             exitCode: 0,
-            stdout: "/repo/infra/docker-compose.yml\n",
+            stdout: containerId.startsWith("worker_")
+              ? "/repo/infra/docker-compose.yml\n"
+              : "/repo/infra/docker-compose.yml,/repo/infra/docker-compose.prod.yml\n",
             stderr: "",
           };
         }
@@ -196,9 +207,10 @@ describe("Docker compose health verifier", () => {
           return healthyComposeCommand();
         }
         if (input.args.includes("-q")) {
+          const serviceName = input.args.at(-1);
           return {
             exitCode: 0,
-            stdout: "api_container\n",
+            stdout: `${serviceName}_container\n`,
             stderr: "",
           };
         }
@@ -207,16 +219,22 @@ describe("Docker compose health verifier", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.composeFileChecks).toEqual({
-      api: {
-        ok: false,
-        service: "api",
-        missingFiles: ["infra/docker-compose.prod.yml"],
-        detail: "config_file_missing",
-      },
-    });
+    expect(result.composeFileChecks).toEqual(
+      composeFileChecksForServices({
+        postgres: { ok: true },
+        "redis-engine": { ok: true },
+        emailengine: { ok: true },
+        api: { ok: true },
+        worker: {
+          ok: false,
+          missingFiles: ["infra/docker-compose.prod.yml"],
+          detail: "config_file_missing",
+        },
+        web: { ok: true },
+      }),
+    );
     expect(result.requiredFollowUps).toEqual([
-      "Restart Docker compose service api with required compose files: infra/docker-compose.prod.yml.",
+      "Restart Docker compose service worker with required compose files: infra/docker-compose.prod.yml.",
     ]);
   });
 
@@ -885,4 +903,27 @@ async function healthyComposeCommand() {
     ]),
     stderr: "",
   };
+}
+
+function composeFileChecksForServices(
+  checks: Record<
+    string,
+    {
+      ok: boolean;
+      detail?: "config_file_missing";
+      missingFiles?: string[];
+    }
+  >,
+) {
+  return Object.fromEntries(
+    Object.entries(checks).map(([serviceName, check]) => [
+      serviceName,
+      {
+        ok: check.ok,
+        service: serviceName,
+        ...(check.missingFiles ? { missingFiles: check.missingFiles } : {}),
+        ...(check.detail ? { detail: check.detail } : {}),
+      },
+    ]),
+  );
 }

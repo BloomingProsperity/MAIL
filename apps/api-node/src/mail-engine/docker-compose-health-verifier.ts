@@ -354,18 +354,16 @@ async function checkComposeConfigFiles(
     return {};
   }
 
-  const service = requiredServices.includes("api")
-    ? "api"
-    : requiredServices[0];
-  if (!service) {
-    return {};
-  }
-
-  const check = await checkComposeConfigFileLabels(options, {
-    service,
-    requiredComposeFiles,
-  });
-  return { [service]: check };
+  const checks = await Promise.all(
+    requiredServices.map(async (service) => [
+      service,
+      await checkComposeConfigFileLabels(options, {
+        service,
+        requiredComposeFiles,
+      }),
+    ]),
+  );
+  return Object.fromEntries(checks);
 }
 
 async function checkComposeConfigFileLabels(
