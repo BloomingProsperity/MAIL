@@ -370,6 +370,91 @@ describe("Hermes rule routes", () => {
     ]);
   });
 
+  it("dismisses a shadow Hermes rule candidate", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async dismissRuleCandidate(input: unknown) {
+        calls.push(input);
+        return {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "dismissed",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/rule-candidates/candidate_codes/dismiss`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "account_1",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          id: "candidate_codes",
+          status: "dismissed",
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      },
+    ]);
+  });
+
+  it("returns not found when dismissing a non-shadow Hermes rule candidate", async () => {
+    const hermesRuleService = {
+      async dismissRuleCandidate() {
+        return undefined;
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/rule-candidates/candidate_codes/dismiss`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "account_1",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+          error: "rule_candidate_not_found",
+        });
+      },
+      { hermesRuleService },
+    );
+  });
+
   it("rejects invalid Hermes rule candidate updates before hitting the service", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {

@@ -1955,6 +1955,10 @@ export interface EmailHubApi {
     keywords?: string[];
     applyToHistory?: boolean;
   }): Promise<HermesRuleCandidateDto>;
+  dismissHermesRuleCandidate(input: {
+    accountId: string;
+    candidateId: string;
+  }): Promise<HermesRuleCandidateDto>;
   updateHermesRule(input: {
     accountId: string;
     ruleId: string;
@@ -2856,6 +2860,18 @@ export function createEmailHubApi(
         {
           method: "PATCH",
           body: JSON.stringify(cleanObject(body)),
+        },
+      );
+    },
+
+    dismissHermesRuleCandidate(input) {
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/rule-candidates/${encodePath(input.candidateId)}/dismiss`,
+        {
+          method: "POST",
+          body: JSON.stringify({ accountId: input.accountId }),
         },
       );
     },

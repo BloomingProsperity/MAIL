@@ -254,6 +254,54 @@ describe("postgres Hermes rule store", () => {
     });
   });
 
+  it("dismisses only shadow rule candidates within the account scope", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "candidate_codes",
+              account_id: "account_1",
+              title: "启用验证码智能分组",
+              rule_type: "content_label",
+              condition: { anyKeywords: ["验证码", "otp"] },
+              action: {
+                type: "apply_label",
+                labelName: "验证码",
+                requiresConfirmation: true,
+              },
+              confidence: "0.900",
+              status: "dismissed",
+              evidence_message_ids: [],
+              created_at: "2026-06-13T10:00:00.000Z",
+              approved_at: null,
+            },
+          ],
+        };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    const result = await store.dismissRuleCandidate({
+      accountId: "account_1",
+      candidateId: "candidate_codes",
+    });
+
+    expect(queries[0].text).toMatch(/UPDATE hermes_rule_candidates/i);
+    expect(queries[0].text).toMatch(/SET status = 'dismissed'/i);
+    expect(queries[0].text).toMatch(/WHERE account_id = \$1/i);
+    expect(queries[0].text).toMatch(/AND id = \$2/i);
+    expect(queries[0].text).toMatch(/AND status = 'shadow'/i);
+    expect(queries[0].values).toEqual(["account_1", "candidate_codes"]);
+    expect(result).toMatchObject({
+      id: "candidate_codes",
+      accountId: "account_1",
+      status: "dismissed",
+    });
+  });
+
   it("records shadow simulations against a candidate", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

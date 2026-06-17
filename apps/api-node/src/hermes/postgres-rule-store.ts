@@ -225,6 +225,33 @@ export function createPostgresHermesRuleStore(
       return result.rows[0] ? candidateFromRow(result.rows[0]) : undefined;
     },
 
+    async dismissRuleCandidate(input) {
+      const result = await client.query<RuleCandidateRow>(
+        `
+          UPDATE hermes_rule_candidates
+          SET status = 'dismissed'
+          WHERE account_id = $1
+            AND id = $2
+            AND status = 'shadow'
+          RETURNING
+            id,
+            account_id,
+            title,
+            rule_type,
+            condition,
+            action,
+            confidence,
+            status,
+            evidence_message_ids,
+            created_at,
+            approved_at
+        `,
+        [input.accountId, input.candidateId],
+      );
+
+      return result.rows[0] ? candidateFromRow(result.rows[0]) : undefined;
+    },
+
     async listCandidateMatches(input) {
       const keywords = candidateKeywords(input.candidate);
       if (keywords.length > 0) {

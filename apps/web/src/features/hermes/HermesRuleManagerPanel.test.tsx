@@ -226,6 +226,37 @@ describe("HermesRuleManagerPanel", () => {
       });
     });
   });
+
+  it("dismisses a shadow Hermes rule candidate from the workbench", async () => {
+    const api = createRuleApiFixture();
+
+    render(<HermesRuleManagerPanel api={api} accountId="account_1" />);
+
+    const panel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
+    const dismissButton = await within(panel).findByRole("button", {
+      name: "Dismiss Hermes rule candidate 启用验证码智能分组",
+    });
+
+    fireEvent.click(dismissButton);
+
+    await waitFor(() => {
+      expect(api.dismissHermesRuleCandidate).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      });
+    });
+    expect(
+      await within(panel).findByText(
+        "Hermes 规则草案已驳回：启用验证码智能分组。",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(panel).queryByRole("button", {
+        name: "Dismiss Hermes rule candidate 启用验证码智能分组",
+      }),
+    ).toBeNull();
+  });
 });
 
 function createRuleApiFixture(
@@ -238,6 +269,7 @@ function createRuleApiFixture(
     draftHermesRule: ReturnType<typeof vi.fn>;
     simulateHermesRule: ReturnType<typeof vi.fn>;
     updateHermesRuleCandidate: ReturnType<typeof vi.fn>;
+    dismissHermesRuleCandidate: ReturnType<typeof vi.fn>;
     createHermesActionPlan: ReturnType<typeof vi.fn>;
     confirmHermesActionPlan: ReturnType<typeof vi.fn>;
   }> = {},
@@ -282,6 +314,9 @@ function createRuleApiFixture(
           requiresConfirmation: true,
         },
       }),
+    ),
+    dismissHermesRuleCandidate: vi.fn(async (input) =>
+      candidateFixture({ id: input.candidateId, status: "dismissed" }),
     ),
     createHermesActionPlan: vi.fn(async () => actionPlanFixture()),
     confirmHermesActionPlan: vi.fn(async () => confirmationFixture()),

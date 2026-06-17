@@ -563,6 +563,50 @@ export function HermesRuleManagerPanel(props: HermesRuleManagerPanelProps) {
     }
   }
 
+  async function dismissRuleCandidate(candidate: HermesRuleCandidateDto) {
+    if (!props.api) {
+      removeRuleCandidateDraft(candidate.id);
+      setRuleNotice(`预览规则草案已驳回：${candidate.title}。`);
+      return;
+    }
+
+    if (!props.accountId) {
+      setRuleNotice("请先添加邮箱并完成同步，再驳回 Hermes 规则草案。");
+      return;
+    }
+
+    setRuleDraftBusy(`dismiss:${candidate.id}`);
+    setRuleNotice("正在驳回 Hermes 规则草案...");
+    try {
+      await props.api.dismissHermesRuleCandidate({
+        accountId: props.accountId,
+        candidateId: candidate.id,
+      });
+      removeRuleCandidateDraft(candidate.id);
+      setRuleNotice(`Hermes 规则草案已驳回：${candidate.title}。`);
+    } catch {
+      setRuleNotice("Hermes 规则草案驳回失败。");
+    } finally {
+      setRuleDraftBusy("");
+    }
+  }
+
+  function removeRuleCandidateDraft(candidateId: string) {
+    setCandidateDrafts((current) =>
+      current.filter((item) => item.id !== candidateId),
+    );
+    setCandidateEdits((current) => {
+      const next = { ...current };
+      delete next[candidateId];
+      return next;
+    });
+    setCandidateSimulations((current) => {
+      const next = { ...current };
+      delete next[candidateId];
+      return next;
+    });
+  }
+
   return (
     <section className="settings-subpanel" aria-label="Hermes 规则管理">
       <header className="settings-panel-head">
@@ -608,6 +652,7 @@ export function HermesRuleManagerPanel(props: HermesRuleManagerPanelProps) {
               const isSimulating = ruleDraftBusy === `simulate:${candidate.id}`;
               const isApproving = ruleDraftBusy === `approve:${candidate.id}`;
               const isSaving = ruleDraftBusy === `save:${candidate.id}`;
+              const isDismissing = ruleDraftBusy === `dismiss:${candidate.id}`;
               const isCandidateLocked = candidate.status === "approved";
               return (
                 <article className="rule-candidate-card" key={candidate.id}>
@@ -707,6 +752,15 @@ export function HermesRuleManagerPanel(props: HermesRuleManagerPanelProps) {
                         : candidate.status === "approved"
                           ? "已启用"
                           : "确认启用"}
+                    </button>
+                    <button
+                      className="ghost-button danger"
+                      type="button"
+                      disabled={Boolean(ruleDraftBusy) || isCandidateLocked}
+                      aria-label={`Dismiss Hermes rule candidate ${candidate.title}`}
+                      onClick={() => void dismissRuleCandidate(candidate)}
+                    >
+                      {isDismissing ? "驳回中" : "驳回草案"}
                     </button>
                   </div>
                 </article>

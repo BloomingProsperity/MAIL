@@ -128,6 +128,11 @@ export interface UpdateHermesRuleCandidateInput {
   applyToHistory?: boolean;
 }
 
+export interface DismissHermesRuleCandidateInput {
+  accountId: string;
+  candidateId: string;
+}
+
 export interface BackfillHermesRuleHistoryInput {
   accountId: string;
   ruleId: string;
@@ -182,6 +187,9 @@ export interface HermesRuleStore {
       action: Record<string, unknown>;
     },
   ): Promise<HermesRuleCandidate | undefined>;
+  dismissRuleCandidate(
+    input: DismissHermesRuleCandidateInput,
+  ): Promise<HermesRuleCandidate | undefined>;
   listCandidateMatches(input: {
     accountId: string;
     candidate: HermesRuleCandidate;
@@ -230,6 +238,9 @@ export interface HermesRuleService {
   ): Promise<HermesRuleCandidate | undefined>;
   updateRuleCandidate(
     input: UpdateHermesRuleCandidateInput,
+  ): Promise<HermesRuleCandidate | undefined>;
+  dismissRuleCandidate(
+    input: DismissHermesRuleCandidateInput,
   ): Promise<HermesRuleCandidate | undefined>;
   simulateRule(
     input: SimulateHermesRuleInput,
@@ -377,6 +388,12 @@ export function createHermesRuleService(
         candidateId,
         ...patch,
       });
+    },
+
+    async dismissRuleCandidate(input) {
+      const accountId = requireString(input.accountId);
+      const candidateId = requireString(input.candidateId);
+      return options.store.dismissRuleCandidate({ accountId, candidateId });
     },
 
     async simulateRule(input) {
@@ -608,6 +625,20 @@ export function createInMemoryHermesRuleStore(
       candidate.title = input.title;
       candidate.condition = { ...input.condition };
       candidate.action = { ...input.action };
+      return { ...candidate };
+    },
+
+    async dismissRuleCandidate(input) {
+      const candidate = candidates.find(
+        (item) =>
+          item.accountId === input.accountId &&
+          item.id === input.candidateId,
+      );
+      if (!candidate || candidate.status !== "shadow") {
+        return undefined;
+      }
+
+      candidate.status = "dismissed";
       return { ...candidate };
     },
 

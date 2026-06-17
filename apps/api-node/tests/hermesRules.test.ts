@@ -284,6 +284,67 @@ describe("Hermes rule learning service", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("dismisses only shadow rule candidates before approval", async () => {
+    const store = createInMemoryHermesRuleStore({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: { anyKeywords: ["验证码", "otp"] },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+        },
+      ],
+    });
+    const service = createHermesRuleService({
+      store,
+      createId: nextId(["rule_codes"]),
+      now: () => "2026-06-13T10:00:00.000Z",
+    });
+
+    await expect(
+      service.dismissRuleCandidate({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      }),
+    ).resolves.toMatchObject({
+      id: "candidate_codes",
+      accountId: "account_1",
+      status: "dismissed",
+    });
+
+    await expect(
+      service.approveRule({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      service.listRuleCandidates({
+        accountId: "account_1",
+        status: "shadow",
+        limit: 20,
+      }),
+    ).resolves.toEqual({ items: [] });
+    await expect(
+      service.dismissRuleCandidate({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("approves a content label candidate by upserting the account label", async () => {
     const upsertedLabels: unknown[] = [];
     const store = createInMemoryHermesRuleStore({

@@ -1356,6 +1356,43 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("dismisses Hermes rule candidates through backend routes", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "candidate 1",
+        accountId: "account 1",
+        title: "启用验证码智能分组",
+        ruleType: "content_label",
+        condition: { anyKeywords: ["验证码", "otp"] },
+        action: { type: "apply_label", labelName: "验证码" },
+        confidence: 0.9,
+        status: "dismissed",
+        evidenceMessageIds: [],
+        createdAt: "2026-06-15T09:00:00.000Z",
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const candidate = await api.dismissHermesRuleCandidate({
+      accountId: "account 1",
+      candidateId: "candidate 1",
+    });
+
+    expect(candidate).toMatchObject({
+      id: "candidate 1",
+      status: "dismissed",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/rule-candidates/candidate%201/dismiss",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          accountId: "account 1",
+        }),
+      }),
+    );
+  });
+
   it("updates approved Hermes rules through backend routes", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

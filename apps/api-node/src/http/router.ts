@@ -1926,6 +1926,25 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           writeJson(response, 200, result);
           return;
         }
+
+        if (
+          hermesRuleCandidateRoute.action === "dismiss" &&
+          request.method === "POST"
+        ) {
+          const result = await config.hermesRuleService.dismissRuleCandidate(
+            parseHermesRuleCandidateDismissInput(
+              hermesRuleCandidateRoute.candidateId,
+              await readRequestBody(),
+            ),
+          );
+          if (!result) {
+            writeJson(response, 404, { error: "rule_candidate_not_found" });
+            return;
+          }
+
+          writeJson(response, 200, result);
+          return;
+        }
       }
 
       const hermesRuleRoute = parseHermesRuleRoute(request.url);
@@ -4712,7 +4731,11 @@ function parseHermesRuleExecutionRoute(
 
 function parseHermesRuleCandidateRoute(
   requestUrl: string | undefined,
-): { action: "list" } | { action: "update"; candidateId: string } | undefined {
+):
+  | { action: "list" }
+  | { action: "update"; candidateId: string }
+  | { action: "dismiss"; candidateId: string }
+  | undefined {
   if (!requestUrl) {
     return undefined;
   }
@@ -4720,6 +4743,16 @@ function parseHermesRuleCandidateRoute(
   const url = new URL(requestUrl, "http://localhost");
   if (url.pathname === "/api/hermes/rule-candidates") {
     return { action: "list" };
+  }
+
+  const dismissMatch = /^\/api\/hermes\/rule-candidates\/([^/]+)\/dismiss$/.exec(
+    url.pathname,
+  );
+  if (dismissMatch) {
+    return {
+      action: "dismiss",
+      candidateId: decodeURIComponent(dismissMatch[1]),
+    };
   }
 
   const match = /^\/api\/hermes\/rule-candidates\/([^/]+)$/.exec(
@@ -7912,6 +7945,26 @@ function parseHermesRuleCandidateUpdateInput(
       payload.applyToHistory,
       "applyToHistory",
     ),
+  };
+}
+
+function parseHermesRuleCandidateDismissInput(
+  candidateId: string,
+  body: string,
+): {
+  accountId: string;
+  candidateId: string;
+} {
+  const payload = JSON.parse(body) as {
+    accountId?: unknown;
+  };
+  if (!isNonEmptyString(candidateId) || !isNonEmptyString(payload.accountId)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return {
+    accountId: payload.accountId,
+    candidateId,
   };
 }
 
