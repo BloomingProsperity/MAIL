@@ -57,7 +57,10 @@ with more than smoke-level tests.
   protected API probes without echoing it in the JSON report. Its mail-engine
   host probe uses the same EmailEngine-first launch predicate as the main live
   verifier: `provider=emailengine`, `readiness.status=ready`, and token-backed
-  onboarding, attachment download, and send capabilities. It can also wait
+  onboarding, attachment download, and send capabilities. The same Docker health
+  gate now checks the running `emailengine` container image against the selected
+  `EMAILENGINE_IMAGE` or default pinned image, catching stale containers after
+  an image override or upgrade. It can also wait
   through bounded transient Docker/HTTP startup states while failing
   immediately on proven configuration gaps such as degraded EmailEngine
   readiness. When EmailEngine readiness fails without structured setup actions,

@@ -7,6 +7,7 @@ export interface DockerComposeHealthVerifierOptions {
   projectRoot: string;
   requiredServices?: string[];
   hostChecks?: DockerComposeHostHttpCheckInput[];
+  imageInvariants?: DockerComposeImageInvariantInput[];
   envInvariants?: DockerComposeEnvInvariantInput[];
   preparedTokenPairs?: DockerComposePreparedTokenPairInput[];
   httpTimeoutMs?: number;
@@ -28,6 +29,7 @@ export interface DockerComposeHealthVerificationResult {
   checks: Record<string, DockerComposeServiceCheck>;
   composeFileChecks: Record<string, DockerComposeConfigFileCheck>;
   hostChecks: Record<string, DockerComposeHostHttpCheck>;
+  imageChecks: Record<string, DockerComposeImageInvariantCheck>;
   envChecks: Record<string, DockerComposeEnvInvariantCheck>;
   preparedTokenChecks: Record<string, DockerComposePreparedTokenPairCheck>;
   requiredFollowUps: string[];
@@ -62,6 +64,22 @@ export interface DockerComposeEnvInvariantInput {
   name: string;
   expected: string;
   valuePath?: string[];
+}
+
+export interface DockerComposeImageInvariantInput {
+  service: string;
+  name: string;
+  expectedImage: string;
+}
+
+export interface DockerComposeImageInvariantCheck {
+  ok: boolean;
+  service: string;
+  name: string;
+  detail?:
+    | "container_id_read_failed"
+    | "image_read_failed"
+    | "image_mismatch";
 }
 
 export interface DockerComposeEnvInvariantCheck {
@@ -202,6 +220,7 @@ async function verifyDockerComposeHealthOnce(input: {
       checks,
       composeFileChecks: {},
       hostChecks: {},
+      imageChecks: {},
       envChecks: {},
       preparedTokenChecks: {},
       requiredFollowUps: [
@@ -251,6 +270,17 @@ async function verifyDockerComposeHealthOnce(input: {
           `Fix host HTTP check: ${check.name} url=${check.url} detail=${check.detail ?? "unknown"}.`,
       ),
   );
+  const imageChecks = Object.values(checks).every((check) => check.ok)
+    ? await checkComposeImageInvariants(options)
+    : {};
+  requiredFollowUps.push(
+    ...Object.values(imageChecks)
+      .filter((check) => !check.ok)
+      .map(
+        (check) =>
+          `Fix Docker image invariant: ${check.service}.${check.name}.`,
+      ),
+  );
   const envChecks = Object.values(checks).every((check) => check.ok)
     ? await checkComposeEnvInvariants(options)
     : {};
@@ -285,6 +315,7 @@ async function verifyDockerComposeHealthOnce(input: {
     checks,
     composeFileChecks,
     hostChecks,
+    imageChecks,
     envChecks,
     preparedTokenChecks,
     requiredFollowUps,
@@ -298,6 +329,9 @@ function shouldRetryHealthCheck(
     return false;
   }
   if (Object.values(result.preparedTokenChecks).some((check) => !check.ok)) {
+    return false;
+  }
+  if (Object.values(result.imageChecks).some((check) => !check.ok)) {
     return false;
   }
   if (Object.values(result.composeFileChecks).some((check) => !check.ok)) {
@@ -594,6 +628,72 @@ function envInvariantReportName(input: {
   valuePath?: string[];
 }): string {
   return [input.name, ...(input.valuePath ?? [])].join(".");
+}
+
+async function checkComposeImageInvariants(
+  options: DockerComposeHealthVerifierOptions,
+): Promise<Record<string, DockerComposeImageInvariantCheck>> {
+  const runCommand = options.runCommand ?? runDockerComposeCommand;
+  const checks = await Promise.all(
+    (options.imageInvariants ?? []).map(async (invariant) => {
+      const containerResult = await runCommand({
+        command: "docker",
+        args: [
+          ...dockerComposeBaseArgs(options),
+          "ps",
+          "-q",
+          invariant.service,
+        ],
+        cwd: options.projectRoot,
+      });
+      const containerId = containerResult.stdout.trim().split(/\s+/)[0];
+      if (containerResult.exitCode !== 0 || !containerId) {
+        return [
+          imageInvariantKey(invariant),
+          {
+            ok: false,
+            service: invariant.service,
+            name: invariant.name,
+            detail: "container_id_read_failed",
+          },
+        ] as const;
+      }
+
+      const imageResult = await runCommand({
+        command: "docker",
+        args: [
+          "inspect",
+          "--format",
+          "{{ .Config.Image }}",
+          containerId,
+        ],
+        cwd: options.projectRoot,
+      });
+      const actualImage = imageResult.stdout.trim();
+      const detail =
+        imageResult.exitCode !== 0 || !actualImage
+          ? "image_read_failed"
+          : actualImage !== invariant.expectedImage
+            ? "image_mismatch"
+            : undefined;
+      const check: DockerComposeImageInvariantCheck = {
+        ok: detail === undefined,
+        service: invariant.service,
+        name: invariant.name,
+        ...(detail ? { detail } : {}),
+      };
+      return [imageInvariantKey(invariant), check] as const;
+    }),
+  );
+
+  return Object.fromEntries(checks);
+}
+
+function imageInvariantKey(input: {
+  service: string;
+  name: string;
+}): string {
+  return `${input.service}.${input.name}`;
 }
 
 async function checkComposePreparedTokenPairs(

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  DEFAULT_EMAILENGINE_IMAGE,
   bearerTokenHeaders,
   dockerHealthEnvInvariants,
+  dockerHealthImageInvariants,
   dockerHealthPreparedTokenPairs,
   readNonNegativeInteger,
   readPositiveInteger,
@@ -30,6 +32,13 @@ describe("EmailEngine Docker health verify CLI runner", () => {
       expect(input.httpTimeoutMs).toBe(1200);
       expect(input.waitAttempts).toBe(2);
       expect(input.waitIntervalMs).toBe(0);
+      expect(input.imageInvariants).toEqual([
+        {
+          service: "emailengine",
+          name: "containerImage",
+          expectedImage: DEFAULT_EMAILENGINE_IMAGE,
+        },
+      ]);
       expect(input.envInvariants).toEqual([
         {
           service: "api",
@@ -218,6 +227,13 @@ describe("EmailEngine Docker health verify CLI runner", () => {
       expect(input.httpTimeoutMs).toBe(1800);
       expect(input.waitAttempts).toBe(4);
       expect(input.waitIntervalMs).toBe(25);
+      expect(input.imageInvariants).toEqual([
+        {
+          service: "emailengine",
+          name: "containerImage",
+          expectedImage: DEFAULT_EMAILENGINE_IMAGE,
+        },
+      ]);
       expect(input.hostChecks).toEqual([
         {
           name: "api_health",
@@ -559,6 +575,27 @@ describe("EmailEngine Docker health verify CLI runner", () => {
     ]);
   });
 
+  it("builds Docker image drift checks from selected runtime env", () => {
+    expect(dockerHealthImageInvariants({})).toEqual([
+      {
+        service: "emailengine",
+        name: "containerImage",
+        expectedImage: DEFAULT_EMAILENGINE_IMAGE,
+      },
+    ]);
+    expect(
+      dockerHealthImageInvariants({
+        EMAILENGINE_IMAGE: " postalsys/emailengine:v2.72.0 ",
+      }),
+    ).toEqual([
+      {
+        service: "emailengine",
+        name: "containerImage",
+        expectedImage: "postalsys/emailengine:v2.72.0",
+      },
+    ]);
+  });
+
   it("fails before Docker checks when a drift source env value is missing", async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];
@@ -609,7 +646,9 @@ function dockerHealthResult(input: {
     checks: {},
     composeFileChecks: {},
     hostChecks: {},
+    imageChecks: {},
     envChecks: {},
+    preparedTokenChecks: {},
     requiredFollowUps: [],
   };
 }

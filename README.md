@@ -446,7 +446,9 @@ matching the main launch verifier. It waits up to
 `EMAILHUB_DOCKER_HEALTH_ATTEMPTS`
 times with `EMAILHUB_DOCKER_HEALTH_WAIT_MS` between transient Docker/HTTP
 startup failures, but exits immediately for proven configuration gaps such as
-`readiness.status=degraded`. It also compares the selected env-file values
+`readiness.status=degraded` or a running EmailEngine container image that does
+not match the selected `EMAILENGINE_IMAGE`/default pinned image. It also
+compares the selected env-file values
 against the running `emailengine`, `api`, and `worker` containers for
 EmailEngine access/prepared tokens, service secret, webhook secret, auth-server
 secret, and the `EENGINE_SETTINGS` webhook/auth-server fields. Mismatches are

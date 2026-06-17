@@ -6,8 +6,12 @@ import { resolveDockerComposeHostBaseUrl } from "./mail-engine/docker-compose-ho
 import {
   verifyDockerComposeHealth,
   type DockerComposeEnvInvariantInput,
+  type DockerComposeImageInvariantInput,
   type DockerComposePreparedTokenPairInput,
 } from "./mail-engine/docker-compose-health-verifier.js";
+
+export const DEFAULT_EMAILENGINE_IMAGE =
+  "postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc";
 
 export interface EmailEngineDockerHealthVerifyCliOptions {
   env?: CliEnv;
@@ -73,6 +77,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
       httpTimeoutMs,
       waitAttempts,
       waitIntervalMs,
+      imageInvariants: dockerHealthImageInvariants(runtimeEnv),
       envInvariants: dockerHealthEnvInvariants(runtimeEnv),
       preparedTokenPairs: dockerHealthPreparedTokenPairs(runtimeEnv),
       hostChecks: [
@@ -155,6 +160,20 @@ export function dockerHealthPreparedTokenPairs(
       rawToken: emailEngineAccessToken,
       expectedPreparedToken: preparedToken,
       redisUrl: "redis://redis-engine:6379/0",
+    },
+  ];
+}
+
+export function dockerHealthImageInvariants(
+  env: CliEnv,
+): DockerComposeImageInvariantInput[] {
+  return [
+    {
+      service: "emailengine",
+      name: "containerImage",
+      expectedImage:
+        readDockerHealthEnvValue(env, "EMAILENGINE_IMAGE") ??
+        DEFAULT_EMAILENGINE_IMAGE,
     },
   ];
 }
