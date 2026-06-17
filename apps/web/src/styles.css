@@ -965,6 +965,29 @@ h2 {
   font-size: 18px;
 }
 
+.label-create-form {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+
+.label-create-form input {
+  min-width: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: var(--bg-panel);
+}
+
+.label-create-form button {
+  border: 1px solid var(--primary-border);
+  border-radius: 8px;
+  min-height: 28px;
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+  font-weight: 800;
+}
+
 .folder-row,
 .label-row {
   display: grid;
@@ -2600,6 +2623,11 @@ h2 {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+}
+
+.hermes-search-form {
+  border-top: 1px solid var(--border-light);
+  padding-top: 12px;
 }
 
 .large-search {

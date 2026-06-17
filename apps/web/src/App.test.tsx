@@ -2705,7 +2705,7 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("reloads the message list with the selected mailbox id when a folder is opened", async () => {
+	  it("reloads the message list with the selected mailbox id when a folder is opened", async () => {
     const api = createApiFixture();
     vi.mocked(api.listMailboxes).mockResolvedValue({
       items: [
@@ -2801,8 +2801,145 @@ describe("Email Hub first UI baseline", () => {
         sort: "smart",
       });
     });
-    expect(await screen.findByRole("heading", { name: "Sent subject from backend" })).toBeTruthy();
-    expect(await screen.findByText("Sent body from backend")).toBeTruthy();
+	    expect(await screen.findByRole("heading", { name: "Sent subject from backend" })).toBeTruthy();
+	    expect(await screen.findByText("Sent body from backend")).toBeTruthy();
+	  });
+
+  it("wires mailbox shell count, refresh, sort, and label creation to backend state", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMailboxes).mockResolvedValue({
+      items: [
+        {
+          id: "mailbox_inbox",
+          accountId: "account_1",
+          name: "Inbox",
+          role: "inbox",
+          messageCount: 7,
+          unreadCount: 2,
+        },
+        {
+          id: "mailbox_sent",
+          accountId: "account_1",
+          name: "Sent",
+          role: "sent",
+          messageCount: 3,
+          unreadCount: 0,
+        },
+      ],
+    });
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items: [
+        {
+          id:
+            input.mailboxId === "mailbox_sent"
+              ? "message_sent"
+              : input.sort === "time"
+                ? "message_time"
+                : "message_1",
+          accountId: "account_1",
+          subject:
+            input.mailboxId === "mailbox_sent"
+              ? "Sent subject from backend"
+              : input.sort === "time"
+                ? "Time sorted subject"
+                : "Live subject",
+          from: { email: "client@example.com", name: "Live Client" },
+          receivedAt:
+            input.sort === "time"
+              ? "2026-06-13T11:00:00.000Z"
+              : "2026-06-13T10:00:00.000Z",
+          snippet: "Live snippet",
+          unread: true,
+          starred: false,
+          mailboxIds: [input.mailboxId ?? "mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: input.sort === "time" ? 70 : 96,
+            reasons: ["Direct to you"],
+          },
+        },
+      ],
+    }));
+    vi.mocked(api.getMessage).mockImplementation(async (input) => ({
+      id: input.messageId,
+      accountId: "account_1",
+      subject:
+        input.messageId === "message_sent"
+          ? "Sent subject from backend"
+          : input.messageId === "message_time"
+            ? "Time sorted subject"
+            : "Live subject",
+      from: { email: "client@example.com", name: "Live Client" },
+      receivedAt: "2026-06-13T10:00:00.000Z",
+      snippet: "Live snippet",
+      unread: false,
+      starred: false,
+      mailboxIds: ["mailbox_inbox"],
+      attachmentCount: 0,
+      classification: {
+        bucket: "P1 Urgent",
+        priorityScore: 96,
+        reasons: ["Direct to you"],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText: "Live body from backend",
+      attachments: [],
+    }));
+    vi.mocked(api.upsertLabel).mockResolvedValueOnce({
+      id: "label_vip",
+      accountId: "account_1",
+      name: "VIP",
+      color: "blue",
+      messageCount: 0,
+      createdAt: "2026-06-13T10:02:00.000Z",
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    const list = screen.getByRole("region", { name: "邮件列表" });
+    expect(within(list).getByRole("heading", { name: "Inbox" })).toBeTruthy();
+    expect(within(list).getByText("7 封邮件")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Sent/ }));
+    await screen.findByRole("heading", { name: "Sent subject from backend" });
+    expect(within(list).getByRole("heading", { name: "Sent" })).toBeTruthy();
+    expect(within(list).getByText("3 封邮件")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "切换为按时间排序" }));
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        mailboxId: "mailbox_sent",
+        limit: 50,
+        sort: "time",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新邮箱列表" }));
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        mailboxId: "mailbox_sent",
+        limit: 50,
+        sort: "time",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "添加标签" }));
+    fireEvent.change(screen.getByLabelText("新标签名称"), {
+      target: { value: "VIP" },
+    });
+    fireEvent.submit(screen.getByRole("form", { name: "创建标签" }));
+
+    await waitFor(() => {
+      expect(api.upsertLabel).toHaveBeenCalledWith({
+        accountId: "account_1",
+        name: "VIP",
+      });
+    });
+    expect(await screen.findByText("标签已创建：VIP")).toBeTruthy();
   });
 
   it("runs search page queries through the backend message search route", async () => {
@@ -2858,6 +2995,96 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(await screen.findByText("Signed contract found")).toBeTruthy();
     expect(await screen.findByText(/Indexed body hit: signed contract/)).toBeTruthy();
+  });
+
+  it("runs Hermes natural language search from the Search workspace", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.searchMailWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_search_workspace",
+      skillId: "email_search_qa",
+      answerText: "客户合同在最新邮件里。",
+      searchQuery: "signed contract",
+      searchPlan: {
+        searchQuery: "signed contract",
+        quickFilters: ["attachments"],
+        qScopes: ["sender", "recipients", "subject", "body"],
+        filters: [
+          {
+            field: "hasAttachment",
+            operator: "eq",
+            value: true,
+            label: "有附件",
+          },
+        ],
+        listMessagesInput: {
+          q: "signed contract",
+          quickFilters: ["attachments"],
+          qScopes: ["sender", "recipients", "subject", "body"],
+          hasAttachment: true,
+        },
+        explanation: ["限制为带附件的合同邮件。"],
+      },
+      matches: [],
+      citations: [],
+    } satisfies HermesEmailSearchQaResult);
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items: [
+        {
+          id: input.q ? "message_hermes_search" : "message_1",
+          accountId: "account_1",
+          subject: input.q ? "Hermes search result" : "Live subject",
+          from: { email: "client@example.com", name: "Live Client" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: input.q ? "Matched by Hermes" : "Live snippet",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: input.q ? 1 : 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: input.q ? 90 : 96,
+            reasons: input.q ? ["Hermes search"] : ["Direct to you"],
+          },
+        },
+      ],
+    }));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
+    );
+    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
+      target: { value: "客户上次提到的合同在哪里" },
+    });
+    fireEvent.submit(
+      screen.getByRole("form", { name: "Hermes 自然语言搜索" }),
+    );
+
+    await waitFor(() => {
+      expect(api.searchMailWithHermes).toHaveBeenCalledWith({
+        accountId: "account_1",
+        question: "客户上次提到的合同在哪里",
+        language: "zh-CN",
+        limit: 10,
+        memoryScope: "global",
+      });
+    });
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+        q: "signed contract",
+        sort: "smart",
+        quickFilters: ["attachments"],
+        qScopes: ["sender", "recipients", "subject", "body"],
+        hasAttachment: true,
+      });
+    });
+    expect(await screen.findByText("Hermes search result")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain(
+      "Hermes 已同步搜索条件",
+    );
   });
 
   it("opens a cross-account search result in the shared mail reader", async () => {

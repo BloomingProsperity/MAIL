@@ -94,6 +94,7 @@ import type {
   MailboxDto,
   MessageDetailDto,
   MessageListItemDto,
+  MessageListSort,
   OAuthProvider,
   OperationalEventDto,
   ReauthorizationTaskDto,
@@ -259,6 +260,7 @@ interface FolderItem {
 interface MailItem {
   id: string;
   accountId: string;
+  receivedAt: string;
   sender: string;
   email: string;
   subject: string;
@@ -332,7 +334,7 @@ const quickReplyActions: QuickReplyAction[] = [
 ];
 
 const navItems: Array<{ id: ViewId; label: string; icon: typeof Inbox; count?: number }> = [
-  { id: "mail", label: "邮箱", icon: Inbox, count: 128 },
+  { id: "mail", label: "邮箱", icon: Inbox },
   { id: "add-mail", label: "添加邮箱", icon: MailPlus },
   { id: "sync", label: "同步中心", icon: Clock3 },
   { id: "search", label: "搜索", icon: Search },
@@ -457,6 +459,7 @@ const mailItems: MailItem[] = [
   {
     id: "m1",
     accountId: PREVIEW_ACCOUNT_ID,
+    receivedAt: "2026-06-12T10:24:00.000Z",
     sender: "张伟（客户成功）",
     email: "zhangwei@example.com",
     subject: "关于 Q2 合作方案的确认",
@@ -474,6 +477,7 @@ const mailItems: MailItem[] = [
   {
     id: "m2",
     accountId: PREVIEW_ACCOUNT_ID,
+    receivedAt: "2026-06-11T16:30:00.000Z",
     sender: "陈晨（客户）",
     email: "chenchen@example.com",
     subject: "需求文档 V2.1",
@@ -491,6 +495,7 @@ const mailItems: MailItem[] = [
   {
     id: "m3",
     accountId: PREVIEW_ACCOUNT_ID,
+    receivedAt: "2026-06-12T09:58:00.000Z",
     sender: "李娜（市场部）",
     email: "lina@example.com",
     subject: "新品发布会排期确认",
@@ -508,6 +513,7 @@ const mailItems: MailItem[] = [
   {
     id: "m4",
     accountId: PREVIEW_ACCOUNT_ID,
+    receivedAt: "2026-06-11T13:40:00.000Z",
     sender: "王磊（技术支持）",
     email: "support@example.com",
     subject: "系统升级通知",
@@ -525,6 +531,7 @@ const mailItems: MailItem[] = [
   {
     id: "m5",
     accountId: PREVIEW_ACCOUNT_ID,
+    receivedAt: "2026-06-11T09:15:00.000Z",
     sender: "财务部",
     email: "finance@example.com",
     subject: "5 月费用报销审批结果",
@@ -542,6 +549,7 @@ const mailItems: MailItem[] = [
   {
     id: "m6",
     accountId: PREVIEW_ACCOUNT_ID,
+    receivedAt: "2026-05-30T08:20:00.000Z",
     sender: "产品团队",
     email: "product@example.com",
     subject: "迭代计划 - 第 23 周",
@@ -765,11 +773,14 @@ export function App(props: AppProps = {}) {
   const [backendNotice, setBackendNotice] = useState<string | undefined>();
   const [searchLaunch, setSearchLaunch] = useState<SearchLaunch | undefined>();
   const [navigationProviderGroups, setNavigationProviderGroups] =
-    useState<ProviderGroup[]>(providerGroups);
+    useState<ProviderGroup[]>(props.api ? [] : providerGroups);
   const [navigationQuickCategories, setNavigationQuickCategories] =
-    useState<QuickCategory[]>(quickCategories);
+    useState<QuickCategory[]>(props.api ? [] : quickCategories);
   const [navigationLabels, setNavigationLabels] =
-    useState<LabelItem[]>(previewLabels);
+    useState<LabelItem[]>(props.api ? [] : previewLabels);
+  const [connectedAccountCount, setConnectedAccountCount] = useState(
+    props.api ? 0 : 5,
+  );
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
     () => {
       const storedAccountId = props.defaultAccountId ?? readSelectedAccountIdFromSession();
@@ -784,6 +795,7 @@ export function App(props: AppProps = {}) {
     () => !props.api || Boolean(props.defaultAccountId),
   );
   const [mailDensity, setMailDensity] = useState<MailDensity>("compact");
+  const [mailSort, setMailSort] = useState<MessageListSort>("smart");
   const [hermesFollowUpSuggestion, setHermesFollowUpSuggestion] = useState<
     HermesFollowupTrackerResult | undefined
   >();
@@ -797,14 +809,27 @@ export function App(props: AppProps = {}) {
       : undefined;
   const accountId = selectedAccountId ?? PREVIEW_ACCOUNT_ID;
   const sortedMail = useMemo(
-    () => [...workspaceMail].sort((left, right) => right.score - left.score),
-    [workspaceMail],
+    () => sortMailItems(workspaceMail, mailSort),
+    [mailSort, workspaceMail],
+  );
+  const sidebarMailCount = props.api
+    ? workspaceMail.length
+    : folders.find((folder) => folder.id === "inbox")?.count ?? workspaceMail.length;
+  const effectiveNavItems = navItems.map((item) =>
+    item.id === "mail" ? { ...item, count: sidebarMailCount } : item,
   );
   const selectedMail =
     sortedMail.find((mail) => mailItemKey(mail) === activeMailId) ?? sortedMail[0];
   const selectedMailAccountId = selectedMail?.accountId ?? selectedAccountId;
   const workspaceAccountId =
     selectedMailAccountId ?? selectedAccountId ?? PREVIEW_ACCOUNT_ID;
+  const activeFolderSummary = folderSummaryForActiveView({
+    activeFolder,
+    folders: workspaceFolders,
+    labels: navigationLabels,
+    quickCategories: navigationQuickCategories,
+    mail: workspaceMail,
+  });
 
   function rememberSelectedAccount(nextAccountId: string | undefined) {
     if (!nextAccountId) {
@@ -825,7 +850,22 @@ export function App(props: AppProps = {}) {
       setNavigationProviderGroups(summary.providerGroups);
       setNavigationQuickCategories(summary.quickCategories);
     } catch {
-      // Keep the local preview navigation when the backend summary is unavailable.
+      setNavigationProviderGroups([]);
+      setNavigationQuickCategories([]);
+    }
+  }
+
+  async function refreshConnectedAccountCount() {
+    if (!props.api) {
+      setConnectedAccountCount(5);
+      return;
+    }
+
+    try {
+      const page = await props.api.listSyncCenterAccounts();
+      setConnectedAccountCount(page.items.length);
+    } catch {
+      setConnectedAccountCount(0);
     }
   }
 
@@ -868,6 +908,7 @@ export function App(props: AppProps = {}) {
     }
 
     await refreshNavigationSummary();
+    await refreshConnectedAccountCount();
     await refreshLabels(connectedAccountId ?? selectedAccountId);
   }
 
@@ -1112,6 +1153,7 @@ export function App(props: AppProps = {}) {
 
   useEffect(() => {
     void refreshNavigationSummary();
+    void refreshConnectedAccountCount();
   }, [props.api]);
 
   useEffect(() => {
@@ -1164,14 +1206,14 @@ export function App(props: AppProps = {}) {
           props.api.listMessages({
             accountId: selectedAccountId,
             limit: 50,
-            sort: "smart",
+            sort: mailSort,
           }),
         ]).then(([mailboxPage, messagePage]) => ({
           folders: mailboxPage.items.map(mapMailboxDtoToFolderItem),
           messages: messagePage.items,
           activeFolderId: mailboxPage.items[0]?.id ?? "inbox",
         }))
-      : props.api.listMessages({ limit: 50, sort: "smart" }).then((messagePage) => ({
+      : props.api.listMessages({ limit: 50, sort: mailSort }).then((messagePage) => ({
           folders,
           messages: messagePage.items,
           activeFolderId: "inbox",
@@ -1186,7 +1228,7 @@ export function App(props: AppProps = {}) {
         setWorkspaceFolders(result.folders);
         setWorkspaceMail(mappedMail);
         setActiveFolder(result.activeFolderId);
-        setActiveMailId(firstSmartMailKey(mappedMail));
+        setActiveMailId(firstMailKey(mappedMail, mailSort));
         setSelectedDetail(undefined);
         setBackendNotice(
           mappedMail.length > 0
@@ -1217,7 +1259,7 @@ export function App(props: AppProps = {}) {
     void refreshLabels(selectedAccountId);
   }, [accountDiscoveryReady, props.api, selectedAccountId]);
 
-  async function loadSavedView(savedView: string) {
+  async function loadSavedView(savedView: string, sortOverride = mailSort) {
     setActiveFolder(savedView);
     if (!props.api) {
       return;
@@ -1228,20 +1270,20 @@ export function App(props: AppProps = {}) {
       const messagePage = await props.api.listMessages({
         ...(selectedAccountId ? { accountId: selectedAccountId } : {}),
         limit: 50,
-        sort: "smart",
+        sort: sortOverride,
         savedView,
       });
       const mappedMail = messagePage.items.map(mapMessageDtoToMailItem);
       setWorkspaceMail(mappedMail);
       setSelectedDetail(undefined);
-      setActiveMailId(firstSmartMailKey(mappedMail));
+      setActiveMailId(firstMailKey(mappedMail, sortOverride));
       setBackendNotice(undefined);
     } catch {
       setBackendNotice("分类邮件暂时不可用，正在显示当前邮件。");
     }
   }
 
-  async function loadLabel(labelId: string) {
+  async function loadLabel(labelId: string, sortOverride = mailSort) {
     setActiveFolder(`label:${labelId}`);
     if (!props.api || !selectedAccountId) {
       return;
@@ -1252,21 +1294,21 @@ export function App(props: AppProps = {}) {
       const messagePage = await props.api.listMessages({
         accountId: selectedAccountId,
         limit: 50,
-        sort: "smart",
+        sort: sortOverride,
         labelIds: [labelId],
         tagMode: "any",
       });
       const mappedMail = messagePage.items.map(mapMessageDtoToMailItem);
       setWorkspaceMail(mappedMail);
       setSelectedDetail(undefined);
-      setActiveMailId(firstSmartMailKey(mappedMail));
+      setActiveMailId(firstMailKey(mappedMail, sortOverride));
       setBackendNotice(undefined);
     } catch {
       setBackendNotice("标签邮件暂时不可用，正在显示当前邮件。");
     }
   }
 
-  async function loadMailbox(mailboxId: string) {
+  async function loadMailbox(mailboxId: string, sortOverride = mailSort) {
     setActiveFolder(mailboxId);
     if (!props.api) {
       return;
@@ -1276,12 +1318,12 @@ export function App(props: AppProps = {}) {
       try {
         const messagePage = await props.api.listMessages({
           limit: 50,
-          sort: "smart",
+          sort: sortOverride,
         });
         const mappedMail = messagePage.items.map(mapMessageDtoToMailItem);
         setWorkspaceMail(mappedMail);
         setSelectedDetail(undefined);
-        setActiveMailId(firstSmartMailKey(mappedMail));
+        setActiveMailId(firstMailKey(mappedMail, sortOverride));
         setBackendNotice(undefined);
       } catch {
         setBackendNotice("聚合收件箱暂时不可用。");
@@ -1295,16 +1337,35 @@ export function App(props: AppProps = {}) {
         accountId: selectedAccountId,
         mailboxId,
         limit: 50,
-        sort: "smart",
+        sort: sortOverride,
       });
       const mappedMail = messagePage.items.map(mapMessageDtoToMailItem);
       setWorkspaceMail(mappedMail);
       setSelectedDetail(undefined);
-      setActiveMailId(firstSmartMailKey(mappedMail));
+      setActiveMailId(firstMailKey(mappedMail, sortOverride));
       setBackendNotice(undefined);
     } catch {
       setBackendNotice("邮箱目录暂时不可用，正在显示当前邮件。");
     }
+  }
+
+  async function refreshCurrentMail(sortOverride = mailSort) {
+    if (activeFolder.startsWith("label:")) {
+      await loadLabel(activeFolder.slice("label:".length), sortOverride);
+      return;
+    }
+
+    if (navigationQuickCategories.some((category) => category.id === activeFolder)) {
+      await loadSavedView(activeFolder, sortOverride);
+      return;
+    }
+
+    await loadMailbox(activeFolder, sortOverride);
+  }
+
+  function changeMailSort(nextSort: MessageListSort) {
+    setMailSort(nextSort);
+    void refreshCurrentMail(nextSort);
   }
 
   useEffect(() => {
@@ -1453,10 +1514,10 @@ export function App(props: AppProps = {}) {
         );
         setWorkspaceMail(remainingMail);
         setActiveMailId((current) =>
-          current && remainingMail.some((item) => mailItemKey(item) === current)
-            ? current
-            : firstSmartMailKey(remainingMail),
-        );
+	          current && remainingMail.some((item) => mailItemKey(item) === current)
+	            ? current
+	            : firstMailKey(remainingMail, mailSort),
+	        );
         if (selectedMail && succeededKeys.has(mailItemKey(selectedMail))) {
           setSelectedDetail(undefined);
         }
@@ -1616,7 +1677,7 @@ export function App(props: AppProps = {}) {
         </div>
 
         <nav className="global-nav">
-          {navItems.map((item) => {
+          {effectiveNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <Fragment key={item.id}>
@@ -1665,8 +1726,8 @@ export function App(props: AppProps = {}) {
         <div className="sidebar-footer">
           <span className="online-dot" />
           <div>
-            <strong>已连接 5 个邮箱</strong>
-            <span>Hermes 本地在线</span>
+            <strong>已连接 {connectedAccountCount} 个邮箱</strong>
+            <span>{connectedAccountCount > 0 ? "Hermes 后端在线" : "等待邮箱接入"}</span>
           </div>
         </div>
       </aside>
@@ -1679,9 +1740,11 @@ export function App(props: AppProps = {}) {
               accountId={workspaceAccountId}
               activeFolder={activeFolder}
               activeMailId={activeMailId}
-              folders={workspaceFolders}
-              mail={sortedMail}
-              selectedMail={selectedMail}
+	              folders={workspaceFolders}
+	              mail={sortedMail}
+	              folderTitle={activeFolderSummary.title}
+	              folderCount={activeFolderSummary.count}
+	              selectedMail={selectedMail}
               selectedDetail={selectedDetail}
               undoToast={undoToast}
               backendNotice={backendNotice}
@@ -1690,11 +1753,14 @@ export function App(props: AppProps = {}) {
               labels={navigationLabels}
               hermesFollowUpSuggestion={hermesFollowUpSuggestion}
               followUpNotice={followUpNotice}
-              density={mailDensity}
-              onAddMail={() => setActiveView("add-mail")}
-              onGlobalSearch={launchGlobalSearch}
-              onDensityChange={setMailDensity}
-              onFolderChange={(id) => void loadMailbox(id)}
+	              density={mailDensity}
+	              sort={mailSort}
+	              onAddMail={() => setActiveView("add-mail")}
+	              onGlobalSearch={launchGlobalSearch}
+	              onDensityChange={setMailDensity}
+	              onRefresh={() => void refreshCurrentMail()}
+	              onSortChange={changeMailSort}
+	              onFolderChange={(id) => void loadMailbox(id)}
               onSavedViewChange={(id) => void loadSavedView(id)}
               onLabelChange={(id) => void loadLabel(id)}
               onMailChange={setActiveMailId}
@@ -2005,10 +2071,12 @@ function MailWorkspace(props: {
   api?: EmailHubApi;
   accountId: string;
   activeFolder: string;
-  activeMailId: string;
-  folders: FolderItem[];
-  mail: MailItem[];
-  selectedMail: MailItem;
+	  activeMailId: string;
+	  folders: FolderItem[];
+	  mail: MailItem[];
+	  folderTitle: string;
+	  folderCount: number;
+	  selectedMail: MailItem;
   selectedDetail?: MessageDetailDto;
   undoToast?: UndoToastState;
   backendNotice?: string;
@@ -2016,12 +2084,15 @@ function MailWorkspace(props: {
   quickCategories: QuickCategory[];
   labels: LabelItem[];
   hermesFollowUpSuggestion?: HermesFollowupTrackerResult;
-  followUpNotice?: string;
-  density: MailDensity;
-  onAddMail: () => void;
-  onGlobalSearch: (query: string) => void;
-  onDensityChange: (density: MailDensity) => void;
-  onFolderChange: (id: string) => void;
+	  followUpNotice?: string;
+	  density: MailDensity;
+	  sort: MessageListSort;
+	  onAddMail: () => void;
+	  onGlobalSearch: (query: string) => void;
+	  onDensityChange: (density: MailDensity) => void;
+	  onRefresh: () => void;
+	  onSortChange: (sort: MessageListSort) => void;
+	  onFolderChange: (id: string) => void;
   onSavedViewChange: (id: string) => void;
   onLabelChange: (id: string) => void;
   onMailChange: (id: string) => void;
@@ -2039,6 +2110,10 @@ function MailWorkspace(props: {
   onConfirmHermesFollowUp: () => void;
 }) {
   const [topSearchQuery, setTopSearchQuery] = useState("");
+  const [labelFormOpen, setLabelFormOpen] = useState(false);
+  const [newLabelName, setNewLabelName] = useState("");
+  const [labelNotice, setLabelNotice] = useState("");
+  const [labelBusy, setLabelBusy] = useState(false);
   const [composeFrom, setComposeFrom] = useState("");
   const [sendIdentities, setSendIdentities] = useState<MailSendIdentityDto[]>([]);
   const [sendIdentityCandidates, setSendIdentityCandidates] = useState<
@@ -3558,6 +3633,36 @@ function MailWorkspace(props: {
     props.onGlobalSearch(trimmedQuery);
   }
 
+  async function submitNewLabel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newLabelName.trim();
+    if (!name) {
+      setLabelNotice("请输入标签名称。");
+      return;
+    }
+    if (!props.api) {
+      setLabelNotice("连接服务后才能创建标签。");
+      return;
+    }
+
+    setLabelBusy(true);
+    setLabelNotice("正在创建标签...");
+    try {
+      const label = await props.api.upsertLabel({
+        accountId: props.accountId,
+        name,
+      });
+      setNewLabelName("");
+      setLabelFormOpen(false);
+      setLabelNotice(`标签已创建：${label.name}`);
+      props.onLabelsChanged(props.accountId);
+    } catch {
+      setLabelNotice("标签创建失败，请稍后再试。");
+    } finally {
+      setLabelBusy(false);
+    }
+  }
+
   async function downloadMessageAttachment(attachment: AttachmentDto) {
     if (!props.api) {
       setAttachmentDownloadNotice("附件下载服务暂时不可用。");
@@ -4264,7 +4369,12 @@ function MailWorkspace(props: {
             >
               <PenLine size={18} />
             </button>
-            <button className="icon-button" type="button" aria-label="刷新">
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="刷新邮箱列表"
+              onClick={props.onRefresh}
+            >
               <Clock3 size={18} />
             </button>
           </div>
@@ -4288,14 +4398,43 @@ function MailWorkspace(props: {
             })}
           </div>
 
-          <div className="directory-section">
-            <div className="section-label with-action">
-              标签/项目
-              <button type="button" aria-label="添加标签">
-                +
-              </button>
-            </div>
-            {props.labels.map((label) => (
+	          <div className="directory-section">
+	            <div className="section-label with-action">
+	              标签/项目
+	              <button
+	                type="button"
+	                aria-label="添加标签"
+	                onClick={() => {
+	                  setLabelFormOpen((current) => !current);
+	                  setLabelNotice("");
+	                }}
+	              >
+	                +
+	              </button>
+	            </div>
+	            {labelFormOpen ? (
+	              <form
+	                className="label-create-form"
+	                aria-label="创建标签"
+	                onSubmit={submitNewLabel}
+	              >
+	                <input
+	                  aria-label="新标签名称"
+	                  placeholder="新标签"
+	                  value={newLabelName}
+	                  onChange={(event) => setNewLabelName(event.target.value)}
+	                />
+	                <button type="submit" disabled={labelBusy}>
+	                  {labelBusy ? "创建中" : "创建"}
+	                </button>
+	              </form>
+	            ) : null}
+	            {labelNotice ? (
+	              <div className="backend-notice compact" role="status">
+	                {labelNotice}
+	              </div>
+	            ) : null}
+	            {props.labels.map((label) => (
               <button
                 key={label.id}
                 className={
@@ -4334,12 +4473,12 @@ function MailWorkspace(props: {
           </div>
         </aside>
 
-        <section className={`message-list-panel density-${props.density}`} aria-label="邮件列表">
-          <div className="list-toolbar">
-            <div>
-              <h2>收件箱</h2>
-              <span>128 封邮件</span>
-            </div>
+	        <section className={`message-list-panel density-${props.density}`} aria-label="邮件列表">
+	          <div className="list-toolbar">
+	            <div>
+	              <h2>{props.folderTitle}</h2>
+	              <span>{props.folderCount} 封邮件</span>
+	            </div>
             <div className="list-toolbar-actions">
               <div className="density-control" aria-label="邮件列表密度">
                 {densityOptions.map((option) => (
@@ -4354,10 +4493,19 @@ function MailWorkspace(props: {
                   </button>
                 ))}
               </div>
-              <button className="tiny-button" type="button">
-                按时间
-                <ChevronDown size={14} />
-              </button>
+	              <button
+	                className="tiny-button"
+	                type="button"
+	                aria-label={
+	                  props.sort === "smart" ? "切换为按时间排序" : "切换为智能排序"
+	                }
+	                onClick={() =>
+	                  props.onSortChange(props.sort === "smart" ? "time" : "smart")
+	                }
+	              >
+	                {props.sort === "smart" ? "智能排序" : "按时间"}
+	                <ChevronDown size={14} />
+	              </button>
             </div>
           </div>
           <div className="bulk-row">
@@ -8363,6 +8511,7 @@ function SearchPage(props: {
   onOpenResult: (mail: MailItem) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [naturalLanguageQuery, setNaturalLanguageQuery] = useState("");
   const [results, setResults] = useState<MailItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [notice, setNotice] = useState(
@@ -8385,6 +8534,7 @@ function SearchPage(props: {
   const [receivedAfter, setReceivedAfter] = useState<string | undefined>();
   const [receivedBefore, setReceivedBefore] = useState<string | undefined>();
   const [hasAttachment, setHasAttachment] = useState<boolean | undefined>();
+  const [hermesSearchBusy, setHermesSearchBusy] = useState(false);
 
   function toggleQuickFilter(filter: MailQuickFilter) {
     setQuickFilters((current) =>
@@ -8411,7 +8561,7 @@ function SearchPage(props: {
       setResults([]);
       setHasSearched(false);
       setNotice("请输入要查找的关键词。");
-      return;
+      return false;
     }
 
     if (!props.api) {
@@ -8424,7 +8574,7 @@ function SearchPage(props: {
       ]);
       setHasSearched(true);
       setNotice("本地预览结果。连接后会搜索已同步邮件。");
-      return;
+      return true;
     }
 
     const effectiveQuickFilters =
@@ -8452,7 +8602,7 @@ function SearchPage(props: {
       setResults([]);
       setHasSearched(true);
       setNotice("请先选择一个邮箱，或切换为搜索所有邮箱。");
-      return;
+      return false;
     }
 
     setNotice("正在搜索邮件...");
@@ -8488,16 +8638,84 @@ function SearchPage(props: {
             : "已搜索当前邮箱。"
           : "没有找到匹配邮件。",
       );
+      return true;
     } catch {
       setResults([]);
       setHasSearched(true);
       setNotice("搜索暂时不可用，请稍后重试。");
+      return false;
     }
   }
 
   async function runSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await executeSearch(query);
+  }
+
+  async function runHermesNaturalLanguageSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const question = naturalLanguageQuery.trim();
+    if (!question) {
+      setNotice("请输入自然语言问题。");
+      return;
+    }
+    if (!props.api) {
+      setQuery(question);
+      await executeSearch(question);
+      return;
+    }
+    if (!props.accountId) {
+      setNotice("请先选择一个邮箱，再让 Hermes 搜索。");
+      return;
+    }
+
+    setHermesSearchBusy(true);
+    setNotice("Hermes 正在理解问题并搜索当前邮箱...");
+    try {
+      const result = await props.api.searchMailWithHermes({
+        accountId: props.accountId,
+        question,
+        language: "zh-CN",
+        limit: 10,
+        memoryScope: "global",
+      });
+      const searchOptions = searchLaunchFromHermesResult(
+        result,
+        props.accountId,
+      );
+      setQuery(result.searchQuery);
+      setQuickFilters(searchOptions.quickFilters ?? []);
+      setQScopes(searchOptions.qScopes ?? [
+        "sender",
+        "recipients",
+        "subject",
+        "body",
+      ]);
+      setSenderQuery(searchOptions.senderQuery);
+      setRecipientQuery(searchOptions.recipientQuery);
+      setReceivedAfter(searchOptions.receivedAfter);
+      setReceivedBefore(searchOptions.receivedBefore);
+      setHasAttachment(searchOptions.hasAttachment);
+      setSearchAllAccounts(false);
+      const searched = await executeSearch(result.searchQuery, searchOptions);
+      if (!searched) {
+        return;
+      }
+      setNotice(
+        result.matches.length > 0
+          ? `Hermes 已读取 ${result.matches.length} 个候选结果，并同步到搜索结果。`
+          : "Hermes 已同步搜索条件，但没有找到候选结果。",
+      );
+    } catch (error) {
+      setNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "email_search_qa",
+          fallback: "Hermes 自然语言搜索暂时不可用。",
+        }),
+      );
+    } finally {
+      setHermesSearchBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -8544,9 +8762,9 @@ function SearchPage(props: {
         </div>
       </header>
       <section className="page-panel search-panel">
-        <form className="search-form" onSubmit={runSearch}>
-          <label className="large-search">
-            <Search size={21} />
+	        <form className="search-form" onSubmit={runSearch}>
+	          <label className="large-search">
+	            <Search size={21} />
             <input
               aria-label="搜索邮件"
               placeholder="搜索邮件、联系人、主题或附件"
@@ -8554,11 +8772,33 @@ function SearchPage(props: {
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-          <button className="primary-button" type="submit">
-            执行搜索
-          </button>
-        </form>
-        <div className="filter-row">
+	          <button className="primary-button" type="submit">
+	            执行搜索
+	          </button>
+	        </form>
+	        <form
+	          className="search-form hermes-search-form"
+	          aria-label="Hermes 自然语言搜索"
+	          onSubmit={runHermesNaturalLanguageSearch}
+	        >
+	          <label className="large-search">
+	            <Sparkles size={21} />
+	            <input
+	              aria-label="Hermes 搜索问题"
+	              placeholder="问 Hermes：上次客户提到的合同在哪里？"
+	              value={naturalLanguageQuery}
+	              onChange={(event) => setNaturalLanguageQuery(event.target.value)}
+	            />
+	          </label>
+	          <button
+	            className="primary-button"
+	            type="submit"
+	            disabled={hermesSearchBusy}
+	          >
+	            {hermesSearchBusy ? "Hermes 搜索中" : "让 Hermes 搜索"}
+	          </button>
+	        </form>
+	        <div className="filter-row">
           <button
             className={searchAllAccounts ? "active" : ""}
             type="button"
@@ -12618,10 +12858,11 @@ function toneForLabelColor(color: LabelDto["color"]): Tone {
 }
 
 function mapMessageDtoToMailItem(message: MessageListItemDto): MailItem {
-  return {
-    id: message.id,
-    accountId: message.accountId,
-    sender: message.from.name ?? message.from.email,
+	  return {
+	    id: message.id,
+	    accountId: message.accountId,
+	    receivedAt: message.receivedAt,
+	    sender: message.from.name ?? message.from.email,
     email: message.from.email,
     subject: message.subject,
     preview: message.snippet ?? "",
@@ -12636,6 +12877,61 @@ function mapMessageDtoToMailItem(message: MessageListItemDto): MailItem {
     score: message.classification.priorityScore,
     reasons: message.classification.reasons,
     searchPreview: message.searchPreview?.text,
+	  };
+	}
+
+function sortMailItems(items: MailItem[], sort: MessageListSort): MailItem[] {
+  const next = [...items];
+  if (sort === "time") {
+    return next.sort(
+      (left, right) =>
+        new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime(),
+    );
+  }
+
+  return next.sort((left, right) => right.score - left.score);
+}
+
+function firstMailKey(items: MailItem[], sort: MessageListSort): string {
+  const [first] = sortMailItems(items, sort);
+  return first ? mailItemKey(first) : "";
+}
+
+function folderSummaryForActiveView(input: {
+  activeFolder: string;
+  folders: FolderItem[];
+  labels: LabelItem[];
+  quickCategories: QuickCategory[];
+  mail: MailItem[];
+}): { title: string; count: number } {
+  if (input.activeFolder.startsWith("label:")) {
+    const labelId = input.activeFolder.slice("label:".length);
+    const label = input.labels.find((item) => item.id === labelId);
+    return {
+      title: label?.label ?? "标签",
+      count: label?.count ?? input.mail.length,
+    };
+  }
+
+  const folder = input.folders.find((item) => item.id === input.activeFolder);
+  if (folder) {
+    return {
+      title: folder.label,
+      count: folder.count,
+    };
+  }
+
+  const category = input.quickCategories.find((item) => item.id === input.activeFolder);
+  if (category) {
+    return {
+      title: category.label,
+      count: category.count,
+    };
+  }
+
+  return {
+    title: input.activeFolder === "search" ? "搜索结果" : "聚合收件箱",
+    count: input.mail.length,
   };
 }
 
@@ -12772,11 +13068,6 @@ function hermesRuleKeywords(condition: Record<string, unknown>): string[] {
 
 function mailItemKey(mail: Pick<MailItem, "accountId" | "id">): string {
   return `${mail.accountId}:${mail.id}`;
-}
-
-function firstSmartMailKey(items: MailItem[]): string {
-  const [first] = [...items].sort((left, right) => right.score - left.score);
-  return first ? mailItemKey(first) : "";
 }
 
 function messageReaderText(
