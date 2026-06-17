@@ -18,6 +18,7 @@ describe("Hermes skill settings service", () => {
           allowBodyRead: true,
           allowMemoryWrite: false,
           requireConfirmation: false,
+          customInstructions: "Prefer concise translations.",
         },
       }),
     });
@@ -33,6 +34,7 @@ describe("Hermes skill settings service", () => {
         allowBodyRead: true,
         allowMemoryWrite: false,
         requireConfirmation: false,
+        customInstructions: "Prefer concise translations.",
       },
     });
     expect(skills.find((skill) => skill.id === "reply_draft")).toMatchObject({
@@ -57,6 +59,7 @@ describe("Hermes skill settings service", () => {
         enabled: false,
         maxContextChars: 32000,
         memoryLimit: 8,
+        customInstructions: "Keep replies under five sentences.",
       },
     });
 
@@ -70,11 +73,15 @@ describe("Hermes skill settings service", () => {
           allowBodyRead: true,
           allowMemoryWrite: true,
           requireConfirmation: true,
+          customInstructions: "Keep replies under five sentences.",
         },
       },
     ]);
     expect(skill.settings.enabled).toBe(false);
     expect(skill.settings.requireConfirmation).toBe(true);
+    expect(skill.settings.customInstructions).toBe(
+      "Keep replies under five sentences.",
+    );
   });
 
   it("rejects unknown skills", async () => {
@@ -100,6 +107,12 @@ describe("Hermes skill settings service", () => {
       service.updateSkillSettings({
         skillId: "translate_text",
         patch: { maxContextChars: 12500 },
+      }),
+    ).rejects.toBeInstanceOf(InvalidHermesSkillSettingsRequestError);
+    await expect(
+      service.updateSkillSettings({
+        skillId: "translate_text",
+        patch: { customInstructions: "x".repeat(2001) },
       }),
     ).rejects.toBeInstanceOf(InvalidHermesSkillSettingsRequestError);
     expect(saved).toEqual([]);

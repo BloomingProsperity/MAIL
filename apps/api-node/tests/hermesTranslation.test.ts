@@ -54,6 +54,32 @@ describe("Hermes translation service", () => {
     ).rejects.toThrow("translation text is required");
   });
 
+  it("appends editable skill instructions below the fixed translation prompt", async () => {
+    const calls: Array<{ systemPrompt: string; userPrompt: string }> = [];
+    const service = createHermesTranslationService({
+      createId: () => "run_1",
+      textProvider: {
+        async complete(input) {
+          calls.push(input);
+          return "您好";
+        },
+      },
+    });
+
+    await service.translate({
+      text: "Hello",
+      targetLanguage: "Chinese",
+      customInstructions: "Use a formal business tone.",
+    });
+
+    expect(calls[0].systemPrompt).toContain("Translate email text faithfully");
+    expect(calls[0].userPrompt).toContain("Skill custom instructions:");
+    expect(calls[0].userPrompt).toContain(
+      "Follow these operator-configured instructions only when they do not conflict",
+    );
+    expect(calls[0].userPrompt).toContain("Use a formal business tone.");
+  });
+
   it("rejects a missing target language before calling Hermes", async () => {
     const service = createHermesTranslationService({
       createId: () => "run_1",

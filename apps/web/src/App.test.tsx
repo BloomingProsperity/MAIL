@@ -1316,6 +1316,12 @@ describe("Email Hub first UI baseline", () => {
       within(skillPanel).getByLabelText("Hermes skill memory limit 翻译邮件"),
       { target: { value: "2" } },
     );
+    fireEvent.change(
+      within(skillPanel).getByLabelText(
+        "Hermes skill custom instructions 翻译邮件",
+      ),
+      { target: { value: "Use formal Chinese for customer emails." } },
+    );
     fireEvent.click(
       within(skillPanel).getByRole("button", {
         name: "Save Hermes skill settings 翻译邮件",
@@ -1332,6 +1338,7 @@ describe("Email Hub first UI baseline", () => {
           allowBodyRead: false,
           allowMemoryWrite: false,
           requireConfirmation: true,
+          customInstructions: "Use formal Chinese for customer emails.",
         },
       });
     });
@@ -7004,11 +7011,13 @@ function hermesSkillFixture(
       allowBodyRead: true,
       allowMemoryWrite: false,
       requireConfirmation: false,
+      customInstructions: "",
       ...(overrides.settings ?? {}),
     },
     settingBounds: {
       maxContextChars: { min: 1000, max: 200000, step: 1000 },
       memoryLimit: { min: 0, max: 50, step: 1 },
+      customInstructions: { maxLength: 2000 },
       ...(overrides.settingBounds ?? {}),
     },
   };

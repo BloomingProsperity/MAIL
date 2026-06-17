@@ -9,6 +9,7 @@ import {
   loadHermesMemoryContext,
   usedHermesMemoryIds,
 } from "./memory-context.js";
+import { appendHermesCustomInstructionsPromptSection } from "./custom-instructions.js";
 import type { HermesMemoryStore } from "./memory-store.js";
 import {
   planHermesEmailSearch,
@@ -30,6 +31,7 @@ export interface HermesEmailSearchQaInput {
   memoryLayers?: string[];
   memoryLimit?: number;
   maxContextChars?: number;
+  customInstructions?: string;
 }
 
 export interface HermesEmailSearchQaMatch {
@@ -254,6 +256,7 @@ function emailSearchQaUserPrompt(
   lines.push("Interpreted search plan:");
   lines.push(...formatSearchPlan(searchPlan));
 
+  appendHermesCustomInstructionsPromptSection(lines, input);
   appendHermesMemoryPromptSection(lines, memories);
   lines.push("", "Search results:");
   lines.push(...matches.map(formatSearchResult));

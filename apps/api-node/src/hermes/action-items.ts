@@ -3,6 +3,7 @@ import {
   loadHermesMemoryContext,
   usedHermesMemoryIds,
 } from "./memory-context.js";
+import { appendHermesCustomInstructionsPromptSection } from "./custom-instructions.js";
 import type { HermesMemoryStore } from "./memory-store.js";
 import type { HermesRunStore, HermesTextProvider } from "./translation.js";
 
@@ -29,6 +30,7 @@ export interface HermesActionItemExtractInput {
   memoryScope?: string;
   memoryLayers?: string[];
   memoryLimit?: number;
+  customInstructions?: string;
 }
 
 export interface HermesActionItemExtractResult {
@@ -141,6 +143,7 @@ function actionItemUserPrompt(
     `Current time: ${input.now ?? "unknown"}`,
   ];
 
+  appendHermesCustomInstructionsPromptSection(lines, input);
   appendHermesMemoryPromptSection(lines, memories);
   lines.push("", "Thread context:", input.threadText);
   return lines.join("\n");

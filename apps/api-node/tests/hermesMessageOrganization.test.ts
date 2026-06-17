@@ -94,6 +94,12 @@ describe("Hermes message organization service", () => {
       messageId: "message_1",
       language: "zh-CN",
       memoryLayers: ["contact_memory", "semantic_profile"],
+      customInstructionsBySkillId: {
+        priority_triage: "Prefer urgent direct requests.",
+        label_suggest: "Use the 验证码 label for login codes.",
+        newsletter_cleanup: "Do not classify personal customer mail as feed.",
+        action_item_extract: "Keep action item titles short.",
+      },
     });
 
     const shared = {
@@ -113,6 +119,7 @@ describe("Hermes message organization service", () => {
         currentBucket: "P1 Urgent",
         currentScore: 96,
         currentReasons: ["Direct to you"],
+        customInstructions: "Prefer urgent direct requests.",
       },
     ]);
     expect(calls.labels).toEqual([
@@ -121,6 +128,7 @@ describe("Hermes message organization service", () => {
         senderEmail: "client@example.com",
         currentLabels: [],
         availableLabels: ["客户", "验证码"],
+        customInstructions: "Use the 验证码 label for login codes.",
       },
     ]);
     expect(calls.newsletter).toEqual([
@@ -128,12 +136,14 @@ describe("Hermes message organization service", () => {
         ...shared,
         senderEmail: "client@example.com",
         currentBucket: "P1 Urgent",
+        customInstructions: "Do not classify personal customer mail as feed.",
       },
     ]);
     expect(calls.actionItems).toEqual([
       {
         ...shared,
         now: "2026-06-16T11:30:00.000Z",
+        customInstructions: "Keep action item titles short.",
       },
     ]);
     expect(result).toMatchObject({

@@ -12,6 +12,7 @@ import {
   type MailEngineIngestStore,
 } from "../mail-engine/ingest-store.js";
 import {
+  HERMES_SKILL_CUSTOM_INSTRUCTIONS_MAX_LENGTH,
   getHermesSkills,
   type HermesSkill,
   type HermesSkillSettingsPatch,
@@ -3201,7 +3202,11 @@ async function ensureHermesSkillAllowed(
 function withHermesSkillContextBudget<T extends object>(
   input: T,
   skill: HermesSkill | undefined,
-): T & { maxContextChars?: number; memoryLimit?: number } {
+): T & {
+  maxContextChars?: number;
+  memoryLimit?: number;
+  customInstructions?: string;
+} {
   if (!skill) {
     return input;
   }
@@ -3210,23 +3215,44 @@ function withHermesSkillContextBudget<T extends object>(
     ...input,
     maxContextChars: skill.settings.maxContextChars,
     memoryLimit: skill.settings.memoryLimit,
+    ...((skill.settings.customInstructions ?? "")
+      ? { customInstructions: skill.settings.customInstructions ?? "" }
+      : {}),
   };
 }
 
 function withHermesSkillsContextBudget<T extends object>(
   input: T,
   skills: Array<HermesSkill | undefined>,
-): T & { maxContextChars?: number; memoryLimit?: number } {
+): T & {
+  maxContextChars?: number;
+  memoryLimit?: number;
+  customInstructionsBySkillId?: Record<string, string>;
+} {
   const budgets = skills
     .map((skill) => skill?.settings.maxContextChars)
     .filter((value): value is number => typeof value === "number");
   const memoryLimits = skills
     .map((skill) => skill?.settings.memoryLimit)
     .filter((value): value is number => typeof value === "number");
+  const customInstructionsBySkillId = Object.fromEntries(
+    skills
+      .filter((skill): skill is HermesSkill => Boolean(skill))
+      .map((skill) => [skill.id, skill.settings.customInstructions ?? ""])
+      .filter(([, customInstructions]) => customInstructions.length > 0),
+  );
+  const customInstructionsPatch =
+    Object.keys(customInstructionsBySkillId).length > 0
+      ? { customInstructionsBySkillId }
+      : {};
   if (budgets.length === 0) {
-    return memoryLimits.length === 0
-      ? input
-      : { ...input, memoryLimit: Math.min(...memoryLimits) };
+    return {
+      ...input,
+      ...(memoryLimits.length > 0
+        ? { memoryLimit: Math.min(...memoryLimits) }
+        : {}),
+      ...customInstructionsPatch,
+    };
   }
 
   return {
@@ -3235,21 +3261,30 @@ function withHermesSkillsContextBudget<T extends object>(
     ...(memoryLimits.length > 0
       ? { memoryLimit: Math.min(...memoryLimits) }
       : {}),
+    ...customInstructionsPatch,
   };
 }
 
 function withHermesInputTextBudget<T extends object>(
   input: T,
   skill: HermesSkill | undefined,
-): T & { memoryLimit?: number } {
+): T & { memoryLimit?: number; customInstructions?: string } {
   if (!skill) {
     return input;
   }
 
   const budget = { maxChars: skill.settings.maxContextChars };
-  const patch: Partial<{ text: string; threadText: string; memoryLimit: number }> = {
+  const patch: Partial<{
+    text: string;
+    threadText: string;
+    memoryLimit: number;
+    customInstructions: string;
+  }> = {
     memoryLimit: skill.settings.memoryLimit,
   };
+  if (skill.settings.customInstructions ?? "") {
+    patch.customInstructions = skill.settings.customInstructions ?? "";
+  }
   const value = input as { text?: unknown; threadText?: unknown };
   if (typeof value.text === "string") {
     patch.text = limitHermesContextText(value.text, budget);
@@ -4341,6 +4376,7 @@ function parseHermesSkillSettingsPatch(body: string): HermesSkillSettingsPatch {
     "allowBodyRead",
     "allowMemoryWrite",
     "requireConfirmation",
+    "customInstructions",
   ]);
   if (
     !payload ||
@@ -4376,6 +4412,11 @@ function parseHermesSkillSettingsPatch(body: string): HermesSkillSettingsPatch {
       payload.requireConfirmation,
     );
   }
+  if (payload.customInstructions !== undefined) {
+    patch.customInstructions = readHermesSkillSettingsCustomInstructions(
+      payload.customInstructions,
+    );
+  }
   if (Object.keys(patch).length === 0) {
     throw new InvalidHermesSkillSettingsRequestError();
   }
@@ -4397,6 +4438,22 @@ function readHermesSkillSettingsInteger(value: unknown): number {
   }
 
   return value as number;
+}
+
+function readHermesSkillSettingsCustomInstructions(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new InvalidHermesSkillSettingsRequestError();
+  }
+
+  const normalized = value.replace(/\r\n?/g, "\n").trim();
+  if (
+    normalized.length > HERMES_SKILL_CUSTOM_INSTRUCTIONS_MAX_LENGTH ||
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(normalized)
+  ) {
+    throw new InvalidHermesSkillSettingsRequestError();
+  }
+
+  return normalized;
 }
 
 function optionalWorkspaceContextParam<

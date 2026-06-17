@@ -20,6 +20,7 @@ export interface HermesMessageReplyDraftInput {
   memoryLayers?: string[];
   maxContextChars?: number;
   memoryLimit?: number;
+  customInstructions?: string;
 }
 
 export interface HermesMessageQuickReplyInput
@@ -158,6 +159,9 @@ function draftInputFromMessage(
     memoryScope: input.memoryScope ?? (senderEmail ? `sender:${senderEmail}` : "global"),
     ...(input.memoryLayers ? { memoryLayers: input.memoryLayers } : {}),
     ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
+    ...(input.customInstructions !== undefined
+      ? { customInstructions: input.customInstructions }
+      : {}),
   };
 }
 
@@ -181,6 +185,9 @@ function normalizeReplyDraftInput(
       ? { maxContextChars: input.maxContextChars }
       : {}),
     ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
+    ...(input.customInstructions !== undefined
+      ? { customInstructions: input.customInstructions }
+      : {}),
   };
 }
 

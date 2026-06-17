@@ -1,4 +1,5 @@
 import type { MailReadStore } from "../mail-read/mail-read-store.js";
+import { hasHermesCustomInstructions } from "./custom-instructions.js";
 import { hashMessageText, messageReadableText } from "./message-content.js";
 import type {
   HermesThreadSummaryMode,
@@ -18,6 +19,7 @@ export interface HermesMessageSummaryInput {
   forceRefresh?: boolean;
   maxContextChars?: number;
   memoryLimit?: number;
+  customInstructions?: string;
 }
 
 export interface HermesMessageSummaryResult extends HermesThreadSummaryResult {
@@ -124,7 +126,7 @@ export function createHermesMessageSummaryService(
         language: normalized.language,
       };
 
-      if (!normalized.forceRefresh && options.store) {
+      if (!normalized.forceRefresh && !hasHermesCustomInstructions(normalized) && options.store) {
         const cached = await options.store.getCachedSummary(lookup);
         if (cached) {
           return recordToResult(cached, true);
@@ -142,9 +144,10 @@ export function createHermesMessageSummaryService(
         memoryScope: normalized.memoryScope ?? "global",
         memoryLayers: normalized.memoryLayers,
         memoryLimit: normalized.memoryLimit,
+        customInstructions: normalized.customInstructions,
       });
 
-      if (!options.store) {
+      if (!options.store || hasHermesCustomInstructions(normalized)) {
         return {
           ...result,
           accountId: normalized.accountId,
@@ -182,6 +185,7 @@ function normalizeInput(
     | "forceRefresh"
     | "maxContextChars"
     | "memoryLimit"
+    | "customInstructions"
   > {
   return {
     accountId: normalizeRequiredText(input.accountId),
@@ -201,6 +205,9 @@ function normalizeInput(
       ? { maxContextChars: input.maxContextChars }
       : {}),
     ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
+    ...(input.customInstructions !== undefined
+      ? { customInstructions: input.customInstructions }
+      : {}),
   };
 }
 

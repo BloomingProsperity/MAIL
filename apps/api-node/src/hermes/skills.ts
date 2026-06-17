@@ -14,6 +14,7 @@ export interface HermesSkillSettings {
   allowBodyRead: boolean;
   allowMemoryWrite: boolean;
   requireConfirmation: boolean;
+  customInstructions: string;
 }
 
 export interface HermesSkillSettingBounds {
@@ -27,9 +28,14 @@ export interface HermesSkillSettingBounds {
     max: number;
     step: number;
   };
+  customInstructions: {
+    maxLength: number;
+  };
 }
 
 export type HermesSkillSettingsPatch = Partial<HermesSkillSettings>;
+
+export const HERMES_SKILL_CUSTOM_INSTRUCTIONS_MAX_LENGTH = 2_000;
 
 const SETTING_BOUNDS: HermesSkillSettingBounds = {
   maxContextChars: {
@@ -42,6 +48,9 @@ const SETTING_BOUNDS: HermesSkillSettingBounds = {
     max: 50,
     step: 1,
   },
+  customInstructions: {
+    maxLength: HERMES_SKILL_CUSTOM_INSTRUCTIONS_MAX_LENGTH,
+  },
 };
 
 const DEFAULT_SETTINGS: HermesSkillSettings = {
@@ -51,6 +60,7 @@ const DEFAULT_SETTINGS: HermesSkillSettings = {
   allowBodyRead: true,
   allowMemoryWrite: false,
   requireConfirmation: false,
+  customInstructions: "",
 };
 
 const SKILL_DEFINITIONS: Array<
@@ -160,7 +170,26 @@ export function normalizeHermesSkillSettings(
       base.requireConfirmation,
       "requireConfirmation",
     ),
+    customInstructions: normalizeHermesSkillCustomInstructions(
+      base.customInstructions,
+    ),
   };
+}
+
+export function normalizeHermesSkillCustomInstructions(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new Error("customInstructions must be a string");
+  }
+
+  const normalized = value.replace(/\r\n?/g, "\n").trim();
+  if (
+    normalized.length > HERMES_SKILL_CUSTOM_INSTRUCTIONS_MAX_LENGTH ||
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(normalized)
+  ) {
+    throw new Error("customInstructions is out of range");
+  }
+
+  return normalized;
 }
 
 function definition(

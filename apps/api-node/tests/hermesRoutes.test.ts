@@ -84,10 +84,12 @@ describe("Hermes routes", () => {
               allowBodyRead: true,
               allowMemoryWrite: false,
               requireConfirmation: false,
+              customInstructions: "Prefer concise translations.",
             },
             settingBounds: {
               maxContextChars: { min: 1000, max: 200000, step: 1000 },
               memoryLimit: { min: 0, max: 50, step: 1 },
+              customInstructions: { maxLength: 2000 },
             },
           },
         ];
@@ -109,10 +111,12 @@ describe("Hermes routes", () => {
             allowBodyRead: false,
             allowMemoryWrite: false,
             requireConfirmation: true,
+            customInstructions: "Use formal language.",
           },
           settingBounds: {
             maxContextChars: { min: 1000, max: 200000, step: 1000 },
             memoryLimit: { min: 0, max: 50, step: 1 },
+            customInstructions: { maxLength: 2000 },
           },
         };
       },
@@ -132,6 +136,7 @@ describe("Hermes routes", () => {
               memoryLimit: 2,
               allowBodyRead: false,
               requireConfirmation: true,
+              customInstructions: "Use formal language.",
             }),
           },
         );
@@ -149,6 +154,7 @@ describe("Hermes routes", () => {
             memoryLimit: 2,
             allowBodyRead: false,
             requireConfirmation: true,
+            customInstructions: "Use formal language.",
           },
         });
       },
@@ -167,6 +173,7 @@ describe("Hermes routes", () => {
             memoryLimit: 2,
             allowBodyRead: false,
             requireConfirmation: true,
+            customInstructions: "Use formal language.",
           },
         },
       ],
@@ -317,6 +324,20 @@ describe("Hermes routes", () => {
 
         expect(response.status).toBe(400);
         expect(await response.json()).toEqual({
+          error: "invalid_hermes_skill_settings_request",
+        });
+
+        const longInstructions = await fetch(
+          `${baseUrl}/api/hermes/skills/translate_text/settings`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ customInstructions: "x".repeat(2001) }),
+          },
+        );
+
+        expect(longInstructions.status).toBe(400);
+        expect(await longInstructions.json()).toEqual({
           error: "invalid_hermes_skill_settings_request",
         });
       },
@@ -515,7 +536,11 @@ describe("Hermes routes", () => {
   });
 
   it("limits direct Hermes skill run text and memories by editable budgets", async () => {
-    const calls: Array<{ text: string; memoryLimit?: number }> = [];
+    const calls: Array<{
+      text: string;
+      memoryLimit?: number;
+      customInstructions?: string;
+    }> = [];
     const hermesService = {
       async translate(input: { text: string }) {
         calls.push(input);
@@ -548,10 +573,12 @@ describe("Hermes routes", () => {
             allowBodyRead: true,
             allowMemoryWrite: false,
             requireConfirmation: false,
+            customInstructions: "Use formal Chinese.",
           },
           settingBounds: {
             maxContextChars: { min: 1000, max: 200000, step: 1000 },
             memoryLimit: { min: 0, max: 50, step: 1 },
+            customInstructions: { maxLength: 2000 },
           },
         };
       },
@@ -579,6 +606,7 @@ describe("Hermes routes", () => {
     expect(calls[0].text.length).toBeLessThanOrEqual(1000);
     expect(calls[0].text).toContain("Hermes context truncated");
     expect(calls[0].memoryLimit).toBe(2);
+    expect(calls[0].customInstructions).toBe("Use formal Chinese.");
   });
 
   it("blocks disabled Hermes skills before calling the Hermes service", async () => {
@@ -779,10 +807,12 @@ describe("Hermes routes", () => {
             allowBodyRead: true,
             allowMemoryWrite: false,
             requireConfirmation: false,
+            customInstructions: "Use formal Chinese.",
           },
           settingBounds: {
             maxContextChars: { min: 1000, max: 200000, step: 1000 },
             memoryLimit: { min: 0, max: 50, step: 1 },
+            customInstructions: { maxLength: 2000 },
           },
         };
       },
@@ -826,6 +856,7 @@ describe("Hermes routes", () => {
         targetLanguage: "Chinese",
         maxContextChars: 12000,
         memoryLimit: 3,
+        customInstructions: "Use formal Chinese.",
       },
     ]);
   });

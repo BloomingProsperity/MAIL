@@ -864,10 +864,12 @@ describe("emailHubApi", () => {
               allowBodyRead: true,
               allowMemoryWrite: false,
               requireConfirmation: false,
+              customInstructions: "Prefer concise translations.",
             },
             settingBounds: {
               maxContextChars: { min: 1000, max: 200000, step: 1000 },
               memoryLimit: { min: 0, max: 50, step: 1 },
+              customInstructions: { maxLength: 2000 },
             },
           },
         ]),
@@ -885,10 +887,12 @@ describe("emailHubApi", () => {
             allowBodyRead: false,
             allowMemoryWrite: false,
             requireConfirmation: true,
+            customInstructions: "Use formal language.",
           },
           settingBounds: {
             maxContextChars: { min: 1000, max: 200000, step: 1000 },
             memoryLimit: { min: 0, max: 50, step: 1 },
+            customInstructions: { maxLength: 2000 },
           },
         }),
       );
@@ -903,10 +907,13 @@ describe("emailHubApi", () => {
         memoryLimit: 2,
         allowBodyRead: false,
         requireConfirmation: true,
+        customInstructions: "Use formal language.",
       },
     });
 
-    expect(skills[0].settings.enabled).toBe(true);
+    expect(skills[0].settings.customInstructions).toBe(
+      "Prefer concise translations.",
+    );
     expect(updated.settings.enabled).toBe(false);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -924,6 +931,7 @@ describe("emailHubApi", () => {
           memoryLimit: 2,
           allowBodyRead: false,
           requireConfirmation: true,
+          customInstructions: "Use formal language.",
         }),
       }),
     );

@@ -466,6 +466,7 @@ export interface HermesSkillSettingsDto {
   allowBodyRead: boolean;
   allowMemoryWrite: boolean;
   requireConfirmation: boolean;
+  customInstructions: string;
 }
 
 export interface HermesSkillSettingBoundsDto {
@@ -478,6 +479,9 @@ export interface HermesSkillSettingBoundsDto {
     min: number;
     max: number;
     step: number;
+  };
+  customInstructions: {
+    maxLength: number;
   };
 }
 

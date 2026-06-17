@@ -27,6 +27,7 @@ export interface HermesMessageOrganizationInput {
   memoryLayers?: string[];
   maxContextChars?: number;
   memoryLimit?: number;
+  customInstructionsBySkillId?: Record<string, string>;
 }
 
 export interface HermesMessageOrganizationResult {
@@ -119,21 +120,29 @@ export function createHermesMessageOrganizationService(
           currentBucket: message.classification.bucket,
           currentScore: message.classification.priorityScore,
           currentReasons: message.classification.reasons,
+          customInstructions:
+            normalized.customInstructionsBySkillId?.priority_triage,
         }),
         options.labelSuggestService.suggestLabels({
           ...sharedInput,
           senderEmail,
           currentLabels: [],
           availableLabels,
+          customInstructions:
+            normalized.customInstructionsBySkillId?.label_suggest,
         }),
         options.newsletterCleanupService.cleanupNewsletter({
           ...sharedInput,
           senderEmail,
           currentBucket: message.classification.bucket,
+          customInstructions:
+            normalized.customInstructionsBySkillId?.newsletter_cleanup,
         }),
         options.actionItemExtractService.extractActionItems({
           ...sharedInput,
           now: options.now(),
+          customInstructions:
+            normalized.customInstructionsBySkillId?.action_item_extract,
         }),
       ]);
 
@@ -166,7 +175,12 @@ function normalizeInput(
 ): Required<Pick<HermesMessageOrganizationInput, "accountId" | "messageId" | "language">> &
   Pick<
     HermesMessageOrganizationInput,
-    "memoryIds" | "memoryScope" | "memoryLayers" | "maxContextChars" | "memoryLimit"
+    | "memoryIds"
+    | "memoryScope"
+    | "memoryLayers"
+    | "maxContextChars"
+    | "memoryLimit"
+    | "customInstructionsBySkillId"
   > {
   return {
     accountId: normalizeRequiredText(input.accountId),
@@ -183,6 +197,9 @@ function normalizeInput(
       ? { maxContextChars: input.maxContextChars }
       : {}),
     ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
+    ...(input.customInstructionsBySkillId
+      ? { customInstructionsBySkillId: input.customInstructionsBySkillId }
+      : {}),
   };
 }
 

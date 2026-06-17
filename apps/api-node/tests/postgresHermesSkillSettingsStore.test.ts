@@ -18,6 +18,7 @@ describe("postgres Hermes skill settings store", () => {
               allow_body_read: false,
               allow_memory_write: false,
               require_confirmation: true,
+              custom_instructions: "Prefer concise translations.",
             },
           ],
         };
@@ -35,6 +36,7 @@ describe("postgres Hermes skill settings store", () => {
         allowBodyRead: false,
         allowMemoryWrite: false,
         requireConfirmation: true,
+        customInstructions: "Prefer concise translations.",
       },
     });
   });
@@ -54,6 +56,7 @@ describe("postgres Hermes skill settings store", () => {
               allow_body_read: true,
               allow_memory_write: false,
               require_confirmation: true,
+              custom_instructions: "Keep replies direct.",
             },
           ],
         };
@@ -69,6 +72,7 @@ describe("postgres Hermes skill settings store", () => {
         allowBodyRead: true,
         allowMemoryWrite: false,
         requireConfirmation: true,
+        customInstructions: "Keep replies direct.",
       },
     });
 
@@ -82,6 +86,7 @@ describe("postgres Hermes skill settings store", () => {
       true,
       false,
       true,
+      "Keep replies direct.",
     ]);
     expect(saved).toEqual({
       enabled: true,
@@ -90,6 +95,7 @@ describe("postgres Hermes skill settings store", () => {
       allowBodyRead: true,
       allowMemoryWrite: false,
       requireConfirmation: true,
+      customInstructions: "Keep replies direct.",
     });
   });
 });

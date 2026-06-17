@@ -6968,11 +6968,13 @@ function fallbackHermesSkill(
       allowBodyRead: true,
       allowMemoryWrite: false,
       requireConfirmation: false,
+      customInstructions: "",
       ...settings,
     },
     settingBounds: {
       maxContextChars: { min: 1000, max: 200000, step: 1000 },
       memoryLimit: { min: 0, max: 50, step: 1 },
+      customInstructions: { maxLength: 2000 },
     },
   };
 }
@@ -7002,6 +7004,8 @@ function formatHermesGuardrail(guardrail: string): string {
   const labels: Record<string, string> = {
     "Prompt context is capped per skill before provider calls and audit persistence.":
       "调用前按 skill 上下文预算截断 Prompt，并按截断后的内容审计。",
+    "Skill custom instructions are length capped and appended below system rules.":
+      "自定义 skill 指令有长度上限，并且优先级低于系统规则。",
     "Memory fan-out is capped per skill through memoryLimit.":
       "每个 skill 按 memoryLimit 限制记忆读取数量，避免记忆扇出失控。",
     "State-changing learning paths must pass skill permission and confirmation checks.":
@@ -9324,6 +9328,25 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                   />
                 </label>
               </div>
+
+              <label className="hermes-skill-custom-instructions">
+                <span>自定义指令</span>
+                <textarea
+                  aria-label={`Hermes skill custom instructions ${skill.title}`}
+                  maxLength={skill.settingBounds.customInstructions.maxLength}
+                  rows={4}
+                  value={skill.settings.customInstructions}
+                  onChange={(event) =>
+                    updateLocalSkill(skill.id, {
+                      customInstructions: event.currentTarget.value,
+                    })
+                  }
+                />
+                <span>
+                  {skill.settings.customInstructions.length.toLocaleString()} /{" "}
+                  {skill.settingBounds.customInstructions.maxLength.toLocaleString()}
+                </span>
+              </label>
 
               <div className="inline-actions">
                 <button

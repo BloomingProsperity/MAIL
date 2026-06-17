@@ -3,6 +3,7 @@ import {
   loadHermesMemoryContext,
   usedHermesMemoryIds,
 } from "./memory-context.js";
+import { appendHermesCustomInstructionsPromptSection } from "./custom-instructions.js";
 import type { HermesMemoryStore } from "./memory-store.js";
 import type { HermesRunStore, HermesTextProvider } from "./translation.js";
 
@@ -38,6 +39,7 @@ export interface HermesNewsletterCleanupInput {
   memoryScope?: string;
   memoryLayers?: string[];
   memoryLimit?: number;
+  customInstructions?: string;
 }
 
 export interface HermesNewsletterCleanupResult {
@@ -158,6 +160,7 @@ function newsletterCleanupUserPrompt(
     `Language: ${input.language ?? "match the thread"}`,
   ];
 
+  appendHermesCustomInstructionsPromptSection(lines, input);
   appendHermesMemoryPromptSection(lines, memories);
   lines.push("", "Thread context:", input.threadText);
   return lines.join("\n");

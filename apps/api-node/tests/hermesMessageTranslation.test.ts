@@ -217,6 +217,61 @@ describe("Hermes message translation service", () => {
     );
   });
 
+  it("bypasses the message translation cache when custom instructions are configured", async () => {
+    const translationCalls: unknown[] = [];
+    const storeCalls: string[] = [];
+    const service = createHermesMessageTranslationService({
+      createId: () => "unused",
+      store: {
+        async getCachedTranslation() {
+          storeCalls.push("lookup");
+          throw new Error("custom instructions should bypass cache lookup");
+        },
+        async saveTranslation() {
+          storeCalls.push("save");
+          throw new Error("custom instructions should not write legacy cache");
+        },
+      },
+      mailReadStore: {
+        async getMessage() {
+          return message({ bodyText: "Hello" });
+        },
+      },
+      translationService: {
+        async translate(input) {
+          translationCalls.push(input);
+          return {
+            skillRunId: "run_custom",
+            skillId: "translate_text",
+            sourceLanguage: "auto",
+            targetLanguage: "Chinese",
+            translatedText: "您好",
+          };
+        },
+      },
+    });
+
+    const result = await service.translateMessage({
+      accountId: "account_1",
+      messageId: "message_1",
+      targetLanguage: "Chinese",
+      customInstructions: "Use formal language.",
+    });
+
+    expect(storeCalls).toEqual([]);
+    expect(translationCalls).toEqual([
+      expect.objectContaining({
+        text: "Hello",
+        customInstructions: "Use formal language.",
+      }),
+    ]);
+    expect(result).toMatchObject({
+      skillRunId: "run_custom",
+      translatedText: "您好",
+      cached: false,
+    });
+  });
+
   it("returns undefined for a message outside the account scope", async () => {
     const service = createHermesMessageTranslationService({
       createId: () => "unused",

@@ -20,6 +20,7 @@ interface HermesSkillSettingsRow extends Record<string, unknown> {
   allow_body_read: boolean;
   allow_memory_write: boolean;
   require_confirmation: boolean;
+  custom_instructions: string;
 }
 
 export function createPostgresHermesSkillSettingsStore(
@@ -36,7 +37,8 @@ export function createPostgresHermesSkillSettingsStore(
             memory_limit,
             allow_body_read,
             allow_memory_write,
-            require_confirmation
+            require_confirmation,
+            custom_instructions
           FROM hermes_skill_settings
         `,
       );
@@ -56,7 +58,8 @@ export function createPostgresHermesSkillSettingsStore(
             memory_limit,
             allow_body_read,
             allow_memory_write,
-            require_confirmation
+            require_confirmation,
+            custom_instructions
           FROM hermes_skill_settings
           WHERE skill_id = $1
           LIMIT 1
@@ -77,9 +80,10 @@ export function createPostgresHermesSkillSettingsStore(
             memory_limit,
             allow_body_read,
             allow_memory_write,
-            require_confirmation
+            require_confirmation,
+            custom_instructions
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           ON CONFLICT (skill_id) DO UPDATE
           SET
             enabled = EXCLUDED.enabled,
@@ -88,6 +92,7 @@ export function createPostgresHermesSkillSettingsStore(
             allow_body_read = EXCLUDED.allow_body_read,
             allow_memory_write = EXCLUDED.allow_memory_write,
             require_confirmation = EXCLUDED.require_confirmation,
+            custom_instructions = EXCLUDED.custom_instructions,
             updated_at = now()
           RETURNING
             skill_id,
@@ -96,7 +101,8 @@ export function createPostgresHermesSkillSettingsStore(
             memory_limit,
             allow_body_read,
             allow_memory_write,
-            require_confirmation
+            require_confirmation,
+            custom_instructions
         `,
         [
           input.skillId,
@@ -106,6 +112,7 @@ export function createPostgresHermesSkillSettingsStore(
           input.settings.allowBodyRead,
           input.settings.allowMemoryWrite,
           input.settings.requireConfirmation,
+          input.settings.customInstructions,
         ],
       );
 
@@ -122,5 +129,6 @@ function rowToSettings(row: HermesSkillSettingsRow): HermesSkillSettings {
     allowBodyRead: row.allow_body_read,
     allowMemoryWrite: row.allow_memory_write,
     requireConfirmation: row.require_confirmation,
+    customInstructions: row.custom_instructions ?? "",
   };
 }

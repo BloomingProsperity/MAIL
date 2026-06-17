@@ -5,6 +5,7 @@ import {
   loadHermesMemoryContext,
   usedHermesMemoryIds,
 } from "./memory-context.js";
+import { appendHermesCustomInstructionsPromptSection } from "./custom-instructions.js";
 import type { HermesMemoryStore } from "./memory-store.js";
 
 export interface HermesTextProvider {
@@ -24,6 +25,7 @@ export interface HermesTranslateInput {
   memoryScope?: string;
   memoryLayers?: string[];
   memoryLimit?: number;
+  customInstructions?: string;
 }
 
 export interface HermesTranslateResult {
@@ -169,6 +171,7 @@ function translationUserPrompt(
     `Tone: ${input.tone ?? "preserve original"}`,
   ];
 
+  appendHermesCustomInstructionsPromptSection(lines, input);
   appendHermesMemoryPromptSection(lines, memories);
 
   lines.push("", "Text:", input.text);

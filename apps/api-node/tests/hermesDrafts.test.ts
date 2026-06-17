@@ -61,6 +61,7 @@ describe("Hermes reply draft service", () => {
       memoryIds: ["00000000-0000-0000-0000-000000000099"],
       memoryScope: "global",
       memoryLayers: ["writing_style_profile"],
+      customInstructions: "Prefer crisp executive wording.",
     });
 
     expect(memoryQueries).toEqual([
@@ -68,6 +69,10 @@ describe("Hermes reply draft service", () => {
     ]);
     expect(providerCalls[0].systemPrompt).toContain("Do not send");
     expect(providerCalls[0].userPrompt).toContain("Relevant user memory:");
+    expect(providerCalls[0].userPrompt).toContain("Skill custom instructions:");
+    expect(providerCalls[0].userPrompt).toContain(
+      "Prefer crisp executive wording.",
+    );
     expect(providerCalls[0].userPrompt).toContain(
       "[writing_style_profile/global confidence=0.90] Keep replies concise and concrete.",
     );

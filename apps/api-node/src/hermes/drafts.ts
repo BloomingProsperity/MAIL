@@ -3,6 +3,7 @@ import {
   loadHermesMemoryContext,
   usedHermesMemoryIds,
 } from "./memory-context.js";
+import { appendHermesCustomInstructionsPromptSection } from "./custom-instructions.js";
 import type { HermesMemoryStore } from "./memory-store.js";
 import type { HermesRunStore, HermesTextProvider } from "./translation.js";
 
@@ -17,6 +18,7 @@ export interface HermesReplyDraftInput {
   memoryScope?: string;
   memoryLayers?: string[];
   memoryLimit?: number;
+  customInstructions?: string;
 }
 
 export type HermesQuickReplyScenario =
@@ -46,6 +48,7 @@ export interface HermesQuickReplyInput {
   memoryScope?: string;
   memoryLayers?: string[];
   memoryLimit?: number;
+  customInstructions?: string;
 }
 
 export interface HermesRewritePolishInput {
@@ -59,6 +62,7 @@ export interface HermesRewritePolishInput {
   memoryScope?: string;
   memoryLayers?: string[];
   memoryLimit?: number;
+  customInstructions?: string;
 }
 
 export interface HermesReplyDraftResult {
@@ -365,6 +369,7 @@ function replyDraftUserPrompt(
     `User instruction: ${input.instruction ?? "draft a suitable reply"}`,
   ];
 
+  appendHermesCustomInstructionsPromptSection(lines, input);
   appendHermesMemoryPromptSection(lines, memories);
   lines.push("", "Thread context:", input.threadText);
   return lines.join("\n");
@@ -383,6 +388,7 @@ function quickReplyUserPrompt(
     `User instruction: ${input.instruction ?? "draft a suitable quick reply"}`,
   ];
 
+  appendHermesCustomInstructionsPromptSection(lines, input);
   appendHermesMemoryPromptSection(lines, memories);
   lines.push("", "Thread context:", input.threadText);
   return lines.join("\n");
@@ -400,6 +406,7 @@ function rewritePolishUserPrompt(
     `User instruction: ${input.instruction ?? "improve the draft"}`,
   ];
 
+  appendHermesCustomInstructionsPromptSection(lines, input);
   appendHermesMemoryPromptSection(lines, memories);
   lines.push("", "Original draft:", input.text);
   return lines.join("\n");

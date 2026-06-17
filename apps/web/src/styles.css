@@ -2540,6 +2540,32 @@ h2 {
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
+.hermes-skill-custom-instructions textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font: inherit;
+  line-height: 1.45;
+  outline: 0;
+}
+
+.hermes-skill-custom-instructions textarea:focus {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.hermes-skill-custom-instructions > span:last-child {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
 .search-panel {
   display: grid;
   gap: 14px;

@@ -172,6 +172,60 @@ describe("Hermes message summary service", () => {
     });
   });
 
+  it("bypasses the message summary cache when custom instructions are configured", async () => {
+    const summaryCalls: unknown[] = [];
+    const storeCalls: string[] = [];
+    const service = createHermesMessageSummaryService({
+      createId: () => "unused",
+      store: {
+        async getCachedSummary() {
+          storeCalls.push("lookup");
+          throw new Error("custom instructions should bypass cache lookup");
+        },
+        async saveSummary() {
+          storeCalls.push("save");
+          throw new Error("custom instructions should not write legacy cache");
+        },
+      },
+      mailReadStore: {
+        async getMessage() {
+          return message({ bodyText: "Please confirm today." });
+        },
+      },
+      summaryService: {
+        async summarizeThread(input) {
+          summaryCalls.push(input);
+          return {
+            skillRunId: "run_custom",
+            skillId: "thread_summarize",
+            mode: "short",
+            summaryText: "Needs confirmation today.",
+          };
+        },
+      },
+    });
+
+    const result = await service.summarizeMessage({
+      accountId: "account_1",
+      messageId: "message_1",
+      mode: "short",
+      customInstructions: "Focus only on reply needs.",
+    });
+
+    expect(storeCalls).toEqual([]);
+    expect(summaryCalls).toEqual([
+      expect.objectContaining({
+        threadText: "Please confirm today.",
+        customInstructions: "Focus only on reply needs.",
+      }),
+    ]);
+    expect(result).toMatchObject({
+      skillRunId: "run_custom",
+      summaryText: "Needs confirmation today.",
+      cached: false,
+    });
+  });
+
   it("returns undefined for a message outside the account scope", async () => {
     const service = createHermesMessageSummaryService({
       createId: () => "unused",

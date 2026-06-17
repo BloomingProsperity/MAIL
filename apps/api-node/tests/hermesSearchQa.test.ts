@@ -99,6 +99,7 @@ describe("Hermes email search QA service", () => {
       memoryIds: ["00000000-0000-0000-0000-000000000098"],
       memoryScope: "global",
       memoryLayers: ["contact_memory"],
+      customInstructions: "Answer in two concise sentences.",
     });
 
     expect(mailSearchCalls).toEqual([
@@ -118,6 +119,10 @@ describe("Hermes email search QA service", () => {
       "answer questions about email search results",
     );
     expect(providerCalls[0].userPrompt).toContain("Relevant user memory:");
+    expect(providerCalls[0].userPrompt).toContain("Skill custom instructions:");
+    expect(providerCalls[0].userPrompt).toContain(
+      "Answer in two concise sentences.",
+    );
     expect(providerCalls[0].userPrompt).toContain(
       "[contact_memory/global confidence=0.85] Lina is a customer contact.",
     );

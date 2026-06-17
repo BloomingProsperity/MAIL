@@ -104,6 +104,7 @@ export function createHermesResourceProfile(
     deployment: deploymentForBudget(maxContextCharsPerRun, enabledSkills.length),
     guardrails: [
       "Prompt context is capped per skill before provider calls and audit persistence.",
+      "Skill custom instructions are length capped and appended below system rules.",
       "Memory fan-out is capped per skill through memoryLimit.",
       "State-changing learning paths must pass skill permission and confirmation checks.",
       "Retention cleanup prunes expired Hermes caches, plans, feedback, audit events, and skill runs in bounded batches.",

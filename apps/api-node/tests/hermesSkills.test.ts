@@ -22,6 +22,7 @@ describe("Hermes skills", () => {
         allowBodyRead: true,
         allowMemoryWrite: true,
         requireConfirmation: false,
+        customInstructions: "",
       },
     });
   });
@@ -42,11 +43,15 @@ describe("Hermes skills", () => {
       allowBodyRead: true,
       allowMemoryWrite: false,
       requireConfirmation: false,
+      customInstructions: "",
     });
     expect(skill.settingBounds.maxContextChars).toEqual({
       min: 1000,
       max: 200000,
       step: 1000,
+    });
+    expect(skill.settingBounds.customInstructions).toEqual({
+      maxLength: 2000,
     });
   });
 
@@ -69,5 +74,18 @@ describe("Hermes skills", () => {
         maxContextChars: 12500,
       }),
     ).toThrow("maxContextChars is out of range");
+  });
+
+  it("normalizes and bounds editable custom instructions", () => {
+    expect(
+      normalizeHermesSkillSettings("translate_text", {
+        customInstructions: "  Keep line breaks.\r\nUse formal Chinese.  ",
+      }).customInstructions,
+    ).toBe("Keep line breaks.\nUse formal Chinese.");
+    expect(() =>
+      normalizeHermesSkillSettings("translate_text", {
+        customInstructions: "x".repeat(2001),
+      }),
+    ).toThrow("customInstructions is out of range");
   });
 });
