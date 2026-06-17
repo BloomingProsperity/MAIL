@@ -389,6 +389,15 @@ describe("Hermes rule learning service", () => {
       firstRun,
       secondRun,
     ]);
+    await expect(
+      service.listRuleExecutions({
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        limit: 10,
+      }),
+    ).resolves.toEqual({
+      items: [secondRun, firstRun],
+    });
   });
 
   it("does not manually run disabled Hermes rules", async () => {

@@ -4,6 +4,7 @@ import type {
   HermesRule,
   HermesRuleCandidate,
   HermesRuleCandidateStatus,
+  HermesRuleExecution,
   HermesRuleFeedbackAction,
   HermesRuleHistoryBackfill,
   HermesRuleMessageMatch,
@@ -62,6 +63,15 @@ interface HistoryBackfillRow extends Record<string, unknown> {
   matched_count: string | number;
   applied_count: string | number;
   sample_message_ids?: string[] | null;
+}
+
+interface RuleExecutionRow extends Record<string, unknown> {
+  id: string;
+  account_id: string;
+  rule_id: string;
+  mode: string;
+  result: Record<string, unknown>;
+  created_at: string;
 }
 
 export function createPostgresHermesRuleStore(
@@ -484,6 +494,30 @@ export function createPostgresHermesRuleStore(
       return input;
     },
 
+    async listRuleExecutions(input) {
+      const result = await client.query<RuleExecutionRow>(
+        `
+          SELECT
+            id,
+            account_id,
+            rule_id,
+            mode,
+            result,
+            created_at
+          FROM hermes_rule_runs
+          WHERE account_id = $1
+            AND mode = 'active'
+            AND rule_id IS NOT NULL
+            AND ($2::uuid IS NULL OR rule_id = $2::uuid)
+          ORDER BY created_at DESC, id DESC
+          LIMIT $3
+        `,
+        [input.accountId, input.ruleId ?? null, input.limit],
+      );
+
+      return { items: result.rows.map(ruleExecutionFromRow) };
+    },
+
     async listRules(input) {
       const result = await client.query<RuleRow>(
         `
@@ -610,6 +644,37 @@ function emptyHistoryBackfill(
     appliedCount: 0,
     sampleMessageIds: [],
   };
+}
+
+function ruleExecutionFromRow(row: RuleExecutionRow): HermesRuleExecution {
+  const sampleMessageIds = Array.isArray(row.result.sampleMessageIds)
+    ? row.result.sampleMessageIds.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  const actionPreview =
+    row.result.actionPreview &&
+    typeof row.result.actionPreview === "object" &&
+    !Array.isArray(row.result.actionPreview)
+      ? (row.result.actionPreview as Record<string, unknown>)
+      : {};
+
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    ruleId: row.rule_id,
+    mode: "active",
+    matchedCount: numericRuleRunMetric(row.result.matchedCount),
+    appliedCount: numericRuleRunMetric(row.result.appliedCount),
+    sampleMessageIds,
+    actionPreview,
+    createdAt: row.created_at,
+  };
+}
+
+function numericRuleRunMetric(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function savedViewMatchConfig(input: SavedViewDefinition): Record<string, unknown> {

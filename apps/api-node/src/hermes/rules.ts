@@ -124,6 +124,12 @@ export interface RunHermesRuleInput {
   limit?: number;
 }
 
+export interface ListHermesRuleExecutionsInput {
+  accountId: string;
+  ruleId?: string;
+  limit: number;
+}
+
 export interface ListHermesRulesInput {
   accountId: string;
   enabled?: boolean;
@@ -177,6 +183,9 @@ export interface HermesRuleStore {
     limit: number;
   }): Promise<HermesRuleHistoryBackfill>;
   recordRuleExecution(input: HermesRuleExecution): Promise<HermesRuleExecution>;
+  listRuleExecutions(
+    input: ListHermesRuleExecutionsInput,
+  ): Promise<{ items: HermesRuleExecution[] }>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
   updateRuleEnabled(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
   upsertSavedView(input: SavedViewDefinition): Promise<void>;
@@ -200,6 +209,9 @@ export interface HermesRuleService {
     input: BackfillHermesRuleHistoryInput,
   ): Promise<HermesRuleHistoryBackfill | undefined>;
   runRule(input: RunHermesRuleInput): Promise<HermesRuleExecution | undefined>;
+  listRuleExecutions(
+    input: ListHermesRuleExecutionsInput,
+  ): Promise<{ items: HermesRuleExecution[] }>;
   listRules(input: ListHermesRulesInput): Promise<{ items: HermesRule[] }>;
   updateRuleEnabled(input: UpdateHermesRuleInput): Promise<HermesRule | undefined>;
 }
@@ -430,6 +442,14 @@ export function createHermesRuleService(
       });
     },
 
+    async listRuleExecutions(input) {
+      return options.store.listRuleExecutions({
+        accountId: requireString(input.accountId),
+        ...(input.ruleId ? { ruleId: requireString(input.ruleId) } : {}),
+        limit: positiveInteger(input.limit, 1, 100),
+      });
+    },
+
     async listRules(input) {
       return options.store.listRules({
         accountId: requireString(input.accountId),
@@ -641,6 +661,20 @@ export function createInMemoryHermesRuleStore(
     async recordRuleExecution(input) {
       executions.push({ ...input });
       return { ...input };
+    },
+
+    async listRuleExecutions(input) {
+      return {
+        items: [...executions]
+          .reverse()
+          .filter(
+            (execution) =>
+              execution.accountId === input.accountId &&
+              (!input.ruleId || execution.ruleId === input.ruleId),
+          )
+          .slice(0, input.limit)
+          .map((execution) => ({ ...execution })),
+      };
     },
 
     async listRules(input) {

@@ -1684,6 +1684,25 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
       }
 
+      const hermesRuleExecutionRoute = parseHermesRuleExecutionRoute(request.url);
+      if (hermesRuleExecutionRoute) {
+        if (!config.hermesRuleService) {
+          writeJson(response, 503, { error: "hermes_rules_unavailable" });
+          return;
+        }
+
+        if (
+          hermesRuleExecutionRoute.action === "list" &&
+          request.method === "GET"
+        ) {
+          const result = await config.hermesRuleService.listRuleExecutions(
+            parseHermesRuleExecutionListInput(request.url),
+          );
+          writeJson(response, 200, result);
+          return;
+        }
+      }
+
       const hermesRuleRoute = parseHermesRuleRoute(request.url);
       if (hermesRuleRoute) {
         if (!config.hermesRuleService) {
@@ -4024,6 +4043,17 @@ function parseHermesRuleRoute(
     action: match[2] as "simulate" | "approve",
     candidateId: decodeURIComponent(match[1]),
   };
+}
+
+function parseHermesRuleExecutionRoute(
+  requestUrl: string | undefined,
+): { action: "list" } | undefined {
+  if (!requestUrl) {
+    return undefined;
+  }
+
+  const url = new URL(requestUrl, "http://localhost");
+  return url.pathname === "/api/hermes/rule-runs" ? { action: "list" } : undefined;
 }
 
 function parseHermesActionPlanRoute(
@@ -7138,6 +7168,29 @@ function parseHermesRuleListInput(requestUrl: string | undefined): {
   return {
     accountId,
     ...(typeof enabled === "boolean" ? { enabled } : {}),
+    limit: parseHermesRuleLimit(url.searchParams.get("limit")),
+  };
+}
+
+function parseHermesRuleExecutionListInput(requestUrl: string | undefined): {
+  accountId: string;
+  ruleId?: string;
+  limit: number;
+} {
+  const url = new URL(requestUrl ?? "", "http://localhost");
+  const accountId = url.searchParams.get("accountId");
+  if (!isNonEmptyString(accountId)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  const ruleId = url.searchParams.get("ruleId");
+  if (ruleId !== null && !isNonEmptyString(ruleId)) {
+    throw new InvalidHermesRuleRequestError();
+  }
+
+  return {
+    accountId,
+    ...(ruleId ? { ruleId } : {}),
     limit: parseHermesRuleLimit(url.searchParams.get("limit")),
   };
 }

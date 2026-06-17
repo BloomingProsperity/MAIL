@@ -444,6 +444,67 @@ describe("postgres Hermes rule store", () => {
     });
   });
 
+  it("lists active Hermes rule executions by account and rule", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              id: "run_active_1",
+              account_id: "account_1",
+              rule_id: "rule_codes",
+              mode: "active",
+              result: {
+                matchedCount: 7,
+                appliedCount: 3,
+                sampleMessageIds: ["message_1", "message_2"],
+                actionPreview: {
+                  type: "apply_label",
+                  labelId: "label_codes",
+                },
+                createdAt: "2026-06-13T10:30:00.000Z",
+              },
+              created_at: "2026-06-13T10:31:00.000Z",
+            },
+          ],
+        };
+      },
+    };
+    const store = createPostgresHermesRuleStore(client);
+
+    const result = await store.listRuleExecutions({
+      accountId: "account_1",
+      ruleId: "rule_codes",
+      limit: 20,
+    });
+
+    expect(queries[0].text).toMatch(/FROM hermes_rule_runs/i);
+    expect(queries[0].text).toMatch(/mode = 'active'/i);
+    expect(queries[0].text).toMatch(/rule_id IS NOT NULL/i);
+    expect(queries[0].text).toMatch(/ORDER BY created_at DESC, id DESC/i);
+    expect(queries[0].values).toEqual(["account_1", "rule_codes", 20]);
+    expect(result).toEqual({
+      items: [
+        {
+          id: "run_active_1",
+          accountId: "account_1",
+          ruleId: "rule_codes",
+          mode: "active",
+          matchedCount: 7,
+          appliedCount: 3,
+          sampleMessageIds: ["message_1", "message_2"],
+          actionPreview: {
+            type: "apply_label",
+            labelId: "label_codes",
+          },
+          createdAt: "2026-06-13T10:31:00.000Z",
+        },
+      ],
+    });
+  });
+
   it("does not approve a candidate that already left shadow mode", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

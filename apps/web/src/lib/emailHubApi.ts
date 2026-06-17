@@ -1854,6 +1854,11 @@ export interface EmailHubApi {
     ruleId: string;
     limit?: number;
   }): Promise<HermesRuleExecutionDto>;
+  listHermesRuleExecutions(input: {
+    accountId: string;
+    ruleId?: string;
+    limit?: number;
+  }): Promise<Page<HermesRuleExecutionDto>>;
   draftHermesRule(input: {
     accountId: string;
     command: string;
@@ -2723,6 +2728,22 @@ export function createEmailHubApi(
             }),
           ),
         },
+      );
+    },
+
+    listHermesRuleExecutions(input) {
+      const params = new URLSearchParams();
+      params.set("accountId", input.accountId);
+      if (input.ruleId) {
+        params.set("ruleId", input.ruleId);
+      }
+      if (input.limit !== undefined) {
+        params.set("limit", String(input.limit));
+      }
+      return request(
+        fetchImpl,
+        baseUrl,
+        `/api/hermes/rule-runs?${params.toString()}`,
       );
     },
 

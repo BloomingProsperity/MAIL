@@ -8653,7 +8653,14 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
         accountId: props.accountId,
         limit: 50,
       });
+      const executionsPage = await props.api
+        .listHermesRuleExecutions({
+          accountId: props.accountId,
+          limit: 100,
+        })
+        .catch(() => ({ items: [] as HermesRuleExecutionDto[] }));
       setRules(page.items);
+      setRuleExecutions(latestExecutionsByRuleId(executionsPage.items));
       setRuleNotice(
         page.items.length === 0
           ? "当前账号还没有 Hermes 规则。"
@@ -9070,6 +9077,18 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
       </div>
     </section>
   );
+}
+
+function latestExecutionsByRuleId(
+  executions: HermesRuleExecutionDto[],
+): Record<string, HermesRuleExecutionDto> {
+  const result: Record<string, HermesRuleExecutionDto> = {};
+  for (const execution of executions) {
+    if (!result[execution.ruleId]) {
+      result[execution.ruleId] = execution;
+    }
+  }
+  return result;
 }
 
 function HermesMemoryManagerPanel(props: {

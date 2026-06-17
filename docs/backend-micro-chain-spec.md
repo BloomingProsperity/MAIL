@@ -488,8 +488,8 @@ Reference model:
 
 State:
 
-- `hermes_rule_candidates.status = shadow | approved | rejected`
-- `hermes_rule_runs.mode = shadow | live`
+- `hermes_rule_candidates.status = shadow | approved | dismissed`
+- `hermes_rule_runs.mode = shadow | active`
 - `hermes_rules.enabled`
 - `hermes_audit_events`
 - `executed_actions.status = skipped | applying | applied | error`

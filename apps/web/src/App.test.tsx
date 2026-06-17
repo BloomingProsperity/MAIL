@@ -1347,6 +1347,44 @@ describe("Email Hub first UI baseline", () => {
     expect(within(rulePanel).getByText(/最近运行：命中 7 封，新增 3 个标签关联/)).toBeTruthy();
   });
 
+  it("loads recent Hermes rule execution history in Settings", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listHermesRuleExecutions).mockResolvedValueOnce({
+      items: [
+        {
+          id: "run_active_recent",
+          accountId: "account_1",
+          ruleId: "rule_codes",
+          mode: "active",
+          matchedCount: 5,
+          appliedCount: 1,
+          sampleMessageIds: ["message_1"],
+          actionPreview: {
+            type: "apply_label",
+            labelId: "label_code",
+            labelName: "验证码",
+          },
+          createdAt: "2026-06-13T10:29:00.000Z",
+        },
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    await waitFor(() => {
+      expect(api.listHermesRuleExecutions).toHaveBeenCalledWith({
+        accountId: "account_1",
+        limit: 100,
+      });
+    });
+    expect(within(rulePanel).getByText(/最近运行：命中 5 封，新增 1 个标签关联/)).toBeTruthy();
+  });
+
   it("lets users draft, simulate, and approve Hermes rules from Settings", async () => {
     const api = createApiFixture();
     const command = "帮我创建一个验证码分组规则";
@@ -7671,6 +7709,9 @@ function createApiFixture(): EmailHubApi {
       },
       createdAt: "2026-06-13T10:30:00.000Z",
     } satisfies HermesRuleExecutionDto)),
+    listHermesRuleExecutions: vi.fn(async () => ({
+      items: [],
+    })),
     draftHermesRule: vi.fn(async () => ({
       candidates: [
         {

@@ -244,10 +244,11 @@ with more than smoke-level tests.
   rules create local account labels/left-side groups, can backfill matching
   synced history during action-plan confirmation, apply matching labels to
   newly mirrored messages in the worker, and now expose a manual active run
-  path through `POST /api/hermes/rules/:ruleId/run`. Manual runs reuse the same
-  idempotent local `label_assignments` write path, record an `active`
-  `hermes_rule_runs` result with matched/applied counts and sample message ids,
-  and are wired into the Settings rule manager. Hermes rules still do not
+  path through `POST /api/hermes/rules/:ruleId/run` plus recent execution
+  reads through `GET /api/hermes/rule-runs`. Manual runs reuse the same
+  idempotent local `label_assignments` write path, record and list `active`
+  `hermes_rule_runs` results with matched/applied counts and sample message
+  ids, and are wired into the Settings rule manager. Hermes rules still do not
   create provider-side Gmail/Outlook labels or queue provider writeback by
   default.
 

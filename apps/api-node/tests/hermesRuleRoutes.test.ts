@@ -355,6 +355,64 @@ describe("Hermes rule routes", () => {
     ]);
   });
 
+  it("lists recent active Hermes rule executions", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async listRuleExecutions(input: unknown) {
+        calls.push(input);
+        return {
+          items: [
+            {
+              id: "run_active_1",
+              accountId: "account_1",
+              ruleId: "rule_codes",
+              mode: "active",
+              matchedCount: 7,
+              appliedCount: 3,
+              sampleMessageIds: ["message_1", "message_2"],
+              actionPreview: {
+                type: "apply_label",
+                labelId: "label_codes",
+                labelName: "验证码",
+              },
+              createdAt: "2026-06-13T10:30:00.000Z",
+            },
+          ],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/rule-runs?accountId=account_1&ruleId=rule_codes&limit=20`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          items: [
+            {
+              id: "run_active_1",
+              ruleId: "rule_codes",
+              mode: "active",
+              matchedCount: 7,
+              appliedCount: 3,
+            },
+          ],
+        });
+      },
+      { hermesRuleService },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        ruleId: "rule_codes",
+        limit: 20,
+      },
+    ]);
+  });
+
   it("returns 404 when manually running a missing or disabled Hermes rule", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {
