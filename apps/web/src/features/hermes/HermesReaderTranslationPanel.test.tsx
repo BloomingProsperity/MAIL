@@ -97,6 +97,7 @@ describe("Hermes reader translation panel", () => {
         translation={translationFixture()}
         preferenceBusy={false}
         refreshBusy={false}
+        canRememberPreference
         onRememberPreference={onRememberPreference}
         onRefresh={onRefresh}
       />,
@@ -128,12 +129,35 @@ describe("Hermes reader translation panel", () => {
     expect(onRememberPreference).toHaveBeenCalledTimes(1);
   });
 
+  it("disables remembering preferences when the source language is not explicit", () => {
+    const onRememberPreference = vi.fn();
+
+    render(
+      <HermesReaderTranslationResult
+        translation={translationFixture({ sourceLanguage: "auto" })}
+        preferenceBusy={false}
+        refreshBusy={false}
+        canRememberPreference={false}
+        onRememberPreference={onRememberPreference}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const rememberButton = screen.getByRole("button", {
+      name: "Remember Hermes translation preference",
+    }) as HTMLButtonElement;
+    expect(rememberButton.disabled).toBe(true);
+    fireEvent.click(rememberButton);
+    expect(onRememberPreference).not.toHaveBeenCalled();
+  });
+
   it("only offers refresh for cached reader translations", () => {
     const { rerender } = render(
       <HermesReaderTranslationResult
         translation={translationFixture({ cached: false })}
         preferenceBusy={false}
         refreshBusy={false}
+        canRememberPreference
         onRememberPreference={vi.fn()}
         onRefresh={vi.fn()}
       />,
@@ -150,6 +174,7 @@ describe("Hermes reader translation panel", () => {
         translation={translationFixture({ cached: true })}
         preferenceBusy={false}
         refreshBusy
+        canRememberPreference
         onRememberPreference={vi.fn()}
         onRefresh={vi.fn()}
       />,

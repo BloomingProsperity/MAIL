@@ -57,6 +57,7 @@ export function HermesReaderTranslationResult(props: {
   translation: HermesMessageTranslationResult;
   preferenceBusy: boolean;
   refreshBusy: boolean;
+  canRememberPreference: boolean;
   onRememberPreference: () => void;
   onRefresh: () => void;
 }) {
@@ -97,7 +98,12 @@ export function HermesReaderTranslationResult(props: {
           className="tiny-button"
           type="button"
           aria-label="Remember Hermes translation preference"
-          disabled={props.preferenceBusy}
+          disabled={props.preferenceBusy || !props.canRememberPreference}
+          title={
+            props.canRememberPreference
+              ? undefined
+              : "请选择明确源语言后再保存翻译习惯"
+          }
           onClick={props.onRememberPreference}
         >
           {props.preferenceBusy ? "保存中" : "记住这个翻译习惯"}

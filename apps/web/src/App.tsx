@@ -3001,12 +3001,10 @@ function MailWorkspace(props: {
       return;
     }
 
-    const sourceLanguage =
-      readerHermesTranslation.sourceLanguage !== "auto"
-        ? readerHermesTranslation.sourceLanguage
-        : readerTranslationSource !== "auto"
-          ? readerTranslationSource
-          : undefined;
+    const sourceLanguage = readerTranslationPreferenceSourceLanguage(
+      readerHermesTranslation,
+      readerTranslationSource,
+    );
     if (!sourceLanguage) {
       setReaderHermesNotice("请选择明确源语言后，再让 Hermes 记住翻译习惯。");
       return;
@@ -5004,6 +5002,12 @@ function MailWorkspace(props: {
                 translation={readerHermesTranslation}
                 preferenceBusy={readerTranslationPreferenceBusy}
                 refreshBusy={readerHermesBusy === "translation"}
+                canRememberPreference={Boolean(
+                  readerTranslationPreferenceSourceLanguage(
+                    readerHermesTranslation,
+                    readerTranslationSource,
+                  ),
+                )}
                 onRememberPreference={() =>
                   void rememberReaderTranslationPreference()
                 }
@@ -10362,6 +10366,17 @@ function hermesReplyMemoryInput(
   return {
     memoryScope: `recipient:${selectedMail.email}`,
   };
+}
+
+function readerTranslationPreferenceSourceLanguage(
+  translation: HermesMessageTranslationResult,
+  selectedSourceLanguage: string,
+): string | undefined {
+  if (translation.sourceLanguage !== "auto") {
+    return translation.sourceLanguage;
+  }
+
+  return selectedSourceLanguage !== "auto" ? selectedSourceLanguage : undefined;
 }
 
 function HermesWorkspaceContextBar(props: {

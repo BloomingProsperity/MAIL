@@ -703,15 +703,17 @@ describe("Email Hub first UI baseline", () => {
         /新翻译 · 运行 run_translate_1 · 审计 audit_translate_1/,
       ),
     ).toBeTruthy();
-    fireEvent.click(
-      within(screen.getByLabelText("Hermes 邮件翻译")).getByRole("button", {
-        name: "Remember Hermes translation preference",
-      }),
-    );
-    expect(
-      await screen.findByText("请选择明确源语言后，再让 Hermes 记住翻译习惯。"),
-    ).toBeTruthy();
+    const rememberPreferenceButton = within(
+      screen.getByLabelText("Hermes 邮件翻译"),
+    ).getByRole("button", {
+      name: "Remember Hermes translation preference",
+    }) as HTMLButtonElement;
+    expect(rememberPreferenceButton.disabled).toBe(true);
+    fireEvent.click(rememberPreferenceButton);
     expect(api.confirmTranslationPreference).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("请选择明确源语言后，再让 Hermes 记住翻译习惯。"),
+    ).toBeNull();
   });
 
   it("renders untrusted email HTML and Hermes output as inert text", async () => {
