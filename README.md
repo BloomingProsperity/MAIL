@@ -342,6 +342,8 @@ real mailboxes:
 - `EMAILENGINE_IMAGE`: pinned EmailEngine container image, defaulting to
   `postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc`.
 - `EENGINE_PREPARED_TOKEN`: EmailEngine prepared token for unattended container startup.
+- `EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS`: accepted skew for the signed
+  EmailEngine webhook `date` field, defaulting to 600 seconds.
 - `EMAILENGINE_WEBHOOK_SECRET` and `EENGINE_SECRET`: rotate both away from
   `dev-emailhub-secret` for production.
 

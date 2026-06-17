@@ -14,6 +14,7 @@ describe("EmailEngine webhook smoke helpers", () => {
       secret: "webhook-secret",
       messageId: "smoke_message",
       eventId: "smoke_event",
+      date: "2026-06-17T10:00:00.000Z",
     });
 
     expect(request.accountId).toBe(DEFAULT_EMAILENGINE_WEBHOOK_SMOKE_ACCOUNT_ID);
@@ -21,6 +22,7 @@ describe("EmailEngine webhook smoke helpers", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
     expect(JSON.parse(request.body)).toMatchObject({
+      date: "2026-06-17T10:00:00.000Z",
       event: "emailhubSmokeProbe",
       account: DEFAULT_EMAILENGINE_WEBHOOK_SMOKE_ACCOUNT_ID,
       path: "INBOX",
@@ -38,6 +40,7 @@ describe("EmailEngine webhook smoke helpers", () => {
       eventName: "messageNew",
       messageId: "smoke_message",
       eventId: "smoke_event",
+      date: "2026-06-17T10:00:00.000Z",
     });
 
     const expectedSignature = createHmac("sha256", "webhook-secret")
@@ -54,6 +57,7 @@ describe("EmailEngine webhook smoke helpers", () => {
       "x-ee-wh-signature": expectedSignature,
     });
     expect(JSON.parse(request.body)).toEqual({
+      date: "2026-06-17T10:00:00.000Z",
       event: "messageNew",
       account: "smoke_account",
       path: "INBOX",
@@ -75,7 +79,8 @@ describe("EmailEngine webhook smoke helpers", () => {
           events: [
             {
               accountId: "smoke_account",
-              idempotencyKey: "emailengine:smoke_account:event-id:smoke_event",
+              idempotencyKey:
+                "emailengine:smoke_account:messageNew:smoke_message:abc123",
             },
           ],
           syncJobs: [
@@ -83,7 +88,7 @@ describe("EmailEngine webhook smoke helpers", () => {
               accountId: "smoke_account",
               status: "queued",
               idempotencyKey:
-                "job:emailengine:smoke_account:event-id:smoke_event",
+                "job:emailengine:smoke_account:messageNew:smoke_message:abc123",
             },
           ],
         },
@@ -101,7 +106,8 @@ describe("EmailEngine webhook smoke helpers", () => {
           events: [
             {
               accountId: "smoke_account",
-              idempotencyKey: "emailengine:smoke_account:event-id:smoke_event",
+              idempotencyKey:
+                "emailengine:smoke_account:messageNew:smoke_message:abc123",
             },
           ],
           syncJobs: [],
@@ -122,7 +128,8 @@ describe("EmailEngine webhook smoke helpers", () => {
           events: [
             {
               accountId: "smoke_account",
-              idempotencyKey: "emailengine:smoke_account:event-id:smoke_event",
+              idempotencyKey:
+                "emailengine:smoke_account:messageNew:smoke_message:abc123",
             },
           ],
           syncJobs: [],
@@ -141,7 +148,8 @@ describe("EmailEngine webhook smoke helpers", () => {
           events: [
             {
               accountId: "smoke_account",
-              idempotencyKey: "emailengine:smoke_account:event-id:smoke_event",
+              idempotencyKey:
+                "emailengine:smoke_account:messageNew:smoke_message:abc123",
             },
           ],
           syncJobs: [
@@ -149,7 +157,7 @@ describe("EmailEngine webhook smoke helpers", () => {
               accountId: "smoke_account",
               status: "queued",
               idempotencyKey:
-                "job:emailengine:smoke_account:event-id:smoke_event",
+                "job:emailengine:smoke_account:messageNew:smoke_message:abc123",
             },
           ],
         },

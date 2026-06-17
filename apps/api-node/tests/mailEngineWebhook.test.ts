@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   normalizeEmailEngineWebhook,
+  verifyEmailEngineWebhookFreshness,
   verifyEmailEngineSignature,
 } from "../src/mail-engine/webhook";
 
@@ -136,35 +137,38 @@ describe("EmailEngine webhook contract", () => {
     ).toBe(3);
   });
 
-  it("uses the EmailEngine delivery event id when provided", () => {
-    const [event] = normalizeEmailEngineWebhook(
-      {
-        event: "messageNew",
-        account: "acc_1",
-        data: { id: "msg_1" },
-      },
-      { deliveryEventId: "evt_123" },
-    );
+  it("ignores unsigned delivery event ids when building idempotency keys", () => {
+    const payload = {
+      event: "messageNew",
+      account: "acc_1",
+      data: { id: "msg_1" },
+    };
+    const [first] = normalizeEmailEngineWebhook(payload, {
+      deliveryEventId: "evt_123",
+    });
+    const [replayedWithChangedHeader] = normalizeEmailEngineWebhook(payload, {
+      deliveryEventId: "evt_456",
+    });
 
-    expect(event.idempotencyKey).toBe("emailengine:acc_1:event-id:evt_123");
+    expect(first.idempotencyKey).toBe(replayedWithChangedHeader.idempotencyKey);
+    expect(first.idempotencyKey).toMatch(
+      /^emailengine:acc_1:messageNew:msg_1:/,
+    );
   });
 
   it("separates stable message resource identity from webhook delivery identity", () => {
-    const [event] = normalizeEmailEngineWebhook(
-      {
-        event: "messageNew",
-        account: "acc_1",
-        path: "INBOX",
-        data: {
-          id: "ee_msg_1",
-          emailId: "stable_email_1",
-          messageId: "<rfc-message@example.com>",
-          uid: 12345,
-          threadId: "thread_1",
-        },
+    const [event] = normalizeEmailEngineWebhook({
+      event: "messageNew",
+      account: "acc_1",
+      path: "INBOX",
+      data: {
+        id: "ee_msg_1",
+        emailId: "stable_email_1",
+        messageId: "<rfc-message@example.com>",
+        uid: 12345,
+        threadId: "thread_1",
       },
-      { deliveryEventId: "evt_delivery_1" },
-    );
+    });
 
     expect(event).toMatchObject({
       providerMessageId: "ee_msg_1",
@@ -182,8 +186,41 @@ describe("EmailEngine webhook contract", () => {
         threadId: "thread_1",
         resourceKey: "emailengine:acc_1:emailId:stable_email_1",
       },
-      idempotencyKey: "emailengine:acc_1:event-id:evt_delivery_1",
+      idempotencyKey: expect.stringMatching(
+        /^emailengine:acc_1:messageNew:ee_msg_1:/,
+      ),
     });
+  });
+
+  it("accepts fresh signed webhook dates and rejects stale or malformed dates", () => {
+    const now = new Date("2026-06-17T10:00:00.000Z");
+
+    expect(
+      verifyEmailEngineWebhookFreshness({
+        payload: { event: "messageNew", date: "2026-06-17T09:55:01.000Z" },
+        now,
+        maxSkewMs: 5 * 60 * 1000,
+      }),
+    ).toEqual({ ok: true, date: "2026-06-17T09:55:01.000Z" });
+    expect(
+      verifyEmailEngineWebhookFreshness({
+        payload: { event: "messageNew", date: "2026-06-17T09:54:59.000Z" },
+        now,
+        maxSkewMs: 5 * 60 * 1000,
+      }),
+    ).toEqual({ ok: false, reason: "outside_window" });
+    expect(
+      verifyEmailEngineWebhookFreshness({
+        payload: { event: "messageNew", date: "not-a-date" },
+        now,
+      }),
+    ).toEqual({ ok: false, reason: "invalid_date" });
+    expect(
+      verifyEmailEngineWebhookFreshness({
+        payload: { event: "messageNew" },
+        now,
+      }),
+    ).toEqual({ ok: false, reason: "missing_date" });
   });
 
   it("falls back through RFC Message-ID, EmailEngine id, and uid/path for resource keys", () => {

@@ -3,7 +3,9 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
+  DEFAULT_EMAILENGINE_WEBHOOK_MAX_SKEW_MS,
   normalizeEmailEngineWebhook,
+  verifyEmailEngineWebhookFreshness,
   verifyEmailEngineSignature,
 } from "../mail-engine/webhook.js";
 import {
@@ -429,6 +431,7 @@ export interface ApiConfig {
   emailEnginePreparedTokenConfigured?: boolean;
   emailEngineWebhookSecretConfigured?: boolean;
   emailEngineWebhookSecretUsesDefault?: boolean;
+  emailEngineWebhookMaxSkewMs?: number;
   emailEngineAuthServerSecret?: string;
   emailEngineAuthServerSecretUsesDefault?: boolean;
   emailEngineServiceSecretUsesDefault?: boolean;
@@ -483,6 +486,7 @@ export interface ApiConfig {
   operationalEventLogService?: OperationalEventLogService;
   databaseHealthCheck?: () => Promise<void>;
   requestIdFactory?: () => string;
+  now?: () => Date;
 }
 
 export type ApiHandler = (
@@ -2903,12 +2907,26 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         const parsed = JSON.parse(body);
-        const deliveryEventId = request.headers["x-ee-wh-event-id"];
-        const events = normalizeEmailEngineWebhook(parsed, {
-          deliveryEventId: Array.isArray(deliveryEventId)
-            ? deliveryEventId[0]
-            : deliveryEventId,
+        const freshness = verifyEmailEngineWebhookFreshness({
+          payload: parsed,
+          now: config.now?.() ?? new Date(),
+          maxSkewMs:
+            config.emailEngineWebhookMaxSkewMs ??
+            DEFAULT_EMAILENGINE_WEBHOOK_MAX_SKEW_MS,
         });
+        if (!freshness.ok) {
+          const statusCode =
+            freshness.reason === "outside_window" ? 401 : 400;
+          writeJson(response, statusCode, {
+            error:
+              freshness.reason === "outside_window"
+                ? "stale_emailengine_webhook"
+                : "invalid_emailengine_webhook_date",
+          });
+          return;
+        }
+
+        const events = normalizeEmailEngineWebhook(parsed);
         const result = await ingestStore.ingestWebhook({
           events,
           rawPayload: parsed,

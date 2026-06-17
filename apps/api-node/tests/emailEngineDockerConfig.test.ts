@@ -90,6 +90,7 @@ describe("EmailEngine Docker configuration", () => {
 
     expect(config.apiAccessTokenConfigured).toBe(true);
     expect(config.apiAccessTokenRequired).toBe(true);
+    expect(config.emailEngineWebhookMaxSkewMs).toBe(10 * 60 * 1000);
     expect(JSON.stringify(config)).not.toContain("prod-api-token");
   });
 
@@ -104,9 +105,13 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("EMAILHUB_API_TOKEN=");
     expect(envExample).toContain("EMAILHUB_REQUIRE_API_TOKEN=false");
     expect(envExample).toContain("VITE_EMAILHUB_API_TOKEN=");
+    expect(envExample).toContain("EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS=600");
     expect(api).toContain("EMAILHUB_API_TOKEN: ${EMAILHUB_API_TOKEN:-}");
     expect(api).toContain(
       "EMAILHUB_REQUIRE_API_TOKEN: ${EMAILHUB_REQUIRE_API_TOKEN:-false}",
+    );
+    expect(api).toContain(
+      "EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS: ${EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS:-600}",
     );
     expect(web).toContain("VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-}");
     expect(webDockerfile).toContain("ARG VITE_EMAILHUB_API_TOKEN=");

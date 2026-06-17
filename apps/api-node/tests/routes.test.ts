@@ -44,6 +44,13 @@ function sign(body: string): string {
   return createHmac("sha256", "webhook-secret").update(body).digest("base64url");
 }
 
+function webhookBody(payload: Record<string, unknown>): string {
+  return JSON.stringify({
+    date: new Date().toISOString(),
+    ...payload,
+  });
+}
+
 afterEach(async () => {
   if (!server) {
     return;
@@ -1992,7 +1999,7 @@ describe("API routes", () => {
   it("accepts signed EmailEngine webhooks, stores events, and queues sync jobs", async () => {
     await withApi(
       async (baseUrl, store) => {
-        const body = JSON.stringify({
+        const body = webhookBody({
           event: "messageDeleted",
           account: "acc_1",
           data: { id: "msg_1" },
@@ -2063,7 +2070,7 @@ describe("API routes", () => {
 
     await withApi(
       async (baseUrl) => {
-        const body = JSON.stringify({
+        const body = webhookBody({
           event: "authenticationError",
           account: "acc_2",
           data: { secret: "raw-webhook-secret" },
@@ -2127,7 +2134,7 @@ describe("API routes", () => {
 
     await withApi(
       async (baseUrl) => {
-        const body = JSON.stringify({
+        const body = webhookBody({
           event: "messageNew",
           account: "acc_1",
           path: "INBOX",
@@ -2183,7 +2190,7 @@ describe("API routes", () => {
 
   it("does not enqueue duplicate jobs for repeated signed webhooks", async () => {
     await withApi(async (baseUrl, store) => {
-      const body = JSON.stringify({
+      const body = webhookBody({
         event: "messageNew",
         account: "acc_1",
         data: { id: "msg_1" },
@@ -2211,10 +2218,67 @@ describe("API routes", () => {
     });
   });
 
+  it("rejects signed EmailEngine webhooks outside the freshness window before ingesting", async () => {
+    await withApi(
+      async (baseUrl, store) => {
+        const body = webhookBody({
+          date: "2026-06-17T09:50:00.000Z",
+          event: "messageNew",
+          account: "acc_1",
+          data: { id: "msg_1" },
+        });
+        const response = await fetch(`${baseUrl}/api/webhooks/emailengine`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-ee-wh-signature": sign(body),
+          },
+          body,
+        });
+
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({
+          error: "stale_emailengine_webhook",
+        });
+        expect(store.listEvents()).toHaveLength(0);
+        expect(store.listSyncJobs()).toHaveLength(0);
+      },
+      {
+        now: () => new Date("2026-06-17T10:00:01.000Z"),
+        emailEngineWebhookMaxSkewMs: 10 * 60 * 1000,
+      },
+    );
+  });
+
+  it("rejects signed EmailEngine webhooks without a valid payload date", async () => {
+    await withApi(async (baseUrl, store) => {
+      const body = JSON.stringify({
+        event: "messageNew",
+        account: "acc_1",
+        data: { id: "msg_1" },
+      });
+      const response = await fetch(`${baseUrl}/api/webhooks/emailengine`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-ee-wh-signature": sign(body),
+        },
+        body,
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "invalid_emailengine_webhook_date",
+      });
+      expect(store.listEvents()).toHaveLength(0);
+      expect(store.listSyncJobs()).toHaveLength(0);
+    });
+  });
+
   it("rejects oversized EmailEngine webhooks before ingesting them", async () => {
     await withApi(
       async (baseUrl, store) => {
-        const body = JSON.stringify({
+        const body = webhookBody({
           event: "messageNew",
           account: "acc_1",
           data: { id: "msg_1" },
@@ -2243,12 +2307,12 @@ describe("API routes", () => {
 
   it("queues later updates for the same EmailEngine message when webhook ids differ", async () => {
     await withApi(async (baseUrl, store) => {
-      const messageNew = JSON.stringify({
+      const messageNew = webhookBody({
         event: "messageNew",
         account: "acc_1",
         data: { id: "msg_1" },
       });
-      const messageUpdated = JSON.stringify({
+      const messageUpdated = webhookBody({
         event: "messageUpdated",
         account: "acc_1",
         data: {
@@ -2284,7 +2348,9 @@ describe("API routes", () => {
           {
             jobType: "sync_account",
             accountId: "acc_1",
-            idempotencyKey: "job:emailengine:acc_1:event-id:evt_updated",
+            idempotencyKey: expect.stringMatching(
+              /^job:emailengine:acc_1:messageUpdated:msg_1:/,
+            ),
           },
         ],
       });
@@ -2295,7 +2361,7 @@ describe("API routes", () => {
 
   it("deduplicates repeated webhook deliveries with the same EmailEngine event id", async () => {
     await withApi(async (baseUrl, store) => {
-      const body = JSON.stringify({
+      const body = webhookBody({
         event: "messageUpdated",
         account: "acc_1",
         data: { id: "msg_1" },
@@ -2324,9 +2390,40 @@ describe("API routes", () => {
     });
   });
 
+  it("deduplicates replayed signed webhook bodies even when the unsigned event id header changes", async () => {
+    await withApi(async (baseUrl, store) => {
+      const body = webhookBody({
+        event: "messageUpdated",
+        account: "acc_1",
+        data: { id: "msg_1" },
+      });
+      const request = (eventId: string) =>
+        fetch(`${baseUrl}/api/webhooks/emailengine`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-ee-wh-signature": sign(body),
+            "x-ee-wh-event-id": eventId,
+          },
+          body,
+        });
+
+      expect((await request("evt_original")).status).toBe(202);
+      const replay = await request("evt_replayed");
+
+      expect(replay.status).toBe(202);
+      expect(await replay.json()).toMatchObject({
+        duplicateCount: 1,
+        syncJobs: [],
+      });
+      expect(store.listEvents()).toHaveLength(1);
+      expect(store.listSyncJobs()).toHaveLength(1);
+    });
+  });
+
   it("deduplicates a burst of concurrent repeated webhook deliveries", async () => {
     await withApi(async (baseUrl, store) => {
-      const body = JSON.stringify({
+      const body = webhookBody({
         event: "messageUpdated",
         account: "acc_1",
         data: { id: "msg_1" },

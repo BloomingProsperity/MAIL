@@ -51,7 +51,25 @@ export interface NormalizeEmailEngineWebhookOptions {
   deliveryEventId?: string;
 }
 
+export interface VerifyEmailEngineWebhookFreshnessInput {
+  payload: unknown;
+  now?: Date;
+  maxSkewMs?: number;
+}
+
+export type EmailEngineWebhookFreshnessResult =
+  | {
+      ok: true;
+      date: string;
+    }
+  | {
+      ok: false;
+      reason: "missing_date" | "invalid_date" | "outside_window";
+    };
+
 type JsonRecord = Record<string, unknown>;
+
+export const DEFAULT_EMAILENGINE_WEBHOOK_MAX_SKEW_MS = 10 * 60 * 1000;
 
 const eventKindByName: Record<string, MailEngineEventKind> = {
   accountAdded: "sync_requested",
@@ -100,7 +118,6 @@ export function normalizeEmailEngineWebhook(
   const data = asRecord(root.data);
   const eventName = readString(root.event) ?? "unknown";
   const deliveryEventId =
-    options.deliveryEventId ??
     readString(root.eventId) ??
     readString(data.eventId);
   const knownKind = eventKindByName[eventName];
@@ -168,6 +185,29 @@ export function normalizeEmailEngineWebhook(
       ),
     }),
   ];
+}
+
+export function verifyEmailEngineWebhookFreshness(
+  input: VerifyEmailEngineWebhookFreshnessInput,
+): EmailEngineWebhookFreshnessResult {
+  const root = asRecord(input.payload);
+  const eventDate = readString(root.date);
+  if (!eventDate) {
+    return { ok: false, reason: "missing_date" };
+  }
+
+  const eventTimestamp = Date.parse(eventDate);
+  if (!Number.isFinite(eventTimestamp)) {
+    return { ok: false, reason: "invalid_date" };
+  }
+
+  const now = input.now ?? new Date();
+  const maxSkewMs = input.maxSkewMs ?? DEFAULT_EMAILENGINE_WEBHOOK_MAX_SKEW_MS;
+  if (Math.abs(now.getTime() - eventTimestamp) > maxSkewMs) {
+    return { ok: false, reason: "outside_window" };
+  }
+
+  return { ok: true, date: eventDate };
 }
 
 function buildIdempotencyKey(

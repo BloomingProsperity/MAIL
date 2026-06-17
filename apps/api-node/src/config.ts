@@ -28,6 +28,13 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     emailEngineWebhookSecretUsesDefault:
       !env.EMAILENGINE_WEBHOOK_SECRET ||
       env.EMAILENGINE_WEBHOOK_SECRET === "dev-emailhub-secret",
+    emailEngineWebhookMaxSkewMs:
+      readBoundedIntegerValue(
+        env.EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS,
+        10 * 60,
+        60,
+        24 * 60 * 60,
+      ) * 1000,
     emailEnginePreparedTokenConfigured:
       typeof env.EENGINE_PREPARED_TOKEN === "string" &&
       env.EENGINE_PREPARED_TOKEN.trim().length > 0,
@@ -94,6 +101,20 @@ function readPortValue(value: string | undefined, fallback: number): number {
   }
 
   return parsed;
+}
+
+function readBoundedIntegerValue(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isInteger(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function isProductionApiToken(value: string): boolean {

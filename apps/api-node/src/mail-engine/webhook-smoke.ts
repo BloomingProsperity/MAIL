@@ -7,6 +7,7 @@ export interface BuildSmokeWebhookRequestInput {
   eventName?: string;
   messageId?: string;
   eventId?: string;
+  date?: string;
 }
 
 export interface SmokeWebhookRequest {
@@ -53,7 +54,9 @@ export function buildSmokeWebhookRequest(
   const eventName = input.eventName ?? "emailhubSmokeProbe";
   const messageId = input.messageId ?? `smoke_${randomUUID()}`;
   const eventId = input.eventId ?? `smoke_${randomUUID()}`;
+  const date = input.date ?? new Date().toISOString();
   const body = JSON.stringify({
+    date,
     event: eventName,
     account: accountId,
     path: "INBOX",
@@ -120,15 +123,17 @@ export function assertSmokeResponse(input: AssertSmokeResponseInput): void {
   }
 
   const body = asRecord(input.body);
-  const expectedEventKey = `emailengine:${input.accountId}:event-id:${input.eventId}`;
-  const expectedJobKey = `job:${expectedEventKey}`;
   const events = readArray(body.events);
   const syncJobs = readArray(body.syncJobs);
-  const event = events.find(
-    (item) =>
-      asRecord(item).idempotencyKey === expectedEventKey &&
-      asRecord(item).accountId === input.accountId,
-  );
+  const event = events.find((item) => {
+    const eventRecord = asRecord(item);
+    const idempotencyKey = eventRecord.idempotencyKey;
+    return (
+      typeof idempotencyKey === "string" &&
+      idempotencyKey.startsWith(`emailengine:${input.accountId}:`) &&
+      eventRecord.accountId === input.accountId
+    );
+  });
 
   if (!event) {
     throw new Error(
@@ -137,6 +142,7 @@ export function assertSmokeResponse(input: AssertSmokeResponseInput): void {
   }
 
   if (input.phase === "first") {
+    const expectedJobKey = `job:${asRecord(event).idempotencyKey}`;
     const job = syncJobs.find(
       (item) =>
         asRecord(item).idempotencyKey === expectedJobKey &&
