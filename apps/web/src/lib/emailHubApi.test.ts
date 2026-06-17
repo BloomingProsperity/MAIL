@@ -4298,6 +4298,34 @@ describe("emailHubApi", () => {
     } satisfies Partial<ApiRequestError>);
   });
 
+  it("preserves Hermes disabled skill ids on typed request errors", async () => {
+    const api = createEmailHubApi({
+      fetchImpl: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: "hermes_skill_disabled",
+            skillId: "translate_text",
+          }),
+          {
+            status: 403,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ) as any,
+    });
+
+    await expect(
+      api.translateText({
+        text: "Hello",
+        targetLanguage: "Chinese",
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "hermes_skill_disabled",
+      skillId: "translate_text",
+    } satisfies Partial<ApiRequestError>);
+  });
+
   it("keeps reauthorization error payloads narrow and typed", async () => {
     const api = createEmailHubApi({
       fetchImpl: vi.fn(async () =>

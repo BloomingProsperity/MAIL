@@ -349,7 +349,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 执行计划能力已禁用，请到设置里的能力选项启用“执行计划”。",
+        "Hermes 执行计划能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“执行计划”。",
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 执行计划")).toBeNull();
@@ -380,7 +380,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 执行计划能力已禁用，请到设置里的能力选项启用“执行计划”。",
+        "Hermes 执行计划能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“执行计划”。",
       ),
     ).toBeTruthy();
     expect(within(plan).getByRole("button", { name: "确认计划" })).toBeTruthy();
@@ -438,6 +438,32 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
 
     expect(await screen.findByText("Hermes 搜索暂时不可用。")).toBeTruthy();
+    expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
+  });
+
+  it("explains when Hermes mail search is disabled by skill settings", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.searchMailWithHermes).mockRejectedValueOnce(
+      new ApiRequestError(403, "hermes_skill_disabled", {
+        error: "hermes_skill_disabled",
+        skillId: "email_search_qa",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "找一下合同" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    expect(
+      await screen.findByText(
+        "Hermes 搜索问答能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“搜索问答”。",
+      ),
+    ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
   });
 
@@ -930,6 +956,34 @@ describe("Email Hub first UI baseline", () => {
     );
 
     expect(await screen.findByText("Hermes 总结暂时不可用。")).toBeTruthy();
+    expect(screen.getByText("Live body from backend")).toBeTruthy();
+    expect(screen.queryByText("需要确认发布时间，并在今天回复 Lina。")).toBeNull();
+  });
+
+  it("explains when Hermes reader summary is disabled by skill settings", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.summarizeMessage).mockRejectedValueOnce(
+      new ApiRequestError(403, "hermes_skill_disabled", {
+        error: "hermes_skill_disabled",
+        skillId: "thread_summarize",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to summarize selected message",
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Hermes 邮件总结能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“邮件总结”。",
+      ),
+    ).toBeTruthy();
     expect(screen.getByText("Live body from backend")).toBeTruthy();
     expect(screen.queryByText("需要确认发布时间，并在今天回复 Lina。")).toBeNull();
   });
@@ -5770,6 +5824,35 @@ describe("Email Hub first UI baseline", () => {
         hermesDraftText: "Hello, please confirm the launch plan.",
       });
     });
+  });
+
+  it("explains when Hermes composed draft translation is disabled by skill settings", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.translateText).mockRejectedValueOnce(
+      new ApiRequestError(403, "hermes_skill_disabled", {
+        error: "hermes_skill_disabled",
+        skillId: "translate_text",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "你好，请确认发布计划。" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Translate composed draft with Hermes" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Hermes 邮件翻译能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“邮件翻译”。",
+      ),
+    ).toBeTruthy();
+    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
+      "你好，请确认发布计划。",
+    );
   });
 
   it("adds uploaded files to the composed draft payload", async () => {

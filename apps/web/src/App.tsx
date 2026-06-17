@@ -1020,8 +1020,13 @@ export function App(props: AppProps = {}) {
           ? `Hermes 已基于 ${result.matches.length} 封邮件回答。`
           : "Hermes 没有找到匹配邮件。",
       );
-    } catch {
-      setHermesDockNotice("Hermes 搜索暂时不可用。");
+    } catch (error) {
+      setHermesDockNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "email_search_qa",
+          fallback: "Hermes 搜索暂时不可用。",
+        }),
+      );
     } finally {
       setHermesDockBusy(false);
     }
@@ -2699,12 +2704,17 @@ function MailWorkspace(props: {
       }
       setReaderHermesSummary(result);
       setReaderHermesNotice(`Hermes 已总结：${result.skillRunId}`);
-    } catch {
+    } catch (error) {
       if (readerHermesRequestRef.current !== requestId) {
         return;
       }
       setReaderHermesSummary(undefined);
-      setReaderHermesNotice("Hermes 总结暂时不可用。");
+      setReaderHermesNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "thread_summarize",
+          fallback: "Hermes 总结暂时不可用。",
+        }),
+      );
     } finally {
       if (readerHermesRequestRef.current === requestId) {
         setReaderHermesBusy(undefined);
@@ -2738,12 +2748,17 @@ function MailWorkspace(props: {
       }
       setReaderHermesTranslation(result);
       setReaderHermesNotice(`Hermes 已翻译：${result.skillRunId}`);
-    } catch {
+    } catch (error) {
       if (readerHermesRequestRef.current !== requestId) {
         return;
       }
       setReaderHermesTranslation(undefined);
-      setReaderHermesNotice("Hermes 翻译暂时不可用。");
+      setReaderHermesNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "translate_text",
+          fallback: "Hermes 翻译暂时不可用。",
+        }),
+      );
     } finally {
       if (readerHermesRequestRef.current === requestId) {
         setReaderHermesBusy(undefined);
@@ -2817,12 +2832,17 @@ function MailWorkspace(props: {
       setReaderHermesNotice(
         `Hermes 已整理：${organization.priority.skillRunId}`,
       );
-    } catch {
+    } catch (error) {
       if (readerHermesRequestRef.current !== requestId) {
         return;
       }
       setReaderHermesOrganization(undefined);
-      setReaderHermesNotice("Hermes 整理暂时不可用。");
+      setReaderHermesNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "priority_triage",
+          fallback: "Hermes 整理暂时不可用。",
+        }),
+      );
     } finally {
       if (readerHermesRequestRef.current === requestId) {
         setReaderHermesBusy(undefined);
@@ -2974,8 +2994,13 @@ function MailWorkspace(props: {
         notice: `Hermes 已生成回复草稿：${result.skillRunId}`,
       });
       focusComposeTarget("body");
-    } catch {
-      setComposeNotice("Hermes 写回复暂时不可用。");
+    } catch (error) {
+      setComposeNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "reply_draft",
+          fallback: "Hermes 写回复暂时不可用。",
+        }),
+      );
     } finally {
       setComposeBusy(false);
     }
@@ -3019,8 +3044,13 @@ function MailWorkspace(props: {
         notice: `Hermes 已生成快速回复：${result.skillRunId}`,
       });
       focusComposeTarget("body");
-    } catch {
-      setComposeNotice("Hermes 快速回复暂时不可用。");
+    } catch (error) {
+      setComposeNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "quick_reply",
+          fallback: "Hermes 快速回复暂时不可用。",
+        }),
+      );
     } finally {
       setComposeBusy(false);
     }
@@ -3321,8 +3351,13 @@ function MailWorkspace(props: {
       setComposePreview(undefined);
       setComposeNotice(`Hermes 已翻译草稿：${result.skillRunId}`);
       focusComposeTarget("body");
-    } catch {
-      setComposeNotice("Hermes 草稿翻译暂时不可用。");
+    } catch (error) {
+      setComposeNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "translate_text",
+          fallback: "Hermes 草稿翻译暂时不可用。",
+        }),
+      );
     } finally {
       setComposeBusy(false);
     }
@@ -3354,8 +3389,13 @@ function MailWorkspace(props: {
       setComposeHermesDraftText(result.rewrittenText);
       setComposePreview(undefined);
       setComposeNotice(`Hermes 已润色：${result.skillRunId}`);
-    } catch {
-      setComposeNotice("Hermes 润色暂时不可用。");
+    } catch (error) {
+      setComposeNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "rewrite_polish",
+          fallback: "Hermes 润色暂时不可用。",
+        }),
+      );
     } finally {
       setComposeBusy(false);
     }
@@ -12321,7 +12361,7 @@ function hermesActionPlanErrorNotice(
 ): string {
   if (error instanceof ApiRequestError) {
     if (error.code === "hermes_skill_disabled") {
-      return "Hermes 执行计划能力已禁用，请到设置里的能力选项启用“执行计划”。";
+      return hermesSkillDisabledNotice(error.skillId ?? "action_plan");
     }
     if (error.code === "hermes_action_plans_unavailable") {
       return "Hermes 执行计划存储暂时不可用，请检查后端配置。";
@@ -12331,6 +12371,27 @@ function hermesActionPlanErrorNotice(
   return action === "create"
     ? "Hermes 执行计划暂时不可用。"
     : "Hermes 执行计划确认失败。";
+}
+
+function hermesSkillErrorNotice(
+  error: unknown,
+  input: {
+    skillId: string;
+    fallback: string;
+  },
+): string {
+  if (error instanceof ApiRequestError) {
+    if (error.code === "hermes_skill_disabled") {
+      return hermesSkillDisabledNotice(error.skillId ?? input.skillId);
+    }
+  }
+
+  return input.fallback;
+}
+
+function hermesSkillDisabledNotice(skillId: string): string {
+  const skillLabel = formatHermesAuditSkillId(skillId);
+  return `Hermes ${skillLabel}能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“${skillLabel}”。`;
 }
 
 function hermesRulePreview(

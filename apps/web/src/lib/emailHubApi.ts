@@ -2385,6 +2385,7 @@ export interface CreateEmailHubApiOptions {
 
 export interface ApiErrorPayload {
   error?: string;
+  skillId?: string;
   provider?: string;
   detail?: string;
   requestId?: string;
@@ -2394,6 +2395,7 @@ export interface ApiErrorPayload {
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly skillId?: string;
   readonly provider?: string;
   readonly detail?: string;
   readonly requestId?: string;
@@ -2404,6 +2406,7 @@ export class ApiRequestError extends Error {
     super(code);
     this.status = status;
     this.code = code;
+    this.skillId = payload?.skillId;
     this.provider = payload?.provider;
     this.detail = payload?.detail;
     this.requestId = payload?.requestId;
@@ -3800,6 +3803,9 @@ function normalizeApiErrorPayload(
   const normalized: ApiErrorPayload = {};
   if (typeof payload.error === "string") {
     normalized.error = payload.error;
+  }
+  if (typeof payload.skillId === "string") {
+    normalized.skillId = payload.skillId;
   }
   if (typeof payload.provider === "string") {
     normalized.provider = payload.provider;
