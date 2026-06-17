@@ -2610,6 +2610,26 @@ h2 {
   padding-top: 12px;
 }
 
+.hermes-skill-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hermes-skill-mode-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hermes-skill-mode-filter .ghost-button.is-active {
+  border-color: var(--primary-border);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
 .hermes-skill-card {
   align-items: start;
 }
