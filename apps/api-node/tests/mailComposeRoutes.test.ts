@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { createServer, type Server } from "node:http";
+import { createServer, request as httpRequest, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApiHandler } from "../src/http/router";
@@ -30,6 +30,44 @@ async function withApi(
   }
 
   await test(`http://127.0.0.1:${address.port}`);
+}
+
+async function chunkedPostJson(
+  urlString: string,
+  input: {
+    headers: Record<string, string>;
+    chunks: string[];
+  },
+): Promise<{ status: number; body: unknown }> {
+  const url = new URL(urlString);
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      {
+        hostname: url.hostname,
+        method: "POST",
+        path: `${url.pathname}${url.search}`,
+        port: url.port ? Number.parseInt(url.port, 10) : undefined,
+        headers: input.headers,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("error", reject);
+        response.on("end", () => {
+          const rawBody = Buffer.concat(chunks).toString("utf8");
+          resolve({
+            status: response.statusCode ?? 0,
+            body: rawBody ? JSON.parse(rawBody) : undefined,
+          });
+        });
+      },
+    );
+    request.on("error", reject);
+    for (const chunk of input.chunks) {
+      request.write(chunk);
+    }
+    request.end();
+  });
 }
 
 afterEach(async () => {
@@ -994,6 +1032,64 @@ describe("mail compose routes", () => {
           error: "request_body_too_large",
         });
         expect(saveCalls).toEqual([]);
+      },
+      {
+        mailComposeService,
+        composeAttachmentBlobStore,
+        maxComposeAttachmentUploadBytes: 4,
+      },
+    );
+  });
+
+  it("maps chunked streamed compose attachment upload limit failures to 413", async () => {
+    const saveCalls: string[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+    const composeAttachmentBlobStore = {
+      async saveUploadedAttachment() {
+        saveCalls.push("buffer");
+        throw new Error("buffer fallback must not be used");
+      },
+      async saveUploadedAttachmentStream(input: {
+        stream: AsyncIterable<Uint8Array>;
+        maxBytes: number;
+      }) {
+        saveCalls.push("stream");
+        let bytes = 0;
+        for await (const chunk of input.stream) {
+          bytes += chunk.byteLength;
+          if (bytes > input.maxBytes) {
+            throw new ComposeAttachmentBlobTooLargeError();
+          }
+        }
+        throw new Error("stream should exceed the configured upload limit");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await chunkedPostJson(
+          `${baseUrl}/api/accounts/acc_1/compose/attachments`,
+          {
+            headers: {
+              "content-type": "text/plain",
+              "x-emailhub-filename": "brief.txt",
+            },
+            chunks: ["hel", "lo"],
+          },
+        );
+
+        expect(response.status).toBe(413);
+        expect(response.body).toEqual({
+          error: "request_body_too_large",
+        });
+        expect(saveCalls).toEqual(["stream"]);
       },
       {
         mailComposeService,
