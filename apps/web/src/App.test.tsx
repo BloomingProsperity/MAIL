@@ -864,6 +864,22 @@ describe("Email Hub first UI baseline", () => {
       screen.getByRole("combobox", { name: "Hermes translation target language" }),
       { target: { value: "English" } },
     );
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByRole("combobox", {
+            name: "Hermes translation source language",
+          }) as HTMLSelectElement
+        ).value,
+      ).toBe("Chinese");
+      expect(
+        (
+          screen.getByRole("combobox", {
+            name: "Hermes translation target language",
+          }) as HTMLSelectElement
+        ).value,
+      ).toBe("English");
+    });
     fireEvent.click(
       screen.getByRole("button", {
         name: "Ask Hermes to translate selected message",
@@ -888,6 +904,12 @@ describe("Email Hub first UI baseline", () => {
         /缓存命中 · 运行 run_translate_cached · 审计 audit_cached_translate/,
       ),
     ).toBeTruthy();
+    expect(api.translateMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceLanguage: "Chinese",
+        targetLanguage: "English",
+      }),
+    );
 
     fireEvent.click(
       within(translation).getByRole("button", {
@@ -4692,9 +4714,11 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(screen.queryByLabelText("Reply body")).toBeNull();
-    expect((screen.getByLabelText("Compose recipients") as HTMLInputElement).value).toBe(
-      "Live Client <client@example.com>",
-    );
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText("Compose recipients") as HTMLInputElement).value,
+      ).toBe("Live Client <client@example.com>");
+    });
 
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Thanks, I will check this today." },
@@ -7873,18 +7897,20 @@ describe("Email Hub first UI baseline", () => {
         mode: "reply_all",
       });
     });
-    expect((screen.getByLabelText("Compose recipients") as HTMLInputElement).value).toBe(
-      "Live Client <client@example.com>",
-    );
-    expect((screen.getByLabelText("Compose cc") as HTMLInputElement).value).toBe(
-      "Ops <ops@example.com>",
-    );
-    expect((screen.getByLabelText("Compose subject") as HTMLInputElement).value).toBe(
-      "Re: Live subject",
-    );
-    expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toContain(
-      "> Live body from backend",
-    );
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText("Compose recipients") as HTMLInputElement).value,
+      ).toBe("Live Client <client@example.com>");
+      expect((screen.getByLabelText("Compose cc") as HTMLInputElement).value).toBe(
+        "Ops <ops@example.com>",
+      );
+      expect(
+        (screen.getByLabelText("Compose subject") as HTMLInputElement).value,
+      ).toBe("Re: Live subject");
+      expect(
+        (screen.getByLabelText("Compose body") as HTMLTextAreaElement).value,
+      ).toContain("> Live body from backend");
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
 
