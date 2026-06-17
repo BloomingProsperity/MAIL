@@ -91,6 +91,7 @@ import type {
   MailSendIdentityCandidateDto,
   MailSendIdentityDiagnosticsDto,
   MailSendIdentityDto,
+  MailTagMode,
   MailboxDto,
   MessageDetailDto,
   MessageListItemDto,
@@ -240,6 +241,8 @@ interface SearchLaunch {
   receivedAfter?: string;
   receivedBefore?: string;
   hasAttachment?: boolean;
+  labelIds?: string[];
+  tagMode?: MailTagMode;
   accountId?: string;
 }
 
@@ -271,6 +274,7 @@ interface MailItem {
   tone: Tone;
   unread: boolean;
   starred: boolean;
+  attachmentCount: number;
   mailboxIds?: string[];
   labelIds?: string[];
   bucket: string;
@@ -470,6 +474,7 @@ const mailItems: MailItem[] = [
     tone: "coral",
     unread: true,
     starred: true,
+    attachmentCount: 1,
     bucket: "P1 Urgent",
     score: 97,
     reasons: ["直接发给你", "你常回复此发件人", "Hermes 识别为需要回复", "今天 17:00 截止", "来自项目标签"]
@@ -488,6 +493,7 @@ const mailItems: MailItem[] = [
     tone: "green",
     unread: true,
     starred: false,
+    attachmentCount: 1,
     bucket: "P2 Important",
     score: 88,
     reasons: ["直接发给你", "你常回复此发件人"]
@@ -506,6 +512,7 @@ const mailItems: MailItem[] = [
     tone: "purple",
     unread: true,
     starred: false,
+    attachmentCount: 0,
     bucket: "P2 Important",
     score: 82,
     reasons: ["直接发给你", "来自项目标签"]
@@ -524,6 +531,7 @@ const mailItems: MailItem[] = [
     tone: "yellow",
     unread: false,
     starred: false,
+    attachmentCount: 0,
     bucket: "P5 Transactions",
     score: 43,
     reasons: ["系统通知", "无需立即处理"]
@@ -542,6 +550,7 @@ const mailItems: MailItem[] = [
     tone: "blue",
     unread: false,
     starred: false,
+    attachmentCount: 0,
     bucket: "P5 Transactions",
     score: 38,
     reasons: ["票据通知", "无需回复"]
@@ -560,6 +569,7 @@ const mailItems: MailItem[] = [
     tone: "yellow",
     unread: false,
     starred: false,
+    attachmentCount: 0,
     bucket: "P4 FYI / Updates",
     score: 35,
     reasons: ["项目标签", "稍后处理"]
@@ -1466,34 +1476,46 @@ export function App(props: AppProps = {}) {
     }
   }
 
-  async function applySmartInboxBucketDone(bucket: string) {
+  async function applySmartInboxItemsDone(
+    candidates: MailItem[],
+    emptyNotice: string,
+    successContext: string,
+  ) {
     if (!props.api) {
       setBackendNotice("连接服务后才能执行 Smart Inbox 批量 Done。");
       return;
     }
 
-    const candidates = workspaceMail.filter((item) => item.bucket === bucket);
     if (candidates.length === 0) {
-      setBackendNotice("当前 Smart Inbox 卡片没有可处理邮件。");
+      setBackendNotice(emptyNotice);
       return;
     }
 
-    const messageIdsByAccount = new Map<string, string[]>();
+    const messageIdsByGroup = new Map<
+      string,
+      { accountId: string; bucket: string; messageIds: string[] }
+    >();
     for (const item of candidates) {
-      const ids = messageIdsByAccount.get(item.accountId) ?? [];
-      ids.push(item.id);
-      messageIdsByAccount.set(item.accountId, ids);
+      const groupKey = `${item.accountId}:${item.bucket}`;
+      const group =
+        messageIdsByGroup.get(groupKey) ?? {
+          accountId: item.accountId,
+          bucket: item.bucket,
+          messageIds: [],
+        };
+      group.messageIds.push(item.id);
+      messageIdsByGroup.set(groupKey, group);
     }
 
     setSmartInboxBusy("bulk_done");
     try {
       const results = await Promise.all(
-        [...messageIdsByAccount.entries()].map(([accountId, messageIds]) =>
+        [...messageIdsByGroup.values()].map((group) =>
           props.api!.applySmartInboxCardBulkAction({
-            accountId,
-            bucket,
+            accountId: group.accountId,
+            bucket: group.bucket,
             action: "done",
-            messageIds,
+            messageIds: group.messageIds,
           }),
         ),
       );
@@ -1514,10 +1536,10 @@ export function App(props: AppProps = {}) {
         );
         setWorkspaceMail(remainingMail);
         setActiveMailId((current) =>
-	          current && remainingMail.some((item) => mailItemKey(item) === current)
-	            ? current
-	            : firstMailKey(remainingMail, mailSort),
-	        );
+          current && remainingMail.some((item) => mailItemKey(item) === current)
+            ? current
+            : firstMailKey(remainingMail, mailSort),
+        );
         if (selectedMail && succeededKeys.has(mailItemKey(selectedMail))) {
           setSelectedDetail(undefined);
         }
@@ -1526,13 +1548,29 @@ export function App(props: AppProps = {}) {
       setBackendNotice(
         failedCount > 0
           ? `Smart Inbox 已完成 ${succeededCount} 封，${failedCount} 封稍后重试。`
-          : `Smart Inbox 已完成 ${succeededCount} 封${bucketLabel(bucket)}邮件。`,
+          : `Smart Inbox 已完成 ${succeededCount} 封${successContext}邮件。`,
       );
     } catch {
       setBackendNotice("Smart Inbox 批量 Done 暂时不可用。");
     } finally {
       setSmartInboxBusy("");
     }
+  }
+
+  async function applySmartInboxBucketDone(bucket: string) {
+    await applySmartInboxItemsDone(
+      workspaceMail.filter((item) => item.bucket === bucket),
+      "当前 Smart Inbox 卡片没有可处理邮件。",
+      bucketLabel(bucket),
+    );
+  }
+
+  async function applySelectedMessagesDone(items: MailItem[]) {
+    await applySmartInboxItemsDone(
+      items,
+      "请先选择要 Done 的邮件。",
+      "选中",
+    );
   }
 
   async function recordSmartInboxFeedback(
@@ -1740,11 +1778,11 @@ export function App(props: AppProps = {}) {
               accountId={workspaceAccountId}
               activeFolder={activeFolder}
               activeMailId={activeMailId}
-	              folders={workspaceFolders}
-	              mail={sortedMail}
-	              folderTitle={activeFolderSummary.title}
-	              folderCount={activeFolderSummary.count}
-	              selectedMail={selectedMail}
+                folders={workspaceFolders}
+                mail={sortedMail}
+                folderTitle={activeFolderSummary.title}
+                folderCount={activeFolderSummary.count}
+                selectedMail={selectedMail}
               selectedDetail={selectedDetail}
               undoToast={undoToast}
               backendNotice={backendNotice}
@@ -1753,14 +1791,14 @@ export function App(props: AppProps = {}) {
               labels={navigationLabels}
               hermesFollowUpSuggestion={hermesFollowUpSuggestion}
               followUpNotice={followUpNotice}
-	              density={mailDensity}
-	              sort={mailSort}
-	              onAddMail={() => setActiveView("add-mail")}
-	              onGlobalSearch={launchGlobalSearch}
-	              onDensityChange={setMailDensity}
-	              onRefresh={() => void refreshCurrentMail()}
-	              onSortChange={changeMailSort}
-	              onFolderChange={(id) => void loadMailbox(id)}
+                density={mailDensity}
+                sort={mailSort}
+                onAddMail={() => setActiveView("add-mail")}
+                onGlobalSearch={launchGlobalSearch}
+                onDensityChange={setMailDensity}
+                onRefresh={() => void refreshCurrentMail()}
+                onSortChange={changeMailSort}
+                onFolderChange={(id) => void loadMailbox(id)}
               onSavedViewChange={(id) => void loadSavedView(id)}
               onLabelChange={(id) => void loadLabel(id)}
               onMailChange={setActiveMailId}
@@ -1776,8 +1814,9 @@ export function App(props: AppProps = {}) {
                 )
               }
               onUndoDone={() => void undoDone()}
-              onSmartInboxBucketDone={(bucket) => void applySmartInboxBucketDone(bucket)}
-              onSmartInboxFeedback={recordSmartInboxFeedback}
+                onSmartInboxBucketDone={(bucket) => void applySmartInboxBucketDone(bucket)}
+                onSelectedMessagesDone={(items) => void applySelectedMessagesDone(items)}
+                onSmartInboxFeedback={recordSmartInboxFeedback}
               onMailActionResult={applyActionResult}
               onLabelsChanged={(accountId) => void refreshLabels(accountId)}
               onTrackFollowUp={() => void trackSelectedFollowUp()}
@@ -1825,8 +1864,9 @@ export function App(props: AppProps = {}) {
         {activeView === "search" ? (
           <SearchPage
             api={props.api}
-            accountId={selectedAccountId ?? selectedMail?.accountId ?? ""}
+            accountId={selectedMail?.accountId ?? selectedAccountId ?? ""}
             restrictToAccount={Boolean(restrictToDefaultAccount)}
+            labels={navigationLabels}
             launch={searchLaunch}
             onOpenResult={openSearchResult}
           />
@@ -2071,12 +2111,12 @@ function MailWorkspace(props: {
   api?: EmailHubApi;
   accountId: string;
   activeFolder: string;
-	  activeMailId: string;
-	  folders: FolderItem[];
-	  mail: MailItem[];
-	  folderTitle: string;
-	  folderCount: number;
-	  selectedMail: MailItem;
+    activeMailId: string;
+    folders: FolderItem[];
+    mail: MailItem[];
+    folderTitle: string;
+    folderCount: number;
+    selectedMail: MailItem;
   selectedDetail?: MessageDetailDto;
   undoToast?: UndoToastState;
   backendNotice?: string;
@@ -2084,15 +2124,15 @@ function MailWorkspace(props: {
   quickCategories: QuickCategory[];
   labels: LabelItem[];
   hermesFollowUpSuggestion?: HermesFollowupTrackerResult;
-	  followUpNotice?: string;
-	  density: MailDensity;
-	  sort: MessageListSort;
-	  onAddMail: () => void;
-	  onGlobalSearch: (query: string) => void;
-	  onDensityChange: (density: MailDensity) => void;
-	  onRefresh: () => void;
-	  onSortChange: (sort: MessageListSort) => void;
-	  onFolderChange: (id: string) => void;
+    followUpNotice?: string;
+    density: MailDensity;
+    sort: MessageListSort;
+    onAddMail: () => void;
+    onGlobalSearch: (query: string) => void;
+    onDensityChange: (density: MailDensity) => void;
+    onRefresh: () => void;
+    onSortChange: (sort: MessageListSort) => void;
+    onFolderChange: (id: string) => void;
   onSavedViewChange: (id: string) => void;
   onLabelChange: (id: string) => void;
   onMailChange: (id: string) => void;
@@ -2101,9 +2141,10 @@ function MailWorkspace(props: {
   onTrash: () => ReaderActionResult;
   onToggleStar: () => ReaderActionResult;
   onToggleRead: () => ReaderActionResult;
-  onUndoDone: () => void;
-  onSmartInboxBucketDone: (bucket: string) => void;
-  onSmartInboxFeedback: (action: SmartInboxFeedbackAction) => ReaderActionResult;
+    onUndoDone: () => void;
+    onSmartInboxBucketDone: (bucket: string) => void;
+    onSelectedMessagesDone: (items: MailItem[]) => void;
+    onSmartInboxFeedback: (action: SmartInboxFeedbackAction) => ReaderActionResult;
   onMailActionResult: (result: MailActionResult) => void;
   onLabelsChanged: (accountId: string) => void;
   onTrackFollowUp: () => void;
@@ -2114,6 +2155,9 @@ function MailWorkspace(props: {
   const [newLabelName, setNewLabelName] = useState("");
   const [labelNotice, setLabelNotice] = useState("");
   const [labelBusy, setLabelBusy] = useState(false);
+  const [selectedMailKeys, setSelectedMailKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [composeFrom, setComposeFrom] = useState("");
   const [sendIdentities, setSendIdentities] = useState<MailSendIdentityDto[]>([]);
   const [sendIdentityCandidates, setSendIdentityCandidates] = useState<
@@ -2361,8 +2405,14 @@ function MailWorkspace(props: {
       ? selectedComposeIdentity.from
       : undefined;
   const detailAttachments = props.selectedDetail?.attachments;
+  const visibleAttachmentCount =
+    detailAttachments?.length ??
+    (props.api ? props.selectedMail.attachmentCount : PREVIEW_ATTACHMENT_ROWS.length);
   const previewAttachments = props.api ? [] : PREVIEW_ATTACHMENT_ROWS;
   const readerBodyText = messageReaderText(props.selectedDetail, props.selectedMail);
+  const readerRecipientSummary = messageRecipientSummary(
+    props.selectedDetail,
+  );
   const readerHermesApplyActions = readerHermesOrganization
     ? hermesOrganizationApplyActions(readerHermesOrganization)
     : [];
@@ -3690,6 +3740,46 @@ function MailWorkspace(props: {
     (mail) => mail.bucket === selectedBucket,
   ).length;
   const smartInboxDisabled = props.smartInboxBusy !== "";
+  const visibleMailKeys = useMemo(
+    () => new Set(props.mail.map((mail) => mailItemKey(mail))),
+    [props.mail],
+  );
+  const selectedVisibleMail = props.mail.filter((mail) =>
+    selectedMailKeys.has(mailItemKey(mail)),
+  );
+  const allVisibleSelected =
+    props.mail.length > 0 && selectedVisibleMail.length === props.mail.length;
+
+  useEffect(() => {
+    setSelectedMailKeys((current) => {
+      const next = new Set<string>();
+      for (const key of current) {
+        if (visibleMailKeys.has(key)) {
+          next.add(key);
+        }
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleMailKeys]);
+
+  function toggleAllVisibleMail(checked: boolean) {
+    setSelectedMailKeys(
+      checked ? new Set(props.mail.map((mail) => mailItemKey(mail))) : new Set(),
+    );
+  }
+
+  function toggleVisibleMail(mail: MailItem, checked: boolean) {
+    const key = mailItemKey(mail);
+    setSelectedMailKeys((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  }
 
   return (
     <section className="workspace-page mail-page">
@@ -4398,43 +4488,43 @@ function MailWorkspace(props: {
             })}
           </div>
 
-	          <div className="directory-section">
-	            <div className="section-label with-action">
-	              标签/项目
-	              <button
-	                type="button"
-	                aria-label="添加标签"
-	                onClick={() => {
-	                  setLabelFormOpen((current) => !current);
-	                  setLabelNotice("");
-	                }}
-	              >
-	                +
-	              </button>
-	            </div>
-	            {labelFormOpen ? (
-	              <form
-	                className="label-create-form"
-	                aria-label="创建标签"
-	                onSubmit={submitNewLabel}
-	              >
-	                <input
-	                  aria-label="新标签名称"
-	                  placeholder="新标签"
-	                  value={newLabelName}
-	                  onChange={(event) => setNewLabelName(event.target.value)}
-	                />
-	                <button type="submit" disabled={labelBusy}>
-	                  {labelBusy ? "创建中" : "创建"}
-	                </button>
-	              </form>
-	            ) : null}
-	            {labelNotice ? (
-	              <div className="backend-notice compact" role="status">
-	                {labelNotice}
-	              </div>
-	            ) : null}
-	            {props.labels.map((label) => (
+            <div className="directory-section">
+              <div className="section-label with-action">
+                标签/项目
+                <button
+                  type="button"
+                  aria-label="添加标签"
+                  onClick={() => {
+                    setLabelFormOpen((current) => !current);
+                    setLabelNotice("");
+                  }}
+                >
+                  +
+                </button>
+              </div>
+              {labelFormOpen ? (
+                <form
+                  className="label-create-form"
+                  aria-label="创建标签"
+                  onSubmit={submitNewLabel}
+                >
+                  <input
+                    aria-label="新标签名称"
+                    placeholder="新标签"
+                    value={newLabelName}
+                    onChange={(event) => setNewLabelName(event.target.value)}
+                  />
+                  <button type="submit" disabled={labelBusy}>
+                    {labelBusy ? "创建中" : "创建"}
+                  </button>
+                </form>
+              ) : null}
+              {labelNotice ? (
+                <div className="backend-notice compact" role="status">
+                  {labelNotice}
+                </div>
+              ) : null}
+              {props.labels.map((label) => (
               <button
                 key={label.id}
                 className={
@@ -4473,12 +4563,12 @@ function MailWorkspace(props: {
           </div>
         </aside>
 
-	        <section className={`message-list-panel density-${props.density}`} aria-label="邮件列表">
-	          <div className="list-toolbar">
-	            <div>
-	              <h2>{props.folderTitle}</h2>
-	              <span>{props.folderCount} 封邮件</span>
-	            </div>
+          <section className={`message-list-panel density-${props.density}`} aria-label="邮件列表">
+            <div className="list-toolbar">
+              <div>
+                <h2>{props.folderTitle}</h2>
+                <span>{props.folderCount} 封邮件</span>
+              </div>
             <div className="list-toolbar-actions">
               <div className="density-control" aria-label="邮件列表密度">
                 {densityOptions.map((option) => (
@@ -4493,33 +4583,52 @@ function MailWorkspace(props: {
                   </button>
                 ))}
               </div>
-	              <button
-	                className="tiny-button"
-	                type="button"
-	                aria-label={
-	                  props.sort === "smart" ? "切换为按时间排序" : "切换为智能排序"
-	                }
-	                onClick={() =>
-	                  props.onSortChange(props.sort === "smart" ? "time" : "smart")
-	                }
-	              >
-	                {props.sort === "smart" ? "智能排序" : "按时间"}
-	                <ChevronDown size={14} />
-	              </button>
-            </div>
-          </div>
-          <div className="bulk-row">
-            <label>
-              <input type="checkbox" />
-              全部
-            </label>
-            <div className="smart-inbox-actions" aria-label="Smart Inbox actions">
-              <span>
-                Smart Inbox · {bucketLabel(selectedBucket)} · {selectedBucketCount} 封
-              </span>
-              <div className="smart-inbox-action-set">
                 <button
                   className="tiny-button"
+                  type="button"
+                  aria-label={
+                    props.sort === "smart" ? "切换为按时间排序" : "切换为智能排序"
+                  }
+                  onClick={() =>
+                    props.onSortChange(props.sort === "smart" ? "time" : "smart")
+                  }
+                >
+                  {props.sort === "smart" ? "智能排序" : "按时间"}
+                  <ChevronDown size={14} />
+                </button>
+            </div>
+            </div>
+            <div className="bulk-row">
+              <label>
+                <input
+                  aria-label="选择当前列表全部邮件"
+                  checked={allVisibleSelected}
+                  type="checkbox"
+                  onChange={(event) => toggleAllVisibleMail(event.currentTarget.checked)}
+                />
+                全部
+              </label>
+              <div className="smart-inbox-actions" aria-label="Smart Inbox actions">
+                <span>
+                  {selectedVisibleMail.length > 0
+                    ? `已选 ${selectedVisibleMail.length} 封`
+                    : `Smart Inbox · ${bucketLabel(selectedBucket)} · ${selectedBucketCount} 封`}
+                </span>
+                <div className="smart-inbox-action-set">
+                  <button
+                    className="tiny-button"
+                    type="button"
+                    aria-label="Smart Inbox done selected messages"
+                    disabled={smartInboxDisabled || selectedVisibleMail.length === 0}
+                    onClick={() => props.onSelectedMessagesDone(selectedVisibleMail)}
+                  >
+                    {props.smartInboxBusy === "bulk_done" &&
+                    selectedVisibleMail.length > 0
+                      ? "处理中"
+                      : "选中 Done"}
+                  </button>
+                  <button
+                    className="tiny-button"
                   type="button"
                   aria-label={`Smart Inbox done ${selectedBucket}`}
                   disabled={smartInboxDisabled || selectedBucketCount === 0}
@@ -4559,38 +4668,53 @@ function MailWorkspace(props: {
               </div>
             </div>
           </div>
-          {props.mail.map((mail) => (
-            <button
-              key={mailItemKey(mail)}
-              className={
-                props.activeMailId === mailItemKey(mail)
-                  ? "message-row active"
-                  : "message-row"
-              }
-              onClick={() => props.onMailChange(mailItemKey(mail))}
-              type="button"
-            >
-              <span className={mail.unread ? "unread-dot" : "read-dot"} />
-              <div className="message-row-main">
-                <div className="row-topline">
-                  <strong>{mail.sender}</strong>
-                  <time>{mail.time}</time>
+            {props.mail.map((mail) => {
+              const key = mailItemKey(mail);
+              return (
+                <div
+                  key={key}
+                  className={
+                    props.activeMailId === key
+                      ? "message-row active"
+                      : "message-row"
+                  }
+                >
+                  <input
+                    aria-label={`Select message ${mail.subject}`}
+                    checked={selectedMailKeys.has(key)}
+                    type="checkbox"
+                    onChange={(event) =>
+                      toggleVisibleMail(mail, event.currentTarget.checked)
+                    }
+                  />
+                  <span className={mail.unread ? "unread-dot" : "read-dot"} />
+                  <button
+                    className="message-row-open"
+                    type="button"
+                    onClick={() => props.onMailChange(key)}
+                  >
+                    <div className="message-row-main">
+                      <div className="row-topline">
+                        <strong>{mail.sender}</strong>
+                        <time>{mail.time}</time>
+                      </div>
+                      <div className="row-subject">
+                        <Star size={14} className={mail.starred ? "star-hot" : ""} />
+                        <span>{mail.subject}</span>
+                      </div>
+                      <p>{mail.preview}</p>
+                      <div className="reason-line">
+                        {mail.reasons.slice(0, 2).map((reason) => (
+                          <span key={reason}>{reason}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </button>
+                  <span className={`tag ${mail.tone}`}>{mail.label}</span>
                 </div>
-                <div className="row-subject">
-                  <Star size={14} className={mail.starred ? "star-hot" : ""} />
-                  <span>{mail.subject}</span>
-                </div>
-                <p>{mail.preview}</p>
-                <div className="reason-line">
-                  {mail.reasons.slice(0, 2).map((reason) => (
-                    <span key={reason}>{reason}</span>
-                  ))}
-                </div>
-              </div>
-              <span className={`tag ${mail.tone}`}>{mail.label}</span>
-            </button>
-          ))}
-        </section>
+              );
+            })}
+          </section>
 
         <article className="reader-panel">
           <div className="reader-toolbar">
@@ -4738,7 +4862,10 @@ function MailWorkspace(props: {
               <div className="avatar">{props.selectedMail.sender.slice(0, 1)}</div>
               <div>
                 <strong>{props.selectedMail.sender}</strong>
-                <span>{props.selectedMail.email} · 收件人：我 · {props.selectedMail.date} {props.selectedMail.time}</span>
+                <span>
+                  {props.selectedMail.email} · {readerRecipientSummary} ·{" "}
+                  {props.selectedMail.date} {props.selectedMail.time}
+                </span>
               </div>
               <button
                 className="icon-button"
@@ -4968,7 +5095,7 @@ function MailWorkspace(props: {
             <div className="attachment-box">
               <div className="attachment-head">
                 <strong>
-                  {detailAttachments?.length ?? previewAttachments.length} 个附件
+                  {visibleAttachmentCount} 个附件
                 </strong>
                 <Paperclip size={17} />
               </div>
@@ -8507,6 +8634,7 @@ function SearchPage(props: {
   api?: EmailHubApi;
   accountId: string;
   restrictToAccount?: boolean;
+  labels: LabelItem[];
   launch?: SearchLaunch;
   onOpenResult: (mail: MailItem) => void;
 }) {
@@ -8534,6 +8662,8 @@ function SearchPage(props: {
   const [receivedAfter, setReceivedAfter] = useState<string | undefined>();
   const [receivedBefore, setReceivedBefore] = useState<string | undefined>();
   const [hasAttachment, setHasAttachment] = useState<boolean | undefined>();
+  const [labelIds, setLabelIds] = useState<string[]>([]);
+  const [tagMode, setTagMode] = useState<MailTagMode>("any");
   const [hermesSearchBusy, setHermesSearchBusy] = useState(false);
 
   function toggleQuickFilter(filter: MailQuickFilter) {
@@ -8549,6 +8679,14 @@ function SearchPage(props: {
       current.includes(scope)
         ? current.filter((item) => item !== scope)
         : [...current, scope],
+    );
+  }
+
+  function toggleSearchLabel(labelId: string) {
+    setLabelIds((current) =>
+      current.includes(labelId)
+        ? current.filter((item) => item !== labelId)
+        : [...current, labelId],
     );
   }
 
@@ -8584,12 +8722,16 @@ function SearchPage(props: {
       launchOverride?.senderQuery ?? senderQuery;
     const effectiveRecipientQuery =
       launchOverride?.recipientQuery ?? recipientQuery;
-    const effectiveReceivedAfter =
-      launchOverride?.receivedAfter ?? receivedAfter;
-    const effectiveReceivedBefore =
-      launchOverride?.receivedBefore ?? receivedBefore;
+    const effectiveReceivedAfter = normalizeReceivedAfterFilter(
+      launchOverride?.receivedAfter ?? receivedAfter,
+    );
+    const effectiveReceivedBefore = normalizeReceivedBeforeFilter(
+      launchOverride?.receivedBefore ?? receivedBefore,
+    );
     const effectiveHasAttachment =
       launchOverride?.hasAttachment ?? hasAttachment;
+    const effectiveLabelIds = launchOverride?.labelIds ?? labelIds;
+    const effectiveTagMode = launchOverride?.tagMode ?? tagMode;
     const hasLaunchOverride = launchOverride !== undefined;
     const effectiveSearchAllAccounts = props.restrictToAccount
       ? false
@@ -8626,6 +8768,9 @@ function SearchPage(props: {
           : {}),
         ...(typeof effectiveHasAttachment === "boolean"
           ? { hasAttachment: effectiveHasAttachment }
+          : {}),
+        ...(effectiveLabelIds.length
+          ? { labelIds: effectiveLabelIds, tagMode: effectiveTagMode }
           : {}),
       });
       const mappedResults = page.items.map(mapMessageDtoToMailItem);
@@ -8693,9 +8838,11 @@ function SearchPage(props: {
       ]);
       setSenderQuery(searchOptions.senderQuery);
       setRecipientQuery(searchOptions.recipientQuery);
-      setReceivedAfter(searchOptions.receivedAfter);
-      setReceivedBefore(searchOptions.receivedBefore);
+      setReceivedAfter(dateInputValue(searchOptions.receivedAfter));
+      setReceivedBefore(dateInputValue(searchOptions.receivedBefore));
       setHasAttachment(searchOptions.hasAttachment);
+      setLabelIds(searchOptions.labelIds ?? []);
+      setTagMode(searchOptions.tagMode ?? "any");
       setSearchAllAccounts(false);
       const searched = await executeSearch(result.searchQuery, searchOptions);
       if (!searched) {
@@ -8733,9 +8880,11 @@ function SearchPage(props: {
     ]);
     setSenderQuery(props.launch.senderQuery);
     setRecipientQuery(props.launch.recipientQuery);
-    setReceivedAfter(props.launch.receivedAfter);
-    setReceivedBefore(props.launch.receivedBefore);
+    setReceivedAfter(dateInputValue(props.launch.receivedAfter));
+    setReceivedBefore(dateInputValue(props.launch.receivedBefore));
     setHasAttachment(props.launch.hasAttachment);
+    setLabelIds(props.launch.labelIds ?? []);
+    setTagMode(props.launch.tagMode ?? "any");
     setSearchAllAccounts(
       props.restrictToAccount ? false : !props.launch.accountId,
     );
@@ -8762,9 +8911,9 @@ function SearchPage(props: {
         </div>
       </header>
       <section className="page-panel search-panel">
-	        <form className="search-form" onSubmit={runSearch}>
-	          <label className="large-search">
-	            <Search size={21} />
+          <form className="search-form" onSubmit={runSearch}>
+            <label className="large-search">
+              <Search size={21} />
             <input
               aria-label="搜索邮件"
               placeholder="搜索邮件、联系人、主题或附件"
@@ -8772,35 +8921,35 @@ function SearchPage(props: {
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-	          <button className="primary-button" type="submit">
-	            执行搜索
-	          </button>
-	        </form>
-	        <form
-	          className="search-form hermes-search-form"
-	          aria-label="Hermes 自然语言搜索"
-	          onSubmit={runHermesNaturalLanguageSearch}
-	        >
-	          <label className="large-search">
-	            <Sparkles size={21} />
-	            <input
-	              aria-label="Hermes 搜索问题"
-	              placeholder="问 Hermes：上次客户提到的合同在哪里？"
-	              value={naturalLanguageQuery}
-	              onChange={(event) => setNaturalLanguageQuery(event.target.value)}
-	            />
-	          </label>
-	          <button
-	            className="primary-button"
-	            type="submit"
-	            disabled={hermesSearchBusy}
-	          >
-	            {hermesSearchBusy ? "Hermes 搜索中" : "让 Hermes 搜索"}
-	          </button>
-	        </form>
-	        <div className="filter-row">
-          <button
-            className={searchAllAccounts ? "active" : ""}
+            <button className="primary-button" type="submit">
+              执行搜索
+            </button>
+          </form>
+          <form
+            className="search-form hermes-search-form"
+            aria-label="Hermes 自然语言搜索"
+            onSubmit={runHermesNaturalLanguageSearch}
+          >
+            <label className="large-search">
+              <Sparkles size={21} />
+              <input
+                aria-label="Hermes 搜索问题"
+                placeholder="问 Hermes：上次客户提到的合同在哪里？"
+                value={naturalLanguageQuery}
+                onChange={(event) => setNaturalLanguageQuery(event.target.value)}
+              />
+            </label>
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={hermesSearchBusy}
+            >
+              {hermesSearchBusy ? "Hermes 搜索中" : "让 Hermes 搜索"}
+            </button>
+          </form>
+          <div className="filter-row">
+            <button
+              className={searchAllAccounts ? "active" : ""}
             type="button"
             aria-label="Search all accounts"
             disabled={props.restrictToAccount}
@@ -8858,10 +9007,91 @@ function SearchPage(props: {
             aria-label="Search recipients scope"
             onClick={() => toggleSearchScope("recipients")}
           >
-            收件人
-          </button>
-        </div>
-        <div className="backend-notice" role="status">{notice}</div>
+              收件人
+            </button>
+          </div>
+          <div className="search-advanced-grid" aria-label="高级搜索筛选">
+            <label>
+              <span>发件人</span>
+              <input
+                aria-label="搜索发件人"
+                value={senderQuery ?? ""}
+                onChange={(event) =>
+                  setSenderQuery(event.target.value.trim() || undefined)
+                }
+              />
+            </label>
+            <label>
+              <span>收件人</span>
+              <input
+                aria-label="搜索收件人"
+                value={recipientQuery ?? ""}
+                onChange={(event) =>
+                  setRecipientQuery(event.target.value.trim() || undefined)
+                }
+              />
+            </label>
+            <label>
+              <span>开始日期</span>
+              <input
+                aria-label="搜索开始日期"
+                type="date"
+                value={receivedAfter ?? ""}
+                onChange={(event) =>
+                  setReceivedAfter(event.target.value || undefined)
+                }
+              />
+            </label>
+            <label>
+              <span>结束日期</span>
+              <input
+                aria-label="搜索结束日期"
+                type="date"
+                value={receivedBefore ?? ""}
+                onChange={(event) =>
+                  setReceivedBefore(event.target.value || undefined)
+                }
+              />
+            </label>
+            <label>
+              <span>标签模式</span>
+              <select
+                aria-label="搜索标签模式"
+                value={tagMode}
+                onChange={(event) => setTagMode(event.target.value as MailTagMode)}
+              >
+                <option value="any">任一标签</option>
+                <option value="all">全部标签</option>
+              </select>
+            </label>
+            <label className="search-checkbox">
+              <input
+                aria-label="搜索必须有附件"
+                type="checkbox"
+                checked={hasAttachment === true}
+                onChange={(event) =>
+                  setHasAttachment(event.currentTarget.checked ? true : undefined)
+                }
+              />
+              <span>必须有附件</span>
+            </label>
+          </div>
+          {props.labels.length > 0 ? (
+            <div className="filter-row" aria-label="标签搜索筛选">
+              {props.labels.slice(0, 12).map((label) => (
+                <button
+                  key={label.id}
+                  className={labelIds.includes(label.id) ? "active" : ""}
+                  type="button"
+                  aria-label={`Search label ${label.label}`}
+                  onClick={() => toggleSearchLabel(label.id)}
+                >
+                  {label.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="backend-notice" role="status">{notice}</div>
         {results.length > 0
           ? results.map((mail) => (
               <button
@@ -12757,11 +12987,13 @@ function searchLaunchFromHermesResult(
     ...(planInput.receivedBefore
       ? { receivedBefore: planInput.receivedBefore }
       : {}),
-    ...(typeof planInput.hasAttachment === "boolean"
-      ? { hasAttachment: planInput.hasAttachment }
-      : {}),
-  };
-}
+      ...(typeof planInput.hasAttachment === "boolean"
+        ? { hasAttachment: planInput.hasAttachment }
+        : {}),
+      ...(planInput.labelIds ? { labelIds: planInput.labelIds } : {}),
+      ...(planInput.tagMode ? { tagMode: planInput.tagMode } : {}),
+    };
+  }
 
 function hermesSearchMemoryInput(
   selectedMail: MailItem | undefined,
@@ -12858,11 +13090,11 @@ function toneForLabelColor(color: LabelDto["color"]): Tone {
 }
 
 function mapMessageDtoToMailItem(message: MessageListItemDto): MailItem {
-	  return {
-	    id: message.id,
-	    accountId: message.accountId,
-	    receivedAt: message.receivedAt,
-	    sender: message.from.name ?? message.from.email,
+    return {
+      id: message.id,
+      accountId: message.accountId,
+      receivedAt: message.receivedAt,
+      sender: message.from.name ?? message.from.email,
     email: message.from.email,
     subject: message.subject,
     preview: message.snippet ?? "",
@@ -12870,15 +13102,16 @@ function mapMessageDtoToMailItem(message: MessageListItemDto): MailItem {
     date: formatMailDate(message.receivedAt),
     label: bucketLabel(message.classification.bucket),
     tone: toneForBucket(message.classification.bucket),
-    unread: message.unread,
-    starred: message.starred,
-    mailboxIds: message.mailboxIds,
+      unread: message.unread,
+      starred: message.starred,
+      attachmentCount: message.attachmentCount,
+      mailboxIds: message.mailboxIds,
     bucket: message.classification.bucket,
     score: message.classification.priorityScore,
     reasons: message.classification.reasons,
     searchPreview: message.searchPreview?.text,
-	  };
-	}
+    };
+  }
 
 function sortMailItems(items: MailItem[], sort: MessageListSort): MailItem[] {
   const next = [...items];
@@ -13068,6 +13301,61 @@ function hermesRuleKeywords(condition: Record<string, unknown>): string[] {
 
 function mailItemKey(mail: Pick<MailItem, "accountId" | "id">): string {
   return `${mail.accountId}:${mail.id}`;
+}
+
+function messageRecipientSummary(detail: MessageDetailDto | undefined): string {
+  if (!detail) {
+    return "收件人：我";
+  }
+
+  const parts = [
+    `收件人：${formatAddressList(detail.to)}`,
+  ];
+  if (detail.cc.length > 0) {
+    parts.push(`抄送：${formatAddressList(detail.cc)}`);
+  }
+  return parts.join(" · ");
+}
+
+function formatAddressList(addresses: string[]): string {
+  if (addresses.length === 0) {
+    return "无";
+  }
+  const visible = addresses.slice(0, 3);
+  const suffix = addresses.length > visible.length ? ` 等 ${addresses.length} 人` : "";
+  return `${visible.join("、")}${suffix}`;
+}
+
+function dateInputValue(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+}
+
+function normalizeReceivedAfterFilter(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (value.includes("T")) {
+    return value;
+  }
+  return `${value}T00:00:00.000Z`;
+}
+
+function normalizeReceivedBeforeFilter(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (value.includes("T")) {
+    return value;
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString();
 }
 
 function messageReaderText(

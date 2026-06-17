@@ -2705,7 +2705,91 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-	  it("reloads the message list with the selected mailbox id when a folder is opened", async () => {
+  it("renders real reader recipients and detail attachment counts", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockResolvedValueOnce({
+      items: [
+        {
+          id: "message_with_attachments",
+          accountId: "account_1",
+          subject: "Attachment rich message",
+          from: { email: "client@example.com", name: "Live Client" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "Detail has two files",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 2,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 96,
+            reasons: ["Direct to you"],
+          },
+        },
+      ],
+    });
+    vi.mocked(api.getMessage).mockImplementation(async (input) => {
+      if (input.messageId !== "message_with_attachments") {
+        return createDefaultMessageDetail();
+      }
+
+      return {
+        id: "message_with_attachments",
+        accountId: "account_1",
+        subject: "Attachment rich message",
+        from: { email: "client@example.com", name: "Live Client" },
+        receivedAt: "2026-06-13T10:00:00.000Z",
+        snippet: "Detail has two files",
+        unread: true,
+        starred: false,
+        mailboxIds: ["mailbox_inbox"],
+        attachmentCount: 2,
+        classification: {
+          bucket: "P1 Urgent",
+          priorityScore: 96,
+          reasons: ["Direct to you"],
+        },
+        to: ["me@example.com", "ops@example.com"],
+        cc: ["pm@example.com"],
+        bodyText: "Detail body from backend",
+        attachments: [
+          {
+            id: "att_1",
+            filename: "contract.pdf",
+            contentType: "application/pdf",
+            byteSize: 1200,
+            embedded: false,
+            inline: false,
+          },
+          {
+            id: "att_2",
+            filename: "quote.xlsx",
+            contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            byteSize: 2400,
+            embedded: false,
+            inline: false,
+          },
+        ],
+      };
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    expect(await screen.findByRole("heading", { name: "Attachment rich message" })).toBeTruthy();
+    expect(await screen.findByText("Detail body from backend")).toBeTruthy();
+    const reader = screen.getByRole("article");
+    expect(
+      within(reader).getByText(
+        /收件人：me@example.com、ops@example.com · 抄送：pm@example.com/,
+      ),
+    ).toBeTruthy();
+    expect(within(reader).queryByText(/收件人：我/)).toBeNull();
+    expect(within(reader).getByText("2 个附件")).toBeTruthy();
+    expect(within(reader).getByText("contract.pdf")).toBeTruthy();
+    expect(within(reader).getByText("quote.xlsx")).toBeTruthy();
+  });
+
+  it("reloads the message list with the selected mailbox id when a folder is opened", async () => {
     const api = createApiFixture();
     vi.mocked(api.listMailboxes).mockResolvedValue({
       items: [
@@ -2801,9 +2885,9 @@ describe("Email Hub first UI baseline", () => {
         sort: "smart",
       });
     });
-	    expect(await screen.findByRole("heading", { name: "Sent subject from backend" })).toBeTruthy();
-	    expect(await screen.findByText("Sent body from backend")).toBeTruthy();
-	  });
+      expect(await screen.findByRole("heading", { name: "Sent subject from backend" })).toBeTruthy();
+      expect(await screen.findByText("Sent body from backend")).toBeTruthy();
+    });
 
   it("wires mailbox shell count, refresh, sort, and label creation to backend state", async () => {
     const api = createApiFixture();
@@ -2997,6 +3081,77 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText(/Indexed body hit: signed contract/)).toBeTruthy();
   });
 
+  it("sends advanced search filters to the backend message search route", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items: [
+        {
+          id: input.q ? "message_filtered_search" : "message_1",
+          accountId: "account_1",
+          subject: input.q ? "Filtered search result" : "Live subject",
+          from: { email: "client@example.com", name: "Live Client" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: input.q ? "Filtered backend result" : "Live snippet",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: input.q ? 1 : 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: input.q ? 91 : 96,
+            reasons: input.q ? ["Advanced filter"] : ["Direct to you"],
+          },
+        },
+      ],
+    }));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
+    );
+    await screen.findByRole("button", { name: "Search label 客户" });
+
+    fireEvent.change(screen.getByLabelText("搜索邮件"), {
+      target: { value: "contract" },
+    });
+    fireEvent.change(screen.getByLabelText("搜索发件人"), {
+      target: { value: "client@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("搜索收件人"), {
+      target: { value: "me@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("搜索开始日期"), {
+      target: { value: "2026-06-01" },
+    });
+    fireEvent.change(screen.getByLabelText("搜索结束日期"), {
+      target: { value: "2026-06-15" },
+    });
+    fireEvent.change(screen.getByLabelText("搜索标签模式"), {
+      target: { value: "all" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search label 客户" }));
+    fireEvent.click(screen.getByLabelText("搜索必须有附件"));
+    fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        limit: 50,
+        q: "contract",
+        sort: "smart",
+        qScopes: ["sender", "recipients", "subject", "body"],
+        senderQuery: "client@example.com",
+        recipientQuery: "me@example.com",
+        receivedAfter: "2026-06-01T00:00:00.000Z",
+        receivedBefore: "2026-06-16T00:00:00.000Z",
+        hasAttachment: true,
+        labelIds: ["label_customer"],
+        tagMode: "all",
+      });
+    });
+    expect(await screen.findByText("Filtered search result")).toBeTruthy();
+  });
+
   it("runs Hermes natural language search from the Search workspace", async () => {
     const api = createApiFixture();
     vi.mocked(api.searchMailWithHermes).mockResolvedValueOnce({
@@ -3021,6 +3176,8 @@ describe("Email Hub first UI baseline", () => {
           quickFilters: ["attachments"],
           qScopes: ["sender", "recipients", "subject", "body"],
           hasAttachment: true,
+          labelIds: ["label_customer"],
+          tagMode: "any",
         },
         explanation: ["限制为带附件的合同邮件。"],
       },
@@ -3079,6 +3236,8 @@ describe("Email Hub first UI baseline", () => {
         quickFilters: ["attachments"],
         qScopes: ["sender", "recipients", "subject", "body"],
         hasAttachment: true,
+        labelIds: ["label_customer"],
+        tagMode: "any",
       });
     });
     expect(await screen.findByText("Hermes search result")).toBeTruthy();
@@ -3779,6 +3938,94 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByText("Account one urgent")).toBeNull();
     expect(screen.queryByText("Account two urgent")).toBeNull();
     expect(screen.getAllByText("Account two important").length).toBeGreaterThan(0);
+  });
+
+  it("runs selected-message Done only for checked messages", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockResolvedValue({
+      items: [
+        {
+          id: "urgent_1",
+          accountId: "account_1",
+          subject: "Selected urgent",
+          from: { email: "one@example.com", name: "One Sender" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "selected urgent",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 96,
+            reasons: ["Selected"],
+          },
+        },
+        {
+          id: "urgent_2",
+          accountId: "account_1",
+          subject: "Unselected urgent",
+          from: { email: "two@example.com", name: "Two Sender" },
+          receivedAt: "2026-06-13T10:05:00.000Z",
+          snippet: "not selected",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 95,
+            reasons: ["Unselected"],
+          },
+        },
+        {
+          id: "important_1",
+          accountId: "account_1",
+          subject: "Selected important",
+          from: { email: "important@example.com", name: "Important Sender" },
+          receivedAt: "2026-06-13T09:55:00.000Z",
+          snippet: "selected important",
+          unread: false,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P2 Important",
+            priorityScore: 80,
+            reasons: ["Selected"],
+          },
+        },
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    const messageList = await screen.findByLabelText("邮件列表");
+    await within(messageList).findByText("Selected urgent");
+    fireEvent.click(screen.getByLabelText("Select message Selected urgent"));
+    fireEvent.click(screen.getByLabelText("Select message Selected important"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Smart Inbox done selected messages" }),
+    );
+
+    await waitFor(() => {
+      expect(api.applySmartInboxCardBulkAction).toHaveBeenCalledTimes(2);
+    });
+    expect(api.applySmartInboxCardBulkAction).toHaveBeenCalledWith({
+      accountId: "account_1",
+      bucket: "P1 Urgent",
+      action: "done",
+      messageIds: ["urgent_1"],
+    });
+    expect(api.applySmartInboxCardBulkAction).toHaveBeenCalledWith({
+      accountId: "account_1",
+      bucket: "P2 Important",
+      action: "done",
+      messageIds: ["important_1"],
+    });
+    expect(await screen.findByText("Smart Inbox 已完成 2 封选中邮件。")).toBeTruthy();
+    expect(within(messageList).queryByText("Selected urgent")).toBeNull();
+    expect(within(messageList).queryByText("Selected important")).toBeNull();
+    expect(within(messageList).getAllByText("Unselected urgent").length).toBeGreaterThan(0);
   });
 
   it("records Smart Inbox feedback and updates the selected card classification", async () => {
@@ -7812,6 +8059,30 @@ function hermesRetentionMaintenanceCleanupFixture(
   };
 }
 
+function createDefaultMessageDetail(): MessageDetailDto {
+  return {
+    id: "message_1",
+    accountId: "account_1",
+    subject: "Live subject",
+    from: { email: "client@example.com", name: "Live Client" },
+    receivedAt: "2026-06-13T10:00:00.000Z",
+    snippet: "Live snippet",
+    unread: true,
+    starred: false,
+    mailboxIds: ["mailbox_inbox"],
+    attachmentCount: 0,
+    classification: {
+      bucket: "P1 Urgent",
+      priorityScore: 96,
+      reasons: ["Direct to you"],
+    },
+    to: ["me@example.com"],
+    cc: [],
+    bodyText: "Live body from backend",
+    attachments: [],
+  };
+}
+
 function createApiFixture(): EmailHubApi {
   return {
     listMailboxes: vi.fn(async () => ({
@@ -7875,28 +8146,7 @@ function createApiFixture(): EmailHubApi {
       messageCount: 0,
       createdAt: "2026-06-13T10:02:00.000Z",
     })),
-    getMessage: vi.fn(async () => ({
-      id: "message_1",
-      accountId: "account_1",
-      subject: "Live subject",
-      from: { email: "client@example.com", name: "Live Client" },
-      receivedAt: "2026-06-13T10:00:00.000Z",
-      snippet: "Live snippet",
-      unread: true,
-      starred: false,
-      mailboxIds: ["mailbox_inbox"],
-      labelIds: [],
-      attachmentCount: 0,
-      classification: {
-        bucket: "P1 Urgent",
-        priorityScore: 96,
-        reasons: ["Direct to you"],
-      },
-      to: ["me@example.com"],
-      cc: [],
-      bodyText: "Live body from backend",
-      attachments: [],
-    })),
+    getMessage: vi.fn(async () => createDefaultMessageDetail()),
     downloadAttachment: vi.fn(async () => ({
       blob: new Blob(["proposal"], { type: "application/pdf" }),
       filename: "proposal.pdf",
@@ -8855,29 +9105,29 @@ function createApiFixture(): EmailHubApi {
     searchMailWithHermes: vi.fn(async () => ({
       skillRunId: "run_search_1",
       skillId: "email_search_qa",
-	      answerText: "Lina mentioned the signed contract in the latest thread.",
-	      searchQuery: "signed contract",
-	      searchPlan: {
-	        searchQuery: "signed contract",
-	        quickFilters: ["attachments"],
-	        qScopes: ["sender", "recipients", "subject", "body"],
-	        filters: [
-	          {
-	            field: "hasAttachment",
-	            operator: "eq",
-	            value: true,
-	            label: "有附件",
-	          },
-	        ],
-	        listMessagesInput: {
-	          q: "signed contract",
-	          quickFilters: ["attachments"],
-	          qScopes: ["sender", "recipients", "subject", "body"],
-	          hasAttachment: true,
-	        },
-	        explanation: ["限制为带附件的邮件。"],
-	      },
-	      matches: [
+        answerText: "Lina mentioned the signed contract in the latest thread.",
+        searchQuery: "signed contract",
+        searchPlan: {
+          searchQuery: "signed contract",
+          quickFilters: ["attachments"],
+          qScopes: ["sender", "recipients", "subject", "body"],
+          filters: [
+            {
+              field: "hasAttachment",
+              operator: "eq",
+              value: true,
+              label: "有附件",
+            },
+          ],
+          listMessagesInput: {
+            q: "signed contract",
+            quickFilters: ["attachments"],
+            qScopes: ["sender", "recipients", "subject", "body"],
+            hasAttachment: true,
+          },
+          explanation: ["限制为带附件的邮件。"],
+        },
+        matches: [
         {
           id: "message_1",
           accountId: "account_1",

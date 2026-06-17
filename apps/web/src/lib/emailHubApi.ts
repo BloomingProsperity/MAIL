@@ -437,10 +437,12 @@ export interface HermesEmailSearchPlanDto {
     qScopes?: MailSearchScope[];
     senderQuery?: string;
     recipientQuery?: string;
-    receivedAfter?: string;
-    receivedBefore?: string;
-    hasAttachment?: boolean;
-  };
+      receivedAfter?: string;
+      receivedBefore?: string;
+      hasAttachment?: boolean;
+      labelIds?: string[];
+      tagMode?: MailTagMode;
+    };
   explanation: string[];
 }
 

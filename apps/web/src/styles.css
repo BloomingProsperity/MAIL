@@ -1141,13 +1141,28 @@ h2 {
 .message-row {
   display: grid;
   width: 100%;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 22px 10px minmax(0, 1fr) auto;
   gap: 6px;
   border: 0;
   border-bottom: 1px solid var(--border-light);
   padding: 7px 8px;
   background: transparent;
   color: var(--text-main);
+  text-align: left;
+}
+
+.message-row input[type="checkbox"] {
+  align-self: start;
+  margin-top: 4px;
+}
+
+.message-row-open {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   text-align: left;
 }
 
@@ -2639,6 +2654,38 @@ h2 {
   gap: 8px;
 }
 
+.search-advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.search-advanced-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.search-advanced-grid input,
+.search-advanced-grid select {
+  min-width: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+}
+
+.search-advanced-grid .search-checkbox {
+  display: flex;
+  align-items: center;
+  align-self: end;
+  min-height: 35px;
+  flex-direction: row;
+}
+
 .search-result {
   display: grid;
   width: 100%;
@@ -3177,10 +3224,11 @@ h2 {
   .add-mail-form,
   .custom-server-grid,
   .import-transfer-grid,
-  .audit-filter-grid,
-  .maintenance-grid,
-  .maintenance-cleanup,
-  .skill-grid {
+    .audit-filter-grid,
+    .maintenance-grid,
+    .maintenance-cleanup,
+    .search-advanced-grid,
+    .skill-grid {
     grid-template-columns: 1fr;
   }
 
