@@ -1,3 +1,4 @@
+import { writeSmokeFailureReport } from "./cli/smoke-report.js";
 import { runEmailEngineWebhookSmoke } from "./mail-engine/webhook-smoke.js";
 
 const apiBaseUrl =
@@ -28,18 +29,13 @@ try {
     ),
   );
 } catch (error) {
-  const message = error instanceof Error ? error.message : "unknown error";
-  console.error(
-    JSON.stringify(
-      {
-        ok: false,
-        smoke: "emailengine_webhook",
-        apiBaseUrl,
-        error: message,
-      },
-      null,
-      2,
-    ),
-  );
+  writeSmokeFailureReport({
+    smoke: "emailengine_webhook",
+    fields: {
+      apiBaseUrl,
+    },
+    secrets: [secret],
+    error,
+  });
   process.exitCode = 1;
 }

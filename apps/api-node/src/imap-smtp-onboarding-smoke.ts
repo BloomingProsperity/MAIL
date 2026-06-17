@@ -2,6 +2,7 @@ import {
   buildImapSmtpOnboardingSmokePayload,
   runImapSmtpOnboardingSmoke,
 } from "./accounts/imap-smtp-onboarding-smoke.js";
+import { writeSmokeFailureReport } from "./cli/smoke-report.js";
 
 const apiBaseUrl =
   process.env.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080";
@@ -56,21 +57,21 @@ try {
     ),
   );
 } catch (error) {
-  const message = error instanceof Error ? error.message : "unknown error";
-  console.error(
-    JSON.stringify(
-      {
-        ok: false,
-        smoke: "imap_smtp_onboarding",
-        apiBaseUrl,
-        email,
-        provider,
-        error: message,
-      },
-      null,
-      2,
-    ),
-  );
+  writeSmokeFailureReport({
+    smoke: "imap_smtp_onboarding",
+    fields: {
+      apiBaseUrl,
+      email,
+      provider,
+    },
+    secrets: [
+      secret,
+      process.env.EMAILHUB_API_TOKEN,
+      process.env.EMAILHUB_SMOKE_IMAP_SECRET,
+      process.env.EMAILHUB_SMOKE_SMTP_SECRET,
+    ],
+    error,
+  });
   process.exitCode = 1;
 }
 

@@ -1,5 +1,6 @@
 import { buildImapSmtpOnboardingSmokePayload } from "./accounts/imap-smtp-onboarding-smoke.js";
 import { createApiTokenFetch } from "./api-token-fetch.js";
+import { writeSmokeFailureReport } from "./cli/smoke-report.js";
 import { runEmailEngineRealWebhookSmoke } from "./mail-engine/real-webhook-smoke.js";
 import { resolveSmokeMailboxEmail } from "./mail-engine/smoke-defaults.js";
 
@@ -67,21 +68,21 @@ try {
 
   console.log(JSON.stringify(result, null, 2));
 } catch (error) {
-  const message = error instanceof Error ? error.message : "unknown error";
-  console.error(
-    JSON.stringify(
-      {
-        ok: false,
-        smoke: "emailengine_real_webhook",
-        apiBaseUrl,
-        email,
-        provider,
-        error: message,
-      },
-      null,
-      2,
-    ),
-  );
+  writeSmokeFailureReport({
+    smoke: "emailengine_real_webhook",
+    fields: {
+      apiBaseUrl,
+      email,
+      provider,
+    },
+    secrets: [
+      secret,
+      process.env.EMAILHUB_API_TOKEN,
+      process.env.EMAILHUB_SMOKE_IMAP_SECRET,
+      process.env.EMAILHUB_SMOKE_SMTP_SECRET,
+    ],
+    error,
+  });
   process.exitCode = 1;
 }
 

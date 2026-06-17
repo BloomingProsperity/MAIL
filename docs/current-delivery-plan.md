@@ -79,7 +79,10 @@ with more than smoke-level tests.
   onboarding smoke helper now redacts failed connection-test, onboarding, and
   Sync Center response summaries before they can reach CLI output, so echoed
   mailbox credentials, bearer tokens, PAT-shaped strings, URL credentials, query
-  strings, and private hosts do not leak from GreenMail gate failures. The default
+  strings, and private hosts do not leak from GreenMail gate failures. The
+  EmailEngine webhook, real webhook, send, attachment-download, mail-action, and
+  IMAP/SMTP smoke CLI entrypoints now use a shared smoke failure report helper,
+  so top-level failures get the same redaction boundary before JSON output. The default
   `verify:emailengine-launch` now runs the core gate, strict DB gate, and
   GreenMail checks, while `verify:emailengine-launch:core` remains available for
   faster iteration before final sign-off.
