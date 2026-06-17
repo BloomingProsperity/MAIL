@@ -27,6 +27,12 @@ import {
   Undo2
 } from "lucide-react";
 import { ApiRequestError } from "./lib/emailHubApi";
+import {
+  applyMailActionStateToMailItem,
+  dedupeMailItems,
+  mailItemKey,
+} from "./features/mail/mail-items";
+import type { MailItem, Tone } from "./features/mail/mail-items";
 import type {
   AttachmentDownload,
   AttachmentDto,
@@ -115,7 +121,6 @@ type SettingsSectionId =
   | "aliases"
   | "domains"
   | "notifications";
-type Tone = "coral" | "blue" | "green" | "yellow" | "purple";
 type MailDensity = "roomy" | "comfortable" | "compact";
 type QuickReplyAction = {
   scenario: HermesQuickReplyScenario;
@@ -260,29 +265,6 @@ interface FolderItem {
   id: string;
   label: string;
   count: number;
-}
-
-interface MailItem {
-  id: string;
-  accountId: string;
-  receivedAt: string;
-  sender: string;
-  email: string;
-  subject: string;
-  preview: string;
-  time: string;
-  date: string;
-  label: string;
-  tone: Tone;
-  unread: boolean;
-  starred: boolean;
-  attachmentCount: number;
-  mailboxIds?: string[];
-  labelIds?: string[];
-  bucket: string;
-  score: number;
-  reasons: string[];
-  searchPreview?: string;
 }
 
 interface ProviderOption {
@@ -13688,36 +13670,6 @@ function hermesRuleKeywords(condition: Record<string, unknown>): string[] {
   return Array.isArray(condition.anyKeywords)
     ? condition.anyKeywords.filter((keyword): keyword is string => typeof keyword === "string")
     : [];
-}
-
-function mailItemKey(mail: Pick<MailItem, "accountId" | "id">): string {
-  return `${mail.accountId}:${mail.id}`;
-}
-
-function dedupeMailItems(items: MailItem[]): MailItem[] {
-  const seen = new Set<string>();
-  const result: MailItem[] = [];
-  for (const item of items) {
-    const key = mailItemKey(item);
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(item);
-    }
-  }
-  return result;
-}
-
-function applyMailActionStateToMailItem(
-  item: MailItem,
-  result: MailActionResult,
-): MailItem {
-  return {
-    ...item,
-    unread: result.state.unread,
-    starred: result.state.starred,
-    mailboxIds: result.state.mailboxIds,
-    labelIds: result.state.labelIds,
-  };
 }
 
 function messageRecipientSummary(detail: MessageDetailDto | undefined): string {
