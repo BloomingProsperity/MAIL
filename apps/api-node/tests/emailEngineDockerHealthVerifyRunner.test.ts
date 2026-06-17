@@ -94,6 +94,108 @@ describe("EmailEngine Docker health verify CLI runner", () => {
     expect(JSON.stringify(stdout)).not.toContain("api-token");
   });
 
+  it("uses the selected env file for host probes when process env does not override it", async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const readEnvFile = vi.fn(() =>
+      [
+        "API_BIND=0.0.0.0:9191",
+        "WEB_BIND=0.0.0.0:4242",
+        "EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS=1800",
+        "EMAILHUB_DOCKER_HEALTH_ATTEMPTS=4",
+        "EMAILHUB_DOCKER_HEALTH_WAIT_MS=25",
+        "EMAILHUB_API_TOKEN=file-token",
+      ].join("\n"),
+    );
+    const result = dockerHealthResult({ ok: true });
+    const verifyHealth = vi.fn(async (input) => {
+      expect(input.envFile).toBe(".env.prod");
+      expect(input.httpTimeoutMs).toBe(1800);
+      expect(input.waitAttempts).toBe(4);
+      expect(input.waitIntervalMs).toBe(25);
+      expect(input.hostChecks).toEqual([
+        {
+          name: "api_health",
+          url: "http://127.0.0.1:9191/health",
+          expect: "http_ok",
+          headers: { authorization: "Bearer file-token" },
+        },
+        {
+          name: "mail_engine_readiness",
+          url: "http://127.0.0.1:9191/api/mail-engine/health",
+          expect: "mail_engine_ready",
+          headers: { authorization: "Bearer file-token" },
+        },
+        {
+          name: "web_home",
+          url: "http://127.0.0.1:4242/",
+          expect: "http_ok",
+        },
+      ]);
+      return result;
+    }) as unknown as typeof verifyDockerComposeHealth;
+
+    const exitCode = await runEmailEngineDockerHealthVerifyCli({
+      env: {
+        EMAILHUB_REPO_ROOT: "/repo",
+        EMAILHUB_ENV_FILE: ".env.prod",
+      },
+      fileExists: (path) => path === "/repo/.env.prod",
+      readEnvFile,
+      verifyHealth,
+      writeStdout: (message) => stdout.push(message),
+      writeStderr: (message) => stderr.push(message),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toEqual([]);
+    expect(readEnvFile).toHaveBeenCalledWith("/repo/.env.prod");
+    expect(JSON.stringify(stdout)).not.toContain("file-token");
+  });
+
+  it("lets process env override selected env file host probe settings", async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const result = dockerHealthResult({ ok: true });
+    const verifyHealth = vi.fn(async (input) => {
+      expect(input.httpTimeoutMs).toBe(900);
+      expect(input.hostChecks?.[0]).toMatchObject({
+        url: "http://127.0.0.1:8088/health",
+        headers: { authorization: "Bearer process-token" },
+      });
+      expect(input.hostChecks?.[2]).toMatchObject({
+        url: "http://127.0.0.1:4242/",
+      });
+      return result;
+    }) as unknown as typeof verifyDockerComposeHealth;
+
+    const exitCode = await runEmailEngineDockerHealthVerifyCli({
+      env: {
+        EMAILHUB_REPO_ROOT: "/repo",
+        EMAILHUB_ENV_FILE: ".env.prod",
+        API_BIND: "0.0.0.0:8088",
+        EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS: "900",
+        EMAILHUB_API_TOKEN: "process-token",
+      },
+      fileExists: (path) => path === "/repo/.env.prod",
+      readEnvFile: () =>
+        [
+          "API_BIND=0.0.0.0:9191",
+          "WEB_BIND=0.0.0.0:4242",
+          "EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS=1800",
+          "EMAILHUB_API_TOKEN=file-token",
+        ].join("\n"),
+      verifyHealth,
+      writeStdout: (message) => stdout.push(message),
+      writeStderr: (message) => stderr.push(message),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toEqual([]);
+    expect(JSON.stringify(stdout)).not.toContain("process-token");
+    expect(JSON.stringify(stdout)).not.toContain("file-token");
+  });
+
   it("returns one and redacts top-level docker health errors", async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];

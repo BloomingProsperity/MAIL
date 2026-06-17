@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,7 @@ type Env = Record<string, string | undefined>;
 export interface EmailEngineDockerHealthVerifyCliOptions {
   env?: Env;
   fileExists?: (path: string) => boolean;
+  readEnvFile?: (path: string) => string | undefined;
   verifyHealth?: typeof verifyDockerComposeHealth;
   writeStdout?: (message: string) => void;
   writeStderr?: (message: string) => void;
@@ -21,6 +22,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
 ): Promise<number> {
   const env = options.env ?? process.env;
   const fileExists = options.fileExists ?? existsSync;
+  const readEnvFile = options.readEnvFile ?? readDockerHealthEnvFile;
   const projectRoot =
     env.EMAILHUB_REPO_ROOT ??
     fileURLToPath(new URL("../../..", import.meta.url));
@@ -28,33 +30,37 @@ export async function runEmailEngineDockerHealthVerifyCli(
   const envFile = fileExists(resolve(projectRoot, configuredEnvFile))
     ? configuredEnvFile
     : ".env.example";
+  const runtimeEnv: Env = {
+    ...parseEnvFile(readEnvFile(resolve(projectRoot, envFile)) ?? ""),
+    ...env,
+  };
   const composeFiles = [
     "infra/docker-compose.yml",
     "infra/docker-compose.prod.yml",
   ];
   const apiBaseUrl = resolveDockerComposeHostBaseUrl({
-    explicitBaseUrl: env.EMAILHUB_API_BASE_URL,
-    bind: env.API_BIND,
+    explicitBaseUrl: runtimeEnv.EMAILHUB_API_BASE_URL,
+    bind: runtimeEnv.API_BIND,
     fallback: "http://127.0.0.1:8080",
   });
   const webBaseUrl = resolveDockerComposeHostBaseUrl({
-    explicitBaseUrl: env.EMAILHUB_WEB_BASE_URL,
-    bind: env.WEB_BIND,
+    explicitBaseUrl: runtimeEnv.EMAILHUB_WEB_BASE_URL,
+    bind: runtimeEnv.WEB_BIND,
     fallback: "http://127.0.0.1:5173",
   });
   const httpTimeoutMs = readPositiveInteger(
-    env.EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS,
+    runtimeEnv.EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS,
     5_000,
   );
   const waitAttempts = readPositiveInteger(
-    env.EMAILHUB_DOCKER_HEALTH_ATTEMPTS,
+    runtimeEnv.EMAILHUB_DOCKER_HEALTH_ATTEMPTS,
     12,
   );
   const waitIntervalMs = readNonNegativeInteger(
-    env.EMAILHUB_DOCKER_HEALTH_WAIT_MS,
+    runtimeEnv.EMAILHUB_DOCKER_HEALTH_WAIT_MS,
     5_000,
   );
-  const apiHeaders = bearerTokenHeaders(env.EMAILHUB_API_TOKEN);
+  const apiHeaders = bearerTokenHeaders(runtimeEnv.EMAILHUB_API_TOKEN);
   const writeStdout = options.writeStdout ?? console.log;
   const writeStderr = options.writeStderr ?? console.error;
   const verifyHealth = options.verifyHealth ?? verifyDockerComposeHealth;
@@ -113,11 +119,11 @@ export async function runEmailEngineDockerHealthVerifyCli(
     return result.ok ? 0 : 1;
   } catch (error) {
     const reportSecrets = [
-      env.EMAILHUB_API_TOKEN,
-      env.EMAILHUB_API_BASE_URL,
-      env.EMAILHUB_WEB_BASE_URL,
-      env.API_BIND,
-      env.WEB_BIND,
+      runtimeEnv.EMAILHUB_API_TOKEN,
+      runtimeEnv.EMAILHUB_API_BASE_URL,
+      runtimeEnv.EMAILHUB_WEB_BASE_URL,
+      runtimeEnv.API_BIND,
+      runtimeEnv.WEB_BIND,
     ];
     const errorSecrets = [
       ...reportSecrets,
@@ -162,4 +168,44 @@ export function bearerTokenHeaders(
 ): Record<string, string> | undefined {
   const trimmed = token?.trim();
   return trimmed ? { authorization: `Bearer ${trimmed}` } : undefined;
+}
+
+function readDockerHealthEnvFile(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+function parseEnvFile(content: string): Env {
+  const parsed: Env = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(
+      line,
+    );
+    if (!match) {
+      continue;
+    }
+    parsed[match[1]] = parseEnvValue(match[2] ?? "");
+  }
+  return parsed;
+}
+
+function parseEnvValue(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    const unquoted = trimmed.slice(1, -1);
+    return trimmed.startsWith('"')
+      ? unquoted
+          .replace(/\\n/g, "\n")
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, "\\")
+      : unquoted;
+  }
+
+  return trimmed.replace(/\s+#.*$/, "").trim();
 }
