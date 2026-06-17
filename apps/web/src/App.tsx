@@ -44,15 +44,16 @@ import {
   HermesReaderTranslationResult,
 } from "./features/hermes/HermesReaderTranslationPanel";
 import {
+  HermesComposeDraftTools,
+  HermesReplyAssistantPanel,
+} from "./features/hermes/HermesComposeAssistPanel";
+import {
   HermesReaderOrganizationPanel,
   HermesReaderSummaryPanel,
   formatHermesActionItemNote,
   hermesActionItemApplyId,
 } from "./features/hermes/HermesReaderOrganizationPanels";
-import {
-  HERMES_SOURCE_LANGUAGES,
-  HERMES_TRANSLATION_LANGUAGES,
-} from "./features/hermes/hermesTranslation";
+import type { HermesQuickReplyAction } from "./features/hermes/HermesComposeAssistPanel";
 import type { HermesOrganizationApplyAction } from "./features/hermes/HermesReaderOrganizationPanels";
 import {
   HermesAuditLogPanel,
@@ -96,7 +97,6 @@ import type {
   HermesMessageTranslationResult,
   HermesMessageOrganizationResult,
   HermesMemoryDto,
-  HermesQuickReplyScenario,
   HermesProviderCatalogItem,
   HermesProviderProbeMissing,
   HermesRuleCandidateDto,
@@ -154,12 +154,6 @@ type SettingsSectionId =
   | "domains"
   | "notifications";
 type MailDensity = "roomy" | "comfortable" | "compact";
-type QuickReplyAction = {
-  scenario: HermesQuickReplyScenario;
-  label: string;
-  instruction: string;
-};
-
 const MAX_COMPOSE_ATTACHMENTS = 20;
 const MAX_COMPOSE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const COMPOSE_AUTOSAVE_DELAY_MS = 2_000;
@@ -290,29 +284,6 @@ interface LabelItem {
 }
 
 const PREVIEW_ACCOUNT_ID = "account_1";
-
-const quickReplyActions: QuickReplyAction[] = [
-  {
-    scenario: "confirm",
-    label: "确认",
-    instruction: "Confirm politely and keep it concise.",
-  },
-  {
-    scenario: "thanks",
-    label: "感谢",
-    instruction: "Thank them warmly and keep the reply short.",
-  },
-  {
-    scenario: "follow_up",
-    label: "推进",
-    instruction: "Follow up with a clear next step.",
-  },
-  {
-    scenario: "decline",
-    label: "婉拒",
-    instruction: "Decline politely without over-explaining.",
-  },
-];
 
 const navItems: Array<{ id: ViewId; label: string; icon: typeof Inbox; count?: number }> = [
   { id: "mail", label: "邮箱", icon: Inbox },
@@ -3131,7 +3102,7 @@ function MailWorkspace(props: {
     }
   }
 
-  async function askHermesForQuickReply(action: QuickReplyAction) {
+  async function askHermesForQuickReply(action: HermesQuickReplyAction) {
     if (!props.api) {
       setComposeNotice("Hermes 暂时不可用。");
       return;
@@ -4151,64 +4122,16 @@ function MailWorkspace(props: {
               ))}
             </div>
           ) : null}
-          <div className="composer-tool-row">
-            <div className="compose-translate-controls" aria-label="Compose translation controls">
-              <select
-                aria-label="Compose translation source language"
-                value={composeTranslationSource}
-                disabled={composeBusy}
-                onChange={(event) => setComposeTranslationSource(event.target.value)}
-              >
-                {HERMES_SOURCE_LANGUAGES.map((language) => (
-                  <option key={language.value} value={language.value}>
-                    {language.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Compose translation target language"
-                value={composeTranslationTarget}
-                disabled={composeBusy}
-                onChange={(event) => setComposeTranslationTarget(event.target.value)}
-              >
-                {HERMES_TRANSLATION_LANGUAGES.map((language) => (
-                  <option key={language.value} value={language.value}>
-                    {language.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="tiny-button"
-                type="button"
-                aria-label="Translate composed draft with Hermes"
-                disabled={composeBusy}
-                onClick={() => void translateComposedMail()}
-              >
-                <Sparkles size={14} />
-                翻译
-              </button>
-            </div>
-            <button
-              className="tiny-button"
-              type="button"
-              aria-label="Polish composed draft with Hermes"
-              disabled={composeBusy}
-              onClick={() => void polishComposedMail()}
-            >
-              <Sparkles size={14} />
-              润色
-            </button>
-            <button
-              className="tiny-button"
-              type="button"
-              aria-label="Preview composed draft"
-              disabled={composeBusy}
-              onClick={() => void previewComposedMail()}
-            >
-              <FileText size={14} />
-              预览
-            </button>
-          </div>
+          <HermesComposeDraftTools
+            sourceLanguage={composeTranslationSource}
+            targetLanguage={composeTranslationTarget}
+            busy={composeBusy}
+            onSourceLanguageChange={setComposeTranslationSource}
+            onTargetLanguageChange={setComposeTranslationTarget}
+            onTranslate={() => void translateComposedMail()}
+            onPolish={() => void polishComposedMail()}
+            onPreview={() => void previewComposedMail()}
+          />
           {composePreview ? (
             <ComposeReview
               preview={composePreview}
@@ -4942,37 +4865,16 @@ function MailWorkspace(props: {
                   ))}
             </div>
 
-            <div className="reply-toolbox">
-              <div className="composer-top">
-                <span>
-                  From:{" "}
-                  {selectedComposeIdentity
-                    ? formatSendIdentity(selectedComposeIdentity)
-                    : "当前账号"}
-                </span>
-                <button
-                  type="button"
-                  aria-label="Ask Hermes to draft reply"
-                  disabled={composeBusy}
-                  onClick={() => void askHermesForReplyDraft()}
-                >
-                  Hermes 写回复
-                </button>
-              </div>
-              <div className="quick-reply-row" aria-label="Hermes 快速回复">
-                {quickReplyActions.map((action) => (
-                  <button
-                    key={action.scenario}
-                    type="button"
-                    aria-label={`Ask Hermes quick reply ${action.scenario}`}
-                    disabled={composeBusy}
-                    onClick={() => void askHermesForQuickReply(action)}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <HermesReplyAssistantPanel
+              fromLabel={
+                selectedComposeIdentity
+                  ? formatSendIdentity(selectedComposeIdentity)
+                  : "当前账号"
+              }
+              busy={composeBusy}
+              onDraftReply={() => void askHermesForReplyDraft()}
+              onQuickReply={(action) => void askHermesForQuickReply(action)}
+            />
           </div>
         </article>
       </div>
