@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   EmailHubApi,
   HermesRuleCandidateDto,
@@ -46,6 +46,22 @@ export function HermesRuleCandidateWorkbench(
   const [draftCommand, setDraftCommand] = useState(
     "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
   );
+  const ruleDraftRequestRef = useRef(0);
+
+  useEffect(() => {
+    ruleDraftRequestRef.current += 1;
+    props.setRuleDraftBusy("");
+  }, [props.accountId, props.api]);
+
+  function beginRuleDraftRequest(): number {
+    const requestId = ruleDraftRequestRef.current + 1;
+    ruleDraftRequestRef.current = requestId;
+    return requestId;
+  }
+
+  function isCurrentRuleDraftRequest(requestId: number): boolean {
+    return ruleDraftRequestRef.current === requestId;
+  }
 
   async function draftRuleFromCommand() {
     const command = draftCommand.trim();
@@ -69,13 +85,18 @@ export function HermesRuleCandidateWorkbench(
       return;
     }
 
+    const requestId = beginRuleDraftRequest();
+    const accountId = props.accountId;
     props.setRuleDraftBusy("draft");
     props.setRuleNotice("Hermes 正在生成规则草案...");
     try {
       const result = await props.api.draftHermesRule({
-        accountId: props.accountId,
+        accountId,
         command,
       });
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       props.setCandidateDrafts(result.candidates);
       props.setCandidateEdits(hermesRuleCandidateEditMap(result.candidates));
       props.setCandidateSimulations({});
@@ -85,10 +106,15 @@ export function HermesRuleCandidateWorkbench(
           : `Hermes 已生成 ${result.candidates.length} 条规则草案，请先模拟再确认。`,
       );
     } catch {
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       props.setCandidateDrafts([]);
       props.setRuleNotice("Hermes 规则草案生成失败。");
     } finally {
-      props.setRuleDraftBusy("");
+      if (isCurrentRuleDraftRequest(requestId)) {
+        props.setRuleDraftBusy("");
+      }
     }
   }
 
@@ -144,16 +170,21 @@ export function HermesRuleCandidateWorkbench(
       return;
     }
 
+    const requestId = beginRuleDraftRequest();
+    const accountId = props.accountId;
     props.setRuleDraftBusy(`save:${candidate.id}`);
     props.setRuleNotice("正在保存 Hermes 规则草案...");
     try {
       const updated = await props.api.updateHermesRuleCandidate({
-        accountId: props.accountId,
+        accountId,
         candidateId: candidate.id,
         labelName,
         keywords,
         applyToHistory: edit.applyToHistory,
       });
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       props.setCandidateDrafts((current) =>
         current.map((item) => (item.id === updated.id ? updated : item)),
       );
@@ -168,9 +199,14 @@ export function HermesRuleCandidateWorkbench(
       });
       props.setRuleNotice("Hermes 规则草案已保存，请重新运行 shadow simulation。");
     } catch {
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       props.setRuleNotice("Hermes 规则草案保存失败。");
     } finally {
-      props.setRuleDraftBusy("");
+      if (isCurrentRuleDraftRequest(requestId)) {
+        props.setRuleDraftBusy("");
+      }
     }
   }
 
@@ -198,14 +234,19 @@ export function HermesRuleCandidateWorkbench(
       return;
     }
 
+    const requestId = beginRuleDraftRequest();
+    const accountId = props.accountId;
     props.setRuleDraftBusy(`simulate:${candidate.id}`);
     props.setRuleNotice("Hermes 正在影子模拟规则...");
     try {
       const simulation = await props.api.simulateHermesRule({
-        accountId: props.accountId,
+        accountId,
         candidateId: candidate.id,
         sampleLimit: 25,
       });
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       props.setCandidateSimulations((current) => ({
         ...current,
         [candidate.id]: simulation,
@@ -214,9 +255,14 @@ export function HermesRuleCandidateWorkbench(
         `Shadow simulation 已完成：命中 ${simulation.matchedCount} 封邮件。`,
       );
     } catch {
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       props.setRuleNotice("Hermes 规则影子模拟失败。");
     } finally {
-      props.setRuleDraftBusy("");
+      if (isCurrentRuleDraftRequest(requestId)) {
+        props.setRuleDraftBusy("");
+      }
     }
   }
 
@@ -258,21 +304,29 @@ export function HermesRuleCandidateWorkbench(
       return;
     }
 
+    const requestId = beginRuleDraftRequest();
+    const accountId = props.accountId;
     props.setRuleDraftBusy(`approve:${candidate.id}`);
     props.setRuleNotice("正在生成并确认 Hermes 执行计划...");
     let actionPlanStage: "create" | "confirm" = "create";
     try {
       const plan = await props.api.createHermesActionPlan({
-        accountId: props.accountId,
+        accountId,
         candidateId: candidate.id,
         sampleLimit: 25,
       });
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       actionPlanStage = "confirm";
       const confirmation = await props.api.confirmHermesActionPlan({
         planId: plan.id,
-        accountId: props.accountId,
+        accountId,
         candidateId: plan.candidate.id,
       });
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       const approvedRule = confirmation.rule;
       props.setRules((current) =>
         normalizeHermesRuleSortOrders([
@@ -295,9 +349,14 @@ export function HermesRuleCandidateWorkbench(
       );
       props.onRuleApproved?.(approvedRule);
     } catch (error) {
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       props.setRuleNotice(hermesActionPlanErrorNotice(error, actionPlanStage));
     } finally {
-      props.setRuleDraftBusy("");
+      if (isCurrentRuleDraftRequest(requestId)) {
+        props.setRuleDraftBusy("");
+      }
     }
   }
 
@@ -313,19 +372,29 @@ export function HermesRuleCandidateWorkbench(
       return;
     }
 
+    const requestId = beginRuleDraftRequest();
+    const accountId = props.accountId;
     props.setRuleDraftBusy(`dismiss:${candidate.id}`);
     props.setRuleNotice("正在驳回 Hermes 规则草案...");
     try {
       await props.api.dismissHermesRuleCandidate({
-        accountId: props.accountId,
+        accountId,
         candidateId: candidate.id,
       });
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       removeRuleCandidateDraft(candidate.id);
       props.setRuleNotice(`Hermes 规则草案已驳回：${candidate.title}。`);
     } catch {
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
       props.setRuleNotice("Hermes 规则草案驳回失败。");
     } finally {
-      props.setRuleDraftBusy("");
+      if (isCurrentRuleDraftRequest(requestId)) {
+        props.setRuleDraftBusy("");
+      }
     }
   }
 

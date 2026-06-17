@@ -89,6 +89,65 @@ describe("HermesRuleManagerPanel", () => {
     expect(within(panel).getByText("启用合同智能分组")).toBeTruthy();
   });
 
+  it("ignores stale Hermes rule drafts after switching accounts", async () => {
+    let resolveAccountOneDraft:
+      | ((value: { candidates: HermesRuleCandidateDto[] }) => void)
+      | undefined;
+    const api = createRuleApiFixture({
+      listHermesRules: vi.fn(async (input) => ({
+        items: [
+          ruleFixture({
+            id: `rule_${input.accountId}`,
+            accountId: input.accountId,
+            title:
+              input.accountId === "account_2"
+                ? "启用合同智能分组"
+                : "启用验证码智能分组",
+          }),
+        ],
+      })),
+      draftHermesRule: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveAccountOneDraft = resolve;
+          }),
+      ),
+    });
+
+    const { rerender } = render(
+      <HermesRuleManagerPanel api={api} accountId="account_1" />,
+    );
+    const panel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
+    await waitFor(() => {
+      expect(api.draftHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        command:
+          "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
+      });
+    });
+
+    rerender(<HermesRuleManagerPanel api={api} accountId="account_2" />);
+    expect(await within(panel).findByText("启用合同智能分组")).toBeTruthy();
+
+    await act(async () => {
+      resolveAccountOneDraft?.({
+        candidates: [
+          candidateFixture({
+            id: "candidate_account_1",
+            accountId: "account_1",
+            title: "旧账号规则草案",
+          }),
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(within(panel).queryByText("旧账号规则草案")).toBeNull();
+    });
+    expect(within(panel).getByText("启用合同智能分组")).toBeTruthy();
+  });
+
   it("runs and reorders approved Hermes rules", async () => {
     const api = createRuleApiFixture({
       listHermesRules: vi.fn(async () => ({
@@ -204,6 +263,63 @@ describe("HermesRuleManagerPanel", () => {
         expect.objectContaining({ id: "rule_codes" }),
       );
     });
+  });
+
+  it("ignores stale Hermes action-plan confirmation after switching accounts", async () => {
+    let resolveAccountOnePlan:
+      | ((value: HermesActionPlanDto) => void)
+      | undefined;
+    const onRuleApproved = vi.fn();
+    const api = createRuleApiFixture({
+      createHermesActionPlan: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveAccountOnePlan = resolve;
+          }),
+      ),
+    });
+
+    const { rerender } = render(
+      <HermesRuleManagerPanel
+        api={api}
+        accountId="account_1"
+        onRuleApproved={onRuleApproved}
+      />,
+    );
+    const panel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
+    expect(await within(panel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "Simulate Hermes rule 启用验证码智能分组",
+      }),
+    );
+    expect(await within(panel).findByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+    fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "Confirm Hermes action plan 启用验证码智能分组",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.createHermesActionPlan).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        sampleLimit: 25,
+      });
+    });
+
+    rerender(<HermesRuleManagerPanel api={api} accountId="account_2" />);
+    await act(async () => {
+      resolveAccountOnePlan?.(actionPlanFixture());
+    });
+
+    await waitFor(() => {
+      expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
+    });
+    expect(onRuleApproved).not.toHaveBeenCalled();
+    expect(
+      within(panel).queryByText(/Hermes 执行计划已完成：启用验证码智能分组/),
+    ).toBeNull();
   });
 
   it("requires a fresh simulation after editing a rule candidate", async () => {
