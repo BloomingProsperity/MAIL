@@ -3762,6 +3762,34 @@ describe("emailHubApi", () => {
     expect(download.blob).toBe(attachmentBlob);
   });
 
+  it("prefers RFC 5987 attachment filenames and keeps downgraded content types", async () => {
+    const attachmentBlob = new Blob(["active attachment"], {
+      type: "application/octet-stream",
+    });
+    const fetchMock = vi.fn(async () =>
+      ({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "application/octet-stream",
+          "content-disposition":
+            "attachment; filename=\"invoice __.html\"; filename*=UTF-8''invoice%20%E4%BD%A0%E5%A5%BD.html",
+        }),
+        blob: vi.fn(async () => attachmentBlob),
+      }) as unknown as Response,
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const download = await api.downloadAttachment({
+      accountId: "account_1",
+      attachmentId: "attachment_1",
+    });
+
+    expect(download.filename).toBe("invoice 你好.html");
+    expect(download.contentType).toBe("application/octet-stream");
+    expect(download.blob).toBe(attachmentBlob);
+  });
+
   it("creates compose seeds and previews drafts through compose routes", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/accounts/account_1/messages/message_1/compose/reply-all") {

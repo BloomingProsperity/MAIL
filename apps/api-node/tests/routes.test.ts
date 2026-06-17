@@ -1389,7 +1389,7 @@ describe("API routes", () => {
           id: "attachment_1",
           accountId: "account_1",
           providerAttachmentId: "ee_attachment_1",
-          filename: "invoice.pdf",
+          filename: "invoice 你好.pdf",
           contentType: "application/pdf",
           byteSize: 10,
         };
@@ -1415,8 +1415,9 @@ describe("API routes", () => {
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toBe("application/pdf");
         expect(response.headers.get("content-length")).toBe("10");
+        expect(response.headers.get("x-content-type-options")).toBe("nosniff");
         expect(response.headers.get("content-disposition")).toBe(
-          'attachment; filename="invoice.pdf"',
+          "attachment; filename=\"invoice __.pdf\"; filename*=UTF-8''invoice%20%E4%BD%A0%E5%A5%BD.pdf",
         );
         expect(await response.text()).toBe("file-bytes");
         expect(mailReadCalls).toEqual([
@@ -1430,6 +1431,204 @@ describe("API routes", () => {
         ]);
       },
       { mailReadStore, attachmentDownloadService },
+    );
+  });
+
+  it("downgrades active attachment MIME types to octet-stream", async () => {
+    const mailReadStore = {
+      async listMailboxes() {
+        throw new Error("not used");
+      },
+      async listMessages() {
+        throw new Error("not used");
+      },
+      async getMessage() {
+        throw new Error("not used");
+      },
+      async getAttachmentDownload() {
+        return {
+          id: "attachment_1",
+          accountId: "account_1",
+          providerAttachmentId: "ee_attachment_1",
+          filename: "invoice.html",
+          contentType: "text/html",
+          byteSize: 21,
+        };
+      },
+    };
+    const attachmentDownloadService = {
+      async downloadAttachment() {
+        return {
+          body: new Response("<script>alert(1)</script>"),
+          contentType: "text/html",
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/attachments/attachment_1/download`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toBe(
+          "application/octet-stream",
+        );
+        expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+        expect(await response.text()).toBe("<script>alert(1)</script>");
+      },
+      { mailReadStore, attachmentDownloadService },
+    );
+  });
+
+  it("rejects attachment downloads when stored byte size exceeds the limit", async () => {
+    const attachmentCalls: unknown[] = [];
+    const mailReadStore = {
+      async listMailboxes() {
+        throw new Error("not used");
+      },
+      async listMessages() {
+        throw new Error("not used");
+      },
+      async getMessage() {
+        throw new Error("not used");
+      },
+      async getAttachmentDownload() {
+        return {
+          id: "attachment_1",
+          accountId: "account_1",
+          providerAttachmentId: "ee_attachment_1",
+          filename: "too-large.pdf",
+          contentType: "application/pdf",
+          byteSize: 11,
+        };
+      },
+    };
+    const attachmentDownloadService = {
+      async downloadAttachment(input: unknown) {
+        attachmentCalls.push(input);
+        return {
+          body: new Response("should not download"),
+          contentType: "application/pdf",
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/attachments/attachment_1/download`,
+        );
+
+        expect(response.status).toBe(413);
+        expect(await response.json()).toEqual({
+          error: "request_body_too_large",
+        });
+        expect(attachmentCalls).toEqual([]);
+      },
+      { mailReadStore, attachmentDownloadService, maxAttachmentDownloadBytes: 10 },
+    );
+  });
+
+  it("rejects attachment downloads when upstream content length exceeds the limit", async () => {
+    const mailReadStore = {
+      async listMailboxes() {
+        throw new Error("not used");
+      },
+      async listMessages() {
+        throw new Error("not used");
+      },
+      async getMessage() {
+        throw new Error("not used");
+      },
+      async getAttachmentDownload() {
+        return {
+          id: "attachment_1",
+          accountId: "account_1",
+          providerAttachmentId: "ee_attachment_1",
+          filename: "provider-too-large.pdf",
+          contentType: "application/pdf",
+          byteSize: 10,
+        };
+      },
+    };
+    const attachmentDownloadService = {
+      async downloadAttachment() {
+        return {
+          body: new Response("too-large!!"),
+          contentType: "application/pdf",
+          contentLength: "11",
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/attachments/attachment_1/download`,
+        );
+
+        expect(response.status).toBe(413);
+        expect(await response.json()).toEqual({
+          error: "request_body_too_large",
+        });
+      },
+      { mailReadStore, attachmentDownloadService, maxAttachmentDownloadBytes: 10 },
+    );
+  });
+
+  it("terminates attachment streams that exceed the download limit without content length", async () => {
+    const mailReadStore = {
+      async listMailboxes() {
+        throw new Error("not used");
+      },
+      async listMessages() {
+        throw new Error("not used");
+      },
+      async getMessage() {
+        throw new Error("not used");
+      },
+      async getAttachmentDownload() {
+        return {
+          id: "attachment_1",
+          accountId: "account_1",
+          providerAttachmentId: "ee_attachment_1",
+          filename: "stream.bin",
+          contentType: "application/octet-stream",
+          byteSize: 10,
+        };
+      },
+    };
+    const attachmentDownloadService = {
+      async downloadAttachment() {
+        return {
+          body: new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("12345"));
+                controller.enqueue(new TextEncoder().encode("678901"));
+                controller.close();
+              },
+            }),
+          ),
+          contentType: "application/octet-stream",
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        await expect(
+          fetch(
+            `${baseUrl}/api/accounts/account_1/attachments/attachment_1/download`,
+          ).then(async (response) => {
+            expect(response.status).toBe(200);
+            await response.arrayBuffer();
+          }),
+        ).rejects.toThrow();
+      },
+      { mailReadStore, attachmentDownloadService, maxAttachmentDownloadBytes: 10 },
     );
   });
 

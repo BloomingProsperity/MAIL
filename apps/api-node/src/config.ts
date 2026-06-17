@@ -20,6 +20,12 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     apiName: "email-hub-api",
     apiAccessTokenConfigured: apiAccessToken.length > 0,
     apiAccessTokenRequired,
+    maxAttachmentDownloadBytes: readBoundedIntegerValue(
+      env.EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES,
+      25 * 1024 * 1024,
+      1,
+      1024 * 1024 * 1024,
+    ),
     emailEngineUrl: env.EMAILENGINE_URL ?? "http://emailengine:3000",
     emailEngineWebhookSecret: webhookSecret,
     emailEngineWebhookSecretConfigured:

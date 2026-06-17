@@ -220,6 +220,8 @@ import {
 const DEFAULT_MAX_REQUEST_BODY_BYTES = 1_048_576;
 const DEFAULT_MAX_COMPOSE_REQUEST_BODY_BYTES = 40 * 1024 * 1024;
 const DEFAULT_MAX_COMPOSE_ATTACHMENT_UPLOAD_BYTES = MAX_DRAFT_ATTACHMENT_BYTES;
+const DEFAULT_MAX_ATTACHMENT_DOWNLOAD_BYTES = MAX_DRAFT_ATTACHMENT_BYTES;
+const FALLBACK_ATTACHMENT_CONTENT_TYPE = "application/octet-stream";
 
 export interface ImapSmtpEndpointSettings {
   host: string;
@@ -441,6 +443,7 @@ export interface ApiConfig {
   maxRequestBodyBytes?: number;
   maxComposeRequestBodyBytes?: number;
   maxComposeAttachmentUploadBytes?: number;
+  maxAttachmentDownloadBytes?: number;
   mailEngineIngestStore?: MailEngineIngestStore;
   mailReadStore?: MailReadStore;
   attachmentDownloadService?: AttachmentDownloadService;
@@ -504,6 +507,8 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
   const maxComposeAttachmentUploadBytes =
     config.maxComposeAttachmentUploadBytes ??
     DEFAULT_MAX_COMPOSE_ATTACHMENT_UPLOAD_BYTES;
+  const maxAttachmentDownloadBytes =
+    config.maxAttachmentDownloadBytes ?? DEFAULT_MAX_ATTACHMENT_DOWNLOAD_BYTES;
 
   return async (request, response) => {
     const requestId =
@@ -1962,12 +1967,21 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           writeJson(response, 404, { error: "attachment_not_found" });
           return;
         }
+        enforceAttachmentDownloadLimit(
+          attachment.byteSize,
+          maxAttachmentDownloadBytes,
+        );
 
         const download = await config.attachmentDownloadService.downloadAttachment({
           accountId: attachment.accountId,
           providerAttachmentId: attachment.providerAttachmentId,
         });
-        await writeAttachmentDownload(response, attachment, download);
+        await writeAttachmentDownload(
+          response,
+          attachment,
+          download,
+          maxAttachmentDownloadBytes,
+        );
         return;
       }
 
@@ -9319,14 +9333,23 @@ async function writeAttachmentDownload(
     contentType?: string;
     contentLength?: string;
   },
+  maxBytes: number,
 ): Promise<void> {
+  const contentLength = parseAttachmentContentLength(download.contentLength);
+  if (contentLength !== undefined) {
+    enforceAttachmentDownloadLimit(contentLength, maxBytes);
+  }
+
   response.writeHead(200, {
-    "content-type": download.contentType ?? attachment.contentType,
-    "content-disposition": `attachment; filename="${safeHeaderFilename(
+    "content-type": safeAttachmentContentType(
+      download.contentType ?? attachment.contentType,
+    ),
+    "x-content-type-options": "nosniff",
+    "content-disposition": buildAttachmentContentDisposition(
       attachment.filename,
-    )}"`,
-    ...(download.contentLength
-      ? { "content-length": download.contentLength }
+    ),
+    ...(contentLength !== undefined
+      ? { "content-length": String(contentLength) }
       : {}),
   });
 
@@ -9336,6 +9359,7 @@ async function writeAttachmentDownload(
   }
 
   const reader = download.body.body.getReader();
+  let totalBytes = 0;
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -9343,7 +9367,15 @@ async function writeAttachmentDownload(
         break;
       }
 
-      if (value && !response.write(Buffer.from(value))) {
+      const chunk = Buffer.from(value);
+      totalBytes += chunk.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        response.destroy(new RequestBodyTooLargeError());
+        return;
+      }
+
+      if (chunk.byteLength > 0 && !response.write(chunk)) {
         await once(response, "drain");
       }
     }
@@ -9354,8 +9386,73 @@ async function writeAttachmentDownload(
   }
 }
 
-function safeHeaderFilename(filename: string): string {
-  return filename.replace(/["\\\r\n]/g, "_");
+function enforceAttachmentDownloadLimit(size: number, maxBytes: number): void {
+  if (!Number.isFinite(size) || size < 0 || size > maxBytes) {
+    throw new RequestBodyTooLargeError();
+  }
+}
+
+function parseAttachmentContentLength(value: string | undefined): number | undefined {
+  if (!value || !/^\d+$/.test(value.trim())) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function safeAttachmentContentType(value: string | undefined): string {
+  const baseType = value?.split(";")[0]?.trim().toLowerCase();
+  if (!baseType || !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(baseType)) {
+    return FALLBACK_ATTACHMENT_CONTENT_TYPE;
+  }
+  if (isActiveAttachmentContentType(baseType)) {
+    return FALLBACK_ATTACHMENT_CONTENT_TYPE;
+  }
+
+  return baseType;
+}
+
+function isActiveAttachmentContentType(contentType: string): boolean {
+  return (
+    contentType === "text/html" ||
+    contentType === "application/xhtml+xml" ||
+    contentType === "image/svg+xml" ||
+    contentType === "text/xml" ||
+    contentType === "application/xml" ||
+    contentType === "application/javascript" ||
+    contentType === "text/javascript" ||
+    contentType === "application/ecmascript" ||
+    contentType === "text/ecmascript"
+  );
+}
+
+function buildAttachmentContentDisposition(filename: string): string {
+  const fallback = asciiAttachmentFilename(filename);
+  const encoded = encodeRfc5987Value(safeFilenameValue(filename));
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
+function asciiAttachmentFilename(filename: string): string {
+  const sanitized = safeFilenameValue(filename)
+    .replace(/[^\x20-\x7e]/g, "_")
+    .replace(/["\\]/g, "_")
+    .trim();
+  return (sanitized || "attachment").slice(0, 180);
+}
+
+function safeFilenameValue(filename: string): string {
+  return filename
+    .replace(/[\u0000-\u001f\u007f]/g, "_")
+    .replace(/[\/\\]/g, "_")
+    .trim()
+    .slice(0, 180) || "attachment";
+}
+
+function encodeRfc5987Value(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }
 
 async function readBody(

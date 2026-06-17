@@ -338,6 +338,8 @@ real mailboxes:
   stacks; `infra/docker-compose.prod.yml` does this automatically.
 - `VITE_EMAILHUB_API_TOKEN`: same token when the bundled static web app calls
   the API directly from a trusted self-hosted browser session.
+- `EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES`: max bytes streamed through the API
+  for a single attachment download, defaulting to 26214400.
 - `EMAILENGINE_ACCESS_TOKEN`: raw token used by the Email Hub API and worker.
 - `EMAILENGINE_IMAGE`: pinned EmailEngine container image, defaulting to
   `postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc`.
