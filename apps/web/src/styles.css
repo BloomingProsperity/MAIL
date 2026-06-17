@@ -1557,6 +1557,23 @@ h2 {
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
+.bridge-field-help {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--blue-soft);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.bridge-field-help strong {
+  color: var(--text-main);
+}
+
 .custom-server-form {
   display: grid;
   gap: 12px;
@@ -1868,6 +1885,13 @@ h2 {
 
 .provider-card > div:nth-child(2) {
   min-width: 0;
+}
+
+.provider-card-note {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .provider-icon {

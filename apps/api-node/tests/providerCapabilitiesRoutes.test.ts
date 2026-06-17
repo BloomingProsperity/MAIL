@@ -59,6 +59,12 @@ describe("mail provider capability routes", () => {
             setupHints: ["开启邮箱客户端访问后，使用 Google 应用专用密码"],
           }),
           expect.objectContaining({
+            provider: "proton_bridge",
+            connectionLabel: "通过 Proton Bridge 连接",
+            requiresLocalBridge: true,
+            setupHints: ["先启动 Proton Bridge 并使用 Bridge 用户名和 Bridge 密码"],
+          }),
+          expect.objectContaining({
             provider: "tencent_exmail",
             label: "腾讯企业邮箱",
             supportsReadReceipts: true,

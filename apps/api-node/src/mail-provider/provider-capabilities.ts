@@ -211,7 +211,7 @@ const PROVIDER_CAPABILITIES: InternalMailProviderCapability[] = [
   {
     provider: "proton_bridge",
     label: "Proton Mail",
-    connectionLabel: "连接 Proton Bridge",
+    connectionLabel: "通过 Proton Bridge 连接",
     accountGroup: "private",
     supportsLogin: false,
     supportsWebLogin: false,
@@ -232,7 +232,7 @@ const PROVIDER_CAPABILITIES: InternalMailProviderCapability[] = [
     supportsSendOnBehalf: false,
     supportsLabels: false,
     requiresLocalBridge: true,
-    setupHints: ["先在本机启动 Proton Bridge"],
+    setupHints: ["先启动 Proton Bridge 并使用 Bridge 用户名和 Bridge 密码"],
     providerSpecificActions: [],
     aliases: ["proton", "protonmail", "proton_mail"],
   },

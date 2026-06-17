@@ -5442,6 +5442,8 @@ function AddMailPage(props: {
   const [username, setUsername] = useState("");
   const [secret, setSecret] = useState("");
   const [manualProvider, setManualProvider] = useState<ProviderOption | undefined>();
+  const [activeCredentialProvider, setActiveCredentialProvider] =
+    useState<ProviderOption | undefined>();
   const [customServerFields, setCustomServerFields] =
     useState<CustomServerFields>({
       username: "",
@@ -5568,6 +5570,16 @@ function AddMailPage(props: {
         )
       : true,
   );
+  const visibleBridgeProvider = visibleProviders.find(
+    (provider) => provider.action === "bridge",
+  );
+  const bridgeCredentialProvider =
+    activeCredentialProvider?.action === "bridge"
+      ? activeCredentialProvider
+      : props.providerGroupId === "proton"
+        ? visibleBridgeProvider
+        : undefined;
+  const showBridgeFieldHelp = Boolean(bridgeCredentialProvider);
   const mailOnboardingUnavailable =
     mailEngineHealth?.capabilities.imapSmtpOnboarding === false;
 
@@ -5611,13 +5623,18 @@ function AddMailPage(props: {
       return;
     }
 
+    setActiveCredentialProvider(provider);
     const input = buildPresetOnboardingInput(provider, {
       email,
       username,
       secret,
     });
     if (!input) {
-      setNotice(`${provider.title} 需要先填写邮箱和授权码。`);
+      setNotice(
+        provider.action === "bridge"
+          ? `${provider.title} 需要先填写邮箱、Bridge 用户名和 Bridge 密码。`
+          : `${provider.title} 需要先填写邮箱和授权码。`,
+      );
       return;
     }
 
@@ -6000,24 +6017,36 @@ function AddMailPage(props: {
           />
         </label>
         <label>
-          <span>登录用户名</span>
+          <span>{showBridgeFieldHelp ? "Bridge 用户名" : "登录用户名"}</span>
           <input
             aria-label="Add mail username"
             value={username}
-            placeholder="不填则使用邮箱地址"
+            placeholder={
+              showBridgeFieldHelp ? "Proton Bridge 中显示的用户名" : "不填则使用邮箱地址"
+            }
             onChange={(event) => setUsername(event.currentTarget.value)}
           />
         </label>
         <label>
-          <span>授权码或专用密码</span>
+          <span>{showBridgeFieldHelp ? "Bridge 密码" : "授权码或专用密码"}</span>
           <input
             aria-label="Add mail secret"
             value={secret}
             type="password"
-            placeholder="用于连接邮箱"
+            placeholder={
+              showBridgeFieldHelp ? "Proton Bridge 中显示的密码" : "用于连接邮箱"
+            }
             onChange={(event) => setSecret(event.currentTarget.value)}
           />
         </label>
+        {showBridgeFieldHelp ? (
+          <div className="bridge-field-help" aria-label="Proton Bridge 接入提示">
+            <strong>先启动 Proton Bridge 并保持登录。</strong>
+            <span>
+              邮箱地址填写 Proton 邮箱；Bridge 用户名和 Bridge 密码都使用 Proton Bridge 里显示的值，不是 Proton 账号密码。
+            </span>
+          </div>
+        ) : null}
       </section>
 
       {manualProvider ? (
@@ -6146,6 +6175,11 @@ function AddMailPage(props: {
               <div>
                 <strong>{provider.title}</strong>
                 <span>{provider.subtitle}</span>
+                {provider.action === "bridge" ? (
+                  <p className="provider-card-note">
+                    先启动 Proton Bridge；使用 Bridge 用户名和 Bridge 密码连接。
+                  </p>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -6749,8 +6783,9 @@ function buildPresetOnboardingInput(
   fields: { email: string; username: string; secret: string },
 ): ImapSmtpOnboardingInput | undefined {
   const email = fields.email.trim();
+  const username = fields.username.trim();
   const secret = fields.secret.trim();
-  if (!email || !secret) {
+  if (!email || !secret || (provider.action === "bridge" && !username)) {
     return undefined;
   }
 
@@ -6758,7 +6793,7 @@ function buildPresetOnboardingInput(
     email,
     provider: provider.provider,
     secret,
-    ...(fields.username.trim() ? { username: fields.username.trim() } : {}),
+    ...(username ? { username } : {}),
   };
 }
 

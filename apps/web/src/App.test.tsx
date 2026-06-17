@@ -5197,6 +5197,9 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "me@proton.me" },
     });
+    fireEvent.change(screen.getByLabelText("Add mail username"), {
+      target: { value: "bridge-user" },
+    });
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "bridge-password" },
     });
@@ -5217,11 +5220,8 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByDisplayValue("bridge-password")).toBeNull();
   });
 
-  it("keeps Proton Bridge provider id when the capability catalog falls back", async () => {
+  it("requires Proton Bridge username before testing mailbox credentials", async () => {
     const api = createApiFixture();
-    vi.mocked(api.getMailProviderCapabilities).mockRejectedValueOnce(
-      new Error("catalog unavailable"),
-    );
 
     render(<App api={api} defaultAccountId="account_1" />);
     fireEvent.click(
@@ -5235,16 +5235,53 @@ describe("Email Hub first UI baseline", () => {
     });
     fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
 
+    expect(
+      await screen.findByText(
+        "Proton Mail 需要先填写邮箱、Bridge 用户名和 Bridge 密码。",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Bridge 用户名")).toBeTruthy();
+    expect(screen.getByText("Bridge 密码")).toBeTruthy();
+    expect(screen.getByText("先启动 Proton Bridge 并保持登录。")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Proton Bridge 中显示的用户名")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Proton Bridge 中显示的密码")).toBeTruthy();
+    expect(api.testImapSmtpConnection).not.toHaveBeenCalled();
+    expect(api.onboardImapSmtpAccount).not.toHaveBeenCalled();
+  });
+
+  it("keeps Proton Bridge provider id when the capability catalog falls back", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMailProviderCapabilities).mockRejectedValueOnce(
+      new Error("catalog unavailable"),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
+    );
+    fireEvent.change(screen.getByLabelText("Add mail email"), {
+      target: { value: "me@proton.me" },
+    });
+    fireEvent.change(screen.getByLabelText("Add mail username"), {
+      target: { value: "bridge-user" },
+    });
+    fireEvent.change(screen.getByLabelText("Add mail secret"), {
+      target: { value: "bridge-password" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+
     await waitFor(() => {
       expect(api.testImapSmtpConnection).toHaveBeenCalledWith({
         email: "me@proton.me",
         provider: "proton_bridge",
+        username: "bridge-user",
         secret: "bridge-password",
       });
     });
     expect(api.onboardImapSmtpAccount).toHaveBeenCalledWith({
       email: "me@proton.me",
       provider: "proton_bridge",
+      username: "bridge-user",
       secret: "bridge-password",
     });
   });
