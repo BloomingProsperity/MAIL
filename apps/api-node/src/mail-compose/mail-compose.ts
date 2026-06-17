@@ -5,6 +5,11 @@ import type {
   MailReadStore,
   MessageDetailDto,
 } from "../mail-read/mail-read-store.js";
+import {
+  buildComposePreviewWarnings,
+  estimateComposeDraftSize,
+  type ComposePreviewWarning,
+} from "./compose-preview-warnings.js";
 
 export class InvalidMailComposeRequestError extends Error {
   readonly code = "invalid_mail_compose_request";
@@ -296,11 +301,7 @@ export interface MailComposeSeedAttachment {
   inline: boolean;
 }
 
-export type MailComposePreviewWarning =
-  | "missing_recipient"
-  | "missing_body"
-  | "missing_subject"
-  | "large_body";
+export type MailComposePreviewWarning = ComposePreviewWarning;
 
 export interface MailComposeSeed {
   accountId: string;
@@ -1462,7 +1463,7 @@ function buildPreview(
   input: ReturnType<typeof normalizePreviewInput>,
   generatedAt: string,
 ): MailComposePreview {
-  const warnings = previewWarnings(input);
+  const warnings = buildComposePreviewWarnings(input);
   return {
     accountId: input.accountId,
     ...(input.from ? { from: input.from } : {}),
@@ -1483,7 +1484,7 @@ function buildPreview(
       ? { attachments: input.attachments.map(publicDraftAttachmentFromInput) }
       : {}),
     warnings,
-    estimatedSizeBytes: estimateDraftSize(input),
+    estimatedSizeBytes: estimateComposeDraftSize(input),
     readyToSend: warnings.length === 0,
     generatedAt,
   };
@@ -1541,15 +1542,18 @@ function buildComposeSeed(input: {
     sourceMessageId: input.message.id,
   };
 
+  const attachments =
+    input.mode === "forward" ? input.message.attachments.map(seedAttachment) : [];
+
   return {
     ...normalized,
     messageId: input.message.id,
     mode: input.mode,
-    attachments:
-      input.mode === "forward"
-        ? input.message.attachments.map(seedAttachment)
-        : [],
-    warnings: previewWarnings(normalized),
+    attachments,
+    warnings: buildComposePreviewWarnings({
+      ...normalized,
+      attachments,
+    }),
     generatedAt: input.generatedAt,
   };
 }
@@ -2047,46 +2051,6 @@ function threadingActionForSource(
     return "reply";
   }
   return undefined;
-}
-
-function previewWarnings(input: {
-  to: MailAddress[];
-  subject: string;
-  bodyText?: string;
-  bodyHtml?: string;
-}): MailComposePreviewWarning[] {
-  const warnings: MailComposePreviewWarning[] = [];
-  if (input.to.length === 0) {
-    warnings.push("missing_recipient");
-  }
-  if (!input.subject.trim()) {
-    warnings.push("missing_subject");
-  }
-  if (!input.bodyText?.trim() && !input.bodyHtml?.trim()) {
-    warnings.push("missing_body");
-  }
-  if (estimateDraftSize(input) > 512_000) {
-    warnings.push("large_body");
-  }
-  return warnings;
-}
-
-function estimateDraftSize(input: {
-  to?: MailAddress[];
-  cc?: MailAddress[];
-  bcc?: MailAddress[];
-  subject: string;
-  bodyText?: string;
-  bodyHtml?: string;
-}): number {
-  return [
-    input.subject,
-    input.bodyText ?? "",
-    input.bodyHtml ?? "",
-    ...(input.to ?? []).map(formatAddress),
-    ...(input.cc ?? []).map(formatAddress),
-    ...(input.bcc ?? []).map(formatAddress),
-  ].join("\n").length;
 }
 
 function originalMessageText(message: MessageDetailDto): string {

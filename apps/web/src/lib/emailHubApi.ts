@@ -1592,7 +1592,10 @@ export type MailComposePreviewWarning =
   | "missing_recipient"
   | "missing_body"
   | "missing_subject"
-  | "large_body";
+  | "large_body"
+  | "duplicate_recipient"
+  | "possible_missing_attachment"
+  | "external_recipient_warning";
 
 export interface MailComposeSeedAttachmentDto {
   id: string;

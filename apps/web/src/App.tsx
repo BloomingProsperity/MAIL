@@ -38,6 +38,7 @@ import {
   formatComposeSelection,
 } from "./features/compose/rich-text";
 import { ComposeReview } from "./features/compose/ComposeReview";
+import { formatComposeWarnings } from "./features/compose/composeWarnings";
 import {
   HermesReaderTranslationControls,
   HermesReaderTranslationResult,
@@ -5256,18 +5257,6 @@ function formatComposeAutosaveStatus(status: ComposeAutosaveStatus): string {
     case "idle":
       return "";
   }
-}
-
-function formatComposeWarnings(
-  warnings: MailComposePreviewDto["warnings"],
-): string {
-  const labels: Record<MailComposePreviewDto["warnings"][number], string> = {
-    missing_recipient: "缺少收件人",
-    missing_body: "缺少正文",
-    missing_subject: "缺少主题",
-    large_body: "正文过大",
-  };
-  return warnings.map((warning) => labels[warning]).join("，");
 }
 
 function providerCapabilityToOption(
