@@ -8103,6 +8103,37 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText(/待发草稿已更新：draft_1/)).toBeTruthy();
   });
 
+  it("clears attachments from an edited outbox draft", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByText("draft_1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+    );
+    await screen.findByText(/待发草稿已载入：schedule_1/);
+    expect(screen.getByText("plan.pdf")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove attachment plan.pdf" }),
+    );
+    expect(screen.queryByText("plan.pdf")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
+
+    await waitFor(() => {
+      expect(api.updateScheduledDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        scheduledId: "schedule_1",
+        to: [{ address: "client@example.com", name: "Client" }],
+        subject: "Scheduled subject",
+        bodyText: "Scheduled body",
+        source: "manual",
+        replyToMessageId: "message_1",
+        attachments: [],
+      });
+    });
+  });
+
   it("sends an edited outbox draft through the scheduled item", async () => {
     const api = createApiFixture();
 

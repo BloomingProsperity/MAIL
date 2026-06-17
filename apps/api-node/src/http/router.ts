@@ -8369,10 +8369,9 @@ function parseMailComposeDraftInput(
     ...(isNonEmptyString(payload.sourceMessageId)
       ? { sourceMessageId: payload.sourceMessageId }
       : {}),
-    ...(() => {
-      const attachments = parseMailComposeAttachments(payload.attachments);
-      return attachments.length > 0 ? { attachments } : {};
-    })(),
+    ...(payload.attachments !== undefined
+      ? { attachments: parseMailComposeAttachments(payload.attachments) }
+      : {}),
     ...(isNonEmptyString(payload.hermesSkillRunId)
       ? { hermesSkillRunId: payload.hermesSkillRunId }
       : {}),

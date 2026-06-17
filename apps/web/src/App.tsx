@@ -3262,6 +3262,9 @@ function MailWorkspace(props: {
       input.bodyText,
       composeRichHtmlEnabled,
     );
+    const shouldSendAttachmentManifest =
+      composeAttachments.length > 0 ||
+      Boolean(composeDraftId || composeScheduledId);
     return {
       accountId: props.accountId,
       ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
@@ -3272,7 +3275,7 @@ function MailWorkspace(props: {
       bodyText: input.bodyText,
       ...(bodyHtml ? { bodyHtml } : {}),
       source: composeSource,
-      ...(composeAttachments.length > 0
+      ...(shouldSendAttachmentManifest
         ? { attachments: composeAttachments }
         : {}),
       ...(composeReplyToMessageId

@@ -1772,6 +1772,74 @@ describe("mail compose routes", () => {
     );
   });
 
+  it("passes explicit empty attachments when clearing an outbox draft", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+      async updateScheduledDraft(input: unknown) {
+        calls.push(input);
+        return {
+          scheduledSend: {
+            id: "schedule_1",
+            accountId: "acc_1",
+            draftId: "draft_1",
+            scheduledAt: "2026-06-13T12:30:00.000Z",
+            status: "scheduled",
+            canEdit: true,
+            canSendNow: true,
+            canDelete: true,
+          },
+          draft: {
+            id: "draft_1",
+            accountId: "acc_1",
+            to: [{ address: "client@example.com" }],
+            cc: [],
+            bcc: [],
+            subject: "Updated scheduled subject",
+            bodyText: "Updated scheduled body",
+            attachments: [],
+            status: "scheduled",
+            source: "manual",
+            updatedAt: "2026-06-13T10:05:00.000Z",
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/outbox/schedule_1/draft`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              to: [{ address: "client@example.com" }],
+              subject: "Updated scheduled subject",
+              bodyText: "Updated scheduled body",
+              attachments: [],
+            }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(calls).toEqual([
+          expect.objectContaining({
+            accountId: "acc_1",
+            scheduledId: "schedule_1",
+            attachments: [],
+          }),
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
   it("sends a scheduled draft immediately through the compose service", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {

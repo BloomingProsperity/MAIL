@@ -2559,6 +2559,103 @@ describe("mail compose service", () => {
     });
   });
 
+  it("clears scheduled draft attachments when edits pass an explicit empty list", async () => {
+    const calls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async getScheduledDraft(input) {
+          calls.push(["get", input]);
+          return {
+            scheduledSend: scheduledSend({ id: input.scheduledId }),
+            draft: {
+              ...draft(),
+              status: "scheduled",
+              attachments: [
+                {
+                  id: "upload_1",
+                  source: "uploaded_file" as const,
+                  attachmentId: "upload_1",
+                  filename: "plan.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 4,
+                  inline: false,
+                },
+              ],
+            },
+            transportAttachments: [
+              {
+                id: "upload_1",
+                source: "uploaded_file" as const,
+                attachmentId: "upload_1",
+                filename: "plan.pdf",
+                contentType: "application/pdf",
+                byteSize: 4,
+                inline: false,
+                contentBase64: "cGxhbg==",
+              },
+            ],
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+        async updateScheduledDraft(input) {
+          calls.push(["update", input]);
+          return {
+            scheduledSend: scheduledSend({
+              id: input.scheduledId,
+              status: "scheduled",
+            }),
+            draft: {
+              ...draft(),
+              status: "scheduled",
+              bodyText: input.bodyText,
+              attachments: input.attachments ?? [],
+              updatedAt: input.now,
+            },
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+      }),
+      createId: () => "unused",
+      now: () => new Date("2026-06-13T08:30:00.000Z"),
+      transports: {},
+    });
+
+    const detail = await service.updateScheduledDraft({
+      accountId: "acc_1",
+      scheduledId: "schedule_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Scheduled launch",
+      bodyText: "Clear attachment edit.",
+      attachments: [],
+    });
+
+    expect(calls).toEqual([
+      ["get", { accountId: "acc_1", scheduledId: "schedule_1" }],
+      [
+        "update",
+        expect.objectContaining({
+          accountId: "acc_1",
+          scheduledId: "schedule_1",
+          attachments: [],
+        }),
+      ],
+    ]);
+    expect(detail.draft).toMatchObject({
+      bodyText: "Clear attachment edit.",
+      attachments: [],
+    });
+  });
+
   it("rejects scheduled attachment edits when existing uploaded bytes are unavailable", async () => {
     const service = createMailComposeService({
       store: createStore({
