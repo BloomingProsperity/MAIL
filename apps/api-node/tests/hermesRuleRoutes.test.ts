@@ -490,25 +490,12 @@ describe("Hermes rule routes", () => {
     expect(calls).toEqual([]);
   });
 
-  it("approves a candidate into an enabled rule", async () => {
+  it("rejects direct rule approval in favor of action plans", async () => {
     const calls: unknown[] = [];
     const hermesRuleService = {
       async approveRule(input: unknown) {
         calls.push(input);
-        return {
-          id: "rule_1",
-          accountId: "account_1",
-          candidateId: "candidate_1",
-          title: "Prioritize client@example.com",
-          ruleType: "sender_priority",
-          condition: { senderEmail: "client@example.com" },
-          action: { type: "classify_sender", bucket: "P2 Important" },
-          confidence: 0.85,
-          enabled: true,
-          sortOrder: 1000,
-          createdAt: "2026-06-13T10:10:00.000Z",
-          approvedAt: "2026-06-13T10:10:00.000Z",
-        };
+        return undefined;
       },
     };
 
@@ -523,22 +510,15 @@ describe("Hermes rule routes", () => {
           },
         );
 
-        expect(response.status).toBe(200);
-        expect(await response.json()).toMatchObject({
-          id: "rule_1",
-          candidateId: "candidate_1",
-          enabled: true,
+        expect(response.status).toBe(409);
+        expect(await response.json()).toEqual({
+          error: "hermes_rule_approval_requires_action_plan",
         });
       },
       { hermesRuleService },
     );
 
-    expect(calls).toEqual([
-      {
-        accountId: "account_1",
-        candidateId: "candidate_1",
-      },
-    ]);
+    expect(calls).toEqual([]);
   });
 
   it("updates an enabled rule without approving another candidate", async () => {

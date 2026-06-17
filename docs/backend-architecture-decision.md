@@ -600,8 +600,11 @@ POST /api/hermes/skills/rewrite_polish/run
 POST /api/hermes/drafts/feedback
 POST /api/hermes/rules/suggest
 GET  /api/hermes/rule-candidates
+PATCH /api/hermes/rule-candidates/:candidateId
+POST /api/hermes/rule-candidates/:candidateId/dismiss
 POST /api/hermes/rules/:candidateId/simulate
-POST /api/hermes/rules/:candidateId/approve
+POST /api/hermes/action-plans
+POST /api/hermes/action-plans/:planId/confirm
 ```
 
 The Hermes provider catalog is also backend-owned:
@@ -776,16 +779,20 @@ POST /api/hermes/rules/:candidateId/simulate
 POST /api/hermes/action-plans
 -> create an auditable confirmation-required plan from a command or existing candidate id
 
-POST /api/hermes/rules/:candidateId/approve
--> mark candidate approved
--> create enabled hermes_rules row
+POST /api/hermes/action-plans/:planId/confirm
+-> confirm the simulated candidate through the action-plan audit trail
+-> mark candidate approved and create enabled hermes_rules row
+
+POST /api/hermes/rule-candidates/:candidateId/dismiss
+-> close an unwanted shadow candidate without enabling a rule
 ```
 
 This is intentionally not a black-box automation engine. Suggestions are based
 on app-owned feedback events, shadow simulation does not mutate mail, and only
-explicit approval enables a rule. Later worker slices may read `hermes_rules`
-to influence classification, but sending, moving, and deleting mail remain
-separate explicit action APIs.
+explicit action-plan confirmation enables a rule. The old direct rule approval
+route fails closed so confirmation cannot bypass the auditable plan. Later
+worker slices may read `hermes_rules` to influence classification, but sending,
+moving, and deleting mail remain separate explicit action APIs.
 
 The worker now consumes approved Hermes classification and local content-label
 rules during message mirroring:

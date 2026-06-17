@@ -1984,10 +1984,6 @@ export interface EmailHubApi {
     candidateId: string;
     sampleLimit?: number;
   }): Promise<HermesRuleSimulationDto>;
-  approveHermesRule(input: {
-    accountId: string;
-    candidateId: string;
-  }): Promise<HermesRuleDto>;
   triagePriorityWithHermes(
     input: HermesPriorityTriageInput,
   ): Promise<HermesPriorityTriageResult>;
@@ -2945,18 +2941,6 @@ export function createEmailHubApi(
               sampleLimit: input.sampleLimit,
             }),
           ),
-        },
-      );
-    },
-
-    approveHermesRule(input) {
-      return request(
-        fetchImpl,
-        baseUrl,
-        `/api/hermes/rules/${encodePath(input.candidateId)}/approve`,
-        {
-          method: "POST",
-          body: JSON.stringify({ accountId: input.accountId }),
         },
       );
     },

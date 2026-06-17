@@ -353,7 +353,6 @@ describe("Email Hub first UI baseline", () => {
         candidateId: "candidate_codes",
       });
     });
-    expect(api.approveHermesRule).not.toHaveBeenCalled();
     expect(api.getMailNavigationSummary).toHaveBeenCalled();
     expect(api.listLabels).toHaveBeenCalledWith({ accountId: "account_1" });
     expect(
@@ -2180,7 +2179,6 @@ describe("Email Hub first UI baseline", () => {
       expect(api.createHermesActionPlan).toHaveBeenCalledWith({
         accountId: "account_1",
         candidateId: "candidate_codes",
-        command,
         sampleLimit: 25,
       });
       expect(api.confirmHermesActionPlan).toHaveBeenCalledWith({
@@ -2189,7 +2187,6 @@ describe("Email Hub first UI baseline", () => {
         candidateId: "candidate_codes",
       });
     });
-    expect(api.approveHermesRule).not.toHaveBeenCalled();
     expect(api.getMailNavigationSummary).toHaveBeenCalled();
     expect(api.listLabels).toHaveBeenCalledWith({ accountId: "account_1" });
     await waitFor(() => {
@@ -2430,8 +2427,6 @@ describe("Email Hub first UI baseline", () => {
       expect(api.createHermesActionPlan).toHaveBeenCalledWith({
         accountId: "account_1",
         candidateId: "candidate_codes",
-        command:
-          "帮我创建一个规则，左侧加一个验证码分组，账号里的所有验证码邮件都进这个分组",
         sampleLimit: 25,
       });
     });
@@ -2460,7 +2455,6 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
     expect(api.createHermesActionPlan).not.toHaveBeenCalled();
     expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
-    expect(api.approveHermesRule).not.toHaveBeenCalled();
   });
 
   it("does not query account-scoped Hermes settings with the preview account when no backend account exists", async () => {
@@ -10088,28 +10082,6 @@ function createApiFixture(): EmailHubApi {
       evidenceMessageIds: [],
       createdAt: "2026-06-13T10:00:00.000Z",
     } satisfies HermesRuleCandidateDto)),
-    approveHermesRule: vi.fn(async (input) => ({
-      id: "rule_codes",
-      accountId: input.accountId,
-      candidateId: input.candidateId,
-      title: "启用验证码智能分组",
-      ruleType: "content_label",
-      condition: { anyKeywords: ["验证码", "verification", "otp"] },
-      action: {
-        type: "apply_label",
-        labelId: "label_code",
-        labelName: "验证码",
-        labelColor: "blue",
-        applyToHistory: false,
-        providerWriteback: false,
-        requiresConfirmation: false,
-      },
-      confidence: 0.9,
-      enabled: true,
-      sortOrder: 1000,
-      createdAt: "2026-06-13T10:02:00.000Z",
-      approvedAt: "2026-06-13T10:02:00.000Z",
-    } satisfies HermesRuleDto)),
     triagePriorityWithHermes: vi.fn(async () => ({
       skillRunId: "run_priority_1",
       skillId: "priority_triage",

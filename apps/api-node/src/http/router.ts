@@ -2001,19 +2001,9 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         if (hermesRuleRoute.action === "approve" && request.method === "POST") {
-          await ensureHermesSkillAllowed(config, "rule_suggest");
-          const result = await config.hermesRuleService.approveRule(
-            parseHermesRuleApprovalInput(
-              hermesRuleRoute.candidateId,
-              await readRequestBody(),
-            ),
-          );
-          if (!result) {
-            writeJson(response, 404, { error: "rule_candidate_not_found" });
-            return;
-          }
-
-          writeJson(response, 200, result);
+          writeJson(response, 409, {
+            error: "hermes_rule_approval_requires_action_plan",
+          });
           return;
         }
 
@@ -7844,24 +7834,6 @@ function parseHermesRuleSimulationInput(
       1,
       100,
     ),
-  };
-}
-
-function parseHermesRuleApprovalInput(
-  candidateId: string,
-  body: string,
-): {
-  accountId: string;
-  candidateId: string;
-} {
-  const payload = JSON.parse(body) as { accountId?: unknown };
-  if (!isNonEmptyString(candidateId) || !isNonEmptyString(payload.accountId)) {
-    throw new InvalidHermesRuleRequestError();
-  }
-
-  return {
-    accountId: payload.accountId,
-    candidateId,
   };
 }
 
