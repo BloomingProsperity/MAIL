@@ -64,6 +64,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
       projectRoot,
       envFile,
       composeFiles,
+      requiredComposeFiles: composeFiles,
       httpTimeoutMs,
       waitAttempts,
       waitIntervalMs,

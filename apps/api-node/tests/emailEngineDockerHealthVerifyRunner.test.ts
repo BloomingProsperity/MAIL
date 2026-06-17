@@ -21,6 +21,10 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         "infra/docker-compose.yml",
         "infra/docker-compose.prod.yml",
       ]);
+      expect(input.requiredComposeFiles).toEqual([
+        "infra/docker-compose.yml",
+        "infra/docker-compose.prod.yml",
+      ]);
       expect(input.httpTimeoutMs).toBe(1200);
       expect(input.waitAttempts).toBe(2);
       expect(input.waitIntervalMs).toBe(0);
@@ -302,6 +306,7 @@ function dockerHealthResult(input: {
     ],
     envFile: ".env.prod",
     checks: {},
+    composeFileChecks: {},
     hostChecks: {},
     envChecks: {},
     requiredFollowUps: [],

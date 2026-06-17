@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 export interface DockerComposeHealthVerifierOptions {
   envFile: string;
   composeFiles: string[];
+  requiredComposeFiles?: string[];
   projectRoot: string;
   requiredServices?: string[];
   hostChecks?: DockerComposeHostHttpCheckInput[];
@@ -24,6 +25,7 @@ export interface DockerComposeHealthVerificationResult {
   composeFiles: string[];
   envFile: string;
   checks: Record<string, DockerComposeServiceCheck>;
+  composeFileChecks: Record<string, DockerComposeConfigFileCheck>;
   hostChecks: Record<string, DockerComposeHostHttpCheck>;
   envChecks: Record<string, DockerComposeEnvInvariantCheck>;
   requiredFollowUps: string[];
@@ -64,6 +66,16 @@ export interface DockerComposeEnvInvariantCheck {
   service: string;
   name: string;
   detail?: "env_read_failed" | "env_value_mismatch";
+}
+
+export interface DockerComposeConfigFileCheck {
+  ok: boolean;
+  service: string;
+  missingFiles?: string[];
+  detail?:
+    | "container_id_read_failed"
+    | "config_files_read_failed"
+    | "config_file_missing";
 }
 
 export type DockerComposeHttpGetter = (input: {
@@ -163,6 +175,7 @@ async function verifyDockerComposeHealthOnce(input: {
       composeFiles: options.composeFiles,
       envFile: options.envFile,
       checks,
+      composeFileChecks: {},
       hostChecks: {},
       envChecks: {},
       requiredFollowUps: [
@@ -185,6 +198,18 @@ async function verifyDockerComposeHealthOnce(input: {
         ? `Start missing Docker service: ${check.service}.`
         : `Fix unhealthy Docker service: ${check.service} state=${check.state ?? "unknown"} health=${check.health ?? "unknown"}.`,
     );
+  const composeFileChecks = Object.values(checks).every((check) => check.ok)
+    ? await checkComposeConfigFiles(options, requiredServices)
+    : {};
+  requiredFollowUps.push(
+    ...Object.values(composeFileChecks)
+      .filter((check) => !check.ok)
+      .map((check) =>
+        check.detail === "config_file_missing"
+          ? `Restart Docker compose service ${check.service} with required compose files: ${(check.missingFiles ?? []).join(", ")}.`
+          : `Inspect Docker compose config file labels for service ${check.service}.`,
+      ),
+  );
   const hostChecks: Record<string, DockerComposeHostHttpCheck> = Object.fromEntries(
     await Promise.all(
       (options.hostChecks ?? []).map(async (check) => [
@@ -225,6 +250,7 @@ async function verifyDockerComposeHealthOnce(input: {
     composeFiles: options.composeFiles,
     envFile: options.envFile,
     checks,
+    composeFileChecks,
     hostChecks,
     envChecks,
     requiredFollowUps,
@@ -235,6 +261,9 @@ function shouldRetryHealthCheck(
   result: DockerComposeHealthVerificationResult,
 ): boolean {
   if (Object.values(result.envChecks).some((check) => !check.ok)) {
+    return false;
+  }
+  if (Object.values(result.composeFileChecks).some((check) => !check.ok)) {
     return false;
   }
 
@@ -276,6 +305,113 @@ function isRetryableHostCheck(check: DockerComposeHostHttpCheck): boolean {
     check.detail === "mail_engine_not_ready" &&
     check.readinessStatus !== "degraded"
   );
+}
+
+async function checkComposeConfigFiles(
+  options: DockerComposeHealthVerifierOptions,
+  requiredServices: string[],
+): Promise<Record<string, DockerComposeConfigFileCheck>> {
+  const requiredComposeFiles = options.requiredComposeFiles ?? [];
+  if (requiredComposeFiles.length === 0) {
+    return {};
+  }
+
+  const service = requiredServices.includes("api")
+    ? "api"
+    : requiredServices[0];
+  if (!service) {
+    return {};
+  }
+
+  const check = await checkComposeConfigFileLabels(options, {
+    service,
+    requiredComposeFiles,
+  });
+  return { [service]: check };
+}
+
+async function checkComposeConfigFileLabels(
+  options: DockerComposeHealthVerifierOptions,
+  input: {
+    service: string;
+    requiredComposeFiles: string[];
+  },
+): Promise<DockerComposeConfigFileCheck> {
+  const runCommand = options.runCommand ?? runDockerComposeCommand;
+  const containerResult = await runCommand({
+    command: "docker",
+    args: [
+      ...dockerComposeBaseArgs(options),
+      "ps",
+      "-q",
+      input.service,
+    ],
+    cwd: options.projectRoot,
+  });
+  const containerId = containerResult.stdout.trim().split(/\s+/)[0];
+  if (containerResult.exitCode !== 0 || !containerId) {
+    return {
+      ok: false,
+      service: input.service,
+      detail: "container_id_read_failed",
+    };
+  }
+
+  const labelResult = await runCommand({
+    command: "docker",
+    args: [
+      "inspect",
+      "--format",
+      '{{ index .Config.Labels "com.docker.compose.project.config_files" }}',
+      containerId,
+    ],
+    cwd: options.projectRoot,
+  });
+  if (labelResult.exitCode !== 0) {
+    return {
+      ok: false,
+      service: input.service,
+      detail: "config_files_read_failed",
+    };
+  }
+
+  const actualFiles = parseComposeConfigFilesLabel(labelResult.stdout);
+  const missingFiles = input.requiredComposeFiles.filter(
+    (file) => !composeConfigFileIncluded(actualFiles, file),
+  );
+  return {
+    ok: missingFiles.length === 0,
+    service: input.service,
+    ...(missingFiles.length > 0
+      ? {
+          missingFiles,
+          detail: "config_file_missing" as const,
+        }
+      : {}),
+  };
+}
+
+function parseComposeConfigFilesLabel(value: string): string[] {
+  return value
+    .split(",")
+    .map((file) => normalizeComposeConfigFilePath(file))
+    .filter(Boolean);
+}
+
+function composeConfigFileIncluded(
+  actualFiles: string[],
+  expectedFile: string,
+): boolean {
+  const normalizedExpected = normalizeComposeConfigFilePath(expectedFile);
+  return actualFiles.some(
+    (actualFile) =>
+      actualFile === normalizedExpected ||
+      actualFile.endsWith(`/${normalizedExpected}`),
+  );
+}
+
+function normalizeComposeConfigFilePath(value: string): string {
+  return value.trim().replace(/\\/g, "/").replace(/^\.\/+/, "");
 }
 
 async function checkComposeEnvInvariants(

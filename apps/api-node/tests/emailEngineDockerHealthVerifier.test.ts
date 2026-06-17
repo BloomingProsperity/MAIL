@@ -117,6 +117,109 @@ describe("Docker compose health verifier", () => {
     ]);
   });
 
+  it("verifies running containers include required compose config files", async () => {
+    const calls: unknown[] = [];
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      requiredComposeFiles: [
+        "infra/docker-compose.yml",
+        "infra/docker-compose.prod.yml",
+      ],
+      runCommand: async (input) => {
+        calls.push(input);
+        if (input.args.includes("inspect")) {
+          return {
+            exitCode: 0,
+            stdout:
+              "/repo/infra/docker-compose.yml,/repo/infra/docker-compose.prod.yml\n",
+            stderr: "",
+          };
+        }
+        if (input.args.includes("--format")) {
+          return healthyComposeCommand();
+        }
+        if (input.args.includes("-q")) {
+          return {
+            exitCode: 0,
+            stdout: "api_container\n",
+            stderr: "",
+          };
+        }
+        throw new Error(`unexpected docker command: ${input.args.join(" ")}`);
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.composeFileChecks).toEqual({
+      api: {
+        ok: true,
+        service: "api",
+      },
+    });
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          args: expect.arrayContaining(["ps", "-q", "api"]),
+        }),
+        expect.objectContaining({
+          args: expect.arrayContaining([
+            "inspect",
+            "--format",
+            '{{ index .Config.Labels "com.docker.compose.project.config_files" }}',
+            "api_container",
+          ]),
+        }),
+      ]),
+    );
+  });
+
+  it("fails when running containers were not started with the required prod compose overlay", async () => {
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      requiredComposeFiles: [
+        "infra/docker-compose.yml",
+        "infra/docker-compose.prod.yml",
+      ],
+      runCommand: async (input) => {
+        if (input.args.includes("inspect")) {
+          return {
+            exitCode: 0,
+            stdout: "/repo/infra/docker-compose.yml\n",
+            stderr: "",
+          };
+        }
+        if (input.args.includes("--format")) {
+          return healthyComposeCommand();
+        }
+        if (input.args.includes("-q")) {
+          return {
+            exitCode: 0,
+            stdout: "api_container\n",
+            stderr: "",
+          };
+        }
+        throw new Error(`unexpected docker command: ${input.args.join(" ")}`);
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.composeFileChecks).toEqual({
+      api: {
+        ok: false,
+        service: "api",
+        missingFiles: ["infra/docker-compose.prod.yml"],
+        detail: "config_file_missing",
+      },
+    });
+    expect(result.requiredFollowUps).toEqual([
+      "Restart Docker compose service api with required compose files: infra/docker-compose.prod.yml.",
+    ]);
+  });
+
   it("fails when host EmailEngine readiness is not ready", async () => {
     const result = await verifyDockerComposeHealth({
       projectRoot: "/repo",
