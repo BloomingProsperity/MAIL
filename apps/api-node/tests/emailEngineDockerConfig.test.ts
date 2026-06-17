@@ -5,12 +5,29 @@ import { describe, expect, it } from "vitest";
 import { readApiConfig } from "../src/config";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
+const DEFAULT_EMAILENGINE_IMAGE =
+  "postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc";
 
 async function readProjectFile(...parts: string[]): Promise<string> {
   return readFile(join(repoRoot, ...parts), "utf8");
 }
 
 describe("EmailEngine Docker configuration", () => {
+  it("pins EmailEngine to a repeatable default image instead of latest", async () => {
+    const envExample = await readProjectFile(".env.example");
+    const readme = await readProjectFile("README.md");
+    const compose = await readProjectFile("infra", "docker-compose.yml");
+    const emailEngine = serviceSection(compose, "emailengine");
+
+    expect(emailEngine).toContain(
+      `image: \${EMAILENGINE_IMAGE:-${DEFAULT_EMAILENGINE_IMAGE}}`,
+    );
+    expect(emailEngine).not.toContain("postalsys/emailengine:latest");
+    expect(envExample).toContain(`EMAILENGINE_IMAGE=${DEFAULT_EMAILENGINE_IMAGE}`);
+    expect(readme).toContain(DEFAULT_EMAILENGINE_IMAGE);
+    expect(readme).toContain("Override `EMAILENGINE_IMAGE`");
+  });
+
   it("keeps EmailEngine Redis snapshotted and non-evicting under self-hosted load", async () => {
     const compose = await readProjectFile("infra", "docker-compose.yml");
 

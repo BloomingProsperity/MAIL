@@ -28,7 +28,7 @@ services:
       retries: 8
 
   emailengine:
-    image: postalsys/emailengine:latest
+    image: ${EMAILENGINE_IMAGE:-postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc}
     restart: unless-stopped
     ulimits:
       nofile:

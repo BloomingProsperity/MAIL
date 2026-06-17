@@ -29,7 +29,10 @@ with more than smoke-level tests.
   EmailEngine-first verification commands. `verify:emailengine-launch:offline`
   builds backend/frontend, runs backend/frontend tests, runs the heavy sync
   queue stress gate, and validates the strict production compose overlay
-  without writing interpolated secrets to disk.
+  without writing interpolated secrets to disk. Docker self-hosting now pins
+  the default EmailEngine image to `postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc` through
+  `EMAILENGINE_IMAGE` instead of following `latest`; operators can override to a
+  newer version tag or immutable digest only after rerunning the launch gate.
   `verify:emailengine-launch:live` checks the running API `/health`,
   EmailEngine readiness, token-backed onboarding/download/send capabilities,
   provider identity, API health status, and the signed webhook idempotency

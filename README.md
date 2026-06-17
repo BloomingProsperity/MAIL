@@ -280,6 +280,10 @@ docker compose --env-file .env -f infra/docker-compose.yml up --build
 Run the compose command from the repository root. The compose file lives under
 `infra/`, so `--env-file .env` is required to interpolate the root `.env`
 values for EmailEngine tokens, webhook secrets, and host port bindings.
+Email Hub pins the default EmailEngine image to
+`postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc` instead of `latest` so a self-hosted launch is
+repeatable. Override `EMAILENGINE_IMAGE` with a newer `v2.x.x` tag or immutable
+digest only after running the launch verifier against that image.
 
 For production-style self-hosting, add the strict overlay:
 
@@ -316,6 +320,8 @@ For an EmailEngine-first launch, set these values in `.env` before onboarding
 real mailboxes:
 
 - `EMAILENGINE_ACCESS_TOKEN`: raw token used by the Email Hub API and worker.
+- `EMAILENGINE_IMAGE`: pinned EmailEngine container image, defaulting to
+  `postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc`.
 - `EENGINE_PREPARED_TOKEN`: EmailEngine prepared token for unattended container startup.
 - `EMAILENGINE_WEBHOOK_SECRET` and `EENGINE_SECRET`: rotate both away from
   `dev-emailhub-secret` for production.
