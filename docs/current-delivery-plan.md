@@ -295,7 +295,10 @@ with more than smoke-level tests.
   `/api/hermes/memories`, supports layer/scope/limit filtering, validates JSON
   object content and `0..1` confidence before saving, updates records through
   `PATCH /api/hermes/memories/:id`, and requires a second click before
-  permanent deletion through `DELETE /api/hermes/memories/:id`.
+  permanent deletion through `DELETE /api/hermes/memories/:id`. The learning
+  record and audit-log Settings panels now live under `features/hermes` instead
+  of the legacy `App.tsx` shell, with focused tests for low-confidence memory
+  review and audit events that used memory.
 - Current skill-governance status: Settings now exposes backend-owned Hermes
   skill options for each built-in skill. Users can edit enabled state,
   body-read permission, memory-write permission, confirmation requirement,

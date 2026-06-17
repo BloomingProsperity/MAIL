@@ -2354,6 +2354,11 @@ h2 {
   gap: 10px;
 }
 
+.hermes-review-toggle {
+  justify-self: start;
+  min-height: 34px;
+}
+
 .memory-filter-grid label,
 .audit-filter-grid label,
 .rule-draft-workbench label,
