@@ -1,6 +1,6 @@
 # Email Client Competitive Alignment
 
-Date: 2026-06-16
+Date: 2026-06-17
 
 This note translates public product strengths from Thunderbird, Foxmail, and
 Spark into concrete Email Hub implementation targets.
@@ -86,3 +86,27 @@ Email Hub alignment:
 6. Hermes organization actions that can write back to Smart Inbox state.
 7. Native Engine as second-tier sidecar work after EmailEngine launch quality is
    stable.
+
+## 2026-06-17 Implementation Granularity Matrix
+
+This matrix is the working checklist for future slices. It keeps product
+references at implementation granularity so work does not drift into vague
+"Spark-like" or "Thunderbird-like" claims.
+
+| Reference pattern | Email Hub product behavior | Backend/API boundary | Frontend surface | Verification evidence |
+| --- | --- | --- | --- | --- |
+| Thunderbird unified folders | One Mail workspace can show all accounts while every detail/action remains account-safe. | `/api/messages` returns app-owned ids plus `accountId`; detail/action routes require the owning account. | Mail list, folders, labels, and Search never expose EmailEngine ids. | Account-scoped message/action route tests and App message navigation tests. |
+| Thunderbird saved searches / virtual folders | Saved views are filters over the read model, not copied mailboxes. | Persist search DSL and label filters separately from provider folders. | Search workspace can promote a query into a saved view. | Search DSL tests plus a saved-view route/UI test before release. |
+| Thunderbird account-scoped ordered filters | Rules are ordered, auditable, and can be run manually without provider-side surprise writes. | Hermes confirmed rules write app-owned labels and `hermes_rule_runs`; provider label writeback remains opt-in later. | Settings rule manager shows shadow candidates, simulation, manual run, and sort order. | Hermes rule route tests, worker rule application tests, focused Settings tests. |
+| Foxmail low-friction Chinese provider setup | 163/QQ/custom-domain users see concise credential guidance and recovery paths. | Provider catalog and onboarding diagnostics return provider-specific next actions without leaking secrets. | Add Mailbox flow uses provider wording rather than raw IMAP/OAuth jargon. | Onboarding diagnostics route tests and provider-specific UI tests. |
+| Foxmail large-mailbox performance | Large local mirrors remain responsive and searchable. | Background sync writes normalized read models, search docs, and bounded diagnostics. | Mail/Search views page with stable cursors and quick filters. | Sync queue stress, `/api/messages` cursor tests, search route tests. |
+| Foxmail extra-large attachment expectation | Normal uploads work through Docker self-host storage; large-provider sessions are a separate adapter slice. | Compose upload streams raw bytes to the shared volume, stores `storageKey`, validates checksum, and keeps provider refs private. | Compose attachment chips show local metadata and clear 25 MB limit errors. | Compose attachment blob tests, route tests, App upload tests, worker send hydration tests. |
+| Spark Smart Inbox | Important people and direct mail rise above newsletters/notifications with visible reasons. | Classifier writes `message_classification`; feedback writes sender rules and Hermes memory. | Mail cards show bucket and reason chips; users can correct category. | Smart Inbox feedback tests and card behavior tests. |
+| Spark Gatekeeper | First-time senders can be accepted or blocked before polluting the main inbox. | Sender screening rules/events are account-scoped and disabled when Gatekeeper mode allows all. | Gatekeeper panel lists new senders with accept/block actions. | Gatekeeper service and route tests plus App Settings/Mail tests. |
+| Spark Send Later / Outbox | Scheduled mail is durable, editable, cancelable, and can send now. | `email_drafts` plus `scheduled_sends`; worker claims queue items and hydrates attachments/threading. | Compose and Outbox panels share the same draft editing flow. | Compose/outbox route tests, worker scheduled-send tests, App outbox tests. |
+| Spark AI assistant | AI can search, summarize, translate, draft, polish, organize, and learn habits only through Hermes. | `/api/hermes/*` is the sole AI surface; skill settings enforce body-read, memory-write, context, and account scope. | Reader, Compose, Search dock, Settings memories/rules/skills all call backend Hermes APIs only. | Hermes route tests, API client tests, focused feature-panel tests, App integration tests. |
+
+Native Engine remains paused for new product scope while this matrix is being
+closed for the EmailEngine-first launch. Native adapter fixes are allowed only
+when they preserve existing boundaries or prevent regressions in shared
+contracts.

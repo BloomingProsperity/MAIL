@@ -536,10 +536,13 @@ with more than smoke-level tests.
    resumable/chunked uploads, provider-native large attachment sessions,
    tenant-level Graph shared-mailbox discovery/admin inventory, and
    writing-style feedback for rewrite/polish through the single AI entry.
-2. Harden Native IMAP/SMTP send with provider capability gating, live
-   GreenMail/high-volume SMTP smoke, and tests around QQ/163/custom-domain
-   recovery behavior.
-3. Keep EmailEngine onboarding and sync center as the primary user path while
-   Native Engine continues behind adapter boundaries.
+2. Keep EmailEngine onboarding and Sync Center as the primary user path for
+   launch. Gmail, Outlook, 163, QQ, Proton Bridge, and custom-domain setup must
+   succeed through EmailEngine-first contracts before native send/read work
+   gets new product scope.
+3. Pause new Native Engine product work until the EmailEngine-first launch gate
+   is green. Native code can keep adapter-boundary tests and regressions fixes,
+   but it must not displace Docker self-hosting, EmailEngine verification,
+   Hermes wiring, or Compose/Smart Inbox launch work.
 4. Continue running frontend tests/build, backend tests/build, Docker compose
    config validation, and targeted stress/smoke commands in the kaifa workspace.
