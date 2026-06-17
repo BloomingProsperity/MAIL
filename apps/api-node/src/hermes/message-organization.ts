@@ -103,6 +103,7 @@ export function createHermesMessageOrganizationService(
         normalized.accountId,
       );
       const sharedInput = {
+        accountId: normalized.accountId,
         subject: message.subject,
         threadText,
         language: normalized.language,
@@ -110,7 +111,9 @@ export function createHermesMessageOrganizationService(
         memoryIds: normalized.memoryIds,
         memoryScope,
         memoryLayers: normalized.memoryLayers,
-        memoryLimit: normalized.memoryLimit,
+        ...(normalized.memoryLimit !== undefined
+          ? { memoryLimit: normalized.memoryLimit }
+          : {}),
       };
 
       const [priority, labels, newsletter, actionItems] = await Promise.all([

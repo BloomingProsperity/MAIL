@@ -113,7 +113,12 @@ describe("Hermes email search QA service", () => {
       },
     ]);
     expect(memoryQueries).toEqual([
-      { layer: "contact_memory", scope: "global", limit: 6 },
+      {
+        accountId: "00000000-0000-0000-0000-000000000001",
+        layer: "contact_memory",
+        scope: "global",
+        limit: 6,
+      },
     ]);
     expect(providerCalls[0].systemPrompt).toContain(
       "answer questions about email search results",
@@ -198,6 +203,7 @@ describe("Hermes email search QA service", () => {
     });
     expect(persisted).toEqual([
       {
+        accountId: "00000000-0000-0000-0000-000000000001",
         run: {
           id: "run_1",
           skillId: "email_search_qa",

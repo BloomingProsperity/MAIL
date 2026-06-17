@@ -16,6 +16,7 @@ export interface HermesTextProvider {
 }
 
 export interface HermesTranslateInput {
+  accountId?: string;
   text: string;
   targetLanguage: string;
   sourceLanguage?: string;
@@ -42,6 +43,7 @@ export interface HermesTranslationService {
 }
 
 export interface HermesRunStoreInput {
+  accountId?: string;
   run: {
     id: string;
     skillId: string;
@@ -119,6 +121,7 @@ export function createHermesTranslationService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "translate_text",
@@ -126,6 +129,7 @@ export function createHermesTranslationService(
           input: compactObject({
             sourceTextHash: hashTranslationText(input.text),
             sourceTextLength: input.text.length,
+            accountId: input.accountId,
             sourceLanguage,
             targetLanguage: input.targetLanguage,
             tone: input.tone,
@@ -147,6 +151,7 @@ export function createHermesTranslationService(
           memoryIds: usedMemoryIds,
           action: compactObject({
             skillId: "translate_text",
+            accountId: input.accountId,
             targetLanguage: input.targetLanguage,
             sourceLanguage,
             tone: input.tone,

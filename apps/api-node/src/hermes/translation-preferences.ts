@@ -3,6 +3,7 @@ import type { HermesMemoryDto, HermesMemoryStore } from "./memory-store.js";
 export type HermesTranslationPreferenceMode = "always" | "never";
 
 export interface HermesTranslationPreferenceInput {
+  accountId: string;
   mode: HermesTranslationPreferenceMode;
   sourceLanguage: string;
   targetLanguage?: string;
@@ -43,6 +44,7 @@ export function createHermesTranslationPreferenceService(
       const normalized = normalizeTranslationPreference(input);
       const memory = await options.memoryStore.createMemory({
         id: options.createId(),
+        accountId: normalized.accountId,
         layer: "procedural_memory",
         scope: normalized.memoryScope,
         confidence: TRANSLATION_PREFERENCE_CONFIDENCE,
@@ -64,7 +66,7 @@ export function createHermesTranslationPreferenceService(
 function normalizeTranslationPreference(
   input: HermesTranslationPreferenceInput,
 ): Required<Pick<HermesTranslationPreferenceInput, "mode" | "sourceLanguage">> &
-  Pick<HermesTranslationPreferenceInput, "targetLanguage" | "reason"> & {
+  Pick<HermesTranslationPreferenceInput, "accountId" | "targetLanguage" | "reason"> & {
     memoryScope: string;
   } {
   const mode = input.mode;
@@ -88,6 +90,7 @@ function normalizeTranslationPreference(
   }
 
   return {
+    accountId: normalizeShortText(input.accountId, "account id is required", 128),
     mode,
     sourceLanguage,
     ...(targetLanguage ? { targetLanguage } : {}),

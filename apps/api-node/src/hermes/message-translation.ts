@@ -146,6 +146,7 @@ export function createHermesMessageTranslationService(
       }
 
       const result = await options.translationService.translate({
+        accountId: normalized.accountId,
         text,
         targetLanguage: normalized.targetLanguage,
         sourceLanguage: normalized.sourceLanguage,
@@ -156,8 +157,12 @@ export function createHermesMessageTranslationService(
           normalized.memoryScope ??
           (message.from.email ? `sender:${message.from.email}` : "global"),
         memoryLayers: normalized.memoryLayers,
-        memoryLimit: normalized.memoryLimit,
-        customInstructions: normalized.customInstructions,
+        ...(normalized.memoryLimit !== undefined
+          ? { memoryLimit: normalized.memoryLimit }
+          : {}),
+        ...(normalized.customInstructions !== undefined
+          ? { customInstructions: normalized.customInstructions }
+          : {}),
       });
 
       if (!options.store || hasHermesCustomInstructions(normalized)) {
@@ -240,6 +245,7 @@ async function recordCachedTranslationRun(
   const skillRunId = options.createId();
   const auditEventId = options.createId();
   await options.runStore.recordCompletedSkillRun({
+    accountId: record.accountId,
     run: {
       id: skillRunId,
       skillId: "translate_text",

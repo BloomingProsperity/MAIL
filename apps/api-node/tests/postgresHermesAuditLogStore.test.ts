@@ -12,6 +12,7 @@ describe("postgres Hermes audit log store", () => {
           rows: [
             {
               id: "audit_1",
+              account_id: "account_1",
               event_type: "hermes.skill.email_search_qa",
               skill_run_id: "run_1",
               skill_id: "email_search_qa",
@@ -40,6 +41,7 @@ describe("postgres Hermes audit log store", () => {
       items: [
         {
           id: "audit_1",
+          accountId: "account_1",
           eventType: "hermes.skill.email_search_qa",
           skillRunId: "run_1",
           skillId: "email_search_qa",
@@ -57,9 +59,9 @@ describe("postgres Hermes audit log store", () => {
     expect(queries[0].text).toMatch(/FROM hermes_audit_events/i);
     expect(queries[0].text).toMatch(/LEFT JOIN hermes_skill_runs/i);
     expect(queries[0].text).toMatch(/LEFT JOIN hermes_skills/i);
-    expect(queries[0].text).toMatch(/EXISTS\s*\(\s*SELECT 1\s+FROM messages/i);
-    expect(queries[0].text).toMatch(/messages\.id = ANY\(audit\.read_message_ids\)/i);
-    expect(queries[0].text).toMatch(/run\.input->>'accountId' = \$1/i);
+    expect(queries[0].text).toMatch(/audit\.account_id::text = \$1/i);
+    expect(queries[0].text).not.toMatch(/run\.input->>'accountId' = \$1/i);
+    expect(queries[0].text).not.toMatch(/FROM messages/i);
     expect(queries[0].text).toMatch(/\$3 = ANY\(audit\.read_message_ids::text\[\]\)/i);
     expect(queries[0].text).toMatch(/\$4 = ANY\(audit\.memory_ids::text\[\]\)/i);
     expect(queries[0].text).toMatch(/ORDER BY audit\.created_at DESC, audit\.id DESC/i);

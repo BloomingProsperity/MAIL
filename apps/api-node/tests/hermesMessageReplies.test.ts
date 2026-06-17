@@ -51,6 +51,7 @@ describe("Hermes message reply service", () => {
 
     expect(calls).toEqual([
       {
+        accountId: "account_1",
         subject: "Launch schedule",
         threadText: "Please confirm the launch schedule today.",
         instruction: "Confirm politely.",
@@ -113,6 +114,7 @@ describe("Hermes message reply service", () => {
 
     expect(calls).toEqual([
       {
+        accountId: "account_1",
         subject: "Launch schedule",
         threadText: "Hello from HTML",
         scenario: "thanks",

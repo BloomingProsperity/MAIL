@@ -12,6 +12,7 @@ describe("postgres Hermes memory store", () => {
           rows: [
             {
               id: "00000000-0000-0000-0000-000000000010",
+              account_id: "00000000-0000-0000-0000-000000000001",
               layer: "procedural_memory",
               scope: "global",
               content: {
@@ -31,6 +32,7 @@ describe("postgres Hermes memory store", () => {
 
     const result = await store.createMemory({
       id: "00000000-0000-0000-0000-000000000010",
+      accountId: "00000000-0000-0000-0000-000000000001",
       layer: "procedural_memory",
       scope: "global",
       content: {
@@ -45,6 +47,7 @@ describe("postgres Hermes memory store", () => {
     expect(queries[0].text).toMatch(/RETURNING/i);
     expect(queries[0].values).toEqual([
       "00000000-0000-0000-0000-000000000010",
+      "00000000-0000-0000-0000-000000000001",
       "procedural_memory",
       "global",
       {
@@ -56,6 +59,7 @@ describe("postgres Hermes memory store", () => {
     ]);
     expect(result).toEqual({
       id: "00000000-0000-0000-0000-000000000010",
+      accountId: "00000000-0000-0000-0000-000000000001",
       layer: "procedural_memory",
       scope: "global",
       content: {
@@ -78,6 +82,7 @@ describe("postgres Hermes memory store", () => {
           rows: [
             {
               id: "00000000-0000-0000-0000-000000000001",
+              account_id: "00000000-0000-0000-0000-000000000001",
               layer: "semantic_profile",
               scope: "global",
               content: { preference: "short replies" },
@@ -92,18 +97,26 @@ describe("postgres Hermes memory store", () => {
     const store = createPostgresHermesMemoryStore(client);
 
     const result = await store.listMemories({
+      accountId: "00000000-0000-0000-0000-000000000001",
       layer: "semantic_profile",
       scope: "global",
       limit: 25,
     });
 
     expect(queries[0].text).toMatch(/FROM hermes_memories/i);
-    expect(queries[0].text).toMatch(/\(\$1::text IS NULL OR layer = \$1\)/i);
-    expect(queries[0].text).toMatch(/\(\$2::text IS NULL OR scope = \$2\)/i);
-    expect(queries[0].values).toEqual(["semantic_profile", "global", 25]);
+    expect(queries[0].text).toMatch(/account_id = \$1::uuid/i);
+    expect(queries[0].text).toMatch(/\(\$2::text IS NULL OR layer = \$2\)/i);
+    expect(queries[0].text).toMatch(/\(\$3::text IS NULL OR scope = \$3\)/i);
+    expect(queries[0].values).toEqual([
+      "00000000-0000-0000-0000-000000000001",
+      "semantic_profile",
+      "global",
+      25,
+    ]);
     expect(result.items).toEqual([
       {
         id: "00000000-0000-0000-0000-000000000001",
+        accountId: "00000000-0000-0000-0000-000000000001",
         layer: "semantic_profile",
         scope: "global",
         content: { preference: "short replies" },
@@ -123,6 +136,7 @@ describe("postgres Hermes memory store", () => {
           rows: [
             {
               id: "00000000-0000-0000-0000-000000000001",
+              account_id: "00000000-0000-0000-0000-000000000001",
               layer: "semantic_profile",
               scope: "global",
               content: { preference: "concise replies" },
@@ -138,6 +152,7 @@ describe("postgres Hermes memory store", () => {
 
     const result = await store.updateMemory({
       id: "00000000-0000-0000-0000-000000000001",
+      accountId: "00000000-0000-0000-0000-000000000001",
       content: { preference: "concise replies" },
       confidence: 0.9,
     });
@@ -151,6 +166,7 @@ describe("postgres Hermes memory store", () => {
       "00000000-0000-0000-0000-000000000001",
       { preference: "concise replies" },
       0.9,
+      "00000000-0000-0000-0000-000000000001",
     ]);
     expect(result?.confidence).toBe(0.9);
   });
@@ -167,12 +183,15 @@ describe("postgres Hermes memory store", () => {
 
     const deleted = await store.deleteMemory({
       id: "00000000-0000-0000-0000-000000000001",
+      accountId: "00000000-0000-0000-0000-000000000001",
     });
 
     expect(deleted).toBe(true);
     expect(queries[0].text).toMatch(/DELETE FROM hermes_memories/i);
+    expect(queries[0].text).toMatch(/account_id = \$2::uuid/i);
     expect(queries[0].text).toMatch(/RETURNING id/i);
     expect(queries[0].values).toEqual([
+      "00000000-0000-0000-0000-000000000001",
       "00000000-0000-0000-0000-000000000001",
     ]);
   });

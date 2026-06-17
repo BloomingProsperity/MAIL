@@ -10,6 +10,7 @@ import type {
 
 interface HermesMemoryRow extends Record<string, unknown> {
   id: string;
+  account_id?: string | null;
   layer: string;
   scope: string;
   content: unknown;
@@ -31,14 +32,16 @@ export function createPostgresHermesMemoryStore(
         `
           INSERT INTO hermes_memories (
             id,
+            account_id,
             layer,
             scope,
             content,
             confidence
           )
-          VALUES ($1, $2, $3, $4, $5)
+          VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING
             id,
+            account_id,
             layer,
             scope,
             content,
@@ -48,6 +51,7 @@ export function createPostgresHermesMemoryStore(
         `,
         [
           input.id,
+          input.accountId ?? null,
           input.layer,
           input.scope,
           input.content,
@@ -63,6 +67,7 @@ export function createPostgresHermesMemoryStore(
         `
           SELECT
             id,
+            account_id,
             layer,
             scope,
             content,
@@ -70,12 +75,18 @@ export function createPostgresHermesMemoryStore(
             created_at,
             updated_at
           FROM hermes_memories
-          WHERE ($1::text IS NULL OR layer = $1)
-            AND ($2::text IS NULL OR scope = $2)
+          WHERE (($1::uuid IS NULL AND account_id IS NULL) OR account_id = $1::uuid)
+            AND ($2::text IS NULL OR layer = $2)
+            AND ($3::text IS NULL OR scope = $3)
           ORDER BY updated_at DESC, id DESC
-          LIMIT $3
+          LIMIT $4
         `,
-        [input.layer ?? null, input.scope ?? null, input.limit],
+        [
+          input.accountId ?? null,
+          input.layer ?? null,
+          input.scope ?? null,
+          input.limit,
+        ],
       );
 
       return { items: result.rows.map(rowToMemory) };
@@ -90,8 +101,10 @@ export function createPostgresHermesMemoryStore(
             confidence = COALESCE($3::numeric, confidence),
             updated_at = now()
           WHERE id = $1
+            AND (($4::uuid IS NULL AND account_id IS NULL) OR account_id = $4::uuid)
           RETURNING
             id,
+            account_id,
             layer,
             scope,
             content,
@@ -99,7 +112,12 @@ export function createPostgresHermesMemoryStore(
             created_at,
             updated_at
         `,
-        [input.id, input.content ?? null, input.confidence ?? null],
+        [
+          input.id,
+          input.content ?? null,
+          input.confidence ?? null,
+          input.accountId ?? null,
+        ],
       );
 
       return result.rows[0] ? rowToMemory(result.rows[0]) : undefined;
@@ -110,9 +128,10 @@ export function createPostgresHermesMemoryStore(
         `
           DELETE FROM hermes_memories
           WHERE id = $1
+            AND (($2::uuid IS NULL AND account_id IS NULL) OR account_id = $2::uuid)
           RETURNING id
         `,
-        [input.id],
+        [input.id, input.accountId ?? null],
       );
 
       return result.rows.length > 0;
@@ -123,6 +142,7 @@ export function createPostgresHermesMemoryStore(
 function rowToMemory(row: HermesMemoryRow): HermesMemoryDto {
   return {
     id: row.id,
+    ...(row.account_id ? { accountId: row.account_id } : {}),
     layer: row.layer,
     scope: row.scope,
     content: asRecord(row.content),

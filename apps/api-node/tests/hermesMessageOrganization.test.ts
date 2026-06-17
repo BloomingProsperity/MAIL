@@ -103,6 +103,7 @@ describe("Hermes message organization service", () => {
     });
 
     const shared = {
+      accountId: "account_1",
       subject: "Launch schedule",
       threadText: "Please confirm the launch schedule today.",
       language: "zh-CN",

@@ -41,6 +41,7 @@ interface CreatePostgresHermesDraftFeedbackStoreOptions {
 
 interface HermesSkillRunRow extends Record<string, unknown> {
   id: string;
+  account_id?: string | null;
   skill_id: string;
   input?: unknown;
   output?: unknown;
@@ -125,7 +126,7 @@ async function loadEditableFeedbackRun(
 ): Promise<(HermesSkillRunRow & { skill_id: HermesDraftFeedbackSkillId }) | undefined> {
   const result = await client.query<HermesSkillRunRow>(
     `
-      SELECT id, skill_id
+      SELECT id, account_id, skill_id
            , input
            , output
       FROM hermes_skill_runs
@@ -192,15 +193,17 @@ async function insertWritingStyleMemory(
     `
       INSERT INTO hermes_memories (
         id,
+        account_id,
         layer,
         scope,
         content,
         confidence
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `,
     [
       input.id,
+      input.skillRun.account_id ?? null,
       "writing_style_profile",
       memoryScopeForFeedback(input.input),
       compactObject({

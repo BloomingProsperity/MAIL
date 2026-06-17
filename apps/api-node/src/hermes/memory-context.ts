@@ -3,6 +3,7 @@ import type { HermesMemoryDto, HermesMemoryStore } from "./memory-store.js";
 const MAX_MEMORY_LAYERS_PER_RUN = 6;
 
 export interface HermesMemoryContextInput {
+  accountId?: string;
   memoryScope?: string;
   memoryLayers?: string[];
   memoryLimit?: number;
@@ -41,6 +42,7 @@ export async function loadHermesMemoryContext(
     layers.flatMap((layer) =>
       scopes.map((scope) =>
         options.memoryStore!.listMemories({
+          ...(input.accountId ? { accountId: input.accountId } : {}),
           layer,
           scope,
           limit: perQueryLimit,

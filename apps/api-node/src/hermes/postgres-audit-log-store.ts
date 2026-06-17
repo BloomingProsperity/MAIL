@@ -18,6 +18,7 @@ export interface Queryable {
 
 interface HermesAuditLogRow extends Record<string, unknown> {
   id: string;
+  account_id?: string | null;
   event_type: string;
   skill_run_id?: string | null;
   skill_id?: string | null;
@@ -39,6 +40,7 @@ export function createPostgresHermesAuditLogStore(
         `
           SELECT
             audit.id,
+            audit.account_id::text AS account_id,
             audit.event_type,
             audit.skill_run_id,
             run.skill_id,
@@ -57,13 +59,7 @@ export function createPostgresHermesAuditLogStore(
           WHERE
             (
               $1::text IS NULL
-              OR run.input->>'accountId' = $1
-              OR EXISTS (
-                SELECT 1
-                FROM messages
-                WHERE messages.account_id::text = $1
-                  AND messages.id = ANY(audit.read_message_ids)
-              )
+              OR audit.account_id::text = $1
             )
             AND ($2::text IS NULL OR run.skill_id = $2)
             AND ($3::text IS NULL OR $3 = ANY(audit.read_message_ids::text[]))
@@ -90,6 +86,7 @@ export function createPostgresHermesAuditLogStore(
 function rowToAuditEvent(row: HermesAuditLogRow): HermesAuditLogEntry {
   return {
     id: row.id,
+    ...(row.account_id ? { accountId: row.account_id } : {}),
     eventType: row.event_type,
     ...(row.skill_run_id ? { skillRunId: row.skill_run_id } : {}),
     ...(row.skill_id ? { skillId: row.skill_id } : {}),

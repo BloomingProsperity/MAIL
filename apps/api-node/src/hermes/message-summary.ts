@@ -134,6 +134,7 @@ export function createHermesMessageSummaryService(
       }
 
       const result = await options.summaryService.summarizeThread({
+        accountId: normalized.accountId,
         subject: message.subject,
         threadText: text,
         mode: normalized.mode,
@@ -143,8 +144,12 @@ export function createHermesMessageSummaryService(
         memoryIds: normalized.memoryIds,
         memoryScope: normalized.memoryScope ?? "global",
         memoryLayers: normalized.memoryLayers,
-        memoryLimit: normalized.memoryLimit,
-        customInstructions: normalized.customInstructions,
+        ...(normalized.memoryLimit !== undefined
+          ? { memoryLimit: normalized.memoryLimit }
+          : {}),
+        ...(normalized.customInstructions !== undefined
+          ? { customInstructions: normalized.customInstructions }
+          : {}),
       });
 
       if (!options.store || hasHermesCustomInstructions(normalized)) {

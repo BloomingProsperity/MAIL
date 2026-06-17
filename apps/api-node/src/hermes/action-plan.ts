@@ -217,6 +217,7 @@ export function createHermesActionPlanService(
       };
       const auditEventId = await recordActionPlanRun(options, {
         runId: plan.id,
+        accountId,
         eventType: "hermes.action_plan.created",
         readMessageIds: simulation.sampleMessageIds,
         input: {
@@ -327,6 +328,7 @@ export function createHermesActionPlanService(
         };
         const auditEventId = await recordActionPlanRun(options, {
           runId: confirmation.id,
+          accountId,
           eventType: "hermes.action_plan.confirmed",
           readMessageIds: historyBackfill?.sampleMessageIds ?? [],
           input: {
@@ -544,6 +546,7 @@ async function rememberConfirmedRule(
   try {
     return await options.memoryStore.createMemory({
       id: options.createId(),
+      accountId: input.rule.accountId,
       layer: "procedural_memory",
       scope: "global",
       confidence: Math.max(0.75, Math.min(0.98, input.rule.confidence)),
@@ -660,6 +663,7 @@ async function recordActionPlanRun(
   options: CreateHermesActionPlanServiceOptions,
   input: {
     runId: string;
+    accountId: string;
     eventType: string;
     readMessageIds: string[];
     input: Record<string, unknown>;
@@ -673,6 +677,7 @@ async function recordActionPlanRun(
 
   const auditEventId = options.createId();
   await options.runStore.recordCompletedSkillRun({
+    accountId: input.accountId,
     run: {
       id: input.runId,
       skillId: ACTION_PLAN_SKILL_ID,

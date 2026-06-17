@@ -94,6 +94,43 @@ describe("Hermes memory context", () => {
     ]);
   });
 
+  it("passes account scope to every memory lookup", async () => {
+    const calls: unknown[] = [];
+
+    await loadHermesMemoryContext(
+      {
+        accountId: "account_1",
+        memoryScope: "sender:client@example.com",
+        memoryLayers: ["contact_memory"],
+      },
+      {
+        memoryLimit: 4,
+        defaultLayers: ["contact_memory"],
+        memoryStore: {
+          async listMemories(input) {
+            calls.push(input);
+            return { items: [] };
+          },
+        },
+      },
+    );
+
+    expect(calls).toEqual([
+      {
+        accountId: "account_1",
+        layer: "contact_memory",
+        scope: "global",
+        limit: 2,
+      },
+      {
+        accountId: "account_1",
+        layer: "contact_memory",
+        scope: "sender:client@example.com",
+        limit: 2,
+      },
+    ]);
+  });
+
   it("skips memory store queries when the skill memory limit is zero", async () => {
     const calls: unknown[] = [];
 

@@ -8,6 +8,7 @@ import type { HermesMemoryStore } from "./memory-store.js";
 import type { HermesRunStore, HermesTextProvider } from "./translation.js";
 
 export interface HermesThreadSummaryInput {
+  accountId?: string;
   subject?: string;
   threadText: string;
   mode?: HermesThreadSummaryMode;
@@ -88,12 +89,14 @@ export function createHermesThreadSummaryService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "thread_summarize",
           skillTitle: "Summarize thread",
           input: compactObject({
             subject: input.subject,
+            accountId: input.accountId,
             threadText: input.threadText,
             mode,
             focus: input.focus,
@@ -114,6 +117,7 @@ export function createHermesThreadSummaryService(
           memoryIds: usedHermesMemoryIds(input.memoryIds, memories),
           action: compactObject({
             skillId: "thread_summarize",
+            accountId: input.accountId,
             mode,
             focus: input.focus,
             language: input.language,

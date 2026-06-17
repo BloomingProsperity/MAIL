@@ -20,6 +20,7 @@ describe("Hermes translation preference service", () => {
     });
 
     const result = await service.confirmTranslationPreference({
+      accountId: "account_1",
       mode: "always",
       sourceLanguage: "English",
       targetLanguage: "Chinese",
@@ -29,6 +30,7 @@ describe("Hermes translation preference service", () => {
     expect(created).toEqual([
       {
         id: "00000000-0000-0000-0000-000000000010",
+        accountId: "account_1",
         layer: "procedural_memory",
         scope: "global",
         confidence: 0.92,
@@ -65,6 +67,7 @@ describe("Hermes translation preference service", () => {
     });
 
     const result = await service.confirmTranslationPreference({
+      accountId: "account_1",
       mode: "never",
       sourceLanguage: "Japanese",
     });
@@ -72,6 +75,7 @@ describe("Hermes translation preference service", () => {
     expect(created).toEqual([
       {
         id: "00000000-0000-0000-0000-000000000011",
+        accountId: "account_1",
         layer: "procedural_memory",
         scope: "global",
         confidence: 0.92,
@@ -99,6 +103,7 @@ describe("Hermes translation preference service", () => {
 
     await expect(
       service.confirmTranslationPreference({
+        accountId: "account_1",
         mode: "always",
         sourceLanguage: "English",
       }),

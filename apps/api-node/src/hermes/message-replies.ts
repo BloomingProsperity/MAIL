@@ -149,6 +149,7 @@ function draftInputFromMessage(
   senderEmail: string | undefined,
 ): HermesReplyDraftInput {
   return {
+    accountId: input.accountId,
     ...(subject ? { subject } : {}),
     threadText,
     ...(input.instruction ? { instruction: input.instruction } : {}),

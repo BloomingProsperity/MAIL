@@ -20,6 +20,7 @@ export type HermesPriorityBucket =
   | "P7 Screen";
 
 export interface HermesPriorityTriageInput {
+  accountId?: string;
   subject?: string;
   threadText: string;
   senderEmail?: string;
@@ -102,12 +103,14 @@ export function createHermesPriorityTriageService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "priority_triage",
           skillTitle: "Triage priority",
           input: compactObject({
             subject: input.subject,
+            accountId: input.accountId,
             threadText: input.threadText,
             senderEmail: input.senderEmail,
             currentBucket: input.currentBucket,
@@ -133,6 +136,7 @@ export function createHermesPriorityTriageService(
           memoryIds: usedHermesMemoryIds(input.memoryIds, memories),
           action: compactObject({
             skillId: "priority_triage",
+            accountId: input.accountId,
             senderEmail: input.senderEmail,
             currentBucket: input.currentBucket,
             currentScore: input.currentScore,

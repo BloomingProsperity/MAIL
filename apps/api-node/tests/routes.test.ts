@@ -174,7 +174,6 @@ describe("API routes", () => {
           "/api/hermes/skills/newsletter_cleanup/run",
           "/api/hermes/skills/priority_triage/run",
           "/api/hermes/skills/followup_tracker/run",
-          "/api/hermes/translation-preferences",
           "/api/hermes/workspace/context",
           "/api/hermes/audit-log",
           "/api/hermes/rule-runs",
@@ -260,12 +259,24 @@ describe("API routes", () => {
             }),
           },
         );
+        const hermesAudit = await fetch(
+          `${baseUrl}/api/hermes/audit-log?accountId=account_2`,
+        );
+        const hermesMemories = await fetch(
+          `${baseUrl}/api/hermes/memories?accountId=account_2`,
+        );
+        const hermesRuleRuns = await fetch(
+          `${baseUrl}/api/hermes/rule-runs?accountId=account_2`,
+        );
 
         for (const response of [
           followUps,
           senders,
           bulkSenders,
           hermesSearch,
+          hermesAudit,
+          hermesMemories,
+          hermesRuleRuns,
         ]) {
           expect(response.status).toBe(404);
           expect(await response.json()).toEqual({ error: "account_not_found" });

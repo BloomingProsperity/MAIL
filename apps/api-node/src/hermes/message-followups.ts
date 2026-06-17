@@ -70,6 +70,7 @@ export function createHermesMessageFollowupTrackerService(
       }
 
       const result = await options.followupTrackerService.trackFollowup({
+        accountId: normalized.accountId,
         subject: message.subject,
         threadText,
         participants: messageParticipants(message),
@@ -81,8 +82,12 @@ export function createHermesMessageFollowupTrackerService(
           normalized.memoryScope ??
           (message.from.email ? `sender:${message.from.email}` : "global"),
         memoryLayers: normalized.memoryLayers,
-        memoryLimit: normalized.memoryLimit,
-        customInstructions: normalized.customInstructions,
+        ...(normalized.memoryLimit !== undefined
+          ? { memoryLimit: normalized.memoryLimit }
+          : {}),
+        ...(normalized.customInstructions !== undefined
+          ? { customInstructions: normalized.customInstructions }
+          : {}),
       });
 
       return {

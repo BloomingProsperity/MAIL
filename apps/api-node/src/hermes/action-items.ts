@@ -21,6 +21,7 @@ export interface HermesActionItem {
 }
 
 export interface HermesActionItemExtractInput {
+  accountId?: string;
   subject?: string;
   threadText: string;
   language?: string;
@@ -96,12 +97,14 @@ export function createHermesActionItemExtractService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "action_item_extract",
           skillTitle: "Extract action items",
           input: compactObject({
             subject: input.subject,
+            accountId: input.accountId,
             threadText: input.threadText,
             language: input.language,
             now: input.now,
@@ -120,6 +123,7 @@ export function createHermesActionItemExtractService(
           memoryIds: usedHermesMemoryIds(input.memoryIds, memories),
           action: compactObject({
             skillId: "action_item_extract",
+            accountId: input.accountId,
             language: input.language,
             now: input.now,
             memoryScope: input.memoryScope,

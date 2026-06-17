@@ -181,13 +181,22 @@ with more than smoke-level tests.
   draft feedback, reviewed rules.
 - API: `/api/hermes/*` skills, runtime, providers, memories, rules, audit log.
 - Security boundary: account-scoped API tokens may run only account-bound mail
-  operations such as scoped mail search. Hermes runtime settings, provider
-  probe/configuration, resource profile, skill list/settings, global direct
-  skill runs, translation-preference memory writes, audit/memory/rule admin
-  surfaces, and other global AI management routes require the admin API token.
-  Non-account operational surfaces, including maintenance cleanup/status,
-  EmailEngine health/readiness, and provider capability catalogs, also require
-  the admin token.
+  and Hermes operations. Scoped mail search, translation preferences, Hermes
+  audit log, memory review, and rule-run history must carry `accountId` and are
+  rejected when the token is not allowed for that account. Hermes runtime
+  settings, provider probe/configuration, resource profile, skill list/settings,
+  global direct skill runs, action-plan/admin rule surfaces, and other global AI
+  management routes require the admin API token. Non-account operational
+  surfaces, including maintenance cleanup/status, EmailEngine health/readiness,
+  and provider capability catalogs, also require the admin token.
+- Current data-boundary status: `hermes_memories`, `hermes_skill_runs`, and
+  `hermes_audit_events` now have structure-level `account_id` columns for new
+  data. Account-bound skill runs write that scope into both run and audit rows,
+  memory context queries pass `accountId` into the store, and Postgres run
+  storage verifies referenced `readMessageIds` and `memoryIds` belong to the
+  same account before writing audit rows. Legacy NULL-scope Hermes rows remain
+  admin-only migration/cleanup data and are not loaded for account-scoped
+  prompts.
 - Resource guardrails: every built-in Hermes skill has backend-owned editable
   options for enabled state, body-read permission, memory-write permission,
   confirmation requirement, memory limit, and context character budget. Message

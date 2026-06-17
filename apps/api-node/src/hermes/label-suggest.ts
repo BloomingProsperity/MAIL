@@ -29,6 +29,7 @@ export interface HermesLabelActionSuggestion {
 }
 
 export interface HermesLabelSuggestInput {
+  accountId?: string;
   subject?: string;
   threadText: string;
   senderEmail?: string;
@@ -106,12 +107,14 @@ export function createHermesLabelSuggestService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "label_suggest",
           skillTitle: "Suggest labels",
           input: compactObject({
             subject: input.subject,
+            accountId: input.accountId,
             threadText: input.threadText,
             senderEmail: input.senderEmail,
             currentLabels: input.currentLabels,
@@ -133,6 +136,7 @@ export function createHermesLabelSuggestService(
           memoryIds: usedHermesMemoryIds(input.memoryIds, memories),
           action: compactObject({
             skillId: "label_suggest",
+            accountId: input.accountId,
             senderEmail: input.senderEmail,
             language: input.language,
             memoryScope: input.memoryScope,

@@ -68,6 +68,7 @@ describe("Hermes message summary service", () => {
 
     expect(summaryCalls).toEqual([
       {
+        accountId: "account_1",
         subject: "Launch schedule",
         threadText: "Please confirm the launch schedule.",
         mode: "action_points",

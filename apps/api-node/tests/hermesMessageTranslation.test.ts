@@ -66,6 +66,7 @@ describe("Hermes message translation service", () => {
 
     expect(translationCalls).toEqual([
       {
+        accountId: "account_1",
         text: "Please confirm the launch schedule.",
         targetLanguage: "Chinese",
         sourceLanguage: "auto",
@@ -176,6 +177,7 @@ describe("Hermes message translation service", () => {
     });
     expect(persisted).toEqual([
       {
+        accountId: "account_1",
         run: {
           id: "cache_run_1",
           skillId: "translate_text",

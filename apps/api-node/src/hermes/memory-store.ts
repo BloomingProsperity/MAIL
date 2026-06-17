@@ -1,5 +1,6 @@
 export interface HermesMemoryDto {
   id: string;
+  accountId?: string;
   layer: string;
   scope: string;
   content: Record<string, unknown>;
@@ -9,6 +10,7 @@ export interface HermesMemoryDto {
 }
 
 export interface ListHermesMemoriesInput {
+  accountId?: string;
   layer?: string;
   scope?: string;
   limit: number;
@@ -16,6 +18,7 @@ export interface ListHermesMemoriesInput {
 
 export interface CreateHermesMemoryInput {
   id: string;
+  accountId?: string;
   layer: string;
   scope: string;
   content: Record<string, unknown>;
@@ -24,12 +27,14 @@ export interface CreateHermesMemoryInput {
 
 export interface UpdateHermesMemoryInput {
   id: string;
+  accountId?: string;
   content?: Record<string, unknown>;
   confidence?: number;
 }
 
 export interface DeleteHermesMemoryInput {
   id: string;
+  accountId?: string;
 }
 
 export interface HermesMemoryPage {

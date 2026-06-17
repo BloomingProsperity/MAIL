@@ -161,6 +161,7 @@ export function createHermesEmailSearchQaService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        accountId: input.accountId,
         run: {
           id: skillRunId,
           skillId: "email_search_qa",

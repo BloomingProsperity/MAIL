@@ -34,7 +34,9 @@ describe("postgres Hermes draft feedback store", () => {
       async query(text: string, values?: unknown[]) {
         queries.push({ text, values });
         if (text.includes("FROM hermes_skill_runs")) {
-          return { rows: [{ id: "run_1", skill_id: "reply_draft" }] };
+          return {
+            rows: [{ id: "run_1", account_id: "account_1", skill_id: "reply_draft" }],
+          };
         }
         return { rows: [] };
       },
@@ -83,6 +85,7 @@ describe("postgres Hermes draft feedback store", () => {
     );
     expect(memoryQuery?.values).toEqual([
       "memory_1",
+      "account_1",
       "writing_style_profile",
       "recipient:lina@example.com",
       {
@@ -118,7 +121,15 @@ describe("postgres Hermes draft feedback store", () => {
       async query(text: string, values?: unknown[]) {
         queries.push({ text, values });
         if (text.includes("FROM hermes_skill_runs")) {
-          return { rows: [{ id: "run_quick_1", skill_id: "quick_reply" }] };
+          return {
+            rows: [
+              {
+                id: "run_quick_1",
+                account_id: "account_1",
+                skill_id: "quick_reply",
+              },
+            ],
+          };
         }
         return { rows: [] };
       },
@@ -151,7 +162,8 @@ describe("postgres Hermes draft feedback store", () => {
     const memoryQuery = queries.find((query) =>
       query.text.includes("INSERT INTO hermes_memories"),
     );
-    expect(memoryQuery?.values?.[3]).toMatchObject({
+    expect(memoryQuery?.values?.[1]).toBe("account_1");
+    expect(memoryQuery?.values?.[4]).toMatchObject({
       source: "quick_reply_feedback",
       feedbackId: "feedback_1",
       skillRunId: "run_quick_1",
@@ -172,7 +184,15 @@ describe("postgres Hermes draft feedback store", () => {
       async query(text: string, values?: unknown[]) {
         queries.push({ text, values });
         if (text.includes("FROM hermes_skill_runs")) {
-          return { rows: [{ id: "run_rewrite_1", skill_id: "rewrite_polish" }] };
+          return {
+            rows: [
+              {
+                id: "run_rewrite_1",
+                account_id: "account_1",
+                skill_id: "rewrite_polish",
+              },
+            ],
+          };
         }
         return { rows: [] };
       },
@@ -206,7 +226,8 @@ describe("postgres Hermes draft feedback store", () => {
     const memoryQuery = queries.find((query) =>
       query.text.includes("INSERT INTO hermes_memories"),
     );
-    expect(memoryQuery?.values?.[3]).toMatchObject({
+    expect(memoryQuery?.values?.[1]).toBe("account_1");
+    expect(memoryQuery?.values?.[4]).toMatchObject({
       source: "rewrite_polish_feedback",
       feedbackId: "feedback_1",
       skillRunId: "run_rewrite_1",
@@ -233,6 +254,7 @@ describe("postgres Hermes draft feedback store", () => {
             rows: [
               {
                 id: "run_rewrite_1",
+                account_id: "account_1",
                 skill_id: "rewrite_polish",
                 input: {
                   text: "please review launch plan",
@@ -266,6 +288,7 @@ describe("postgres Hermes draft feedback store", () => {
     );
     expect(memoryQuery?.values).toEqual([
       "memory_1",
+      "account_1",
       "writing_style_profile",
       "recipient:lina@example.com",
       {
@@ -302,7 +325,9 @@ describe("postgres Hermes draft feedback store", () => {
       async query(text: string, values?: unknown[]) {
         queries.push({ text, values });
         if (text.includes("FROM hermes_skill_runs")) {
-          return { rows: [{ id: "run_1", skill_id: "reply_draft" }] };
+          return {
+            rows: [{ id: "run_1", account_id: "account_1", skill_id: "reply_draft" }],
+          };
         }
         return { rows: [] };
       },
@@ -322,9 +347,10 @@ describe("postgres Hermes draft feedback store", () => {
     const memoryQuery = queries.find((query) =>
       query.text.includes("INSERT INTO hermes_memories"),
     );
-    expect(memoryQuery?.values?.[1]).toBe("writing_style_profile");
-    expect(memoryQuery?.values?.[2]).toBe("recipient:lina@example.com");
-    expect(memoryQuery?.values?.[3]).toMatchObject({
+    expect(memoryQuery?.values?.[1]).toBe("account_1");
+    expect(memoryQuery?.values?.[2]).toBe("writing_style_profile");
+    expect(memoryQuery?.values?.[3]).toBe("recipient:lina@example.com");
+    expect(memoryQuery?.values?.[4]).toMatchObject({
       recipientEmail: "lina@example.com",
       scope: "recipient:lina@example.com",
       preference:

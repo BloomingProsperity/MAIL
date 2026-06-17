@@ -16,6 +16,7 @@ export type HermesFollowupStatus =
 export type HermesFollowupOwner = "me" | "them" | "unknown";
 
 export interface HermesFollowupTrackerInput {
+  accountId?: string;
   subject?: string;
   threadText: string;
   userEmail?: string;
@@ -101,12 +102,14 @@ export function createHermesFollowupTrackerService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "followup_tracker",
           skillTitle: "Track follow-up",
           input: compactObject({
             subject: input.subject,
+            accountId: input.accountId,
             threadText: input.threadText,
             userEmail: input.userEmail,
             participants: input.participants,
@@ -125,6 +128,7 @@ export function createHermesFollowupTrackerService(
           memoryIds: usedHermesMemoryIds(input.memoryIds, memories),
           action: compactObject({
             skillId: "followup_tracker",
+            accountId: input.accountId,
             userEmail: input.userEmail,
             now: input.now,
             language: input.language,

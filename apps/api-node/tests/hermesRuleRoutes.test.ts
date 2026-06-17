@@ -655,7 +655,7 @@ describe("Hermes rule routes", () => {
           ],
         });
       },
-      { hermesRuleService },
+      { hermesRuleService, apiAccessAccountIds: ["account_1"] },
     );
 
     expect(calls).toEqual([

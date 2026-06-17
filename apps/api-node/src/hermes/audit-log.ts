@@ -1,5 +1,6 @@
 export interface HermesAuditLogEntry {
   id: string;
+  accountId?: string;
   eventType: string;
   skillRunId?: string;
   skillId?: string;

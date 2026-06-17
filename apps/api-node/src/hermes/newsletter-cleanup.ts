@@ -28,6 +28,7 @@ export interface HermesNewsletterCleanupAction {
 }
 
 export interface HermesNewsletterCleanupInput {
+  accountId?: string;
   subject?: string;
   threadText: string;
   senderEmail?: string;
@@ -108,12 +109,14 @@ export function createHermesNewsletterCleanupService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "newsletter_cleanup",
           skillTitle: "Newsletter cleanup",
           input: compactObject({
             subject: input.subject,
+            accountId: input.accountId,
             threadText: input.threadText,
             senderEmail: input.senderEmail,
             listId: input.listId,
@@ -132,6 +135,7 @@ export function createHermesNewsletterCleanupService(
           memoryIds: usedHermesMemoryIds(input.memoryIds, memories),
           action: compactObject({
             skillId: "newsletter_cleanup",
+            accountId: input.accountId,
             senderEmail: input.senderEmail,
             listId: input.listId,
             currentBucket: input.currentBucket,

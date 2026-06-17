@@ -446,6 +446,30 @@ describe("Hermes routes", () => {
     );
   });
 
+  it("allows account-scoped tokens to list their Hermes audit events", async () => {
+    const calls: unknown[] = [];
+    const hermesAuditLogService = {
+      async listAuditEvents(input: unknown) {
+        calls.push(input);
+        return { items: [] };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/audit-log?accountId=account_1&limit=10`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ items: [] });
+      },
+      { hermesAuditLogService, apiAccessAccountIds: ["account_1"] },
+    );
+
+    expect(calls).toEqual([{ accountId: "account_1", limit: 10 }]);
+  });
+
   it("returns a clear error when Hermes audit logs are not wired", async () => {
     await withApi(async (baseUrl) => {
       const response = await fetch(`${baseUrl}/api/hermes/audit-log`);
@@ -1763,6 +1787,7 @@ describe("Hermes routes", () => {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
+              accountId: "account_1",
               mode: "always",
               sourceLanguage: "English",
               targetLanguage: "Chinese",
@@ -1785,6 +1810,7 @@ describe("Hermes routes", () => {
         });
         expect(calls).toEqual([
           {
+            accountId: "account_1",
             mode: "always",
             sourceLanguage: "English",
             targetLanguage: "Chinese",
@@ -1792,7 +1818,7 @@ describe("Hermes routes", () => {
           },
         ]);
       },
-      { hermesTranslationPreferenceService },
+      { hermesTranslationPreferenceService, apiAccessAccountIds: ["account_1"] },
     );
   });
 
@@ -1813,6 +1839,7 @@ describe("Hermes routes", () => {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
+              accountId: "account_1",
               mode: "always",
               sourceLanguage: "English",
             }),
@@ -1874,6 +1901,7 @@ describe("Hermes routes", () => {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
+              accountId: "account_1",
               mode: "always",
               sourceLanguage: "English",
               targetLanguage: "Chinese",
@@ -3488,7 +3516,7 @@ describe("Hermes routes", () => {
     await withApi(
       async (baseUrl) => {
         const response = await fetch(
-          `${baseUrl}/api/hermes/memories?layer=semantic_profile&scope=global&limit=25`,
+          `${baseUrl}/api/hermes/memories?accountId=account_1&layer=semantic_profile&scope=global&limit=25`,
         );
 
         expect(response.status).toBe(200);
@@ -3506,10 +3534,15 @@ describe("Hermes routes", () => {
           ],
         });
         expect(calls).toEqual([
-          { layer: "semantic_profile", scope: "global", limit: 25 },
+          {
+            accountId: "account_1",
+            layer: "semantic_profile",
+            scope: "global",
+            limit: 25,
+          },
         ]);
       },
-      { hermesMemoryStore },
+      { hermesMemoryStore, apiAccessAccountIds: ["account_1"] },
     );
   });
 
@@ -3595,7 +3628,7 @@ describe("Hermes routes", () => {
     await withApi(
       async (baseUrl) => {
         const response = await fetch(
-          `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001`,
+          `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001?accountId=account_1`,
           {
             method: "PATCH",
             headers: { "content-type": "application/json" },
@@ -3615,6 +3648,7 @@ describe("Hermes routes", () => {
         expect(calls).toEqual([
           {
             id: "00000000-0000-0000-0000-000000000001",
+            accountId: "account_1",
             content: { preference: "concise replies" },
             confidence: 0.9,
           },
@@ -3642,14 +3676,17 @@ describe("Hermes routes", () => {
     await withApi(
       async (baseUrl) => {
         const response = await fetch(
-          `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001`,
+          `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001?accountId=account_1`,
           { method: "DELETE" },
         );
 
         expect(response.status).toBe(204);
         expect(await response.text()).toBe("");
         expect(calls).toEqual([
-          { id: "00000000-0000-0000-0000-000000000001" },
+          {
+            id: "00000000-0000-0000-0000-000000000001",
+            accountId: "account_1",
+          },
         ]);
       },
       { hermesMemoryStore },
@@ -3676,9 +3713,9 @@ describe("Hermes routes", () => {
     await withApi(
       async (baseUrl) => {
         const responses = await Promise.all([
-          fetch(`${baseUrl}/api/hermes/memories?limit=0`),
+          fetch(`${baseUrl}/api/hermes/memories?accountId=account_1&limit=0`),
           fetch(
-            `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001`,
+            `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001?accountId=account_1`,
             {
               method: "PATCH",
               headers: { "content-type": "application/json" },
@@ -3686,7 +3723,7 @@ describe("Hermes routes", () => {
             },
           ),
           fetch(
-            `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001`,
+            `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001?accountId=account_1`,
             {
               method: "PATCH",
               headers: { "content-type": "application/json" },

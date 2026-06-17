@@ -50,6 +50,7 @@ describe("Hermes message follow-up tracker service", () => {
 
     expect(calls).toEqual([
       {
+        accountId: "account_1",
         subject: "Launch schedule",
         threadText: "Please confirm the launch schedule today.",
         participants: [

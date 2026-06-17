@@ -953,8 +953,16 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           return;
         }
 
+        const input = parseHermesAuditLogListInput(request.url);
+        if (isApiAccessAccountScoped(apiAccessContext) && !input.accountId) {
+          rejectAccountScopedAdminRoute(response, config, requestId, requestPath);
+          return;
+        }
+        if (input.accountId && !ensureRouteAccountAccess(input.accountId)) {
+          return;
+        }
         const result = await config.hermesAuditLogService.listAuditEvents(
-          parseHermesAuditLogListInput(request.url),
+          input,
         );
         writeJson(response, 200, result);
         return;
@@ -974,6 +982,9 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         const input = parseHermesTranslationPreferenceInput(
           await readRequestBody(),
         );
+        if (!ensureRouteAccountAccess(input.accountId)) {
+          return;
+        }
         await ensureHermesSkillAllowed(config, "translate_text", {
           requiresMemoryWrite: true,
         });
@@ -1720,8 +1731,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
 
         if (hermesMemoryRoute.action === "list" && request.method === "GET") {
           await ensureHermesSkillAllowed(config, "memory_review");
+          const input = parseHermesMemoryListInput(request.url);
+          if (!ensureRouteAccountAccess(input.accountId)) {
+            return;
+          }
           const result = await config.hermesMemoryStore.listMemories(
-            parseHermesMemoryListInput(request.url),
+            input,
           );
           writeJson(response, 200, result);
           return;
@@ -1731,8 +1746,13 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           await ensureHermesSkillAllowed(config, "memory_review", {
             requiresMemoryWrite: true,
           });
+          const accountId = parseHermesMemoryAccountId(request.url);
+          if (!ensureRouteAccountAccess(accountId)) {
+            return;
+          }
           const result = await config.hermesMemoryStore.updateMemory({
             id: hermesMemoryRoute.id,
+            accountId,
             ...parseHermesMemoryPatchInput(await readRequestBody()),
           });
           if (!result) {
@@ -1748,8 +1768,13 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           await ensureHermesSkillAllowed(config, "memory_review", {
             requiresMemoryWrite: true,
           });
+          const accountId = parseHermesMemoryAccountId(request.url);
+          if (!ensureRouteAccountAccess(accountId)) {
+            return;
+          }
           const deleted = await config.hermesMemoryStore.deleteMemory({
             id: hermesMemoryRoute.id,
+            accountId,
           });
           if (!deleted) {
             writeJson(response, 404, { error: "memory_not_found" });
@@ -1852,8 +1877,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           hermesRuleExecutionRoute.action === "list" &&
           request.method === "GET"
         ) {
+          const input = parseHermesRuleExecutionListInput(request.url);
+          if (!ensureRouteAccountAccess(input.accountId)) {
+            return;
+          }
           const result = await config.hermesRuleService.listRuleExecutions(
-            parseHermesRuleExecutionListInput(request.url),
+            input,
           );
           writeJson(response, 200, result);
           return;
@@ -3916,6 +3945,15 @@ function readScopedRouteAccountId(
     return isNonEmptyString(accountId) ? accountId : undefined;
   }
 
+  if (
+    pathname === "/api/hermes/audit-log" ||
+    pathname === "/api/hermes/rule-runs" ||
+    pathname.startsWith("/api/hermes/memories")
+  ) {
+    const accountId = url.searchParams.get("accountId");
+    return isNonEmptyString(accountId) ? accountId : undefined;
+  }
+
   const syncRoute =
     /^\/api\/sync-center\/accounts\/([^/]+)(?:\/|$)/.exec(pathname);
   return syncRoute ? decodeURIComponent(syncRoute[1]) : undefined;
@@ -3928,9 +3966,11 @@ function isAdminOnlyForAccountScopedTokenRoute(
     return false;
   }
 
-  const pathname = new URL(requestUrl, "http://localhost").pathname;
+  const url = new URL(requestUrl, "http://localhost");
+  const pathname = url.pathname;
   return (
     pathname === "/api/messages" ||
+    isHermesAccountQueryMissingRoute(url) ||
     pathname === "/api/maintenance/compose-attachments" ||
     pathname === "/api/maintenance/compose-attachments/cleanup" ||
     pathname === "/api/maintenance/hermes-retention" ||
@@ -3947,14 +3987,10 @@ function isAdminOnlyForAccountScopedTokenRoute(
     pathname === "/api/hermes/runtime" ||
     pathname.startsWith("/api/hermes/runtime/") ||
     isHermesGlobalSkillAdminRoute(pathname) ||
-    pathname === "/api/hermes/translation-preferences" ||
     pathname === "/api/hermes/workspace/context" ||
-    pathname === "/api/hermes/audit-log" ||
-    pathname === "/api/hermes/rule-runs" ||
     pathname === "/api/hermes/drafts/feedback" ||
     pathname.startsWith("/api/hermes/action-plans") ||
     pathname.startsWith("/api/hermes/follow-ups") ||
-    pathname.startsWith("/api/hermes/memories") ||
     pathname.startsWith("/api/hermes/rule-candidates") ||
     pathname.startsWith("/api/diagnostics/") ||
     pathname.startsWith("/api/domains") ||
@@ -3967,6 +4003,19 @@ function isAdminOnlyForAccountScopedTokenRoute(
     pathname.startsWith("/api/accounts/transfer/") ||
     pathname.startsWith("/api/hermes/rules")
   );
+}
+
+function isHermesAccountQueryMissingRoute(url: URL): boolean {
+  const pathname = url.pathname;
+  if (
+    pathname !== "/api/hermes/audit-log" &&
+    pathname !== "/api/hermes/rule-runs" &&
+    !pathname.startsWith("/api/hermes/memories")
+  ) {
+    return false;
+  }
+
+  return !isNonEmptyString(url.searchParams.get("accountId"));
 }
 
 function isHermesGlobalSkillAdminRoute(pathname: string): boolean {
@@ -7372,6 +7421,7 @@ function parseHermesFollowUpConfirmationInput(body: string): {
 }
 
 function parseHermesTranslationPreferenceInput(body: string): {
+  accountId: string;
   mode: HermesTranslationPreferenceMode;
   sourceLanguage: string;
   targetLanguage?: string;
@@ -7379,6 +7429,7 @@ function parseHermesTranslationPreferenceInput(body: string): {
   reason?: string;
 } {
   const payload = JSON.parse(body) as {
+    accountId?: unknown;
     mode?: unknown;
     sourceLanguage?: unknown;
     targetLanguage?: unknown;
@@ -7386,6 +7437,7 @@ function parseHermesTranslationPreferenceInput(body: string): {
     reason?: unknown;
   };
 
+  const accountId = parseTranslationPreferenceText(payload.accountId, 128);
   if (!isHermesTranslationPreferenceMode(payload.mode)) {
     throw new InvalidTranslationPreferenceRequestError();
   }
@@ -7401,6 +7453,7 @@ function parseHermesTranslationPreferenceInput(body: string): {
   }
 
   return {
+    accountId,
     mode: payload.mode,
     sourceLanguage,
     ...(targetLanguage ? { targetLanguage } : {}),
@@ -7492,18 +7545,36 @@ function parseHermesDraftFeedbackInput(body: string): {
 }
 
 function parseHermesMemoryListInput(requestUrl: string | undefined): {
+  accountId: string;
   layer?: string;
   scope?: string;
   limit: number;
 } {
   const url = new URL(requestUrl ?? "", "http://localhost");
+  const accountId = parseHermesMemoryAccountId(requestUrl);
   const layer = parseOptionalHermesMemoryFilter(url.searchParams.get("layer"));
   const scope = parseOptionalHermesMemoryFilter(url.searchParams.get("scope"));
   return {
+    accountId,
     ...(layer ? { layer } : {}),
     ...(scope ? { scope } : {}),
     limit: parseHermesMemoryLimit(url.searchParams.get("limit")),
   };
+}
+
+function parseHermesMemoryAccountId(requestUrl: string | undefined): string {
+  const url = new URL(requestUrl ?? "", "http://localhost");
+  const accountId = url.searchParams.get("accountId");
+  if (!isNonEmptyString(accountId)) {
+    throw new InvalidHermesMemoryRequestError();
+  }
+
+  const trimmed = accountId.trim();
+  if (trimmed.length > 128 || /[\u0000-\u001F\u007F]/.test(trimmed)) {
+    throw new InvalidHermesMemoryRequestError();
+  }
+
+  return trimmed;
 }
 
 function parseHermesMemoryPatchInput(body: string): {

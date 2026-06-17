@@ -822,14 +822,16 @@ POST /api/hermes/skills/reply_draft/run
 -> create Hermes prompt
 -> call HERMES_CHAT_COMPLETIONS_URL
 -> write hermes_skill_runs
--> write hermes_audit_events with skill_run_id, read_message_ids, memory_ids
+-> write hermes_audit_events with account_id, skill_run_id, read_message_ids, memory_ids
 ```
 
 This endpoint is intentionally Hermes-compatible and model-agnostic. The web
 app never receives provider keys and should not call OpenAI, Ollama, OpenRouter,
 or model APIs directly. When `DATABASE_URL` is available, the API persists skill
-runs and audit events through `PostgresHermesRunStore`; without a database it
-can still run against a configured Hermes endpoint for local smoke testing.
+runs and audit events through `PostgresHermesRunStore`; account-bound runs write
+`account_id` into both tables and validate referenced message and memory ids
+before audit insertion. Without a database it can still run against a configured
+Hermes endpoint for local smoke testing.
 
 Hermes runtime configuration is backend-owned. `/api/hermes/providers` exposes
 the provider catalog for Settings, `/api/hermes/runtime` stores the selected
@@ -856,33 +858,36 @@ in control of when an external Hermes service is actually upgraded.
 Hermes memory management is exposed as app-owned Postgres data:
 
 ```text
-GET    /api/hermes/memories?layer=:layer&scope=:scope&limit=50
-PATCH  /api/hermes/memories/:id
-DELETE /api/hermes/memories/:id
+GET    /api/hermes/memories?accountId=:accountId&layer=:layer&scope=:scope&limit=50
+PATCH  /api/hermes/memories/:id?accountId=:accountId
+DELETE /api/hermes/memories/:id?accountId=:accountId
 ```
 
 This is the first user-controlled learning surface. Memories can represent
 semantic profile facts, writing style preferences, contact/domain preferences,
 or procedural workflow hints. The API lets users inspect, update confidence or
 content, and delete records before Hermes skills reference them through
-`memoryIds`.
+`memoryIds`. Account-scoped API tokens may manage only memories for their own
+`accountId`; legacy memories without `account_id` are admin-only migration or
+cleanup records.
 
 Hermes skill execution can now load a small, scoped memory context before
 calling the model. `translate_text`, `email_search_qa`, `thread_summarize`,
 `action_item_extract`, `label_suggest`, `priority_triage`, `followup_tracker`,
-`newsletter_cleanup`, and `reply_draft` accept `memoryScope` and `memoryLayers`, query
-`hermes_memories` through the app store boundary, add concise memory lines to
-the prompt, and write the exact memory ids used into
-`hermes_audit_events.memory_ids`. This keeps user habit learning inspectable:
-the model can use preferences, but the audit trail shows which preferences were
-read.
+`newsletter_cleanup`, and `reply_draft` accept `memoryScope` and `memoryLayers`,
+query `hermes_memories` through the app store boundary with the current
+`accountId`, add concise memory lines to the prompt, and write the exact memory
+ids used into `hermes_audit_events.memory_ids`. This keeps user habit learning
+inspectable: the model can use preferences, but the audit trail shows which
+preferences were read.
 
 When a non-global `memoryScope` is requested, Hermes also loads matching
-`global` memories for the same layer set. This lets global writing preferences
-and sender/contact-specific preferences work together without hiding which
-memory ids were used. Reply draft feedback writes learned writing style to
-`recipient:<email>` when a recipient is known, and falls back to `global` only
-when no recipient context exists.
+`global` memories for the same account and layer set. `global` means
+account-global, not instance-global. This lets account writing preferences and
+sender/contact-specific preferences work together without hiding which memory
+ids were used. Reply draft feedback writes learned writing style to
+`recipient:<email>` when a recipient is known, and falls back to the account's
+`global` scope only when no recipient context exists.
 
 `infra/migrations/0002_mail_engine_runtime.sql` adds the durable runtime tables:
 
@@ -942,6 +947,12 @@ shadow-mode rule suggestions, and worker-side classification overrides.
 
 `infra/migrations/0012_hermes_memory_indexes.sql` adds the read index for
 Hermes memory review by `layer`, `scope`, and `updated_at`.
+
+`infra/migrations/0049_hermes_account_scope.sql` adds nullable `account_id`
+columns and account-first indexes to Hermes memories, skill runs, and audit
+events. It backfills from UUID-shaped run input, memory content, and read
+message ownership where possible, while leaving ambiguous legacy rows NULL for
+admin-only cleanup.
 
 `infra/migrations/0018_hermes_rule_learning.sql` adds account scope, rule
 type, evidence ids, candidate approval metadata, and rule-run candidate links

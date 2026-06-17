@@ -8,6 +8,7 @@ import type { HermesMemoryStore } from "./memory-store.js";
 import type { HermesRunStore, HermesTextProvider } from "./translation.js";
 
 export interface HermesReplyDraftInput {
+  accountId?: string;
   subject?: string;
   threadText: string;
   instruction?: string;
@@ -37,6 +38,7 @@ export type HermesRewritePolishAction =
   | "proofread";
 
 export interface HermesQuickReplyInput {
+  accountId?: string;
   subject?: string;
   threadText: string;
   scenario: HermesQuickReplyScenario;
@@ -52,6 +54,7 @@ export interface HermesQuickReplyInput {
 }
 
 export interface HermesRewritePolishInput {
+  accountId?: string;
   text: string;
   action: HermesRewritePolishAction;
   instruction?: string;
@@ -161,12 +164,14 @@ export function createHermesReplyDraftService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "reply_draft",
           skillTitle: "Draft reply",
           input: compactObject({
             subject: input.subject,
+            accountId: input.accountId,
             threadText: input.threadText,
             instruction: input.instruction,
             tone: input.tone,
@@ -186,6 +191,7 @@ export function createHermesReplyDraftService(
           memoryIds: usedHermesMemoryIds(input.memoryIds, memories),
           action: compactObject({
             skillId: "reply_draft",
+            accountId: input.accountId,
             tone: input.tone,
             language: input.language,
             memoryScope: input.memoryScope,
@@ -236,12 +242,14 @@ export function createHermesQuickReplyService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "quick_reply",
           skillTitle: "Quick reply",
           input: compactObject({
             subject: input.subject,
+            accountId: input.accountId,
             threadText: input.threadText,
             scenario: input.scenario,
             instruction: input.instruction,
@@ -265,6 +273,7 @@ export function createHermesQuickReplyService(
           memoryIds: usedHermesMemoryIds(input.memoryIds, memories),
           action: compactObject({
             skillId: "quick_reply",
+            accountId: input.accountId,
             scenario: input.scenario,
             tone: input.tone,
             language: input.language,
@@ -316,12 +325,14 @@ export function createHermesRewritePolishService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "rewrite_polish",
           skillTitle: "Rewrite and polish",
           input: compactObject({
             text: input.text,
+            accountId: input.accountId,
             action: input.action,
             instruction: input.instruction,
             tone: input.tone,
@@ -344,6 +355,7 @@ export function createHermesRewritePolishService(
           memoryIds: usedHermesMemoryIds(input.memoryIds, memories),
           action: compactObject({
             skillId: "rewrite_polish",
+            accountId: input.accountId,
             action: input.action,
             tone: input.tone,
             language: input.language,
