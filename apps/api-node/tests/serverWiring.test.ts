@@ -197,6 +197,7 @@ describe("server wiring", () => {
 
     expect(source).toMatch(/createHermesRetentionMaintenanceService/);
     expect(source).toMatch(/createPostgresHermesRetentionMaintenanceStore/);
+    expect(source).toMatch(/actionPlanStore:\s*createPostgresHermesActionPlanStore/);
     expect(source).toMatch(/config\.hermesRetentionMaintenanceService\s*=/);
     expect(source).toMatch(/HERMES_RETENTION_DAYS/);
     expect(source).toMatch(/HERMES_RETENTION_CLEANUP_LIMIT/);

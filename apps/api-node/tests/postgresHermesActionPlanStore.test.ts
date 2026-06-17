@@ -144,6 +144,57 @@ describe("postgres Hermes action plan store", () => {
     });
   });
 
+  it("marks stale confirming plans failed in bounded batches", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            planRow({
+              status: "failed",
+              confirming_at: "2026-06-16T08:01:00.000Z",
+              failure_message: "confirmation_timed_out",
+            }),
+          ],
+        };
+      },
+    };
+    const store = createPostgresHermesActionPlanStore(client);
+
+    const result = await store.failStaleConfirmations({
+      before: "2026-06-16T08:10:00.000Z",
+      limit: 25,
+      failureMessage: "confirmation_timed_out",
+      accountId: "00000000-0000-0000-0000-000000000001",
+    });
+
+    expect(queries[0].text).toMatch(/WITH stale_plans AS/i);
+    expect(queries[0].text).toMatch(/status = 'confirming'/i);
+    expect(queries[0].text).toMatch(/confirming_at < \$1::timestamptz/i);
+    expect(queries[0].text).toMatch(/\(\$4::uuid IS NULL OR account_id = \$4\)/i);
+    expect(queries[0].text).toMatch(/ORDER BY confirming_at ASC, id ASC/i);
+    expect(queries[0].text).toMatch(/LIMIT \$3/i);
+    expect(queries[0].text).toMatch(/FOR UPDATE SKIP LOCKED/i);
+    expect(queries[0].text).toMatch(/SET status = 'failed'/i);
+    expect(queries[0].text).toMatch(/AND status = 'confirming'/i);
+    expect(queries[0].text).toMatch(/AND confirming_at < \$1::timestamptz/i);
+    expect(queries[0].values).toEqual([
+      "2026-06-16T08:10:00.000Z",
+      "confirmation_timed_out",
+      25,
+      "00000000-0000-0000-0000-000000000001",
+    ]);
+    expect(result).toMatchObject({
+      items: [
+        {
+          status: "failed",
+          failureMessage: "confirmation_timed_out",
+        },
+      ],
+    });
+  });
+
   it("returns undefined when the conditional update finds no plan", async () => {
     const client = {
       async query() {

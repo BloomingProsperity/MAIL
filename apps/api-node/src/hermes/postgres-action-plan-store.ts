@@ -201,6 +201,40 @@ export function createPostgresHermesActionPlanStore(
 
       return result.rows[0] ? planFromRow(result.rows[0]) : undefined;
     },
+
+    async failStaleConfirmations(input) {
+      const result = await client.query<ActionPlanRow>(
+        `
+          WITH stale_plans AS (
+            SELECT id
+            FROM hermes_action_plans
+            WHERE status = 'confirming'
+              AND confirming_at < $1::timestamptz
+              AND ($4::uuid IS NULL OR account_id = $4)
+            ORDER BY confirming_at ASC, id ASC
+            LIMIT $3
+            FOR UPDATE SKIP LOCKED
+          )
+          UPDATE hermes_action_plans
+          SET status = 'failed',
+              failure_message = $2
+          WHERE id IN (SELECT id FROM stale_plans)
+            AND status = 'confirming'
+            AND confirming_at < $1::timestamptz
+            AND ($4::uuid IS NULL OR account_id = $4)
+          RETURNING
+            ${ACTION_PLAN_RETURNING_COLUMNS}
+        `,
+        [
+          input.before,
+          input.failureMessage,
+          input.limit,
+          input.accountId ?? null,
+        ],
+      );
+
+      return { items: result.rows.map(planFromRow) };
+    },
   };
 }
 

@@ -239,11 +239,12 @@ describe("emailHubApi", () => {
           cleanup: {
             messageTranslations: 1,
             messageSummaries: 2,
+            staleActionPlanConfirmations: 2,
             actionPlans: 3,
             feedback: 4,
             auditEvents: 5,
             skillRuns: 6,
-            deleted: 21,
+            deleted: 23,
           },
           after: {
             generatedAt: "2026-06-17T12:05:00.000Z",
@@ -269,7 +270,7 @@ describe("emailHubApi", () => {
     });
 
     expect(status.expiredRows).toBe(12);
-    expect(cleanup.cleanup.deleted).toBe(21);
+    expect(cleanup.cleanup.deleted).toBe(23);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "http://localhost:8080/api/maintenance/hermes-retention",

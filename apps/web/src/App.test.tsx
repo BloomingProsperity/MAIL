@@ -1500,7 +1500,7 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(
-      await within(maintenancePanel).findByText("已清理 21 条 Hermes 过期记录。"),
+      await within(maintenancePanel).findByText("已清理 23 条 Hermes 过期记录。"),
     ).toBeTruthy();
   });
 
@@ -7233,11 +7233,12 @@ function hermesRetentionMaintenanceCleanupFixture(
     cleanup: {
       messageTranslations: 1,
       messageSummaries: 2,
+      staleActionPlanConfirmations: 2,
       actionPlans: 3,
       feedback: 4,
       auditEvents: 5,
       skillRuns: 6,
-      deleted: 21,
+      deleted: 23,
     },
     after: hermesRetentionMaintenanceStatusFixture({
       generatedAt: "2026-06-17T12:05:00.000Z",

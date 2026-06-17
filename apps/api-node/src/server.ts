@@ -200,6 +200,7 @@ if (pool) {
   config.hermesRetentionMaintenanceService =
     createHermesRetentionMaintenanceService({
       store: createPostgresHermesRetentionMaintenanceStore(pool),
+      actionPlanStore: createPostgresHermesActionPlanStore(pool),
       now: () => new Date(),
       retentionMs:
         (hermesRetentionPolicy.retentionDays ?? 30) * 24 * 60 * 60 * 1000,

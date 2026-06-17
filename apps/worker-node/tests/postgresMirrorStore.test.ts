@@ -603,6 +603,10 @@ describe("postgres mirror store", () => {
     expect(runQuery?.text).toMatch(/rule_id/i);
     expect(runQuery?.text).toMatch(/message_id/i);
     expect(runQuery?.text).toMatch(/account_id/i);
+    expect(runQuery?.text).toMatch(
+      /ON CONFLICT \(rule_id, message_id, mode\)/i,
+    );
+    expect(runQuery?.text).toMatch(/DO UPDATE/i);
     expect(runQuery?.values).toEqual([
       expect.any(String),
       "rule_codes",

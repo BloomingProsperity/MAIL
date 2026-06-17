@@ -1387,6 +1387,7 @@ export interface HermesRetentionMaintenanceCleanupResultDto {
   cleanup: {
     messageTranslations: number;
     messageSummaries: number;
+    staleActionPlanConfirmations: number;
     actionPlans: number;
     feedback: number;
     auditEvents: number;

@@ -347,6 +347,22 @@ describe("mail engine runtime migration", () => {
     );
   });
 
+  it("deduplicates worker Hermes rule run audits", async () => {
+    const sql = await readMigrationFile("0048_hermes_worker_rule_run_idempotency.sql");
+
+    expect(sql).toMatch(/WITH ranked_worker_runs AS/i);
+    expect(sql).toMatch(/ROW_NUMBER\(\) OVER/i);
+    expect(sql).toMatch(/PARTITION BY rule_id, message_id, mode/i);
+    expect(sql).toMatch(/DELETE FROM hermes_rule_runs/i);
+    expect(sql).toMatch(/hermes_rule_runs_rule_message_active_uidx/i);
+    expect(sql).toMatch(
+      /ON hermes_rule_runs \(rule_id, message_id, mode\)/i,
+    );
+    expect(sql).toMatch(/WHERE rule_id IS NOT NULL/i);
+    expect(sql).toMatch(/message_id IS NOT NULL/i);
+    expect(sql).toMatch(/mode = 'active'/i);
+  });
+
   it("adds durable Hermes action plans with candidate and simulation binding", async () => {
     const sql = await readMigrationFile("0041_hermes_action_plans.sql");
 

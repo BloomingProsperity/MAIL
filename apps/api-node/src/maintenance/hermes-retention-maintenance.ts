@@ -1,3 +1,5 @@
+import type { HermesActionPlanStore } from "../hermes/action-plan-store.js";
+
 export interface QueryResult<Row extends Record<string, unknown>> {
   rows: Row[];
   rowCount?: number | null;
@@ -21,6 +23,7 @@ export interface HermesRetentionTableStatus {
 export interface HermesRetentionCleanupCounts {
   messageTranslations: number;
   messageSummaries: number;
+  staleActionPlanConfirmations: number;
   actionPlans: number;
   feedback: number;
   auditEvents: number;
@@ -157,6 +160,7 @@ export function createPostgresHermesRetentionMaintenanceStore(
 
 export function createHermesRetentionMaintenanceService(input: {
   store: HermesRetentionMaintenanceStore;
+  actionPlanStore?: Pick<HermesActionPlanStore, "failStaleConfirmations">;
   now: () => Date;
   retentionMs: number;
   cleanupLimit: number;
@@ -189,10 +193,19 @@ export function createHermesRetentionMaintenanceService(input: {
       );
       const now = input.now();
       const cutoff = new Date(now.getTime() - retentionMs);
+      const staleConfirmations = input.actionPlanStore
+        ? await input.actionPlanStore.failStaleConfirmations({
+            before: cutoff.toISOString(),
+            limit: cleanupLimit,
+            failureMessage: "confirmation_timed_out",
+          })
+        : { items: [] };
       const cleanupCounts = await input.store.cleanupExpired({
         cutoff,
         limit: cleanupLimit,
       });
+      cleanupCounts.staleActionPlanConfirmations =
+        staleConfirmations.items.length;
       const after = await buildStatus({
         store: input.store,
         now,
@@ -298,6 +311,7 @@ function emptyCounts(): HermesRetentionCleanupCounts {
   return {
     messageTranslations: 0,
     messageSummaries: 0,
+    staleActionPlanConfirmations: 0,
     actionPlans: 0,
     feedback: 0,
     auditEvents: 0,

@@ -50,6 +50,7 @@ describe("Hermes retention maintenance", () => {
   it("runs bounded cleanup and returns per-table deletion counts", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const cleanupRows = [1, 2, 3, 4, 5, 6];
+    const staleConfirmationCalls: unknown[] = [];
     const store = createPostgresHermesRetentionMaintenanceStore({
       async query(text, values) {
         queries.push({ text, values });
@@ -62,6 +63,23 @@ describe("Hermes retention maintenance", () => {
     });
     const service = createHermesRetentionMaintenanceService({
       store,
+      actionPlanStore: {
+        async failStaleConfirmations(input) {
+          staleConfirmationCalls.push(input);
+          return {
+            items: [
+              {
+                id: "plan_stale_1",
+                status: "failed",
+              },
+              {
+                id: "plan_stale_2",
+                status: "failed",
+              },
+            ] as any,
+          };
+        },
+      },
       now: () => new Date("2026-06-17T12:00:00.000Z"),
       retentionMs: 30 * 24 * 60 * 60 * 1000,
       cleanupLimit: 500,
@@ -76,13 +94,21 @@ describe("Hermes retention maintenance", () => {
       cleanup: {
         messageTranslations: 1,
         messageSummaries: 2,
+        staleActionPlanConfirmations: 2,
         actionPlans: 3,
         feedback: 4,
         auditEvents: 5,
         skillRuns: 6,
-        deleted: 21,
+        deleted: 23,
       },
     });
+    expect(staleConfirmationCalls).toEqual([
+      {
+        before: "2026-06-03T12:00:00.000Z",
+        limit: 25,
+        failureMessage: "confirmation_timed_out",
+      },
+    ]);
     expect(
       queries.filter((query) => query.text.includes("DELETE FROM")),
     ).toHaveLength(6);

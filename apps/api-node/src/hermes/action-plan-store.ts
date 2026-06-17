@@ -75,6 +75,13 @@ export interface CompleteHermesActionPlanInput {
   confirmationAuditEventId?: string;
 }
 
+export interface FailStaleHermesActionPlanConfirmationsInput {
+  before: string;
+  limit: number;
+  failureMessage: string;
+  accountId?: string;
+}
+
 export interface HermesActionPlanStore {
   createPlan(
     input: CreateHermesActionPlanRecordInput,
@@ -95,6 +102,9 @@ export interface HermesActionPlanStore {
   completePlan(
     input: CompleteHermesActionPlanInput,
   ): Promise<HermesActionPlanRecord | undefined>;
+  failStaleConfirmations(
+    input: FailStaleHermesActionPlanConfirmationsInput,
+  ): Promise<{ items: HermesActionPlanRecord[] }>;
 }
 
 interface InMemoryHermesActionPlanStoreSeed {
@@ -202,6 +212,26 @@ export function createInMemoryHermesActionPlanStore(
       }
       delete plan.failureMessage;
       return cloneRecord(plan);
+    },
+
+    async failStaleConfirmations(input) {
+      const stalePlans = plans
+        .filter(
+          (plan) =>
+            plan.status === "confirming" &&
+            typeof plan.confirmingAt === "string" &&
+            plan.confirmingAt < input.before &&
+            (!input.accountId || plan.accountId === input.accountId),
+        )
+        .sort((a, b) => a.confirmingAt!.localeCompare(b.confirmingAt!))
+        .slice(0, input.limit);
+
+      for (const plan of stalePlans) {
+        plan.status = "failed";
+        plan.failureMessage = input.failureMessage;
+      }
+
+      return { items: stalePlans.map(cloneRecord) };
     },
 
     listPlans() {

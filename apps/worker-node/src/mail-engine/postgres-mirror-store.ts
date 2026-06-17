@@ -429,6 +429,16 @@ async function recordHermesContentLabelRuleRuns(
             result
           )
           VALUES ($1, $2, $3, $4, 'active', $5)
+          -- Only automatic runs with a local message id are idempotent here;
+          -- manual and simulated runs keep their separate audit rows.
+          ON CONFLICT (rule_id, message_id, mode)
+          WHERE rule_id IS NOT NULL
+            AND message_id IS NOT NULL
+            AND mode = 'active'
+          DO UPDATE
+          SET
+            result = EXCLUDED.result,
+            created_at = now()
         `,
         [
           randomUUID(),
