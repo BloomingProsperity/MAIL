@@ -11,7 +11,10 @@ import {
   resetPostgresTestDatabase,
 } from "./postgres-test-db";
 
-const describeIfPostgres = readTestDatabaseUrl() ? describe : describe.skip;
+const describeIfPostgres =
+  readTestDatabaseUrl() || process.env.REQUIRE_TEST_DATABASE_URL === "1"
+    ? describe
+    : describe.skip;
 
 describeIfPostgres("postgres sync job queue stress", () => {
   let pool: Pool;

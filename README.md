@@ -354,18 +354,20 @@ For quick core regression while iterating on the launch path, run:
 npm run verify:emailengine-launch:core
 ```
 
-For final EmailEngine-first sign-off, include the GreenMail-backed real
-onboarding and webhook checks:
+For final EmailEngine-first sign-off, include the strict Postgres queue gate and
+the GreenMail-backed real onboarding and webhook checks:
 
 ```powershell
+$env:TEST_DATABASE_URL = "postgres://emailhub_test:emailhub_test@127.0.0.1:55432/emailhub_sync_jobs_test"
 npm run verify:emailengine-launch
 ```
 
-That default full gate runs `:core` plus the GreenMail gate below, so the final
-launch check cannot accidentally skip the path where EmailEngine registers a
-real IMAP/SMTP account, emits webhooks back into Email Hub, submits an outgoing
-message through the worker send lane, and downloads an incoming attachment
-through the public app route.
+That default full gate runs `:core`, `:strict-db`, and the GreenMail gate below,
+so the final launch check cannot accidentally skip real Postgres sync-queue
+concurrency, EmailEngine account registration, webhooks back into Email Hub,
+worker send submission, or attachment download through the public app route.
+Use `verify:emailengine-launch:core` for faster iteration when the disposable
+test database is not running.
 
 After the stack is healthy, run the EmailEngine webhook smoke check from the
 host:
@@ -472,13 +474,18 @@ When a disposable Postgres test database is available, also run the database
 concurrency gate:
 
 ```powershell
+docker compose -f infra/docker-compose.test.yml up -d postgres-test
 $env:TEST_DATABASE_URL = "postgres://emailhub_test:emailhub_test@127.0.0.1:55432/emailhub_sync_jobs_test"
 npm run stress:sync-queue:postgres
+npm run verify:emailengine-launch:strict-db
 ```
 
 That Postgres gate uses the migration-backed test database and verifies the real
 `sync_jobs` claim query under overlapping workers, including expired lease
-reclaim behavior. Do not point `TEST_DATABASE_URL` at a production database.
+reclaim behavior. The strict variant fails immediately when `TEST_DATABASE_URL`
+is missing, so final launch verification cannot pass by silently skipping the
+database integration test. Do not point `TEST_DATABASE_URL` at a production
+database.
 
 ## Logging
 

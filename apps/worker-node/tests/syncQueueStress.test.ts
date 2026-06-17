@@ -81,9 +81,22 @@ describe("sync queue stress diagnostics", () => {
     expect(rootPackage.scripts["stress:sync-queue:postgres"]).toBe(
       "npm run test:worker:postgres",
     );
+    expect(workerPackage.scripts["test:postgres:strict"]).toBe(
+      "tsx src/postgres-strict-gate.ts && vitest run tests/postgresSyncQueueStress.integration.test.ts",
+    );
+    expect(rootPackage.scripts["stress:sync-queue:postgres:strict"]).toBe(
+      "npm run test:postgres:strict -w apps/worker-node",
+    );
+    expect(rootPackage.scripts["verify:emailengine-launch:strict-db"]).toBe(
+      "npm run stress:sync-queue:postgres:strict",
+    );
+    expect(rootPackage.scripts["verify:emailengine-launch"]).toContain(
+      "npm run verify:emailengine-launch:strict-db",
+    );
     expect(readme).toContain("npm run stress:sync-queue");
     expect(readme).toContain("npm run stress:sync-queue:heavy");
     expect(readme).toContain("npm run stress:sync-queue:postgres");
+    expect(readme).toContain("npm run verify:emailengine-launch:strict-db");
     expect(readme).toContain("TEST_DATABASE_URL");
   });
 });

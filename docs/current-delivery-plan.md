@@ -33,12 +33,15 @@ with more than smoke-level tests.
   `verify:emailengine-launch:live` checks the running API `/health`,
   EmailEngine readiness, token-backed onboarding/download/send capabilities,
   provider identity, API health status, and the signed webhook idempotency
-  smoke. `verify:emailengine-launch:greenmail` groups the IMAP/SMTP onboarding
-  smoke, real EmailEngine webhook smoke, outgoing worker send smoke, and
-  attachment download smoke against the GreenMail test stack. The default
-  `verify:emailengine-launch` now runs the core gate plus GreenMail checks,
-  while `verify:emailengine-launch:core` remains available for faster iteration
-  before final sign-off.
+  smoke. `verify:emailengine-launch:strict-db` requires `TEST_DATABASE_URL`
+  and runs the real Postgres `sync_jobs` concurrency gate, failing immediately
+  instead of silently skipping when no disposable test database is configured.
+  `verify:emailengine-launch:greenmail` groups the IMAP/SMTP onboarding smoke,
+  real EmailEngine webhook smoke, outgoing worker send smoke, and attachment
+  download smoke against the GreenMail test stack. The default
+  `verify:emailengine-launch` now runs the core gate, strict DB gate, and
+  GreenMail checks, while `verify:emailengine-launch:core` remains available for
+  faster iteration before final sign-off.
 
 ### 2. Native Engine Track
 

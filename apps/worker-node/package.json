@@ -11,7 +11,8 @@
     "stress:sync-queue": "node dist/sync-queue-stress.js",
     "start": "node dist/main.js",
     "test": "vitest run",
-    "test:postgres": "vitest run tests/postgresSyncQueueStress.integration.test.ts"
+    "test:postgres": "vitest run tests/postgresSyncQueueStress.integration.test.ts",
+    "test:postgres:strict": "tsx src/postgres-strict-gate.ts && vitest run tests/postgresSyncQueueStress.integration.test.ts"
   },
   "dependencies": {
     "@types/pg": "^8.20.0",
