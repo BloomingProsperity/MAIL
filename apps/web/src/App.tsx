@@ -724,6 +724,7 @@ interface UndoToastState {
   accountId: string;
   messageId: string;
   undoToken: string;
+  mail?: MailItem;
 }
 
 interface OAuthCallbackParams {
@@ -1448,18 +1449,34 @@ export function App(props: AppProps = {}) {
   }
 
   function applyActionResult(result: MailActionResult) {
+    const resultKey = `${result.accountId}:${result.messageId}`;
+    const removedMail = workspaceMail.find((item) => mailItemKey(item) === resultKey);
     setWorkspaceMail((items) => {
+      if (result.action === "undo_done") {
+        const existing = items.some((item) => mailItemKey(item) === resultKey);
+        if (existing) {
+          return items.map((item) =>
+            mailItemKey(item) === resultKey
+              ? applyMailActionStateToMailItem(item, result)
+              : item,
+          );
+        }
+
+        const restoredMail =
+          undoToast?.accountId === result.accountId &&
+          undoToast.messageId === result.messageId
+            ? undoToast.mail
+            : undefined;
+        return restoredMail
+          ? [applyMailActionStateToMailItem(restoredMail, result), ...items]
+          : items;
+      }
+
       const shouldRemove =
-        result.action !== "done" && (result.state.archived || result.state.deleted);
+        result.action === "done" || result.state.archived || result.state.deleted;
       const updated = items.map((item) =>
         item.accountId === result.accountId && item.id === result.messageId
-          ? {
-              ...item,
-              unread: result.state.unread,
-              starred: result.state.starred,
-              mailboxIds: result.state.mailboxIds,
-              labelIds: result.state.labelIds,
-            }
+          ? applyMailActionStateToMailItem(item, result)
           : item,
       );
       return shouldRemove
@@ -1469,11 +1486,28 @@ export function App(props: AppProps = {}) {
           )
         : updated;
     });
+
+    if (result.action === "undo_done") {
+      setActiveMailId(resultKey);
+      setSelectedDetail(undefined);
+    } else if (result.action === "done" || result.state.archived || result.state.deleted) {
+      const remainingMail = workspaceMail.filter(
+        (item) => mailItemKey(item) !== resultKey,
+      );
+      setActiveMailId((current) =>
+        current === resultKey ? firstMailKey(remainingMail, mailSort) : current,
+      );
+      if (selectedMail && mailItemKey(selectedMail) === resultKey) {
+        setSelectedDetail(undefined);
+      }
+    }
+
     if (result.action === "done" && result.state.undoToken) {
       setUndoToast({
         accountId: result.accountId,
         messageId: result.messageId,
-        undoToken: result.state.undoToken
+        undoToken: result.state.undoToken,
+        ...(removedMail ? { mail: removedMail } : {}),
       });
     }
   }
@@ -1577,22 +1611,42 @@ export function App(props: AppProps = {}) {
 
   async function recordSmartInboxFeedback(
     action: SmartInboxFeedbackAction,
+    candidates: MailItem[] = [],
   ): Promise<boolean> {
-    if (!props.api || !selectedMail) {
+    const targets = dedupeMailItems(
+      candidates.length > 0 ? candidates : selectedMail ? [selectedMail] : [],
+    );
+    if (!props.api || targets.length === 0) {
       setBackendNotice("连接服务后才能训练 Smart Inbox。");
       return false;
     }
 
     setSmartInboxBusy(action);
     try {
-      const result = await props.api.recordSmartInboxFeedback({
-        accountId: selectedMail.accountId,
-        messageId: selectedMail.id,
-        action,
-      });
+      const settled = await Promise.allSettled(
+        targets.map((target) =>
+          props.api!.recordSmartInboxFeedback({
+            accountId: target.accountId,
+            messageId: target.id,
+            action,
+          }),
+        ),
+      );
+      const results = settled.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      if (results.length === 0) {
+        setBackendNotice("Smart Inbox 反馈暂时不可用。");
+        return false;
+      }
+
+      const resultByKey = new Map(
+        results.map((result) => [`${result.accountId}:${result.messageId}`, result]),
+      );
       setWorkspaceMail((items) =>
-        items.map((item) =>
-          item.accountId === result.accountId && item.id === result.messageId
+        items.map((item) => {
+          const result = resultByKey.get(mailItemKey(item));
+          return result
             ? {
                 ...item,
                 label: bucketLabel(result.classification.bucket),
@@ -1601,11 +1655,20 @@ export function App(props: AppProps = {}) {
                 score: result.classification.priorityScore,
                 reasons: result.classification.reasons,
               }
-            : item,
-        ),
+            : item;
+        }),
       );
-      setBackendNotice(`Smart Inbox 已学习：${smartInboxFeedbackLabel(action)}。`);
-      return true;
+
+      const failedCount = settled.length - results.length;
+      const feedbackLabel = smartInboxFeedbackLabel(action);
+      setBackendNotice(
+        failedCount > 0
+          ? `Smart Inbox 已学习 ${results.length} 封，${failedCount} 封稍后重试。`
+          : results.length > 1
+            ? `Smart Inbox 已学习 ${results.length} 封：${feedbackLabel}。`
+            : `Smart Inbox 已学习：${feedbackLabel}。`,
+      );
+      return failedCount === 0;
     } catch {
       setBackendNotice("Smart Inbox 反馈暂时不可用。");
       return false;
@@ -1827,8 +1890,10 @@ export function App(props: AppProps = {}) {
           ) : (
             <MailEmptyState
               notice={backendNotice}
+              undoToast={undoToast}
               onAddMail={() => setActiveView("add-mail")}
               onOpenSyncCenter={() => setActiveView("sync")}
+              onUndoDone={() => void undoDone()}
             />
           )
         ) : null}
@@ -2146,7 +2211,10 @@ function MailWorkspace(props: {
     onUndoDone: () => void;
     onSmartInboxBucketDone: (bucket: string) => void;
     onSelectedMessagesDone: (items: MailItem[]) => void;
-    onSmartInboxFeedback: (action: SmartInboxFeedbackAction) => ReaderActionResult;
+    onSmartInboxFeedback: (
+      action: SmartInboxFeedbackAction,
+      items?: MailItem[],
+    ) => ReaderActionResult;
   onMailActionResult: (result: MailActionResult) => void;
   onLabelsChanged: (accountId: string) => void;
   onTrackFollowUp: () => void;
@@ -3826,12 +3894,7 @@ function MailWorkspace(props: {
       ) : null}
 
       {props.undoToast ? (
-        <div className="backend-notice" role="status">
-          Done queued.
-          <button type="button" aria-label="Undo done" onClick={props.onUndoDone}>
-            Undo
-          </button>
-        </div>
+        <UndoDoneNotice onUndoDone={props.onUndoDone} />
       ) : null}
 
       <section className="compose-outbox-band" aria-label="写信和待发队列">
@@ -4643,7 +4706,12 @@ function MailWorkspace(props: {
                   type="button"
                   aria-label="Smart Inbox mark selected important"
                   disabled={smartInboxDisabled}
-                  onClick={() => void props.onSmartInboxFeedback("mark_important")}
+                  onClick={() =>
+                    void props.onSmartInboxFeedback(
+                      "mark_important",
+                      selectedVisibleMail,
+                    )
+                  }
                 >
                   重要
                 </button>
@@ -4653,7 +4721,10 @@ function MailWorkspace(props: {
                   aria-label="Smart Inbox move selected to newsletters"
                   disabled={smartInboxDisabled}
                   onClick={() =>
-                    void props.onSmartInboxFeedback("move_to_newsletters")
+                    void props.onSmartInboxFeedback(
+                      "move_to_newsletters",
+                      selectedVisibleMail,
+                    )
                   }
                 >
                   订阅
@@ -4663,7 +4734,12 @@ function MailWorkspace(props: {
                   type="button"
                   aria-label="Smart Inbox move selected to feed"
                   disabled={smartInboxDisabled}
-                  onClick={() => void props.onSmartInboxFeedback("move_to_feed")}
+                  onClick={() =>
+                    void props.onSmartInboxFeedback(
+                      "move_to_feed",
+                      selectedVisibleMail,
+                    )
+                  }
                 >
                   Feed
                 </button>
@@ -13344,11 +13420,16 @@ function HermesWorkspaceContextBar(props: {
 
 function MailEmptyState(props: {
   notice?: string;
+  undoToast?: UndoToastState;
   onAddMail: () => void;
   onOpenSyncCenter: () => void;
+  onUndoDone: () => void;
 }) {
   return (
     <section className="mail-empty-panel" aria-label="聚合收件箱空状态">
+      {props.undoToast ? (
+        <UndoDoneNotice onUndoDone={props.onUndoDone} />
+      ) : null}
       <div>
         <Inbox size={24} />
         <h2>聚合收件箱</h2>
@@ -13363,6 +13444,17 @@ function MailEmptyState(props: {
         </button>
       </div>
     </section>
+  );
+}
+
+function UndoDoneNotice(props: { onUndoDone: () => void }) {
+  return (
+    <div className="backend-notice" role="status">
+      Done queued.
+      <button type="button" aria-label="Undo done" onClick={props.onUndoDone}>
+        Undo
+      </button>
+    </div>
   );
 }
 
@@ -13600,6 +13692,32 @@ function hermesRuleKeywords(condition: Record<string, unknown>): string[] {
 
 function mailItemKey(mail: Pick<MailItem, "accountId" | "id">): string {
   return `${mail.accountId}:${mail.id}`;
+}
+
+function dedupeMailItems(items: MailItem[]): MailItem[] {
+  const seen = new Set<string>();
+  const result: MailItem[] = [];
+  for (const item of items) {
+    const key = mailItemKey(item);
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+  return result;
+}
+
+function applyMailActionStateToMailItem(
+  item: MailItem,
+  result: MailActionResult,
+): MailItem {
+  return {
+    ...item,
+    unread: result.state.unread,
+    starred: result.state.starred,
+    mailboxIds: result.state.mailboxIds,
+    labelIds: result.state.labelIds,
+  };
 }
 
 function messageRecipientSummary(detail: MessageDetailDto | undefined): string {

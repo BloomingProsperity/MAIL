@@ -4126,6 +4126,109 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.getByText("User moved sender to Newsletters")).toBeTruthy();
   });
 
+  it("records Smart Inbox feedback for checked messages only", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockResolvedValue({
+      items: [
+        {
+          id: "feedback_1",
+          accountId: "account_1",
+          subject: "Selected feedback one",
+          from: { email: "one@example.com", name: "One Sender" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "selected feedback one",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 96,
+            reasons: ["Selected"],
+          },
+        },
+        {
+          id: "feedback_2",
+          accountId: "account_2",
+          subject: "Selected feedback two",
+          from: { email: "two@example.com", name: "Two Sender" },
+          receivedAt: "2026-06-13T10:05:00.000Z",
+          snippet: "selected feedback two",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P2 Important",
+            priorityScore: 82,
+            reasons: ["Selected"],
+          },
+        },
+        {
+          id: "feedback_3",
+          accountId: "account_1",
+          subject: "Unselected feedback",
+          from: { email: "three@example.com", name: "Three Sender" },
+          receivedAt: "2026-06-13T09:55:00.000Z",
+          snippet: "not selected",
+          unread: false,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P3 Notifications",
+            priorityScore: 60,
+            reasons: ["Unselected"],
+          },
+        },
+      ],
+    });
+    vi.mocked(api.recordSmartInboxFeedback).mockImplementation(async (input) => ({
+      feedbackEventId: `feedback_event_${input.messageId}`,
+      accountId: input.accountId,
+      messageId: input.messageId,
+      classification: {
+        bucket: "P6 Feed",
+        priorityScore: 15,
+        reasons: [`User moved ${input.messageId} to Feed`],
+      },
+    }));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    const messageList = await screen.findByLabelText("邮件列表");
+    await within(messageList).findByText("Selected feedback one");
+    fireEvent.click(screen.getByLabelText("Select message Selected feedback one"));
+    fireEvent.click(screen.getByLabelText("Select message Selected feedback two"));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Smart Inbox move selected to newsletters",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.recordSmartInboxFeedback).toHaveBeenCalledTimes(2);
+    });
+    expect(api.recordSmartInboxFeedback).toHaveBeenCalledWith({
+      accountId: "account_1",
+      messageId: "feedback_1",
+      action: "move_to_newsletters",
+    });
+    expect(api.recordSmartInboxFeedback).toHaveBeenCalledWith({
+      accountId: "account_2",
+      messageId: "feedback_2",
+      action: "move_to_newsletters",
+    });
+    expect(api.recordSmartInboxFeedback).not.toHaveBeenCalledWith({
+      accountId: "account_1",
+      messageId: "feedback_3",
+      action: "move_to_newsletters",
+    });
+    expect(await screen.findByText("Smart Inbox 已学习 2 封：移到订阅。")).toBeTruthy();
+    expect(screen.getByText("User moved feedback_1 to Feed")).toBeTruthy();
+    expect(screen.getByText("User moved feedback_2 to Feed")).toBeTruthy();
+    expect(screen.getAllByText("Unselected feedback").length).toBeGreaterThan(0);
+  });
+
   it("hides raw Smart Inbox backend details when feedback fails", async () => {
     const api = createApiFixture();
     vi.mocked(api.recordSmartInboxFeedback).mockRejectedValueOnce(
@@ -4155,6 +4258,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    const initialMessageList = await screen.findByLabelText("邮件列表");
+    expect(within(initialMessageList).getByText("Live subject")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Done selected message" }));
 
@@ -4164,6 +4269,9 @@ describe("Email Hub first UI baseline", () => {
         messageId: "message_1",
         action: "done",
       });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Live subject")).toBeNull();
     });
     expect(screen.getByRole("button", { name: "Undo done" })).toBeTruthy();
 
@@ -4177,6 +4285,8 @@ describe("Email Hub first UI baseline", () => {
         undoToken: "undo_1",
       });
     });
+    const restoredMessageList = await screen.findByLabelText("邮件列表");
+    expect(await within(restoredMessageList).findByText("Live subject")).toBeTruthy();
   });
 
   it("saves a reply draft from a backend seed through the compose panel", async () => {
