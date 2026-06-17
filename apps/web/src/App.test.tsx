@@ -7064,6 +7064,43 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("submits quoted compose bodyHtml after the quote tool is used", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch quote" },
+    });
+    const body = screen.getByLabelText("Compose body") as HTMLTextAreaElement;
+    fireEvent.change(body, {
+      target: { value: "Please review this line" },
+    });
+    body.focus();
+    body.setSelectionRange(0, body.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "Quote selected compose text" }));
+
+    expect(body.value).toBe("> Please review this line");
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+    await waitFor(() => {
+      expect(api.previewMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        to: [{ address: "lina@example.com" }],
+        cc: [],
+        bcc: [],
+        subject: "Launch quote",
+        bodyText: "> Please review this line",
+        bodyHtml: "<blockquote><p>Please review this line</p></blockquote>",
+        source: "manual",
+      });
+    });
+  });
+
   it("translates composed draft text through Hermes", async () => {
     const api = createApiFixture();
 

@@ -407,8 +407,9 @@ with more than smoke-level tests.
   `/api/hermes/skills/quick_reply/run`, and Hermes rewrite/polish through
   `/api/hermes/skills/rewrite_polish/run`. The compose editor now has compact
   production helpers for reusable follow-up/meeting/handoff templates, inline
-  bold/italic/list/link formatting that emits the existing `bodyHtml` draft
-  field, and Hermes draft translation through `/api/hermes/skills/translate_text/run`.
+  bold/italic/list/link/quote formatting that emits the existing `bodyHtml`
+  draft field through a tested `features/compose` helper, and Hermes draft
+  translation through `/api/hermes/skills/translate_text/run`.
   The outbox panel loads
   `/api/accounts/:accountId/outbox`, and each row routes reschedule, send now,
   cancel, and edit-draft to the matching backend contract. Scheduled outbox
