@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
 import type {
   EmailHubApi,
@@ -87,8 +87,11 @@ export function HermesRuleManagerPanel(props: HermesRuleManagerPanelProps) {
     Record<string, HermesRuleSimulationDto>
   >({});
   const [ruleDraftBusy, setRuleDraftBusy] = useState("");
+  const loadRulesRequestRef = useRef(0);
 
   async function loadRules() {
+    const requestId = loadRulesRequestRef.current + 1;
+    loadRulesRequestRef.current = requestId;
     if (!props.api) {
       setRules(normalizeHermesRuleSortOrders(previewRules));
       setRuleNotice("本地预览规则，连接后会读取真实 Hermes 规则。");
@@ -103,23 +106,27 @@ export function HermesRuleManagerPanel(props: HermesRuleManagerPanelProps) {
 
     setRuleNotice("正在读取 Hermes 规则...");
     try {
+      const accountId = props.accountId;
       const page = await props.api.listHermesRules({
-        accountId: props.accountId,
+        accountId,
         limit: 50,
       });
       const executionsPage = await props.api
         .listHermesRuleExecutions({
-          accountId: props.accountId,
+          accountId,
           limit: 100,
         })
         .catch(() => ({ items: [] as HermesRuleExecutionDto[] }));
       const candidatesPage = await props.api
         .listHermesRuleCandidates({
-          accountId: props.accountId,
+          accountId,
           status: "shadow",
           limit: 50,
         })
         .catch(() => ({ items: [] as HermesRuleCandidateDto[] }));
+      if (loadRulesRequestRef.current !== requestId) {
+        return;
+      }
       setRules(normalizeHermesRuleSortOrders(page.items));
       setRuleExecutions(latestExecutionsByRuleId(executionsPage.items));
       setCandidateDrafts(candidatesPage.items);
@@ -132,6 +139,9 @@ export function HermesRuleManagerPanel(props: HermesRuleManagerPanelProps) {
           : `已读取 ${page.items.length} 条 Hermes 规则，${candidatesPage.items.length} 条待确认草案。`,
       );
     } catch {
+      if (loadRulesRequestRef.current !== requestId) {
+        return;
+      }
       setRules([]);
       setCandidateDrafts([]);
       setCandidateEdits({});

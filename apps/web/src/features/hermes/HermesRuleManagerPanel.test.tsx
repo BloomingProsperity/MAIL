@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
   EmailHubApi,
@@ -22,6 +29,64 @@ describe("HermesRuleManagerPanel", () => {
     ).toBeTruthy();
     expect(api.listHermesRules).not.toHaveBeenCalled();
     expect(api.listHermesRuleCandidates).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale Hermes rule loads after switching accounts", async () => {
+    let resolveAccountOneRules:
+      | ((value: { items: HermesRuleDto[] }) => void)
+      | undefined;
+    const api = createRuleApiFixture({
+      listHermesRules: vi.fn((input) => {
+        if (input.accountId === "account_1") {
+          return new Promise((resolve) => {
+            resolveAccountOneRules = resolve;
+          });
+        }
+
+        return Promise.resolve({
+          items: [
+            ruleFixture({
+              id: "rule_account_2",
+              accountId: "account_2",
+              title: "启用合同智能分组",
+            }),
+          ],
+        });
+      }),
+      listHermesRuleExecutions: vi.fn(async () => ({ items: [] })),
+      listHermesRuleCandidates: vi.fn(async () => ({ items: [] })),
+    });
+
+    const { rerender } = render(
+      <HermesRuleManagerPanel api={api} accountId="account_1" />,
+    );
+    await waitFor(() => {
+      expect(api.listHermesRules).toHaveBeenCalledWith({
+        accountId: "account_1",
+        limit: 50,
+      });
+    });
+
+    rerender(<HermesRuleManagerPanel api={api} accountId="account_2" />);
+    const panel = await screen.findByLabelText("Hermes 规则管理");
+    expect(await within(panel).findByText("启用合同智能分组")).toBeTruthy();
+
+    await act(async () => {
+      resolveAccountOneRules?.({
+        items: [
+          ruleFixture({
+            id: "rule_account_1",
+            accountId: "account_1",
+            title: "旧账号验证码规则",
+          }),
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(within(panel).queryByText("旧账号验证码规则")).toBeNull();
+    });
+    expect(within(panel).getByText("启用合同智能分组")).toBeTruthy();
   });
 
   it("runs and reorders approved Hermes rules", async () => {
