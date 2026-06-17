@@ -368,6 +368,18 @@ describe("EmailEngine launch verifier", () => {
     expect(JSON.stringify(result)).not.toContain("token=abc");
   });
 
+  it("rejects invalid explicit API base URLs instead of checking the fallback target", async () => {
+    const fetchImpl = vi.fn();
+
+    await expect(
+      verifyEmailEngineLaunch({
+        apiBaseUrl: "not-a-url",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow("EMAILHUB_API_BASE_URL must be a valid http(s) URL.");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("times out stalled launch checks", async () => {
     vi.useFakeTimers();
     try {

@@ -127,6 +127,34 @@ describe("EmailEngine launch verify CLI runner", () => {
     expect(JSON.stringify(stdout)).not.toContain("file-token");
   });
 
+  it("fails before live checks when an explicit API base URL is invalid", async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const verifyLaunch = vi.fn() as unknown as typeof verifyEmailEngineLaunch;
+
+    const exitCode = await runEmailEngineLaunchVerifyCli({
+      env: {
+        EMAILHUB_API_BASE_URL: "not-a-url",
+        EMAILHUB_API_TOKEN: "api-token",
+      },
+      verifyLaunch,
+      writeStdout: (message) => stdout.push(message),
+      writeStderr: (message) => stderr.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(verifyLaunch).not.toHaveBeenCalled();
+    expect(stdout).toEqual([]);
+    const parsed = JSON.parse(stderr[0] ?? "{}");
+    expect(parsed).toMatchObject({
+      ok: false,
+      gate: "emailengine_launch",
+      apiBaseUrl: "invalid",
+      error: "EMAILHUB_API_BASE_URL must be a valid http(s) URL.",
+    });
+    expect(JSON.stringify(parsed)).not.toContain("api-token");
+  });
+
   it("returns one and redacts top-level verifier errors", async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];

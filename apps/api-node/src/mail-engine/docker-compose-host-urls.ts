@@ -1,5 +1,6 @@
 export interface DockerComposeHostBaseUrlInput {
   explicitBaseUrl?: string;
+  explicitName?: string;
   bind?: string;
   fallback: string;
 }
@@ -7,9 +8,11 @@ export interface DockerComposeHostBaseUrlInput {
 export function resolveDockerComposeHostBaseUrl(
   input: DockerComposeHostBaseUrlInput,
 ): string {
-  const explicit = normalizeHttpBaseUrl(input.explicitBaseUrl);
-  if (explicit) {
-    return explicit;
+  if (input.explicitBaseUrl?.trim()) {
+    return requireExplicitHttpBaseUrl(
+      input.explicitBaseUrl,
+      input.explicitName ?? "explicitBaseUrl",
+    );
   }
 
   const parsedBind = parseDockerComposeHostBind(input.bind);
@@ -18,6 +21,15 @@ export function resolveDockerComposeHostBaseUrl(
   }
 
   return normalizeHttpBaseUrl(input.fallback) ?? input.fallback;
+}
+
+function requireExplicitHttpBaseUrl(value: string, name: string): string {
+  const normalized = normalizeHttpBaseUrl(value);
+  if (!normalized) {
+    throw new Error(`${name} must be a valid http(s) URL.`);
+  }
+
+  return normalized;
 }
 
 export function parseDockerComposeHostBind(

@@ -317,13 +317,24 @@ export function normalizeApiBaseUrl(apiBaseUrl: string): string {
 
   try {
     const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("unsupported_protocol");
+    }
     url.username = "";
     url.password = "";
     url.search = "";
     url.hash = "";
     return url.toString().replace(/\/+$/, "");
   } catch {
-    return fallback;
+    throw new Error("EMAILHUB_API_BASE_URL must be a valid http(s) URL.");
+  }
+}
+
+export function safeNormalizeApiBaseUrlForReport(apiBaseUrl: string): string {
+  try {
+    return normalizeApiBaseUrl(apiBaseUrl);
+  } catch {
+    return "invalid";
   }
 }
 

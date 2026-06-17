@@ -39,16 +39,6 @@ export async function runEmailEngineDockerHealthVerifyCli(
     "infra/docker-compose.yml",
     "infra/docker-compose.prod.yml",
   ];
-  const apiBaseUrl = resolveDockerComposeHostBaseUrl({
-    explicitBaseUrl: runtimeEnv.EMAILHUB_API_BASE_URL,
-    bind: runtimeEnv.API_BIND,
-    fallback: "http://127.0.0.1:8080",
-  });
-  const webBaseUrl = resolveDockerComposeHostBaseUrl({
-    explicitBaseUrl: runtimeEnv.EMAILHUB_WEB_BASE_URL,
-    bind: runtimeEnv.WEB_BIND,
-    fallback: "http://127.0.0.1:5173",
-  });
   const httpTimeoutMs = readPositiveInteger(
     runtimeEnv.EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS,
     5_000,
@@ -69,6 +59,18 @@ export async function runEmailEngineDockerHealthVerifyCli(
   try {
     assertProductionApiTokenConfigured(runtimeEnv);
     assertCompatibleWebApiToken(runtimeEnv);
+    const apiBaseUrl = resolveDockerComposeHostBaseUrl({
+      explicitBaseUrl: runtimeEnv.EMAILHUB_API_BASE_URL,
+      explicitName: "EMAILHUB_API_BASE_URL",
+      bind: runtimeEnv.API_BIND,
+      fallback: "http://127.0.0.1:8080",
+    });
+    const webBaseUrl = resolveDockerComposeHostBaseUrl({
+      explicitBaseUrl: runtimeEnv.EMAILHUB_WEB_BASE_URL,
+      explicitName: "EMAILHUB_WEB_BASE_URL",
+      bind: runtimeEnv.WEB_BIND,
+      fallback: "http://127.0.0.1:5173",
+    });
     const result = await verifyHealth({
       projectRoot,
       envFile,

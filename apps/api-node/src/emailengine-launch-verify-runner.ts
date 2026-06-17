@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { createApiTokenFetch } from "./api-token-fetch.js";
 import {
   normalizeApiBaseUrl,
+  safeNormalizeApiBaseUrlForReport,
   verifyEmailEngineLaunch,
 } from "./mail-engine/launch-verifier.js";
 import { sanitizeCliError } from "./cli/safe-error.js";
@@ -31,7 +32,7 @@ export async function runEmailEngineLaunchVerifyCli(
     fileExists: options.fileExists,
     readEnvFile: options.readEnvFile,
   });
-  const apiBaseUrl =
+  const rawApiBaseUrl =
     runtimeEnv.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080";
   const timeoutMs = readPositiveInteger(
     runtimeEnv.EMAILHUB_LAUNCH_VERIFY_TIMEOUT_MS,
@@ -42,6 +43,7 @@ export async function runEmailEngineLaunchVerifyCli(
   const verifyLaunch = options.verifyLaunch ?? verifyEmailEngineLaunch;
 
   try {
+    const apiBaseUrl = normalizeApiBaseUrl(rawApiBaseUrl);
     const result = await verifyLaunch({
       apiBaseUrl,
       timeoutMs,
@@ -58,9 +60,9 @@ export async function runEmailEngineLaunchVerifyCli(
         {
           ok: false,
           gate: "emailengine_launch",
-          apiBaseUrl: normalizeApiBaseUrl(apiBaseUrl),
+          apiBaseUrl: safeNormalizeApiBaseUrlForReport(rawApiBaseUrl),
           error: sanitizeLaunchVerifyError(error, [
-            apiBaseUrl,
+            rawApiBaseUrl,
             runtimeEnv.EMAILHUB_API_TOKEN,
           ]),
         },

@@ -16,6 +16,25 @@ describe("Docker compose host URL helpers", () => {
     ).toBe("http://127.0.0.1:8080");
   });
 
+  it("rejects invalid explicit host base URLs instead of falling back", () => {
+    expect(() =>
+      resolveDockerComposeHostBaseUrl({
+        explicitBaseUrl: "not-a-url",
+        explicitName: "EMAILHUB_API_BASE_URL",
+        bind: "127.0.0.1:18080",
+        fallback: "http://127.0.0.1:8080",
+      }),
+    ).toThrow("EMAILHUB_API_BASE_URL must be a valid http(s) URL.");
+    expect(() =>
+      resolveDockerComposeHostBaseUrl({
+        explicitBaseUrl: "ftp://127.0.0.1:8080",
+        explicitName: "EMAILHUB_API_BASE_URL",
+        bind: "127.0.0.1:18080",
+        fallback: "http://127.0.0.1:8080",
+      }),
+    ).toThrow("EMAILHUB_API_BASE_URL must be a valid http(s) URL.");
+  });
+
   it("derives local probe URLs from compose bind overrides", () => {
     expect(
       resolveDockerComposeHostBaseUrl({
