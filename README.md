@@ -310,10 +310,11 @@ npm run compose:up:prod:detached
 The production startup script runs the EmailEngine env preflight before Docker,
 then starts the base compose file with the strict production overlay. The overlay
 changes API container health to require
-`/api/mail-engine/health` with `readiness.status=ready`, and forces the worker to
-require both `EMAILENGINE_ACCESS_TOKEN` and `EENGINE_PREPARED_TOKEN`. A stack with
-missing EmailEngine tokens, rejected API auth, missing prepared token, or the
-default EmailEngine webhook/auth/service secret will fail startup or stay
+`/api/mail-engine/health` with `provider=emailengine`, `readiness.status=ready`,
+and token-backed onboarding/download/send capabilities, and forces the worker to
+require both `EMAILENGINE_ACCESS_TOKEN` and `EENGINE_PREPARED_TOKEN`. A stack
+with missing EmailEngine tokens, rejected API auth, missing prepared token, or
+the default EmailEngine webhook/auth/service secret will fail startup or stay
 unhealthy instead of appearing launched.
 
 Default entry points:
@@ -406,7 +407,9 @@ default. It fails if `VITE_EMAILHUB_API_TOKEN` is set to a different value than
 `EMAILHUB_API_TOKEN`. It also catches common EmailEngine token mistakes: the
 raw `EMAILENGINE_ACCESS_TOKEN` must use EmailEngine's 64-character hex token
 format, and `EENGINE_PREPARED_TOKEN` must not be the raw token copied into the
-wrong variable. Secret values are never printed.
+wrong variable. The same gate rejects `EMAILENGINE_IMAGE=latest` and unpinned
+image overrides that are neither a `v2.x.x` tag nor an immutable sha256 digest.
+Secret values are never printed.
 
 After the Docker stack is running, run the live gate from the host:
 
@@ -437,7 +440,10 @@ base URLs are not set, the verifier derives host probes from `API_BIND` and
 `WEB_BIND`, so alternate local ports such as `WEB_BIND=127.0.0.1:5174` are
 checked correctly. Protected production stacks should export
 `EMAILHUB_API_TOKEN`; the verifier sends it to API host probes without printing
-the token in JSON results. It waits up to `EMAILHUB_DOCKER_HEALTH_ATTEMPTS`
+the token in JSON results. The mail-engine host probe also requires
+`provider=emailengine` and token-backed onboarding/download/send capabilities,
+matching the main launch verifier. It waits up to
+`EMAILHUB_DOCKER_HEALTH_ATTEMPTS`
 times with `EMAILHUB_DOCKER_HEALTH_WAIT_MS` between transient Docker/HTTP
 startup failures, but exits immediately for proven configuration gaps such as
 `readiness.status=degraded`. It also compares the selected env-file values

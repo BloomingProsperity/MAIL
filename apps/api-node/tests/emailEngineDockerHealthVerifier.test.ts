@@ -92,7 +92,16 @@ describe("Docker compose health verifier", () => {
         return {
           status: 200,
           body: input.url.includes("/api/mail-engine/health")
-            ? JSON.stringify({ ok: true, readiness: { status: "ready" } })
+            ? JSON.stringify({
+                ok: true,
+                provider: "emailengine",
+                readiness: { status: "ready" },
+                capabilities: {
+                  imapSmtpOnboarding: true,
+                  attachmentDownload: true,
+                  send: true,
+                },
+              })
             : "ok",
         };
       },

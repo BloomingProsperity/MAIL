@@ -301,7 +301,12 @@ describe("EmailEngine Docker configuration", () => {
     const worker = serviceSection(prodCompose, "worker");
 
     expect(api).toContain("/api/mail-engine/health");
-    expect(api).toContain(
+    expect(api).toContain("body.provider === 'emailengine'");
+    expect(api).toContain("body.readiness?.status === 'ready'");
+    expect(api).toContain("caps.imapSmtpOnboarding === true");
+    expect(api).toContain("caps.attachmentDownload === true");
+    expect(api).toContain("caps.send === true");
+    expect(api).not.toContain(
       "body.ok && body.readiness?.status === 'ready' ? 0 : 1",
     );
     expect(worker).toContain('WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN: "true"');
@@ -315,7 +320,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(readme).toContain(
       "The production startup script runs the EmailEngine env preflight before Docker",
     );
+    expect(readme).toContain("provider=emailengine");
     expect(readme).toContain("readiness.status=ready");
+    expect(readme).toContain("token-backed onboarding/download/send capabilities");
     expect(readme).toContain("missing EmailEngine tokens");
     expect(readme).toContain("default EmailEngine webhook/auth/service secret");
   });

@@ -11,6 +11,7 @@ export interface EmailEngineProductionEnvPreflightResult {
   checkedAt: string;
   checks: {
     requiredSecrets: PreflightCheck;
+    containerImage: PreflightCheck;
     webApiToken: PreflightCheck;
     optionalIntegrations: PreflightCheck;
   };
@@ -71,22 +72,25 @@ export function verifyEmailEngineProductionEnv(
 ): EmailEngineProductionEnvPreflightResult {
   const checkedAt = (options.now ?? (() => new Date()))().toISOString();
   const requiredSecrets = checkRequiredProductionSecrets(options.env);
+  const containerImage = checkEmailEngineImage(options.env);
   const webApiToken = checkWebApiTokenCompatibility(options.env);
   const optionalIntegrations = checkOptionalIntegrations(options.env);
   const requiredFollowUps = [
     ...requiredSecrets.issues,
+    ...containerImage.issues,
     ...webApiToken.issues,
   ]
     .filter((issue) => issue.severity === "error")
     .map((issue) => issue.detail);
 
   return {
-    ok: requiredSecrets.ok && webApiToken.ok,
+    ok: requiredSecrets.ok && containerImage.ok && webApiToken.ok,
     gate: "emailengine_prod_env",
     ...(options.envFile ? { envFile: options.envFile } : {}),
     checkedAt,
     checks: {
       requiredSecrets,
+      containerImage,
       webApiToken,
       optionalIntegrations,
     },
@@ -139,6 +143,63 @@ function productionSecretIssues(
   }
 
   return [];
+}
+
+function checkEmailEngineImage(
+  env: Record<string, string | undefined>,
+): PreflightCheck {
+  const image = env.EMAILENGINE_IMAGE?.trim();
+  if (!image) {
+    return { ok: true, issues: [] };
+  }
+
+  const tag = readDockerImageTag(image);
+  const issues: PreflightIssue[] = [];
+
+  if (tag?.toLowerCase() === "latest") {
+    issues.push({
+      code: "emailengine_image_uses_latest",
+      severity: "error",
+      env: ["EMAILENGINE_IMAGE"],
+      detail:
+        "EMAILENGINE_IMAGE must not use the mutable latest tag before the EmailEngine production launch gate. Use the default pinned image, a v2.x.x image tag, or an immutable sha256 digest.",
+    });
+  } else if (!isPinnedEmailEngineImage(image, tag)) {
+    issues.push({
+      code: "emailengine_image_not_pinned",
+      severity: "error",
+      env: ["EMAILENGINE_IMAGE"],
+      detail:
+        "EMAILENGINE_IMAGE must be omitted for the default pinned image, set to a v2.x.x image tag, or set to an immutable sha256 digest before the EmailEngine production launch gate.",
+    });
+  }
+
+  return {
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function isPinnedEmailEngineImage(
+  image: string,
+  tag: string | undefined,
+): boolean {
+  return (
+    /@sha256:[a-f0-9]{64}$/i.test(image) ||
+    (tag !== undefined && /^v2\.\d+\.\d+$/i.test(tag))
+  );
+}
+
+function readDockerImageTag(image: string): string | undefined {
+  const withoutDigest = image.split("@", 1)[0] ?? image;
+  const lastSlashIndex = withoutDigest.lastIndexOf("/");
+  const lastColonIndex = withoutDigest.lastIndexOf(":");
+
+  if (lastColonIndex <= lastSlashIndex) {
+    return undefined;
+  }
+
+  return withoutDigest.slice(lastColonIndex + 1);
 }
 
 function emailEngineTokenPairIssues(

@@ -42,7 +42,10 @@ with more than smoke-level tests.
   development defaults are still in use, or the bundled web token conflicts with
   the API token. It also rejects common EmailEngine token mistakes: raw access
   tokens must use EmailEngine's 64-character hex format, and prepared tokens
-  must not be the same raw token copied into the wrong variable.
+  must not be the same raw token copied into the wrong variable. It also blocks
+  `EMAILENGINE_IMAGE=latest` and image overrides that are neither a `v2.x.x`
+  tag nor an immutable sha256 digest, so production self-hosting cannot drift to
+  a moving EmailEngine image by accident.
   `verify:emailengine-launch:live` runs that preflight before it
   checks the running API `/health`, EmailEngine readiness, token-backed
   onboarding/download/send capabilities, provider identity, API health status,
@@ -51,7 +54,10 @@ with more than smoke-level tests.
   signed webhook idempotency smoke. The Docker health verifier now follows
   `API_BIND`/`WEB_BIND` when
   explicit host probe base URLs are omitted and sends `EMAILHUB_API_TOKEN` to
-  protected API probes without echoing it in the JSON report. It can also wait
+  protected API probes without echoing it in the JSON report. Its mail-engine
+  host probe uses the same EmailEngine-first launch predicate as the main live
+  verifier: `provider=emailengine`, `readiness.status=ready`, and token-backed
+  onboarding, attachment download, and send capabilities. It can also wait
   through bounded transient Docker/HTTP startup states while failing
   immediately on proven configuration gaps such as degraded EmailEngine
   readiness. When EmailEngine readiness fails without structured setup actions,

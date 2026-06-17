@@ -8,7 +8,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"const token=process.env.EMAILHUB_API_TOKEN; fetch('http://127.0.0.1:8080/api/mail-engine/health',{headers:token?{authorization:'Bearer '+token}:{}}).then(async r=>{ if(!r.ok) process.exit(1); const body=await r.json(); process.exit(body.ok && body.readiness?.status === 'ready' ? 0 : 1); }).catch(()=>process.exit(1))\"",
+          "node -e \"const token=process.env.EMAILHUB_API_TOKEN; fetch('http://127.0.0.1:8080/api/mail-engine/health',{headers:token?{authorization:'Bearer '+token}:{}}).then(async r=>{ if(!r.ok) process.exit(1); const body=await r.json(); const caps=body.capabilities||{}; process.exit(body.ok && body.provider === 'emailengine' && body.readiness?.status === 'ready' && caps.imapSmtpOnboarding === true && caps.attachmentDownload === true && caps.send === true ? 0 : 1); }).catch(()=>process.exit(1))\"",
         ]
       interval: 10s
       timeout: 5s

@@ -685,18 +685,38 @@ async function checkHostHttpEndpoint(
     const body = asRecord(parseJson(response.body));
     const readiness = asRecord(body.readiness);
     const readinessStatus = readString(readiness.status);
+    const provider = readString(body.provider);
+    const capabilities = asRecord(body.capabilities);
+    const capabilitiesReady =
+      capabilities.imapSmtpOnboarding === true &&
+      capabilities.attachmentDownload === true &&
+      capabilities.send === true;
     const ready =
       response.status >= 200 &&
       response.status < 300 &&
       body.ok === true &&
-      readinessStatus === "ready";
+      readinessStatus === "ready" &&
+      provider === "emailengine" &&
+      capabilitiesReady;
     return {
       ok: ready,
       name: check.name,
       url: reportUrl,
       status: response.status,
       ...(readinessStatus ? { readinessStatus } : {}),
-      ...(ready ? {} : { detail: "mail_engine_not_ready" }),
+      ...(ready
+        ? {}
+        : {
+            detail:
+              response.status < 200 ||
+              response.status >= 300 ||
+              body.ok !== true ||
+              readinessStatus !== "ready"
+                ? "mail_engine_not_ready"
+                : provider !== "emailengine"
+                  ? "mail_engine_provider_unexpected"
+                  : "mail_engine_capabilities_missing",
+          }),
     };
   } catch {
     return {

@@ -39,6 +39,7 @@ describe("EmailEngine production env verify CLI runner", () => {
       checkedAt: "2026-06-17T12:00:00.000Z",
       checks: {
         requiredSecrets: { ok: true, issues: [] },
+        containerImage: { ok: true, issues: [] },
         webApiToken: { ok: true, issues: [] },
         optionalIntegrations: { ok: true },
       },
@@ -79,6 +80,7 @@ describe("EmailEngine production env verify CLI runner", () => {
       gate: "emailengine_prod_env",
       checks: {
         requiredSecrets: { ok: false },
+        containerImage: { ok: true, issues: [] },
         webApiToken: { ok: true, issues: [] },
       },
     });
@@ -166,6 +168,67 @@ describe("EmailEngine production env verify CLI runner", () => {
         "EENGINE_PREPARED_TOKEN must be the exported prepared token string for EMAILENGINE_ACCESS_TOKEN, not the raw API token itself. Generate it with `emailengine tokens export -t EMAILENGINE_ACCESS_TOKEN`.",
     });
     expect(JSON.stringify(rawPrepared)).not.toContain(rawToken);
+  });
+
+  it("rejects mutable or unpinned EmailEngine image overrides", () => {
+    const latest = verifyEmailEngineProductionEnv({
+      env: productionEnv({
+        EMAILENGINE_IMAGE: "postalsys/emailengine:latest",
+      }),
+      now: () => new Date("2026-06-17T12:00:00.000Z"),
+    });
+
+    expect(latest.ok).toBe(false);
+    expect(latest.checks.containerImage).toEqual({
+      ok: false,
+      issues: [
+        {
+          code: "emailengine_image_uses_latest",
+          severity: "error",
+          env: ["EMAILENGINE_IMAGE"],
+          detail:
+            "EMAILENGINE_IMAGE must not use the mutable latest tag before the EmailEngine production launch gate. Use the default pinned image, a v2.x.x image tag, or an immutable sha256 digest.",
+        },
+      ],
+    });
+    expect(latest.requiredFollowUps).toContain(
+      "EMAILENGINE_IMAGE must not use the mutable latest tag before the EmailEngine production launch gate. Use the default pinned image, a v2.x.x image tag, or an immutable sha256 digest.",
+    );
+
+    const unversioned = verifyEmailEngineProductionEnv({
+      env: productionEnv({
+        EMAILENGINE_IMAGE: "postalsys/emailengine",
+      }),
+      now: () => new Date("2026-06-17T12:00:00.000Z"),
+    });
+
+    expect(unversioned.ok).toBe(false);
+    expect(unversioned.checks.containerImage.issues).toContainEqual({
+      code: "emailengine_image_not_pinned",
+      severity: "error",
+      env: ["EMAILENGINE_IMAGE"],
+      detail:
+        "EMAILENGINE_IMAGE must be omitted for the default pinned image, set to a v2.x.x image tag, or set to an immutable sha256 digest before the EmailEngine production launch gate.",
+    });
+
+    const versioned = verifyEmailEngineProductionEnv({
+      env: productionEnv({
+        EMAILENGINE_IMAGE: "postalsys/emailengine:v2.72.0",
+      }),
+      now: () => new Date("2026-06-17T12:00:00.000Z"),
+    });
+    const digested = verifyEmailEngineProductionEnv({
+      env: productionEnv({
+        EMAILENGINE_IMAGE:
+          "registry.example.com/emailengine/custom@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      }),
+      now: () => new Date("2026-06-17T12:00:00.000Z"),
+    });
+
+    expect(versioned.ok).toBe(true);
+    expect(versioned.checks.containerImage).toEqual({ ok: true, issues: [] });
+    expect(digested.ok).toBe(true);
+    expect(digested.checks.containerImage).toEqual({ ok: true, issues: [] });
   });
 
   it("uses the selected env file and lets process env override it", async () => {
