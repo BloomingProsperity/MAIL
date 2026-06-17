@@ -557,6 +557,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(apiPackage.scripts["verify:emailengine-live"]).toBe(
       "tsx src/emailengine-launch-verify.ts",
     );
+    expect(apiPackage.scripts["verify:emailengine-prod-env"]).toBe(
+      "tsx src/emailengine-prod-env-verify.ts",
+    );
     expect(apiPackage.scripts["verify:emailengine-docker-health"]).toBe(
       "tsx src/emailengine-docker-health-verify.ts",
     );
@@ -594,6 +597,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(rootPackage.scripts["verify:emailengine-launch:docker-health"]).toBe(
       "npm run verify:emailengine-docker-health -w apps/api-node",
     );
+    expect(rootPackage.scripts["verify:emailengine-launch:env"]).toBe(
+      "npm run verify:emailengine-prod-env -w apps/api-node",
+    );
     expect(dockerHealthEntrypoint).toContain(
       "runEmailEngineDockerHealthVerifyCli",
     );
@@ -615,7 +621,7 @@ describe("EmailEngine Docker configuration", () => {
     expect(dockerHealthScript).toContain('name: "mail_engine_readiness"');
     expect(dockerHealthScript).toContain('name: "web_home"');
     expect(rootPackage.scripts["verify:emailengine-launch:live"]).toBe(
-      "npm run verify:emailengine-live && npm run verify:emailengine-launch:docker-health && npm run smoke:emailengine-webhook",
+      "npm run verify:emailengine-launch:env && npm run verify:emailengine-live && npm run verify:emailengine-launch:docker-health && npm run smoke:emailengine-webhook",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:greenmail"]).toBe(
       "npm run smoke:imap-smtp-onboarding && npm run smoke:emailengine-real-webhook && npm run smoke:emailengine-send && npm run smoke:emailengine-attachment-download && npm run smoke:emailengine-mail-action",
@@ -630,6 +636,7 @@ describe("EmailEngine Docker configuration", () => {
       "npm run verify:emailengine-launch:core && npm run verify:emailengine-launch:strict-db && npm run verify:emailengine-launch:greenmail",
     );
     expect(readme).toContain("npm run verify:emailengine-launch:offline");
+    expect(readme).toContain("npm run verify:emailengine-launch:env");
     expect(readme).toContain("npm run verify:emailengine-launch:live");
     expect(readme).toContain("npm run verify:emailengine-launch:greenmail");
     expect(readme).toContain("npm run verify:emailengine-launch:docker-health");

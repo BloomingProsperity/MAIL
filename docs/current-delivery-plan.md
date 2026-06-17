@@ -36,12 +36,16 @@ with more than smoke-level tests.
   Production self-hosted starts use `compose:up:prod` or
   `compose:up:prod:detached` so the strict EmailEngine readiness overlay is
   active from boot.
-  `verify:emailengine-launch:live` checks the running API `/health`,
-  EmailEngine readiness, token-backed onboarding/download/send capabilities,
-  provider identity, API health status, host-reachable web/API endpoints,
-  required Docker Compose service health for `postgres`, `redis-engine`,
-  `emailengine`, `api`, `worker`, and `web`, and the signed webhook idempotency
-  smoke. The Docker health verifier now follows `API_BIND`/`WEB_BIND` when
+  `verify:emailengine-launch:env` is a read-only production env preflight that
+  fails before Docker/HTTP checks if required launch secrets are missing,
+  development defaults are still in use, or the bundled web token conflicts with
+  the API token. `verify:emailengine-launch:live` runs that preflight before it
+  checks the running API `/health`, EmailEngine readiness, token-backed
+  onboarding/download/send capabilities, provider identity, API health status,
+  host-reachable web/API endpoints, required Docker Compose service health for
+  `postgres`, `redis-engine`, `emailengine`, `api`, `worker`, and `web`, and the
+  signed webhook idempotency smoke. The Docker health verifier now follows
+  `API_BIND`/`WEB_BIND` when
   explicit host probe base URLs are omitted and sends `EMAILHUB_API_TOKEN` to
   protected API probes without echoing it in the JSON report. It can also wait
   through bounded transient Docker/HTTP startup states while failing

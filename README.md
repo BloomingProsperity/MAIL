@@ -385,6 +385,22 @@ compose overlay. It uses `.env` by default for compose interpolation and falls
 back to `.env.example`; set `EMAILHUB_ENV_FILE=/path/to/env` when validating a
 specific deployment file.
 
+Before starting the production stack, run the env preflight gate against the
+same env file:
+
+```powershell
+npm run verify:emailengine-launch:env
+```
+
+This gate is read-only. It checks that production-only values such as
+`EMAILHUB_API_TOKEN`, `EMAILENGINE_ACCESS_TOKEN`, `EENGINE_PREPARED_TOKEN`,
+`EMAILENGINE_WEBHOOK_SECRET`, `EMAILENGINE_AUTH_SERVER_SECRET`,
+and `EENGINE_SECRET` are set and not using development defaults. When
+`DATABASE_URL` is empty and Docker compose uses the bundled Postgres service, it
+also requires `POSTGRES_PASSWORD` to be changed from the local development
+default. It fails if `VITE_EMAILHUB_API_TOKEN` is set to a different value than
+`EMAILHUB_API_TOKEN`. Secret values are never printed.
+
 After the Docker stack is running, run the live gate from the host:
 
 ```powershell
@@ -395,9 +411,9 @@ npm run verify:emailengine-launch:live
 The live gate calls `/health`, `/api/mail-engine/health`, verifies Docker
 Compose service health for `postgres`, `redis-engine`, `emailengine`, `api`,
 `worker`, and `web`, then runs the signed webhook smoke. It fails if API
-readiness is down, EmailEngine launch readiness is not `ready`, any required
-container is not running and healthy, or token-backed onboarding, attachment
-download, and send capabilities are not all available.
+readiness is down, the env preflight fails, EmailEngine launch readiness is not
+`ready`, any required container is not running and healthy, or token-backed
+onboarding, attachment download, and send capabilities are not all available.
 
 ```powershell
 npm run verify:emailengine-launch:docker-health
