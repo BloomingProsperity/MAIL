@@ -1515,9 +1515,18 @@ export function App(props: AppProps = {}) {
 
       setHermesFollowUpSuggestion(suggestion);
       setFollowUpNotice(undefined);
-    } catch {
+    } catch (error) {
       setHermesFollowUpSuggestion(undefined);
-      setFollowUpNotice("Hermes 跟进暂时不可用。");
+      setFollowUpNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "followup_tracker",
+          fallback: "Hermes 跟进暂时不可用。",
+          unavailable: {
+            hermes_message_followup_unavailable:
+              "Hermes 跟进识别服务暂时不可用，请检查后端配置。",
+          },
+        }),
+      );
     }
   }
 
@@ -1531,18 +1540,31 @@ export function App(props: AppProps = {}) {
       return;
     }
 
-    const followUp = await props.api.confirmHermesFollowUp({
-      accountId,
-      messageId: selectedMail.id,
-      skillRunId: hermesFollowUpSuggestion.skillRunId,
-      status: hermesFollowUpSuggestion.status,
-      dueAt: hermesFollowUpSuggestion.dueAt,
-      nextAction: hermesFollowUpSuggestion.nextAction,
-      reasons: hermesFollowUpSuggestion.reasons,
-      sourceQuote: hermesFollowUpSuggestion.sourceQuote,
-    });
-    setHermesFollowUpSuggestion(undefined);
-    setFollowUpNotice(`跟进已保存：${followUp.title ?? followUp.messageId}`);
+    try {
+      const followUp = await props.api.confirmHermesFollowUp({
+        accountId,
+        messageId: selectedMail.id,
+        skillRunId: hermesFollowUpSuggestion.skillRunId,
+        status: hermesFollowUpSuggestion.status,
+        dueAt: hermesFollowUpSuggestion.dueAt,
+        nextAction: hermesFollowUpSuggestion.nextAction,
+        reasons: hermesFollowUpSuggestion.reasons,
+        sourceQuote: hermesFollowUpSuggestion.sourceQuote,
+      });
+      setHermesFollowUpSuggestion(undefined);
+      setFollowUpNotice(`跟进已保存：${followUp.title ?? followUp.messageId}`);
+    } catch (error) {
+      setFollowUpNotice(
+        hermesSkillErrorNotice(error, {
+          skillId: "followup_tracker",
+          fallback: "Hermes 跟进保存失败。",
+          unavailable: {
+            hermes_follow_up_unavailable:
+              "Hermes 跟进保存服务暂时不可用，请检查后端配置。",
+          },
+        }),
+      );
+    }
   }
 
   if (oauthCallback) {
@@ -9755,6 +9777,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
 
     setRuleDraftBusy(`approve:${candidate.id}`);
     setRuleNotice("正在生成并确认 Hermes 执行计划...");
+    let actionPlanStage: "create" | "confirm" = "create";
     try {
       const plan = await props.api.createHermesActionPlan({
         accountId: props.accountId,
@@ -9762,6 +9785,7 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
         command,
         sampleLimit: 25,
       });
+      actionPlanStage = "confirm";
       const confirmation = await props.api.confirmHermesActionPlan({
         planId: plan.id,
         accountId: props.accountId,
@@ -9782,8 +9806,8 @@ function HermesRuleManagerPanel(props: { api?: EmailHubApi; accountId?: string }
           ? `Hermes 执行计划已完成：${approvedRule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。`
           : `Hermes 执行计划已完成：${approvedRule.title}。`,
       );
-    } catch {
-      setRuleNotice("Hermes 执行计划确认失败。");
+    } catch (error) {
+      setRuleNotice(hermesActionPlanErrorNotice(error, actionPlanStage));
     } finally {
       setRuleDraftBusy("");
     }
@@ -12378,11 +12402,16 @@ function hermesSkillErrorNotice(
   input: {
     skillId: string;
     fallback: string;
+    unavailable?: Record<string, string>;
   },
 ): string {
   if (error instanceof ApiRequestError) {
     if (error.code === "hermes_skill_disabled") {
       return hermesSkillDisabledNotice(error.skillId ?? input.skillId);
+    }
+    const unavailableNotice = input.unavailable?.[error.code];
+    if (unavailableNotice) {
+      return unavailableNotice;
     }
   }
 

@@ -1760,6 +1760,46 @@ describe("Email Hub first UI baseline", () => {
     ).toContain("已启用");
   });
 
+  it("explains when Settings Hermes rule confirmation is disabled by action-plan skill settings", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.createHermesActionPlan).mockRejectedValueOnce(
+      new ApiRequestError(403, "hermes_skill_disabled", {
+        error: "hermes_skill_disabled",
+        skillId: "action_plan",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
+    );
+
+    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
+    expect(await within(rulePanel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Simulate Hermes rule 启用验证码智能分组",
+      }),
+    );
+    expect(await within(rulePanel).findByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+
+    fireEvent.click(
+      within(rulePanel).getByRole("button", {
+        name: "Confirm Hermes action plan 启用验证码智能分组",
+      }),
+    );
+
+    expect(
+      await within(rulePanel).findByText(
+        "Hermes 执行计划能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“执行计划”。",
+      ),
+    ).toBeTruthy();
+    expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
+  });
+
   it("requires a fresh simulation after editing a Hermes rule candidate", async () => {
     const api = createApiFixture();
 
@@ -5255,6 +5295,35 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText(/跟进已保存/)).toBeTruthy();
+  });
+
+  it("keeps the Hermes follow-up suggestion when confirmation storage is unavailable", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.confirmHermesFollowUp).mockRejectedValueOnce(
+      new ApiRequestError(503, "hermes_follow_up_unavailable", {
+        error: "hermes_follow_up_unavailable",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await screen.findByText("Live body from backend");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Ask Hermes to track follow-up" }),
+    );
+
+    expect(await screen.findByText("Check whether Lina replied")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm Hermes follow-up" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Hermes 跟进保存服务暂时不可用，请检查后端配置。",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Check whether Lina replied")).toBeTruthy();
   });
 
   it("creates and sends a new composed message through backend compose routes", async () => {
