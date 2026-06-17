@@ -539,11 +539,17 @@ describe("EmailEngine Docker configuration", () => {
     );
     const envExample = await readProjectFile(".env.example");
     const readme = await readProjectFile("README.md");
-    const dockerHealthScript = await readProjectFile(
+    const dockerHealthEntrypoint = await readProjectFile(
       "apps",
       "api-node",
       "src",
       "emailengine-docker-health-verify.ts",
+    );
+    const dockerHealthScript = await readProjectFile(
+      "apps",
+      "api-node",
+      "src",
+      "emailengine-docker-health-verify-runner.ts",
     );
 
     expect(apiPackage.scripts["verify:emailengine-live"]).toBe(
@@ -586,19 +592,22 @@ describe("EmailEngine Docker configuration", () => {
     expect(rootPackage.scripts["verify:emailengine-launch:docker-health"]).toBe(
       "npm run verify:emailengine-docker-health -w apps/api-node",
     );
+    expect(dockerHealthEntrypoint).toContain(
+      "runEmailEngineDockerHealthVerifyCli",
+    );
     expect(envExample).toContain("EMAILHUB_API_BASE_URL=http://127.0.0.1:8080");
     expect(envExample).toContain("EMAILHUB_WEB_BASE_URL=http://127.0.0.1:5173");
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS=5000");
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_ATTEMPTS=12");
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_WAIT_MS=5000");
-    expect(dockerHealthScript).toContain("process.env.API_BIND");
-    expect(dockerHealthScript).toContain("process.env.WEB_BIND");
-    expect(dockerHealthScript).toContain("process.env.EMAILHUB_API_TOKEN");
+    expect(dockerHealthScript).toContain("env.API_BIND");
+    expect(dockerHealthScript).toContain("env.WEB_BIND");
+    expect(dockerHealthScript).toContain("env.EMAILHUB_API_TOKEN");
     expect(dockerHealthScript).toContain(
-      "process.env.EMAILHUB_DOCKER_HEALTH_ATTEMPTS",
+      "env.EMAILHUB_DOCKER_HEALTH_ATTEMPTS",
     );
     expect(dockerHealthScript).toContain(
-      "process.env.EMAILHUB_DOCKER_HEALTH_WAIT_MS",
+      "env.EMAILHUB_DOCKER_HEALTH_WAIT_MS",
     );
     expect(dockerHealthScript).toContain('name: "api_health"');
     expect(dockerHealthScript).toContain('name: "mail_engine_readiness"');

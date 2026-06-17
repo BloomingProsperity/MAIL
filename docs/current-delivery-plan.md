@@ -53,7 +53,11 @@ with more than smoke-level tests.
   small whitelist of running-container environment variables to prove the prod
   overlay is actually active at runtime: API runs with `NODE_ENV=production`,
   dev secrets disabled, API token enforcement enabled, and worker health checks
-  requiring the EmailEngine token.
+  requiring the EmailEngine token. The Docker health CLI now uses the same
+  testable runner shape and shared error redaction helper as the launch
+  verifier, so top-level Docker/HTTP failures do not echo bearer tokens,
+  configured base URLs, userinfo, query strings, PAT-shaped strings, or private
+  host details.
   `verify:emailengine-launch:strict-db`
   requires `TEST_DATABASE_URL` and runs the real Postgres `sync_jobs`
   concurrency gate, failing immediately instead of silently skipping when no
