@@ -59,7 +59,7 @@ describe("Hermes message reply service", () => {
         language: "English",
         readMessageIds: ["message_1"],
         memoryIds: ["memory_1"],
-        memoryScope: "sender:client@example.com",
+        memoryScope: "recipient:client@example.com",
         memoryLayers: ["writing_style_profile"],
       },
     ]);

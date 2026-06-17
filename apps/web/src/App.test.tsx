@@ -4589,7 +4589,7 @@ describe("Email Hub first UI baseline", () => {
         accountId: "account_1",
         messageId: "message_1",
         instruction: "Draft a concise reply in my normal style.",
-        memoryScope: "sender:client@example.com",
+        memoryScope: "recipient:client@example.com",
         memoryLayers: [
           "contact_memory",
           "writing_style_profile",
@@ -4611,6 +4611,62 @@ describe("Email Hub first UI baseline", () => {
     );
     expect(screen.queryByLabelText("Reply body")).toBeNull();
     expect(await screen.findByText(/Hermes 已生成回复草稿/)).toBeTruthy();
+  });
+
+  it("ignores a stale Hermes reply draft after switching messages", async () => {
+    const api = createApiFixture();
+    let resolveReply: (value: HermesMessageReplyDraftResult) => void = () => {};
+    mockTwoMessageReader(api);
+    vi.mocked(api.draftMessageReply).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveReply = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "First subject" });
+    await screen.findByText("First backend body");
+
+    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    await waitFor(() => {
+      expect(api.draftMessageReply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "account_1",
+          messageId: "message_1",
+          memoryScope: "recipient:first@example.com",
+        }),
+      );
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "邮件列表" })).getByRole(
+        "button",
+        { name: /Second subject/ },
+      ),
+    );
+    await screen.findByRole("heading", { name: "Second subject" });
+    await screen.findByText("Second backend body");
+    expect(
+      (screen.getByRole("button", {
+        name: "Ask Hermes to draft reply",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+
+    await act(async () => {
+      resolveReply({
+        skillRunId: "run_stale_reply",
+        skillId: "reply_draft",
+        accountId: "account_1",
+        messageId: "message_1",
+        draftText: "This stale reply should not enter compose.",
+      });
+    });
+
+    expect(
+      (screen.getByLabelText("Compose body") as HTMLTextAreaElement).value,
+    ).not.toContain("This stale reply should not enter compose.");
+    expect(screen.queryByText(/Hermes 已生成回复草稿：run_stale_reply/)).toBeNull();
   });
 
   it("uses Hermes quick reply with editable reply learning metadata", async () => {
@@ -4638,7 +4694,7 @@ describe("Email Hub first UI baseline", () => {
         scenario: "thanks",
         instruction: "Thank them warmly and keep the reply short.",
         tone: "warm professional",
-        memoryScope: "sender:client@example.com",
+        memoryScope: "recipient:client@example.com",
         memoryLayers: [
           "contact_memory",
           "writing_style_profile",

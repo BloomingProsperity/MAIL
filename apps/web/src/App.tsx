@@ -2132,6 +2132,8 @@ function MailWorkspace(props: {
   const composeAutosaveTimerRef = useRef<number | undefined>(undefined);
   const composeAutosaveGenerationRef = useRef(0);
   const lastSavedComposeSignatureRef = useRef("");
+  const composeMessageRequestRef = useRef(0);
+  const composeMessageRequestActiveRef = useRef(false);
   const readerHermesRequestRef = useRef(0);
   const readerTranslationPreferenceRequestRef = useRef(0);
 
@@ -2142,6 +2144,25 @@ function MailWorkspace(props: {
     }
     composeAutosaveGenerationRef.current += 1;
     setComposeAutosaveStatus(status);
+  }
+
+  function beginComposeMessageRequest(): number {
+    const requestId = composeMessageRequestRef.current + 1;
+    composeMessageRequestRef.current = requestId;
+    composeMessageRequestActiveRef.current = true;
+    setComposeBusy(true);
+    return requestId;
+  }
+
+  function isCurrentComposeMessageRequest(requestId: number): boolean {
+    return composeMessageRequestRef.current === requestId;
+  }
+
+  function finishComposeMessageRequest(requestId: number): void {
+    if (isCurrentComposeMessageRequest(requestId)) {
+      composeMessageRequestActiveRef.current = false;
+      setComposeBusy(false);
+    }
   }
 
   function currentComposeSignature(input: {
@@ -2183,6 +2204,11 @@ function MailWorkspace(props: {
   }
 
   useEffect(() => {
+    composeMessageRequestRef.current += 1;
+    if (composeMessageRequestActiveRef.current) {
+      composeMessageRequestActiveRef.current = false;
+      setComposeBusy(false);
+    }
     readerHermesRequestRef.current += 1;
     readerTranslationPreferenceRequestRef.current += 1;
     setAttachmentDownloadBusyId(undefined);
@@ -2679,20 +2705,28 @@ function MailWorkspace(props: {
       return;
     }
 
-    setComposeBusy(true);
+    const requestId = beginComposeMessageRequest();
+    const selectedMail = props.selectedMail;
+    const from = selectedComposeFrom;
     try {
       const seed = await props.api.createComposeSeed({
         accountId: props.accountId,
-        messageId: props.selectedMail.id,
+        messageId: selectedMail.id,
         mode,
-        ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+        ...(from ? { from } : {}),
       });
+      if (!isCurrentComposeMessageRequest(requestId)) {
+        return;
+      }
       applySeedToCompose(seed);
       focusComposeTarget(seed.warnings.includes("missing_recipient") ? "to" : "body");
     } catch {
+      if (!isCurrentComposeMessageRequest(requestId)) {
+        return;
+      }
       setComposeNotice("无法从当前邮件生成草稿。");
     } finally {
-      setComposeBusy(false);
+      finishComposeMessageRequest(requestId);
     }
   }
 
@@ -3048,20 +3082,22 @@ function MailWorkspace(props: {
       return;
     }
 
-    setComposeBusy(true);
+    const requestId = beginComposeMessageRequest();
+    const selectedMail = props.selectedMail;
+    const from = selectedComposeFrom;
     try {
       const [seed, result] = await Promise.all([
         props.api.createComposeSeed({
-          accountId: props.selectedMail.accountId,
-          messageId: props.selectedMail.id,
+          accountId: selectedMail.accountId,
+          messageId: selectedMail.id,
           mode: "reply",
-          ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+          ...(from ? { from } : {}),
         }),
         props.api.draftMessageReply({
-          accountId: props.selectedMail.accountId,
-          messageId: props.selectedMail.id,
+          accountId: selectedMail.accountId,
+          messageId: selectedMail.id,
           instruction: "Draft a concise reply in my normal style.",
-          memoryScope: `sender:${props.selectedMail.email}`,
+          ...hermesReplyMemoryInput(selectedMail),
           memoryLayers: [
             "contact_memory",
             "writing_style_profile",
@@ -3070,6 +3106,9 @@ function MailWorkspace(props: {
           ],
         }),
       ]);
+      if (!isCurrentComposeMessageRequest(requestId)) {
+        return;
+      }
       applySeedToCompose(seed, {
         bodyText: result.draftText,
         source: "hermes_reply",
@@ -3079,6 +3118,9 @@ function MailWorkspace(props: {
       });
       focusComposeTarget("body");
     } catch (error) {
+      if (!isCurrentComposeMessageRequest(requestId)) {
+        return;
+      }
       setComposeNotice(
         hermesSkillErrorNotice(error, {
           skillId: "reply_draft",
@@ -3086,7 +3128,7 @@ function MailWorkspace(props: {
         }),
       );
     } finally {
-      setComposeBusy(false);
+      finishComposeMessageRequest(requestId);
     }
   }
 
@@ -3096,22 +3138,24 @@ function MailWorkspace(props: {
       return;
     }
 
-    setComposeBusy(true);
+    const requestId = beginComposeMessageRequest();
+    const selectedMail = props.selectedMail;
+    const from = selectedComposeFrom;
     try {
       const [seed, result] = await Promise.all([
         props.api.createComposeSeed({
-          accountId: props.selectedMail.accountId,
-          messageId: props.selectedMail.id,
+          accountId: selectedMail.accountId,
+          messageId: selectedMail.id,
           mode: "reply",
-          ...(selectedComposeFrom ? { from: selectedComposeFrom } : {}),
+          ...(from ? { from } : {}),
         }),
         props.api.quickMessageReply({
-          accountId: props.selectedMail.accountId,
-          messageId: props.selectedMail.id,
+          accountId: selectedMail.accountId,
+          messageId: selectedMail.id,
           scenario: action.scenario,
           instruction: action.instruction,
           tone: "warm professional",
-          memoryScope: `sender:${props.selectedMail.email}`,
+          ...hermesReplyMemoryInput(selectedMail),
           memoryLayers: [
             "contact_memory",
             "writing_style_profile",
@@ -3120,6 +3164,9 @@ function MailWorkspace(props: {
           ],
         }),
       ]);
+      if (!isCurrentComposeMessageRequest(requestId)) {
+        return;
+      }
       applySeedToCompose(seed, {
         bodyText: result.draftText,
         source: "hermes_reply",
@@ -3129,6 +3176,9 @@ function MailWorkspace(props: {
       });
       focusComposeTarget("body");
     } catch (error) {
+      if (!isCurrentComposeMessageRequest(requestId)) {
+        return;
+      }
       setComposeNotice(
         hermesSkillErrorNotice(error, {
           skillId: "quick_reply",
@@ -3136,7 +3186,7 @@ function MailWorkspace(props: {
         }),
       );
     } finally {
-      setComposeBusy(false);
+      finishComposeMessageRequest(requestId);
     }
   }
 
@@ -10114,6 +10164,18 @@ function hermesSearchMemoryInput(
 
   return {
     memoryScope: `sender:${selectedMail.email}`,
+  };
+}
+
+function hermesReplyMemoryInput(
+  selectedMail: MailItem | undefined,
+): { memoryScope: string } {
+  if (!selectedMail?.email) {
+    return { memoryScope: "global" };
+  }
+
+  return {
+    memoryScope: `recipient:${selectedMail.email}`,
   };
 }
 

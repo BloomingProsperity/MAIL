@@ -157,13 +157,18 @@ function draftInputFromMessage(
     ...(input.language ? { language: input.language } : {}),
     readMessageIds: [input.messageId],
     ...(input.memoryIds ? { memoryIds: input.memoryIds } : {}),
-    memoryScope: input.memoryScope ?? (senderEmail ? `sender:${senderEmail}` : "global"),
+    memoryScope:
+      input.memoryScope ?? replyMemoryScopeForSender(senderEmail),
     ...(input.memoryLayers ? { memoryLayers: input.memoryLayers } : {}),
     ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
     ...(input.customInstructions !== undefined
       ? { customInstructions: input.customInstructions }
       : {}),
   };
+}
+
+function replyMemoryScopeForSender(senderEmail: string | undefined): string {
+  return senderEmail ? `recipient:${senderEmail}` : "global";
 }
 
 function normalizeReplyDraftInput(
