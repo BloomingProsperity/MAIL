@@ -341,6 +341,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(apiPackage.scripts["verify:emailengine-live"]).toBe(
       "tsx src/emailengine-launch-verify.ts",
     );
+    expect(apiPackage.scripts["verify:emailengine-docker-health"]).toBe(
+      "tsx src/emailengine-docker-health-verify.ts",
+    );
     expect(rootPackage.scripts["compose:up"]).toContain("--env-file \"$ENV_FILE\"");
     expect(rootPackage.scripts["compose:up"]).toContain("EMAILHUB_ENV_FILE");
     expect(rootPackage.scripts["compose:up"]).toContain("infra/docker-compose.yml up --build");
@@ -366,8 +369,11 @@ describe("EmailEngine Docker configuration", () => {
     expect(rootPackage.scripts["verify:emailengine-launch:offline"]).toContain(
       "npm run stress:sync-queue:heavy",
     );
+    expect(rootPackage.scripts["verify:emailengine-launch:docker-health"]).toBe(
+      "npm run verify:emailengine-docker-health -w apps/api-node",
+    );
     expect(rootPackage.scripts["verify:emailengine-launch:live"]).toBe(
-      "npm run verify:emailengine-live && npm run smoke:emailengine-webhook",
+      "npm run verify:emailengine-live && npm run verify:emailengine-launch:docker-health && npm run smoke:emailengine-webhook",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:greenmail"]).toBe(
       "npm run smoke:imap-smtp-onboarding && npm run smoke:emailengine-real-webhook && npm run smoke:emailengine-send && npm run smoke:emailengine-attachment-download && npm run smoke:emailengine-mail-action",
@@ -384,6 +390,7 @@ describe("EmailEngine Docker configuration", () => {
     expect(readme).toContain("npm run verify:emailengine-launch:offline");
     expect(readme).toContain("npm run verify:emailengine-launch:live");
     expect(readme).toContain("npm run verify:emailengine-launch:greenmail");
+    expect(readme).toContain("npm run verify:emailengine-launch:docker-health");
     expect(readme).toContain("npm run verify:emailengine-launch:strict-db");
     expect(readme).toContain("npm run verify:emailengine-launch:core");
     expect(readme).toContain("npm run compose:up");

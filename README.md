@@ -361,10 +361,16 @@ $env:EMAILHUB_API_BASE_URL = "http://127.0.0.1:8080"
 npm run verify:emailengine-launch:live
 ```
 
-The live gate calls `/health`, `/api/mail-engine/health`, and the signed webhook
-smoke. It fails if API readiness is down, EmailEngine launch readiness is not
-`ready`, or token-backed onboarding, attachment download, and send capabilities
-are not all available.
+The live gate calls `/health`, `/api/mail-engine/health`, verifies Docker
+Compose service health for `postgres`, `redis-engine`, `emailengine`, `api`,
+`worker`, and `web`, then runs the signed webhook smoke. It fails if API
+readiness is down, EmailEngine launch readiness is not `ready`, any required
+container is not running and healthy, or token-backed onboarding, attachment
+download, and send capabilities are not all available.
+
+```powershell
+npm run verify:emailengine-launch:docker-health
+```
 
 For quick core regression while iterating on the launch path, run:
 

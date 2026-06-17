@@ -35,10 +35,12 @@ with more than smoke-level tests.
   newer version tag or immutable digest only after rerunning the launch gate.
   `verify:emailengine-launch:live` checks the running API `/health`,
   EmailEngine readiness, token-backed onboarding/download/send capabilities,
-  provider identity, API health status, and the signed webhook idempotency
-  smoke. `verify:emailengine-launch:strict-db` requires `TEST_DATABASE_URL`
-  and runs the real Postgres `sync_jobs` concurrency gate, failing immediately
-  instead of silently skipping when no disposable test database is configured.
+  provider identity, API health status, required Docker Compose service health
+  for `postgres`, `redis-engine`, `emailengine`, `api`, `worker`, and `web`, and
+  the signed webhook idempotency smoke. `verify:emailengine-launch:strict-db`
+  requires `TEST_DATABASE_URL` and runs the real Postgres `sync_jobs`
+  concurrency gate, failing immediately instead of silently skipping when no
+  disposable test database is configured.
   `verify:emailengine-launch:greenmail` groups the IMAP/SMTP onboarding smoke,
   real EmailEngine webhook smoke, outgoing worker send smoke, attachment
   download smoke, and user mail-action/outbox worker smoke against the
