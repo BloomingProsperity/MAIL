@@ -45,7 +45,8 @@ npm run compose:up:prod
 npm run compose:up:prod:detached
 ```
 
-Set `EMAILHUB_ENV_FILE=/path/to/env` when using a non-default env file.
+These production startup scripts run the EmailEngine env preflight before Docker
+starts. Set `EMAILHUB_ENV_FILE=/path/to/env` when using a non-default env file.
 
 IMAP/SMTP account onboarding is available at:
 
@@ -385,8 +386,7 @@ compose overlay. It uses `.env` by default for compose interpolation and falls
 back to `.env.example`; set `EMAILHUB_ENV_FILE=/path/to/env` when validating a
 specific deployment file.
 
-Before starting the production stack, run the env preflight gate against the
-same env file:
+You can also run the env preflight gate by itself against the same env file:
 
 ```powershell
 npm run verify:emailengine-launch:env

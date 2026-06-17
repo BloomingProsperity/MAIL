@@ -34,8 +34,9 @@ with more than smoke-level tests.
   `EMAILENGINE_IMAGE` instead of following `latest`; operators can override to a
   newer version tag or immutable digest only after rerunning the launch gate.
   Production self-hosted starts use `compose:up:prod` or
-  `compose:up:prod:detached` so the strict EmailEngine readiness overlay is
-  active from boot.
+  `compose:up:prod:detached`; both scripts run the production env preflight with
+  the same `EMAILHUB_ENV_FILE` before Docker starts, then boot with the strict
+  EmailEngine readiness overlay active from boot.
   `verify:emailengine-launch:env` is a read-only production env preflight that
   fails before Docker/HTTP checks if required launch secrets are missing,
   development defaults are still in use, or the bundled web token conflicts with

@@ -566,14 +566,26 @@ describe("EmailEngine Docker configuration", () => {
     expect(rootPackage.scripts["compose:up"]).toContain("--env-file \"$ENV_FILE\"");
     expect(rootPackage.scripts["compose:up"]).toContain("EMAILHUB_ENV_FILE");
     expect(rootPackage.scripts["compose:up"]).toContain("infra/docker-compose.yml up --build");
+    expect(rootPackage.scripts["compose:up"]).not.toContain(
+      "verify:emailengine-launch:env",
+    );
     expect(rootPackage.scripts["compose:up:detached"]).toContain(
       "--env-file \"$ENV_FILE\"",
     );
     expect(rootPackage.scripts["compose:up:detached"]).toContain(
       "infra/docker-compose.yml up -d --build",
     );
+    expect(rootPackage.scripts["compose:up:detached"]).not.toContain(
+      "verify:emailengine-launch:env",
+    );
+    expect(rootPackage.scripts["compose:up:prod"]).toContain(
+      'EMAILHUB_ENV_FILE="$ENV_FILE" npm run verify:emailengine-launch:env',
+    );
     expect(rootPackage.scripts["compose:up:prod"]).toContain(
       "infra/docker-compose.yml -f infra/docker-compose.prod.yml up --build",
+    );
+    expect(rootPackage.scripts["compose:up:prod:detached"]).toContain(
+      'EMAILHUB_ENV_FILE="$ENV_FILE" npm run verify:emailengine-launch:env',
     );
     expect(rootPackage.scripts["compose:up:prod:detached"]).toContain(
       "infra/docker-compose.yml -f infra/docker-compose.prod.yml up -d --build",
