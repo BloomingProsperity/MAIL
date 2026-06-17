@@ -10,9 +10,15 @@ const env = (import.meta as ImportMeta & {
 const api = createEmailHubApi({
   apiToken: env?.VITE_EMAILHUB_API_TOKEN,
 });
+const defaultAccountId =
+  env?.VITE_EMAILHUB_DEFAULT_ACCOUNT_ID?.trim() || undefined;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App api={api} />
+    <App
+      api={api}
+      defaultAccountId={defaultAccountId}
+      restrictToDefaultAccount={Boolean(defaultAccountId)}
+    />
   </React.StrictMode>
 );

@@ -173,6 +173,7 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("EMAILHUB_ALLOW_DEV_SECRETS=true");
     expect(envExample).toContain("NODE_ENV=development");
     expect(envExample).toContain("VITE_EMAILHUB_API_TOKEN=");
+    expect(envExample).toContain("VITE_EMAILHUB_DEFAULT_ACCOUNT_ID=");
     expect(envExample).toContain("EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES=26214400");
     expect(envExample).toContain("EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS=600");
     expect(api).toContain("NODE_ENV: ${NODE_ENV:-development}");
@@ -194,7 +195,11 @@ describe("EmailEngine Docker configuration", () => {
       "EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS: ${EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS:-600}",
     );
     expect(web).toContain("VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-}");
+    expect(web).toContain(
+      "VITE_EMAILHUB_DEFAULT_ACCOUNT_ID: ${VITE_EMAILHUB_DEFAULT_ACCOUNT_ID:-}",
+    );
     expect(webDockerfile).toContain("ARG VITE_EMAILHUB_API_TOKEN=");
+    expect(webDockerfile).toContain("ARG VITE_EMAILHUB_DEFAULT_ACCOUNT_ID=");
     expect(prodCompose).toContain("NODE_ENV: production");
     expect(prodCompose).toContain('EMAILHUB_ALLOW_DEV_SECRETS: "false"');
     expect(prodCompose).toContain('EMAILHUB_REQUIRE_API_TOKEN: "true"');

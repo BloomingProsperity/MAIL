@@ -342,6 +342,10 @@ real mailboxes:
   secrets are rejected during API startup.
 - `VITE_EMAILHUB_API_TOKEN`: same token when the bundled static web app calls
   the API directly from a trusted self-hosted browser session.
+- `EMAILHUB_API_TOKEN_ACCOUNT_IDS`: optional comma-separated account scope for
+  that token. When set for a browser-facing token, also set
+  `VITE_EMAILHUB_DEFAULT_ACCOUNT_ID` to the same account so the web app uses
+  account-scoped mail/search routes instead of global admin routes.
 - `EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES`: max bytes streamed through the API
   for a single attachment download, defaulting to 26214400.
 - `EMAILENGINE_ACCESS_TOKEN`: raw token used by the Email Hub API and worker.

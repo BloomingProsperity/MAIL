@@ -39,6 +39,7 @@ import type {
   HermesWorkspaceContextDto,
   MailNavigationSummaryDto,
   MailEngineHealthDto,
+  MessageDetailDto,
   MailProviderCapabilityDto,
   OAuthStartResult,
   ReauthorizationTaskDto,
@@ -525,6 +526,131 @@ describe("Email Hub first UI baseline", () => {
       await screen.findByText("请选择明确源语言后，再让 Hermes 记住翻译习惯。"),
     ).toBeTruthy();
     expect(api.confirmTranslationPreference).not.toHaveBeenCalled();
+  });
+
+  it("renders untrusted email HTML and Hermes output as inert text", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMessage).mockResolvedValueOnce({
+      id: "message_1",
+      accountId: "account_1",
+      subject: "Live subject",
+      from: { email: "client@example.com", name: "Live Client" },
+      receivedAt: "2026-06-13T10:00:00.000Z",
+      snippet: "Unsafe snippet",
+      unread: true,
+      starred: false,
+      mailboxIds: ["mailbox_inbox"],
+      attachmentCount: 0,
+      classification: {
+        bucket: "P1 Urgent",
+        priorityScore: 96,
+        reasons: ["Direct to you"],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText: "",
+      bodyHtml:
+        '<p>Safe body text</p><img src=x onerror="window.__emailHubXss=1"><script>window.__emailHubXss=1</script><style>.secret{display:none}</style>',
+      attachments: [],
+    } satisfies MessageDetailDto);
+    vi.mocked(api.summarizeMessage).mockResolvedValueOnce({
+      skillRunId: "run_summary_xss",
+      skillId: "thread_summarize",
+      accountId: "account_1",
+      messageId: "message_1",
+      mode: "action_points",
+      summaryText: '<img src=x onerror="window.__hermesSummaryXss=1">Summary',
+      cached: false,
+    } satisfies HermesMessageSummaryResult);
+    vi.mocked(api.translateMessage).mockResolvedValueOnce({
+      skillRunId: "run_translate_xss",
+      auditEventId: "audit_translate_xss",
+      skillId: "translate_text",
+      accountId: "account_1",
+      messageId: "message_1",
+      sourceLanguage: "auto",
+      targetLanguage: "Chinese",
+      translatedText:
+        '<svg onload="window.__hermesTranslateXss=1"></svg>Translated',
+      cached: false,
+    } satisfies HermesMessageTranslationResult);
+    vi.mocked(api.searchMailWithHermes).mockResolvedValueOnce({
+      skillRunId: "run_search_xss",
+      skillId: "email_search_qa",
+      searchQuery: "unsafe",
+      answerText: '<img src=x onerror="window.__hermesSearchXss=1">Answer',
+      searchPlan: {
+        searchQuery: "unsafe",
+        quickFilters: [],
+        qScopes: ["sender", "recipients", "subject", "body"],
+        filters: [],
+        listMessagesInput: {
+          q: "unsafe",
+          qScopes: ["sender", "recipients", "subject", "body"],
+        },
+        explanation: ["Validate inert rendering for untrusted Hermes output."],
+      },
+      matches: [],
+      citations: [],
+    } satisfies HermesEmailSearchQaResult);
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    expect(await screen.findByText("Safe body text")).toBeTruthy();
+    const messageBody = document.querySelector(".message-body");
+    expect(messageBody?.innerHTML).not.toContain("<img");
+    expect(messageBody?.textContent).not.toContain("__emailHubXss");
+    expect(
+      (window as Window & { __emailHubXss?: number }).__emailHubXss,
+    ).toBeUndefined();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to summarize selected message",
+      }),
+    );
+    expect(
+      await screen.findByText(
+        '<img src=x onerror="window.__hermesSummaryXss=1">Summary',
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to translate selected message",
+      }),
+    );
+    expect(
+      await screen.findByText(
+        '<svg onload="window.__hermesTranslateXss=1"></svg>Translated',
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "unsafe" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+    expect(
+      await screen.findByText(
+        '<img src=x onerror="window.__hermesSearchXss=1">Answer',
+      ),
+    ).toBeTruthy();
+
+    expect(document.querySelector(".message-body img")).toBeNull();
+    expect(document.querySelector(".hermes-reader-result img")).toBeNull();
+    expect(document.querySelector(".hermes-reader-result svg[onload]")).toBeNull();
+    expect(document.querySelector(".dock-result img")).toBeNull();
+    expect(
+      (window as Window & { __hermesSummaryXss?: number }).__hermesSummaryXss,
+    ).toBeUndefined();
+    expect(
+      (window as Window & { __hermesTranslateXss?: number })
+        .__hermesTranslateXss,
+    ).toBeUndefined();
+    expect(
+      (window as Window & { __hermesSearchXss?: number }).__hermesSearchXss,
+    ).toBeUndefined();
   });
 
   it("translates reader mail to the selected target language and saves a Hermes preference", async () => {
@@ -2962,6 +3088,76 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText("Top search result")).toBeTruthy();
+  });
+
+  it("keeps searches account-scoped when the default account is restricted", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items: [
+        {
+          id: input.q ? "message_scoped_search" : "message_1",
+          accountId: "account_1",
+          subject: input.q ? "Scoped search result" : "Live subject",
+          from: { email: "client@example.com", name: "Live Client" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: input.q ? "Matched within account 1" : "Live snippet",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: input.q ? 89 : 96,
+            reasons: input.q ? ["Scoped token"] : ["Direct to you"],
+          },
+        },
+      ],
+    }));
+
+    render(
+      <App
+        api={api}
+        defaultAccountId="account_1"
+        restrictToDefaultAccount
+      />,
+    );
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.change(screen.getByLabelText("全局搜索邮件"), {
+      target: { value: "verification code" },
+    });
+    fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+        q: "verification code",
+        qScopes: ["sender", "recipients", "subject", "body"],
+        sort: "smart",
+      });
+    });
+    expect(await screen.findByText("Scoped search result")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", {
+        name: "Search all accounts",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("搜索邮件"), {
+      target: { value: "launch plan" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+        q: "launch plan",
+        qScopes: ["sender", "recipients", "subject", "body"],
+        sort: "smart",
+      });
+    });
   });
 
   it("loads and saves new-sender handling from Settings", async () => {

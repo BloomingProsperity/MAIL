@@ -696,6 +696,7 @@ const fallbackHermesResourceProfile: HermesResourceProfileDto = {
 export interface AppProps {
   api?: EmailHubApi;
   defaultAccountId?: string;
+  restrictToDefaultAccount?: boolean;
   oauthRedirect?: (url: string) => void;
 }
 
@@ -790,6 +791,10 @@ export function App(props: AppProps = {}) {
   const [smartInboxBusy, setSmartInboxBusy] =
     useState<SmartInboxBusyAction>("");
 
+  const restrictToDefaultAccount =
+    props.api && props.defaultAccountId && props.restrictToDefaultAccount
+      ? props.defaultAccountId
+      : undefined;
   const accountId = selectedAccountId ?? PREVIEW_ACCOUNT_ID;
   const sortedMail = useMemo(
     () => [...workspaceMail].sort((left, right) => right.score - left.score),
@@ -878,6 +883,9 @@ export function App(props: AppProps = {}) {
     setSearchLaunch((current) => ({
       query: trimmedQuery,
       ...options,
+      ...(restrictToDefaultAccount
+        ? { accountId: options.accountId ?? restrictToDefaultAccount }
+        : {}),
       requestId: (current?.requestId ?? 0) + 1,
     }));
     setActiveView("search");
@@ -1752,6 +1760,7 @@ export function App(props: AppProps = {}) {
           <SearchPage
             api={props.api}
             accountId={selectedAccountId ?? selectedMail?.accountId ?? ""}
+            restrictToAccount={Boolean(restrictToDefaultAccount)}
             launch={searchLaunch}
             onOpenResult={openSearchResult}
           />
@@ -8349,14 +8358,21 @@ function SyncCenterPage(props: {
 function SearchPage(props: {
   api?: EmailHubApi;
   accountId: string;
+  restrictToAccount?: boolean;
   launch?: SearchLaunch;
   onOpenResult: (mail: MailItem) => void;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MailItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
-  const [notice, setNotice] = useState("输入关键词后搜索所有已同步邮件。");
-  const [searchAllAccounts, setSearchAllAccounts] = useState(true);
+  const [notice, setNotice] = useState(
+    props.restrictToAccount
+      ? "输入关键词后搜索当前邮箱。"
+      : "输入关键词后搜索所有已同步邮件。",
+  );
+  const [searchAllAccounts, setSearchAllAccounts] = useState(
+    () => !props.restrictToAccount,
+  );
   const [quickFilters, setQuickFilters] = useState<MailQuickFilter[]>([]);
   const [qScopes, setQScopes] = useState<MailSearchScope[]>([
     "sender",
@@ -8425,9 +8441,11 @@ function SearchPage(props: {
     const effectiveHasAttachment =
       launchOverride?.hasAttachment ?? hasAttachment;
     const hasLaunchOverride = launchOverride !== undefined;
-    const effectiveSearchAllAccounts = hasLaunchOverride
-      ? !launchOverride?.accountId
-      : searchAllAccounts;
+    const effectiveSearchAllAccounts = props.restrictToAccount
+      ? false
+      : hasLaunchOverride
+        ? !launchOverride?.accountId
+        : searchAllAccounts;
     const effectiveAccountId = launchOverride?.accountId ?? props.accountId;
 
     if (!effectiveSearchAllAccounts && !effectiveAccountId) {
@@ -8500,9 +8518,22 @@ function SearchPage(props: {
     setReceivedAfter(props.launch.receivedAfter);
     setReceivedBefore(props.launch.receivedBefore);
     setHasAttachment(props.launch.hasAttachment);
-    setSearchAllAccounts(!props.launch.accountId);
+    setSearchAllAccounts(
+      props.restrictToAccount ? false : !props.launch.accountId,
+    );
     void executeSearch(props.launch.query, props.launch);
   }, [props.launch?.requestId]);
+
+  useEffect(() => {
+    if (props.restrictToAccount) {
+      setSearchAllAccounts(false);
+      setNotice((current) =>
+        current === "输入关键词后搜索所有已同步邮件。"
+          ? "输入关键词后搜索当前邮箱。"
+          : current,
+      );
+    }
+  }, [props.restrictToAccount]);
 
   return (
     <section className="workspace-page page-scroll narrow">
@@ -8532,7 +8563,12 @@ function SearchPage(props: {
             className={searchAllAccounts ? "active" : ""}
             type="button"
             aria-label="Search all accounts"
-            onClick={() => setSearchAllAccounts(true)}
+            disabled={props.restrictToAccount}
+            onClick={() => {
+              if (!props.restrictToAccount) {
+                setSearchAllAccounts(true);
+              }
+            }}
           >
             全部账号
           </button>
@@ -12764,10 +12800,20 @@ function htmlToReadableText(html: string): string {
   if (typeof document !== "undefined") {
     const template = document.createElement("template");
     template.innerHTML = html;
+    template.content
+      .querySelectorAll("script, style, noscript, template")
+      .forEach((node) => node.remove());
     return normalizeReaderText(template.content.textContent ?? "");
   }
 
-  return normalizeReaderText(html.replace(/<[^>]*>/g, " "));
+  return normalizeReaderText(
+    html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, " ")
+      .replace(/<[^>]*>/g, " "),
+  );
 }
 
 function normalizeReaderText(value: string): string {
