@@ -6,6 +6,7 @@ import { resolveDockerComposeHostBaseUrl } from "./mail-engine/docker-compose-ho
 import {
   verifyDockerComposeHealth,
   type DockerComposeEnvInvariantInput,
+  type DockerComposePreparedTokenPairInput,
 } from "./mail-engine/docker-compose-health-verifier.js";
 
 export interface EmailEngineDockerHealthVerifyCliOptions {
@@ -73,6 +74,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
       waitAttempts,
       waitIntervalMs,
       envInvariants: dockerHealthEnvInvariants(runtimeEnv),
+      preparedTokenPairs: dockerHealthPreparedTokenPairs(runtimeEnv),
       hostChecks: [
         {
           name: "api_health",
@@ -132,6 +134,29 @@ export async function runEmailEngineDockerHealthVerifyCli(
     );
     return 1;
   }
+}
+
+export function dockerHealthPreparedTokenPairs(
+  env: CliEnv,
+): DockerComposePreparedTokenPairInput[] {
+  const emailEngineAccessToken = requireDockerHealthEnvValue(
+    env,
+    "EMAILENGINE_ACCESS_TOKEN",
+  );
+  const preparedToken = requireDockerHealthEnvValue(
+    env,
+    "EENGINE_PREPARED_TOKEN",
+  );
+
+  return [
+    {
+      service: "emailengine",
+      name: "accessTokenPreparedToken",
+      rawToken: emailEngineAccessToken,
+      expectedPreparedToken: preparedToken,
+      redisUrl: "redis://redis-engine:6379/0",
+    },
+  ];
 }
 
 export function dockerHealthEnvInvariants(

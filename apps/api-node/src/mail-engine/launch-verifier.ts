@@ -64,7 +64,11 @@ export async function verifyEmailEngineLaunch(
     ok: apiHealth.ok && apiHealthBody.ok === true,
     statusCode: apiHealth.statusCode,
     status: readString(apiHealthBody.status),
-    ...(!apiHealth.ok ? { detail: apiHealth.error ?? "api_health_unavailable" } : {}),
+    ...(!apiHealth.ok
+      ? { detail: apiHealth.error ?? "api_health_unavailable" }
+      : apiHealthBody.ok !== true
+        ? { detail: "api_health_not_ok" }
+        : {}),
   };
 
   const mailEngineBody = asRecord(mailEngineHealth.body);
@@ -199,6 +203,13 @@ function buildRequiredFollowUps(input: {
             .join(" | "),
         )
       : []),
+    ...(!input.emailEngineReadinessCheck.ok && input.setupActions.length === 0
+      ? [
+          emailEngineReadinessFollowUp(
+            input.emailEngineReadinessCheck.detail,
+          ),
+        ]
+      : []),
     ...(input.missingCapabilities.length > 0
       ? [
           `Wire token-backed EmailEngine capabilities before launch: ${input.missingCapabilities.join(
@@ -209,6 +220,26 @@ function buildRequiredFollowUps(input: {
   ];
 
   return [...new Set(followUps)].filter((item) => item.length > 0);
+}
+
+function emailEngineReadinessFollowUp(detail: string | undefined): string {
+  if (detail === "emailengine_provider_unexpected") {
+    return "Fix EmailEngine launch readiness before launch; /api/mail-engine/health must report provider=emailengine.";
+  }
+
+  if (detail === "emailengine_readiness_degraded") {
+    return "Fix EmailEngine launch readiness before launch; inspect /api/mail-engine/health readiness warnings and required env.";
+  }
+
+  if (detail === "emailengine_health_not_ok") {
+    return "Fix EmailEngine launch readiness before launch; EmailEngine health is not ready even though the API responded.";
+  }
+
+  if (detail === "timeout" || detail === "request_failed") {
+    return "Fix EmailEngine launch readiness before launch; verify the API can reach EmailEngine and check container logs.";
+  }
+
+  return "Fix EmailEngine launch readiness before launch; inspect /api/mail-engine/health and EmailEngine container logs.";
 }
 
 function capabilityMissing(

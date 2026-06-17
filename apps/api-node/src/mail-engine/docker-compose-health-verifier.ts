@@ -8,6 +8,7 @@ export interface DockerComposeHealthVerifierOptions {
   requiredServices?: string[];
   hostChecks?: DockerComposeHostHttpCheckInput[];
   envInvariants?: DockerComposeEnvInvariantInput[];
+  preparedTokenPairs?: DockerComposePreparedTokenPairInput[];
   httpTimeoutMs?: number;
   waitAttempts?: number;
   waitIntervalMs?: number;
@@ -28,6 +29,7 @@ export interface DockerComposeHealthVerificationResult {
   composeFileChecks: Record<string, DockerComposeConfigFileCheck>;
   hostChecks: Record<string, DockerComposeHostHttpCheck>;
   envChecks: Record<string, DockerComposeEnvInvariantCheck>;
+  preparedTokenChecks: Record<string, DockerComposePreparedTokenPairCheck>;
   requiredFollowUps: string[];
 }
 
@@ -71,6 +73,21 @@ export interface DockerComposeEnvInvariantCheck {
     | "env_json_parse_failed"
     | "env_json_path_missing"
     | "env_value_mismatch";
+}
+
+export interface DockerComposePreparedTokenPairInput {
+  service: string;
+  name: string;
+  rawToken: string;
+  expectedPreparedToken: string;
+  redisUrl?: string;
+}
+
+export interface DockerComposePreparedTokenPairCheck {
+  ok: boolean;
+  service: string;
+  name: string;
+  detail?: "token_export_failed" | "prepared_token_mismatch";
 }
 
 export interface DockerComposeConfigFileCheck {
@@ -183,6 +200,7 @@ async function verifyDockerComposeHealthOnce(input: {
       composeFileChecks: {},
       hostChecks: {},
       envChecks: {},
+      preparedTokenChecks: {},
       requiredFollowUps: [
         "Run the Docker compose stack before launch verification and inspect docker compose ps/logs.",
       ],
@@ -245,6 +263,17 @@ async function verifyDockerComposeHealthOnce(input: {
           `Fix Docker env invariant: ${check.service}.${check.name}.`,
       ),
   );
+  const preparedTokenChecks = Object.values(checks).every((check) => check.ok)
+    ? await checkComposePreparedTokenPairs(options)
+    : {};
+  requiredFollowUps.push(
+    ...Object.values(preparedTokenChecks)
+      .filter((check) => !check.ok)
+      .map(
+        (check) =>
+          `Fix Docker prepared token pair: ${check.service}.${check.name}.`,
+      ),
+  );
 
   return {
     ok: requiredFollowUps.length === 0,
@@ -258,6 +287,7 @@ async function verifyDockerComposeHealthOnce(input: {
     composeFileChecks,
     hostChecks,
     envChecks,
+    preparedTokenChecks,
     requiredFollowUps,
   };
 }
@@ -266,6 +296,9 @@ function shouldRetryHealthCheck(
   result: DockerComposeHealthVerificationResult,
 ): boolean {
   if (Object.values(result.envChecks).some((check) => !check.ok)) {
+    return false;
+  }
+  if (Object.values(result.preparedTokenChecks).some((check) => !check.ok)) {
     return false;
   }
   if (Object.values(result.composeFileChecks).some((check) => !check.ok)) {
@@ -520,6 +553,55 @@ function envInvariantReportName(input: {
   valuePath?: string[];
 }): string {
   return [input.name, ...(input.valuePath ?? [])].join(".");
+}
+
+async function checkComposePreparedTokenPairs(
+  options: DockerComposeHealthVerifierOptions,
+): Promise<Record<string, DockerComposePreparedTokenPairCheck>> {
+  const runCommand = options.runCommand ?? runDockerComposeCommand;
+  const checks = await Promise.all(
+    (options.preparedTokenPairs ?? []).map(async (tokenPair) => {
+      const commandResult = await runCommand({
+        command: "docker",
+        args: [
+          ...dockerComposeBaseArgs(options),
+          "exec",
+          "-T",
+          tokenPair.service,
+          "emailengine",
+          "tokens",
+          "export",
+          "-t",
+          tokenPair.rawToken,
+          `--dbs.redis=${tokenPair.redisUrl ?? "redis://redis-engine:6379/0"}`,
+        ],
+        cwd: options.projectRoot,
+      });
+      const actualPreparedToken = commandResult.stdout.trim();
+      const detail =
+        commandResult.exitCode !== 0 || !actualPreparedToken
+          ? "token_export_failed"
+          : actualPreparedToken !== tokenPair.expectedPreparedToken
+            ? "prepared_token_mismatch"
+            : undefined;
+      const check: DockerComposePreparedTokenPairCheck = {
+        ok: detail === undefined,
+        service: tokenPair.service,
+        name: tokenPair.name,
+        ...(detail ? { detail } : {}),
+      };
+      return [preparedTokenPairKey(tokenPair), check] as const;
+    }),
+  );
+
+  return Object.fromEntries(checks);
+}
+
+function preparedTokenPairKey(input: {
+  service: string;
+  name: string;
+}): string {
+  return `${input.service}.${input.name}`;
 }
 
 function dockerComposeBaseArgs(

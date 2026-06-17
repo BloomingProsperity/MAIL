@@ -197,6 +197,9 @@ describe("EmailEngine launch verifier", () => {
       status: "ready",
       detail: "emailengine_provider_unexpected",
     });
+    expect(wrongProvider.requiredFollowUps).toEqual([
+      "Fix EmailEngine launch readiness before launch; /api/mail-engine/health must report provider=emailengine.",
+    ]);
 
     fetchImpl.mockReset();
     fetchImpl
@@ -228,6 +231,47 @@ describe("EmailEngine launch verifier", () => {
       status: "ready",
       detail: "emailengine_health_not_ok",
     });
+    expect(unhealthyBody.requiredFollowUps).toEqual([
+      "Fix EmailEngine launch readiness before launch; EmailEngine health is not ready even though the API responded.",
+    ]);
+  });
+
+  it("reports API health body failures with an explicit detail", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({ ok: false, service: "email-hub-api" }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          provider: "emailengine",
+          ok: true,
+          capabilities: {
+            imapSmtpOnboarding: true,
+            attachmentDownload: true,
+            send: true,
+          },
+          readiness: {
+            status: "ready",
+            setupActions: [],
+          },
+        }),
+      );
+
+    const result = await verifyEmailEngineLaunch({
+      apiBaseUrl: "http://127.0.0.1:8080",
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.checks.apiHealth).toEqual({
+      ok: false,
+      statusCode: 200,
+      detail: "api_health_not_ok",
+    });
+    expect(result.requiredFollowUps).toEqual([
+      "Fix API /health before launch; check Postgres readiness and api container logs.",
+    ]);
   });
 
   it("redacts userinfo, query strings, and fragments from the base URL", async () => {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   bearerTokenHeaders,
   dockerHealthEnvInvariants,
+  dockerHealthPreparedTokenPairs,
   readNonNegativeInteger,
   readPositiveInteger,
   runEmailEngineDockerHealthVerifyCli,
@@ -118,6 +119,15 @@ describe("EmailEngine Docker health verify CLI runner", () => {
           service: "worker",
           name: "EMAILENGINE_WEBHOOK_SECRET",
           expected: "webhook-secret",
+        },
+      ]);
+      expect(input.preparedTokenPairs).toEqual([
+        {
+          service: "emailengine",
+          name: "accessTokenPreparedToken",
+          rawToken: "engine-token",
+          expectedPreparedToken: "prepared-token",
+          redisUrl: "redis://redis-engine:6379/0",
         },
       ]);
       expect(input.hostChecks).toEqual([
@@ -510,6 +520,23 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         },
       ]),
     );
+  });
+
+  it("builds Docker prepared token pair checks from selected runtime env", () => {
+    expect(
+      dockerHealthPreparedTokenPairs({
+        EMAILENGINE_ACCESS_TOKEN: " engine-token ",
+        EENGINE_PREPARED_TOKEN: " prepared-token ",
+      }),
+    ).toEqual([
+      {
+        service: "emailengine",
+        name: "accessTokenPreparedToken",
+        rawToken: "engine-token",
+        expectedPreparedToken: "prepared-token",
+        redisUrl: "redis://redis-engine:6379/0",
+      },
+    ]);
   });
 
   it("fails before Docker checks when a drift source env value is missing", async () => {

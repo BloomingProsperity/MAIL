@@ -40,7 +40,10 @@ with more than smoke-level tests.
   `verify:emailengine-launch:env` is a read-only production env preflight that
   fails before Docker/HTTP checks if required launch secrets are missing,
   development defaults are still in use, or the bundled web token conflicts with
-  the API token. `verify:emailengine-launch:live` runs that preflight before it
+  the API token. It also rejects common EmailEngine token mistakes: raw access
+  tokens must use EmailEngine's 64-character hex format, and prepared tokens
+  must not be the same raw token copied into the wrong variable.
+  `verify:emailengine-launch:live` runs that preflight before it
   checks the running API `/health`, EmailEngine readiness, token-backed
   onboarding/download/send capabilities, provider identity, API health status,
   host-reachable web/API endpoints, required Docker Compose service health for
@@ -51,18 +54,26 @@ with more than smoke-level tests.
   protected API probes without echoing it in the JSON report. It can also wait
   through bounded transient Docker/HTTP startup states while failing
   immediately on proven configuration gaps such as degraded EmailEngine
-  readiness. The launch verifier CLI now keeps the legacy script entrypoint but
-  routes top-level failures through a tested runner that redacts bearer tokens,
-  API tokens, PAT-shaped strings, URL userinfo/query fragments, and private
-  host details before writing JSON errors. The Docker health gate also reads a
-  small whitelist of running-container environment variables to prove the prod
-  overlay is actually active at runtime: API runs with `NODE_ENV=production`,
-  dev secrets disabled, API token enforcement enabled, and worker health checks
-  requiring the EmailEngine token. The Docker health CLI now uses the same
-  testable runner shape and shared error redaction helper as the launch
-  verifier, so top-level Docker/HTTP failures do not echo bearer tokens,
-  configured base URLs, userinfo, query strings, PAT-shaped strings, or private
-  host details.
+  readiness. When EmailEngine readiness fails without structured setup actions,
+  the live gate still emits a generic operator follow-up instead of returning a
+  silent `ok:false` failure. The launch verifier CLI now keeps the legacy script
+  entrypoint but routes top-level failures through a tested runner that redacts
+  bearer tokens, API tokens, PAT-shaped strings, URL userinfo/query fragments,
+  and private host details before writing JSON errors. The Docker health gate
+  also reads running-container environment variables to prove the prod overlay
+  and EmailEngine shared wiring are actually active at runtime: API runs with
+  `NODE_ENV=production`, dev secrets disabled, API token enforcement enabled,
+  worker health checks require the EmailEngine token, and the EmailEngine/API/
+  worker containers agree on access/prepared tokens, service secret, webhook
+  secret, auth-server secret, and `EENGINE_SETTINGS` webhook/auth-server fields.
+  It additionally runs EmailEngine's token export command inside the running
+  `emailengine` container to prove the selected `EENGINE_PREPARED_TOKEN` is the
+  exported prepared form of the selected `EMAILENGINE_ACCESS_TOKEN`, catching
+  stale prepared tokens that would fail on fresh Docker volumes.
+  The Docker health CLI now uses the same testable runner shape and shared error
+  redaction helper as the launch verifier, so top-level Docker/HTTP failures and
+  env drift reports do not echo bearer tokens, configured base URLs, userinfo,
+  query strings, PAT-shaped strings, private host details, or secret values.
   `verify:emailengine-launch:strict-db`
   requires `TEST_DATABASE_URL` and runs the real Postgres `sync_jobs`
   concurrency gate, failing immediately instead of silently skipping when no

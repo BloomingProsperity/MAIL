@@ -130,6 +130,44 @@ describe("EmailEngine production env verify CLI runner", () => {
     expect(JSON.stringify(result)).not.toContain("emailhub_dev");
   });
 
+  it("rejects malformed EmailEngine raw tokens and raw-token prepared values", () => {
+    const rawToken = "a".repeat(64);
+    const malformed = verifyEmailEngineProductionEnv({
+      env: productionEnv({
+        EMAILENGINE_ACCESS_TOKEN: "not-a-64-hex-token",
+      }),
+      now: () => new Date("2026-06-17T12:00:00.000Z"),
+    });
+
+    expect(malformed.ok).toBe(false);
+    expect(malformed.checks.requiredSecrets.issues).toContainEqual({
+      code: "emailengine_access_token_format_invalid",
+      severity: "error",
+      env: ["EMAILENGINE_ACCESS_TOKEN"],
+      detail:
+        "EMAILENGINE_ACCESS_TOKEN must be the original 64-character EmailEngine API token. Generate it with `emailengine tokens issue` before the production launch gate.",
+    });
+    expect(JSON.stringify(malformed)).not.toContain("not-a-64-hex-token");
+
+    const rawPrepared = verifyEmailEngineProductionEnv({
+      env: productionEnv({
+        EMAILENGINE_ACCESS_TOKEN: rawToken,
+        EENGINE_PREPARED_TOKEN: rawToken,
+      }),
+      now: () => new Date("2026-06-17T12:00:00.000Z"),
+    });
+
+    expect(rawPrepared.ok).toBe(false);
+    expect(rawPrepared.checks.requiredSecrets.issues).toContainEqual({
+      code: "eengine_prepared_token_equals_raw_token",
+      severity: "error",
+      env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+      detail:
+        "EENGINE_PREPARED_TOKEN must be the exported prepared token string for EMAILENGINE_ACCESS_TOKEN, not the raw API token itself. Generate it with `emailengine tokens export -t EMAILENGINE_ACCESS_TOKEN`.",
+    });
+    expect(JSON.stringify(rawPrepared)).not.toContain(rawToken);
+  });
+
   it("uses the selected env file and lets process env override it", async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];
@@ -137,8 +175,8 @@ describe("EmailEngine production env verify CLI runner", () => {
       [
         "EMAILHUB_API_TOKEN=file-token",
         "VITE_EMAILHUB_API_TOKEN=file-token",
-        "EMAILENGINE_ACCESS_TOKEN=file-emailengine-token",
-        "EENGINE_PREPARED_TOKEN=file-prepared-token",
+        `EMAILENGINE_ACCESS_TOKEN=${EMAILENGINE_ACCESS_TOKEN}`,
+        `EENGINE_PREPARED_TOKEN=${EENGINE_PREPARED_TOKEN}`,
         "EMAILENGINE_WEBHOOK_SECRET=file-webhook-secret",
         "EMAILENGINE_AUTH_SERVER_SECRET=file-auth-secret",
         "EENGINE_SECRET=file-service-secret",
@@ -167,7 +205,8 @@ describe("EmailEngine production env verify CLI runner", () => {
     const serialized = JSON.stringify(parsed);
     expect(serialized).not.toContain("process-token");
     expect(serialized).not.toContain("file-token");
-    expect(serialized).not.toContain("file-emailengine-token");
+    expect(serialized).not.toContain(EMAILENGINE_ACCESS_TOKEN);
+    expect(serialized).not.toContain(EENGINE_PREPARED_TOKEN);
   });
 
   it("redacts top-level preflight errors", async () => {
@@ -218,8 +257,8 @@ function productionEnv(
   return {
     EMAILHUB_API_TOKEN: "prod-api-token",
     VITE_EMAILHUB_API_TOKEN: "prod-api-token",
-    EMAILENGINE_ACCESS_TOKEN: "prod-emailengine-token",
-    EENGINE_PREPARED_TOKEN: "prod-prepared-token",
+    EMAILENGINE_ACCESS_TOKEN,
+    EENGINE_PREPARED_TOKEN,
     EMAILENGINE_WEBHOOK_SECRET: "prod-webhook-secret",
     EMAILENGINE_AUTH_SERVER_SECRET: "prod-auth-secret",
     EENGINE_SECRET: "prod-service-secret",
@@ -232,3 +271,8 @@ function productionEnv(
     ...overrides,
   };
 }
+
+const EMAILENGINE_ACCESS_TOKEN =
+  "f05d76644ea39c4a2ee33e7bffe55808b716a34b51d67b388c7d60498b0f89bc";
+const EENGINE_PREPARED_TOKEN =
+  "hKJpZNlAMzAxZThjNTFhZjgxM2Q3MzUxNTYzYTFlM2I1NjVkYmEzZWJjMzk4";

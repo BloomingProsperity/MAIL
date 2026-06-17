@@ -101,6 +101,7 @@ function checkRequiredProductionSecrets(
     ...REQUIRED_PRODUCTION_SECRETS.flatMap((secret) =>
       productionSecretIssues(env, secret),
     ),
+    ...emailEngineTokenPairIssues(env),
     ...bundledPostgresPasswordIssues(env),
   ];
 
@@ -138,6 +139,36 @@ function productionSecretIssues(
   }
 
   return [];
+}
+
+function emailEngineTokenPairIssues(
+  env: Record<string, string | undefined>,
+): PreflightIssue[] {
+  const accessToken = env.EMAILENGINE_ACCESS_TOKEN?.trim();
+  const preparedToken = env.EENGINE_PREPARED_TOKEN?.trim();
+  const issues: PreflightIssue[] = [];
+
+  if (accessToken && !/^[a-f0-9]{64}$/i.test(accessToken)) {
+    issues.push({
+      code: "emailengine_access_token_format_invalid",
+      severity: "error",
+      env: ["EMAILENGINE_ACCESS_TOKEN"],
+      detail:
+        "EMAILENGINE_ACCESS_TOKEN must be the original 64-character EmailEngine API token. Generate it with `emailengine tokens issue` before the production launch gate.",
+    });
+  }
+
+  if (accessToken && preparedToken && accessToken === preparedToken) {
+    issues.push({
+      code: "eengine_prepared_token_equals_raw_token",
+      severity: "error",
+      env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
+      detail:
+        "EENGINE_PREPARED_TOKEN must be the exported prepared token string for EMAILENGINE_ACCESS_TOKEN, not the raw API token itself. Generate it with `emailengine tokens export -t EMAILENGINE_ACCESS_TOKEN`.",
+    });
+  }
+
+  return issues;
 }
 
 function bundledPostgresPasswordIssues(

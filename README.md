@@ -401,7 +401,10 @@ and `EENGINE_SECRET` are set and not using development defaults. When
 `DATABASE_URL` is empty and Docker compose uses the bundled Postgres service, it
 also requires `POSTGRES_PASSWORD` to be changed from the local development
 default. It fails if `VITE_EMAILHUB_API_TOKEN` is set to a different value than
-`EMAILHUB_API_TOKEN`. Secret values are never printed.
+`EMAILHUB_API_TOKEN`. It also catches common EmailEngine token mistakes: the
+raw `EMAILENGINE_ACCESS_TOKEN` must use EmailEngine's 64-character hex token
+format, and `EENGINE_PREPARED_TOKEN` must not be the raw token copied into the
+wrong variable. Secret values are never printed.
 
 After the Docker stack is running, run the live gate from the host:
 
@@ -416,6 +419,9 @@ Compose service health for `postgres`, `redis-engine`, `emailengine`, `api`,
 readiness is down, the env preflight fails, EmailEngine launch readiness is not
 `ready`, any required container is not running and healthy, or token-backed
 onboarding, attachment download, and send capabilities are not all available.
+When readiness fails without a structured setup action, the live gate still
+returns a generic follow-up so operators are not left with an `ok:false` report
+and no next step.
 
 ```powershell
 npm run verify:emailengine-launch:docker-health
@@ -432,7 +438,15 @@ checked correctly. Protected production stacks should export
 the token in JSON results. It waits up to `EMAILHUB_DOCKER_HEALTH_ATTEMPTS`
 times with `EMAILHUB_DOCKER_HEALTH_WAIT_MS` between transient Docker/HTTP
 startup failures, but exits immediately for proven configuration gaps such as
-`readiness.status=degraded`.
+`readiness.status=degraded`. It also compares the selected env-file values
+against the running `emailengine`, `api`, and `worker` containers for
+EmailEngine access/prepared tokens, service secret, webhook secret, auth-server
+secret, and the `EENGINE_SETTINGS` webhook/auth-server fields. Mismatches are
+reported by service and env name only; actual and expected secret values are
+not printed. To catch stale prepared tokens, it also runs EmailEngine's token
+export command inside the running `emailengine` container and verifies that the
+selected `EENGINE_PREPARED_TOKEN` matches the selected
+`EMAILENGINE_ACCESS_TOKEN`.
 
 For quick core regression while iterating on the launch path, run:
 

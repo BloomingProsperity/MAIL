@@ -616,6 +616,113 @@ describe("Docker compose health verifier", () => {
     expect(serialized).not.toContain("expected-auth-secret");
   });
 
+  it("checks prepared token pairs without leaking raw or exported tokens", async () => {
+    const calls: unknown[] = [];
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      preparedTokenPairs: [
+        {
+          service: "emailengine",
+          name: "accessTokenPreparedToken",
+          rawToken: "raw-engine-token",
+          expectedPreparedToken: "expected-prepared-token",
+          redisUrl: "redis://redis-engine:6379/0",
+        },
+      ],
+      runCommand: async (input) => {
+        calls.push(input);
+        if (input.args.includes("ps")) {
+          return healthyComposeCommand();
+        }
+        return {
+          exitCode: 0,
+          stdout: "actual-prepared-token\n",
+          stderr: "",
+        };
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.preparedTokenChecks).toEqual({
+      "emailengine.accessTokenPreparedToken": {
+        ok: false,
+        service: "emailengine",
+        name: "accessTokenPreparedToken",
+        detail: "prepared_token_mismatch",
+      },
+    });
+    expect(result.requiredFollowUps).toEqual([
+      "Fix Docker prepared token pair: emailengine.accessTokenPreparedToken.",
+    ]);
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          args: expect.arrayContaining([
+            "exec",
+            "-T",
+            "emailengine",
+            "emailengine",
+            "tokens",
+            "export",
+            "-t",
+            "raw-engine-token",
+            "--dbs.redis=redis://redis-engine:6379/0",
+          ]),
+        }),
+      ]),
+    );
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("raw-engine-token");
+    expect(serialized).not.toContain("expected-prepared-token");
+    expect(serialized).not.toContain("actual-prepared-token");
+  });
+
+  it("does not wait when prepared token pairs prove a configuration gap", async () => {
+    const sleeps: number[] = [];
+    const result = await verifyDockerComposeHealth({
+      projectRoot: "/repo",
+      envFile: ".env",
+      composeFiles: ["infra/docker-compose.yml", "infra/docker-compose.prod.yml"],
+      waitAttempts: 3,
+      waitIntervalMs: 25,
+      preparedTokenPairs: [
+        {
+          service: "emailengine",
+          name: "accessTokenPreparedToken",
+          rawToken: "raw-engine-token",
+          expectedPreparedToken: "expected-prepared-token",
+        },
+      ],
+      runCommand: async (input) => {
+        if (input.args.includes("ps")) {
+          return healthyComposeCommand();
+        }
+        return {
+          exitCode: 0,
+          stdout: "actual-prepared-token\n",
+          stderr: "",
+        };
+      },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts).toBe(1);
+    expect(
+      result.preparedTokenChecks["emailengine.accessTokenPreparedToken"],
+    ).toEqual({
+      ok: false,
+      service: "emailengine",
+      name: "accessTokenPreparedToken",
+      detail: "prepared_token_mismatch",
+    });
+    expect(sleeps).toEqual([]);
+  });
+
   it("does not wait when runtime env invariants prove a configuration gap", async () => {
     const sleeps: number[] = [];
     const result = await verifyDockerComposeHealth({
