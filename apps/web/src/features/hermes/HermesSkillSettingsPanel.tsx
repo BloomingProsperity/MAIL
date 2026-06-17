@@ -9,6 +9,8 @@ import type {
 
 type SkillModeFilter = "all" | HermesSkillMode;
 
+const BULK_SKILL_SAVE_ID = "__all__";
+
 const skillModeFilters: Array<{ id: SkillModeFilter; label: string }> = [
   { id: "all", label: "全部" },
   { id: "read", label: "读信" },
@@ -123,17 +125,24 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
     () => new Map(savedSkills.map((skill) => [skill.id, skill])),
     [savedSkills],
   );
+  const unsavedSkills = useMemo(
+    () =>
+      skills.filter((skill) =>
+        isHermesSkillUnsaved(skill, savedSkillsById),
+      ),
+    [skills, savedSkillsById],
+  );
+  const unsavedSkillIds = useMemo(
+    () => new Set(unsavedSkills.map((skill) => skill.id)),
+    [unsavedSkills],
+  );
   const visibleSkills = skills.filter((skill) => {
-    const savedSkill = savedSkillsById.get(skill.id);
-    const hasUnsavedChanges = savedSkill
-      ? !areHermesSkillSettingsEqual(skill.settings, savedSkill.settings)
-      : false;
-
     return (
       (modeFilter === "all" || skill.mode === modeFilter) &&
-      (!showUnsavedOnly || hasUnsavedChanges)
+      (!showUnsavedOnly || unsavedSkillIds.has(skill.id))
     );
   });
+  const isSavingAnySkill = Boolean(savingSkillId);
 
   useEffect(() => {
     let alive = true;
@@ -245,6 +254,76 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
     }
   }
 
+  async function saveAllChangedSkills() {
+    if (unsavedSkills.length === 0) {
+      setNotice("没有需要保存的能力选项。");
+      return;
+    }
+
+    if (!props.api) {
+      setSavedSkills(skills);
+      setNotice(`预览已保存 ${unsavedSkills.length} 个能力选项。`);
+      return;
+    }
+
+    const api = props.api;
+    setSavingSkillId(BULK_SKILL_SAVE_ID);
+    setNotice(`正在保存 ${unsavedSkills.length} 个能力选项...`);
+    try {
+      const results = await Promise.allSettled(
+        unsavedSkills.map((skill) =>
+          api.updateHermesSkillSettings({
+            skillId: skill.id,
+            patch: skill.settings,
+          }),
+        ),
+      );
+      const saved = results
+        .filter(
+          (result): result is PromiseFulfilledResult<HermesSkillDto> =>
+            result.status === "fulfilled",
+        )
+        .map((result) => result.value);
+      const savedById = new Map(saved.map((skill) => [skill.id, skill]));
+
+      if (saved.length > 0) {
+        setSkills((current) =>
+          current.map((item) => savedById.get(item.id) ?? item),
+        );
+        setSavedSkills((current) =>
+          current.map((item) => savedById.get(item.id) ?? item),
+        );
+      }
+
+      let profileRefreshed = false;
+      if (saved.length > 0) {
+        try {
+          setResourceProfile(await api.getHermesResourceProfile());
+          profileRefreshed = true;
+        } catch {
+          profileRefreshed = false;
+        }
+      }
+
+      if (saved.length === unsavedSkills.length) {
+        setNotice(
+          `已保存 ${saved.length} 个能力选项，资源画像${
+            profileRefreshed ? "已刷新" : "暂时未刷新"
+          }。`,
+        );
+        return;
+      }
+
+      setNotice(
+        `已保存 ${saved.length} 个能力选项，${unsavedSkills.length - saved.length} 个保存失败，资源画像${
+          profileRefreshed ? "已刷新" : "暂时未刷新"
+        }。`,
+      );
+    } finally {
+      setSavingSkillId(undefined);
+    }
+  }
+
   return (
     <section className="hermes-skill-settings" aria-label="Hermes skill settings">
       <header className="settings-panel-head">
@@ -252,6 +331,18 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
           <h3>能力选项与预算</h3>
           <p>每个能力都可以独立限制正文读取、记忆写入、确认门槛和上下文预算。</p>
         </div>
+        <button
+          className="ghost-button"
+          type="button"
+          aria-label="Save all changed Hermes skill settings"
+          disabled={unsavedSkills.length === 0 || isSavingAnySkill}
+          onClick={() => void saveAllChangedSkills()}
+        >
+          <CheckCircle2 size={15} aria-hidden="true" />
+          {savingSkillId === BULK_SKILL_SAVE_ID
+            ? "保存中"
+            : `保存全部${unsavedSkills.length > 0 ? ` (${unsavedSkills.length})` : ""}`}
+        </button>
       </header>
 
       <div
@@ -347,10 +438,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
 
       <div className="skill-grid compact hermes-skill-grid">
         {visibleSkills.map((skill) => {
-          const savedSkill = savedSkillsById.get(skill.id);
-          const hasUnsavedChanges = savedSkill
-            ? !areHermesSkillSettingsEqual(skill.settings, savedSkill.settings)
-            : false;
+          const hasUnsavedChanges = unsavedSkillIds.has(skill.id);
           return (
             <article key={skill.id} className="skill-card hermes-skill-card">
               <Sparkles size={18} />
@@ -483,7 +571,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                     className="ghost-button"
                     type="button"
                     aria-label={`Reset Hermes skill settings ${skill.title}`}
-                    disabled={!hasUnsavedChanges || savingSkillId === skill.id}
+                    disabled={!hasUnsavedChanges || isSavingAnySkill}
                     onClick={() => resetLocalSkill(skill)}
                   >
                     <Undo2 size={15} aria-hidden="true" />
@@ -493,7 +581,7 @@ export function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
                     className="ghost-button"
                     type="button"
                     aria-label={`Save Hermes skill settings ${skill.title}`}
-                    disabled={!hasUnsavedChanges || savingSkillId === skill.id}
+                    disabled={!hasUnsavedChanges || isSavingAnySkill}
                     onClick={() => void saveSkill(skill)}
                   >
                     <CheckCircle2 size={15} aria-hidden="true" />
@@ -608,6 +696,16 @@ function clampHermesSkillInteger(
   }
 
   return Math.min(bounds.max, Math.max(bounds.min, Math.trunc(next)));
+}
+
+function isHermesSkillUnsaved(
+  skill: HermesSkillDto,
+  savedSkillsById: Map<string, HermesSkillDto>,
+): boolean {
+  const savedSkill = savedSkillsById.get(skill.id);
+  return savedSkill
+    ? !areHermesSkillSettingsEqual(skill.settings, savedSkill.settings)
+    : false;
 }
 
 function areHermesSkillSettingsEqual(

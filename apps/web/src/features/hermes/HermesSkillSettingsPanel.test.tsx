@@ -1,5 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type {
+  EmailHubApi,
+  HermesResourceProfileDto,
+  HermesSkillDto,
+} from "../../lib/emailHubApi";
 import { HermesSkillSettingsPanel } from "./HermesSkillSettingsPanel";
 
 describe("HermesSkillSettingsPanel", () => {
@@ -37,4 +42,160 @@ describe("HermesSkillSettingsPanel", () => {
     );
     expect(screen.getByText("没有匹配的 Hermes 能力。")).toBeTruthy();
   });
+
+  it("saves all changed backend skill settings and refreshes the resource profile", async () => {
+    const api = createSkillApiFixture();
+
+    render(<HermesSkillSettingsPanel api={api} />);
+
+    const panel = await screen.findByLabelText("Hermes skill settings");
+    expect(await within(panel).findByText("能力选项已同步。")).toBeTruthy();
+    expect(within(panel).getByText("启用技能").nextSibling?.textContent).toBe(
+      "2/2",
+    );
+
+    const translateCard = within(panel)
+      .getByText("翻译邮件")
+      .closest("article") as HTMLElement;
+    const replyCard = within(panel)
+      .getByText("生成回复草稿")
+      .closest("article") as HTMLElement;
+
+    fireEvent.click(
+      within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
+    );
+    fireEvent.change(
+      within(replyCard).getByLabelText("Hermes skill memory limit 生成回复草稿"),
+      { target: { value: "0" } },
+    );
+
+    fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "Save all changed Hermes skill settings",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.updateHermesSkillSettings).toHaveBeenCalledWith({
+        skillId: "translate_text",
+        patch: expect.objectContaining({ enabled: false }),
+      });
+      expect(api.updateHermesSkillSettings).toHaveBeenCalledWith({
+        skillId: "reply_draft",
+        patch: expect.objectContaining({ memoryLimit: 0 }),
+      });
+    });
+    expect(api.getHermesResourceProfile).toHaveBeenCalledTimes(2);
+    expect(
+      await within(panel).findByText("已保存 2 个能力选项，资源画像已刷新。"),
+    ).toBeTruthy();
+
+    const savedTranslateCard = within(panel)
+      .getByText("翻译邮件")
+      .closest("article") as HTMLElement;
+    expect(within(savedTranslateCard).getByText(/已同步/)).toBeTruthy();
+  });
 });
+
+function createSkillApiFixture(): EmailHubApi {
+  const skills = [
+    skillFixture({
+      id: "translate_text",
+      title: "翻译邮件",
+      mode: "read",
+      description: "翻译邮件正文",
+    }),
+    skillFixture({
+      id: "reply_draft",
+      title: "生成回复草稿",
+      mode: "draft",
+      description: "根据上下文生成可编辑回复",
+      settings: {
+        ...skillSettingsFixture(),
+        requireConfirmation: true,
+      },
+    }),
+  ];
+  const api = {
+    listHermesSkills: vi.fn(async () => skills),
+    getHermesResourceProfile: vi.fn(async () => resourceProfileFixture()),
+    updateHermesSkillSettings: vi.fn(async (input) => {
+      const skill = skills.find((item) => item.id === input.skillId);
+      if (!skill) {
+        throw new Error(`Unknown skill ${input.skillId}`);
+      }
+      return {
+        ...skill,
+        settings: {
+          ...skill.settings,
+          ...input.patch,
+        },
+      };
+    }),
+  };
+  return api as typeof api & EmailHubApi;
+}
+
+function skillFixture(overrides: Partial<HermesSkillDto> = {}): HermesSkillDto {
+  return {
+    id: "thread_summarize",
+    title: "线程总结",
+    mode: "read",
+    description: "总结线程状态、争议点和下一步",
+    settings: skillSettingsFixture(),
+    settingBounds: {
+      maxContextChars: { min: 1000, max: 200000, step: 1000 },
+      memoryLimit: { min: 0, max: 50, step: 1 },
+      customInstructions: { maxLength: 2000 },
+    },
+    ...overrides,
+  };
+}
+
+function skillSettingsFixture(): HermesSkillDto["settings"] {
+  return {
+    enabled: true,
+    maxContextChars: 24000,
+    memoryLimit: 6,
+    allowBodyRead: true,
+    allowMemoryWrite: false,
+    requireConfirmation: false,
+    customInstructions: "",
+  };
+}
+
+function resourceProfileFixture(): HermesResourceProfileDto {
+  return {
+    skills: {
+      total: 2,
+      enabled: 2,
+      bodyReadEnabled: 2,
+      memoryWriteEnabled: 0,
+      confirmationRequired: 1,
+      maxContextCharsPerRun: 24000,
+      maxMemoryItemsPerRun: 6,
+      enabledContextBudgetChars: 48000,
+      enabledMemoryBudgetItems: 12,
+    },
+    retention: {
+      retentionDays: 30,
+      cleanupIntervalMs: 3600000,
+      cleanupLimit: 500,
+      managedTables: ["hermes_skill_runs"],
+    },
+    deployment: {
+      profile: "medium",
+      recommendedMinimum: {
+        cpuCores: 2,
+        memoryGb: 6,
+        diskGb: 30,
+      },
+      localModelRecommendedMinimum: {
+        cpuCores: 6,
+        memoryGb: 24,
+        diskGb: 80,
+      },
+    },
+    guardrails: ["Prompt context is capped per skill."],
+  };
+}
