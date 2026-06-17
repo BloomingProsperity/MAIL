@@ -264,6 +264,49 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("keeps label-filtered search prompts in Hermes mail search instead of action plans", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "搜索带客户标签的合同" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    await waitFor(() => {
+      expect(api.searchMailWithHermes).toHaveBeenCalledWith({
+        accountId: "account_1",
+        question: "搜索带客户标签的合同",
+        language: "zh-CN",
+        limit: 5,
+        memoryScope: "sender:client@example.com",
+      });
+    });
+    expect(api.createHermesActionPlan).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("Lina mentioned the signed contract in the latest thread."),
+    ).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "filter invoices from Alice" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    await waitFor(() => {
+      expect(api.searchMailWithHermes).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        question: "filter invoices from Alice",
+        language: "zh-CN",
+        limit: 5,
+        memoryScope: "sender:client@example.com",
+      });
+    });
+    expect(api.createHermesActionPlan).not.toHaveBeenCalled();
+  });
+
   it("creates and confirms a Hermes mailbox action plan from the compact dock", async () => {
     const api = createApiFixture();
 

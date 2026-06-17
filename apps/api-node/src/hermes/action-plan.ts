@@ -703,8 +703,40 @@ function isMailboxRulePlanCommand(command: string): boolean {
 }
 
 export function isMailboxRuleCommand(command: string): boolean {
+  const value = command.trim();
+  if (isMailboxSearchCommand(value) && !isMailboxAutomationCommand(value)) {
+    return false;
+  }
+
+  return isMailboxAutomationCommand(value);
+}
+
+function isMailboxSearchCommand(command: string): boolean {
+  return /搜索|查找|查询|寻找|找一下|找出|找找|搜一下|有哪些|哪些|有没有|在哪里|在哪|search|find|show|list|filter/i.test(
+    command,
+  );
+}
+
+function isMailboxAutomationCommand(command: string): boolean {
   return (
-    /规则|分组|分类|标签|filter|rule/i.test(command) ||
+    /(?:create|add|set up|setup|make|build|enable).*(?:rule|filter|label|folder|category)/i.test(
+      command,
+    ) ||
+    /(?:auto|automatically|always).*(?:rule|filter|label|move|categorize|classify)/i.test(
+      command,
+    ) ||
+    /(?:创建|新增|添加|新建|设置|建立|启用|生成).*(?:规则|分组|分类|标签|filter|rule)/iu.test(
+      command,
+    ) ||
+    /(?:自动|以后|今后|每次|总是|一律|都).*(?:规则|分组|分类|标签|归类|移动到|移到|放到|放进|归到|归入|整理到|分配到)/u.test(
+      command,
+    ) ||
+    /(?:把|将).*(?:邮件|邮箱|收件箱).*(?:放到|放进|归到|归入|归类|移动到|移到|整理到|分配到).*(?:分组|分类|标签|左侧|文件夹)/u.test(
+      command,
+    ) ||
+    /(?:邮件|邮箱|收件箱).*(?:加|打|应用).*(?:标签|分类|分组)/u.test(
+      command,
+    ) ||
     /(?:创建|新增|添加|新建|加|放到|放进|归到|归入|归类|移动到|移到|整理到|分配到|自动).*(?:邮件|邮箱|收件箱|左侧)/u.test(
       command,
     )

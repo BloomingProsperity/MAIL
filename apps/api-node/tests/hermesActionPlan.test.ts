@@ -978,6 +978,45 @@ describe("Hermes action plan service", () => {
       }),
     ).rejects.toBeInstanceOf(InvalidHermesActionPlanRequestError);
   });
+
+  it("rejects mail search prompts that mention labels instead of drafting rules", async () => {
+    const service = createHermesActionPlanService({
+      ruleService: {
+        async draftRule() {
+          throw new Error("should not draft");
+        },
+        async simulateRule() {
+          throw new Error("should not simulate");
+        },
+        async approveRule() {
+          throw new Error("should not approve");
+        },
+        async backfillRuleHistory() {
+          throw new Error("should not backfill");
+        },
+      },
+      workspaceContextService: {
+        async getContext() {
+          throw new Error("should not read context");
+        },
+      },
+      planStore: createInMemoryHermesActionPlanStore(),
+      createId: nextId([]),
+      now: () => "2026-06-16T08:00:00.000Z",
+    });
+
+    for (const command of [
+      "搜索带客户标签的合同",
+      "filter invoices from Alice",
+    ]) {
+      await expect(
+        service.createPlan({
+          accountId: "account_1",
+          command,
+        }),
+      ).rejects.toBeInstanceOf(InvalidHermesActionPlanRequestError);
+    }
+  });
 });
 
 function nextId(ids: string[]): () => string {
