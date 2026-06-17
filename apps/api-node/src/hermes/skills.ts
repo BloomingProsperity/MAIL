@@ -141,12 +141,14 @@ export function normalizeHermesSkillSettings(
       base.maxContextChars,
       SETTING_BOUNDS.maxContextChars.min,
       SETTING_BOUNDS.maxContextChars.max,
+      SETTING_BOUNDS.maxContextChars.step,
       "maxContextChars",
     ),
     memoryLimit: normalizeInteger(
       base.memoryLimit,
       SETTING_BOUNDS.memoryLimit.min,
       SETTING_BOUNDS.memoryLimit.max,
+      SETTING_BOUNDS.memoryLimit.step,
       "memoryLimit",
     ),
     allowBodyRead: normalizeBoolean(base.allowBodyRead, "allowBodyRead"),
@@ -205,6 +207,7 @@ function normalizeInteger(
   value: unknown,
   min: number,
   max: number,
+  step: number,
   field: string,
 ): number {
   if (!Number.isInteger(value)) {
@@ -212,7 +215,11 @@ function normalizeInteger(
   }
 
   const numberValue = value as number;
-  if (numberValue < min || numberValue > max) {
+  if (
+    numberValue < min ||
+    numberValue > max ||
+    (numberValue - min) % step !== 0
+  ) {
     throw new Error(`${field} is out of range`);
   }
 

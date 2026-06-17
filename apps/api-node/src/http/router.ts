@@ -1676,6 +1676,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           hermesActionPlanRoute.action === "create" &&
           request.method === "POST"
         ) {
+          await ensureHermesSkillAllowed(config, "action_plan");
           const result = await config.hermesActionPlanService.createPlan(
             parseHermesActionPlanCreateInput(await readRequestBody()),
           );

@@ -173,10 +173,13 @@ with more than smoke-level tests.
   The per-skill memory limit is now applied at runtime when loading memory
   context for direct skill runs and message-scoped reader skills, so Settings
   changes reduce prompt memory fan-out instead of only changing UI metadata.
+  `memoryLimit=0` is a hard off switch for memory lookup, and requested memory
+  layers are deduplicated and capped before any database query to prevent
+  layer-by-scope query fan-out under load.
   The per-skill memory-write permission is enforced before state-changing
   learning paths write memories or preferences: translation preference
   confirmation checks `translate_text`, draft feedback checks the originating
-  draft skill, and action-plan confirmation checks `action_plan`.
+  draft skill, and action-plan creation/confirmation checks `action_plan`.
   New Hermes skills must ship with editable settings, defaults, frontend
   controls, and route tests before they are considered complete.
 - Worker: no silent write actions; worker only consumes explicit mail actions
@@ -204,6 +207,8 @@ with more than smoke-level tests.
   dock renders Hermes' answer plus cited app-owned message ids, subjects,
   senders, dates, and Smart Inbox buckets, and can hand the resolved
   `searchQuery` to the Search workspace for deterministic filtering. Hermes
+  search QA now applies the editable per-skill context budget before calling
+  Hermes, so large result snippets cannot create an unbounded prompt. Hermes
   search remains read-only: it answers and cites, but does not move, delete, or
   send mail.
 - Current reader-assist status: the message reader now exposes Hermes summary
@@ -228,6 +233,9 @@ with more than smoke-level tests.
   fan-out, retention cleanup policy, managed Hermes tables, and self-hosted
   machine guidance; Settings displays the same profile before the editable
   skill cards so operators can lower budgets before a node is under pressure.
+  Saving a skill refreshes the profile immediately, and the UI surfaces the
+  returned guardrails plus CPU/RAM/disk guidance for external-Hermes and local
+  model deployments.
 - Current action-plan status: Hermes rule candidates are now recoverable after
   refresh through `GET /api/hermes/rule-candidates`, and Settings loads shadow
   candidates alongside enabled rules. Confirming a candidate creates the

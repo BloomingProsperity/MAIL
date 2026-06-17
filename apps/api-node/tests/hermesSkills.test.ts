@@ -62,4 +62,12 @@ describe("Hermes skills", () => {
       }),
     ).toThrow("memoryLimit is out of range");
   });
+
+  it("rejects editable context budgets that do not match the configured step", () => {
+    expect(() =>
+      normalizeHermesSkillSettings("translate_text", {
+        maxContextChars: 12500,
+      }),
+    ).toThrow("maxContextChars is out of range");
+  });
 });

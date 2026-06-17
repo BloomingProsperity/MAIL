@@ -6616,6 +6616,23 @@ function formatHermesDeploymentProfile(
   return labels[profile];
 }
 
+function formatHermesGuardrail(guardrail: string): string {
+  const labels: Record<string, string> = {
+    "Prompt context is capped per skill before provider calls and audit persistence.":
+      "调用前按 skill 上下文预算截断 Prompt，并按截断后的内容审计。",
+    "Memory fan-out is capped per skill through memoryLimit.":
+      "每个 skill 按 memoryLimit 限制记忆读取数量，避免记忆扇出失控。",
+    "State-changing learning paths must pass skill permission and confirmation checks.":
+      "会改变状态的学习路径必须通过 skill 权限和确认门槛。",
+    "Retention cleanup prunes expired Hermes caches, plans, feedback, audit events, and skill runs in bounded batches.":
+      "保留清理会分批删除过期缓存、计划、反馈、审计和 skill run。",
+    "Prompt context is capped per skill.":
+      "调用前按 skill 上下文预算截断 Prompt。",
+  };
+
+  return labels[guardrail] ?? guardrail;
+}
+
 function clampHermesSkillInteger(
   value: string,
   current: number,
@@ -8652,7 +8669,12 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
       setSkills((current) =>
         current.map((item) => (item.id === saved.id ? saved : item)),
       );
-      setNotice(`能力选项已保存：${saved.title}。`);
+      try {
+        setResourceProfile(await props.api.getHermesResourceProfile());
+        setNotice(`能力选项已保存：${saved.title}，资源画像已刷新。`);
+      } catch {
+        setNotice(`能力选项已保存：${saved.title}，资源画像暂时未刷新。`);
+      }
     } catch {
       setNotice(`保存失败：${skill.title}。`);
     } finally {
@@ -8700,7 +8722,8 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
           <strong>{formatHermesDeploymentProfile(resourceProfile.deployment.profile)}</strong>
           <p>
             {resourceProfile.deployment.recommendedMinimum.cpuCores}C /{" "}
-            {resourceProfile.deployment.recommendedMinimum.memoryGb}GB RAM
+            {resourceProfile.deployment.recommendedMinimum.memoryGb}GB RAM /{" "}
+            {resourceProfile.deployment.recommendedMinimum.diskGb}GB disk
           </p>
         </article>
       </div>
@@ -8711,8 +8734,26 @@ function HermesSkillSettingsPanel(props: { api?: EmailHubApi }) {
         每批最多 {resourceProfile.retention.cleanupLimit.toLocaleString()} 行。
         本地模型建议至少{" "}
         {resourceProfile.deployment.localModelRecommendedMinimum.cpuCores}C /{" "}
-        {resourceProfile.deployment.localModelRecommendedMinimum.memoryGb}GB RAM。
+        {resourceProfile.deployment.localModelRecommendedMinimum.memoryGb}GB RAM /{" "}
+        {resourceProfile.deployment.localModelRecommendedMinimum.diskGb}GB disk。
       </div>
+
+      {resourceProfile.guardrails.length > 0 ? (
+        <div
+          className="diagnostic-list compact"
+          aria-label="Hermes resource guardrails"
+        >
+          {resourceProfile.guardrails.map((guardrail) => (
+            <div className="diagnostic-row" key={guardrail}>
+              <ShieldCheck size={18} />
+              <div>
+                <strong>{formatHermesGuardrail(guardrail)}</strong>
+                <span>上下文与保留治理</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="skill-grid compact hermes-skill-grid">
         {skills.map((skill) => (

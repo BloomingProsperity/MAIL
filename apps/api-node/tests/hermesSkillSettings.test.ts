@@ -89,6 +89,21 @@ describe("Hermes skill settings service", () => {
       }),
     ).rejects.toBeInstanceOf(InvalidHermesSkillSettingsRequestError);
   });
+
+  it("rejects settings that do not match skill bounds", async () => {
+    const saved: unknown[] = [];
+    const service = createHermesSkillSettingsService({
+      store: storeWithSettings({}, saved),
+    });
+
+    await expect(
+      service.updateSkillSettings({
+        skillId: "translate_text",
+        patch: { maxContextChars: 12500 },
+      }),
+    ).rejects.toBeInstanceOf(InvalidHermesSkillSettingsRequestError);
+    expect(saved).toEqual([]);
+  });
 });
 
 function storeWithSettings(

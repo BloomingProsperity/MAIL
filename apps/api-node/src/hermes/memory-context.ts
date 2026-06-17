@@ -1,5 +1,7 @@
 import type { HermesMemoryDto, HermesMemoryStore } from "./memory-store.js";
 
+const MAX_MEMORY_LAYERS_PER_RUN = 6;
+
 export interface HermesMemoryContextInput {
   memoryScope?: string;
   memoryLayers?: string[];
@@ -20,10 +22,21 @@ export async function loadHermesMemoryContext(
     return [];
   }
 
+  const limit = normalizeMemoryLimit(input.memoryLimit ?? options.memoryLimit ?? 6);
+  if (limit <= 0) {
+    return [];
+  }
+
   const layers = normalizeMemoryLayers(input.memoryLayers, options.defaultLayers);
-  const limit = input.memoryLimit ?? options.memoryLimit ?? 6;
+  if (layers.length === 0) {
+    return [];
+  }
+
   const scopes = normalizeMemoryScopes(input.memoryScope);
-  const perQueryLimit = Math.max(1, Math.ceil(limit / (layers.length * scopes.length)));
+  const perQueryLimit = Math.max(
+    1,
+    Math.ceil(limit / (layers.length * scopes.length)),
+  );
   const pages = await Promise.all(
     layers.flatMap((layer) =>
       scopes.map((scope) =>
@@ -75,11 +88,35 @@ function normalizeMemoryLayers(
   layers: string[] | undefined,
   defaultLayers: string[],
 ): string[] {
-  const normalized = (layers ?? defaultLayers)
-    .map((layer) => layer.trim())
-    .filter((layer) => layer.length > 0);
+  const normalized = uniqueNonEmptyLayers(layers ?? defaultLayers);
 
-  return normalized.length > 0 ? normalized : defaultLayers;
+  return (normalized.length > 0 ? normalized : uniqueNonEmptyLayers(defaultLayers))
+    .slice(0, MAX_MEMORY_LAYERS_PER_RUN);
+}
+
+function uniqueNonEmptyLayers(layers: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const layer of layers) {
+    const trimmed = layer.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+
+  return normalized;
+}
+
+function normalizeMemoryLimit(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.trunc(value));
 }
 
 function normalizeMemoryScopes(scope: string | undefined): string[] {

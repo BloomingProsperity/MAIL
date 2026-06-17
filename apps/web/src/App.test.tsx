@@ -1143,6 +1143,35 @@ describe("Email Hub first UI baseline", () => {
 
   it("lets users edit Hermes skill options from Settings", async () => {
     const api = createApiFixture();
+    const refreshedProfile = hermesResourceProfileFixture({
+      skills: {
+        total: 14,
+        enabled: 12,
+        bodyReadEnabled: 10,
+        memoryWriteEnabled: 4,
+        confirmationRequired: 5,
+        maxContextCharsPerRun: 12000,
+        maxMemoryItemsPerRun: 2,
+        enabledContextBudgetChars: 144000,
+        enabledMemoryBudgetItems: 24,
+      },
+      deployment: {
+        profile: "small",
+        recommendedMinimum: {
+          cpuCores: 2,
+          memoryGb: 4,
+          diskGb: 20,
+        },
+        localModelRecommendedMinimum: {
+          cpuCores: 4,
+          memoryGb: 16,
+          diskGb: 60,
+        },
+      },
+    });
+    vi.mocked(api.getHermesResourceProfile)
+      .mockResolvedValueOnce(hermesResourceProfileFixture())
+      .mockResolvedValueOnce(refreshedProfile);
 
     render(<App api={api} defaultAccountId="account_1" />);
 
@@ -1192,7 +1221,16 @@ describe("Email Hub first UI baseline", () => {
         },
       });
     });
-    expect(await screen.findByText("能力选项已保存：翻译邮件。")).toBeTruthy();
+    expect(api.getHermesResourceProfile).toHaveBeenCalledTimes(2);
+    expect(
+      await screen.findByText("能力选项已保存：翻译邮件，资源画像已刷新。"),
+    ).toBeTruthy();
+    const profile = await screen.findByLabelText("Hermes resource profile");
+    await waitFor(() => {
+      expect(within(profile).getByText("12/14")).toBeTruthy();
+      expect(within(profile).getByText("12,000")).toBeTruthy();
+      expect(within(profile).getByText("轻量")).toBeTruthy();
+    });
   });
 
   it("shows Hermes resource profile and self-hosted machine guidance", async () => {
@@ -1229,6 +1267,11 @@ describe("Email Hub first UI baseline", () => {
             diskGb: 100,
           },
         },
+        guardrails: [
+          "Prompt context is capped per skill before provider calls and audit persistence.",
+          "Memory fan-out is capped per skill through memoryLimit.",
+          "Retention cleanup prunes expired Hermes caches, plans, feedback, audit events, and skill runs in bounded batches.",
+        ],
       }),
     );
 
@@ -1245,10 +1288,29 @@ describe("Email Hub first UI baseline", () => {
     expect(within(profile).getByText("11/14")).toBeTruthy();
     expect(within(profile).getByText("48,000")).toBeTruthy();
     expect(within(profile).getByText("标准")).toBeTruthy();
+    expect(within(profile).getByText(/4C \/ 8GB RAM \/ 40GB disk/)).toBeTruthy();
     expect(
       await screen.findByText(/Hermes 保留 21 天数据，清理间隔 30 分钟/),
     ).toBeTruthy();
-    expect(await screen.findByText(/本地模型建议至少 8C \/ 32GB RAM/)).toBeTruthy();
+    expect(
+      await screen.findByText(/本地模型建议至少 8C \/ 32GB RAM \/ 100GB disk/),
+    ).toBeTruthy();
+    const guardrails = await screen.findByLabelText("Hermes resource guardrails");
+    expect(
+      within(guardrails).getByText(
+        "调用前按 skill 上下文预算截断 Prompt，并按截断后的内容审计。",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(guardrails).getByText(
+        "每个 skill 按 memoryLimit 限制记忆读取数量，避免记忆扇出失控。",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(guardrails).getByText(
+        "保留清理会分批删除过期缓存、计划、反馈、审计和 skill run。",
+      ),
+    ).toBeTruthy();
   });
 
   it("lets admins inspect and clean compose attachment cache from Settings", async () => {

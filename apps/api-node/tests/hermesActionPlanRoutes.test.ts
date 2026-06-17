@@ -401,6 +401,66 @@ describe("Hermes action plan routes", () => {
     expect(calls).toEqual([]);
   });
 
+  it("blocks action plan creation when the action_plan skill is disabled", async () => {
+    const calls: unknown[] = [];
+    const hermesActionPlanService = {
+      async createPlan(input: unknown) {
+        calls.push(input);
+        return {};
+      },
+    };
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings() {
+        throw new Error("not used");
+      },
+      async getSkill(skillId: string) {
+        return {
+          id: skillId,
+          title: "执行计划",
+          mode: "learn",
+          description: "把自然语言邮箱操作转成可确认计划",
+          settings: {
+            enabled: false,
+            maxContextChars: 24000,
+            memoryLimit: 6,
+            allowBodyRead: true,
+            allowMemoryWrite: true,
+            requireConfirmation: true,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/hermes/action-plans`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            accountId: "account_1",
+            command: "帮我创建一个验证码分组规则",
+          }),
+        });
+
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({
+          error: "hermes_skill_disabled",
+          skillId: "action_plan",
+        });
+      },
+      { hermesActionPlanService, hermesSkillSettingsService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
   it("rejects invalid create requests before hitting the service", async () => {
     const calls: unknown[] = [];
     const hermesActionPlanService = {

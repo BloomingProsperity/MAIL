@@ -386,6 +386,59 @@ describe("Hermes email search QA service", () => {
     );
   });
 
+  it("caps the Hermes answer prompt by the editable skill context budget", async () => {
+    const providerCalls: Array<{ userPrompt: string }> = [];
+    const service = createHermesEmailSearchQaService({
+      createId: () => "run_capped",
+      textProvider: {
+        async complete(input) {
+          providerCalls.push(input);
+          return "The oversized result was summarized from the capped prompt.";
+        },
+      },
+      mailReadStore: {
+        async listMessages() {
+          return {
+            items: [
+              {
+                id: "00000000-0000-0000-0000-000000000301",
+                accountId: "00000000-0000-0000-0000-000000000001",
+                subject: "Long support history",
+                from: { email: "client@example.com", name: "Client" },
+                receivedAt: "2026-06-16T09:58:00.000Z",
+                snippet: "x".repeat(5_000),
+                searchPreview: {
+                  source: "indexed_text",
+                  text: "y".repeat(5_000),
+                },
+                unread: true,
+                starred: false,
+                mailboxIds: [],
+                attachmentCount: 0,
+                classification: {
+                  bucket: "P2 Important",
+                  priorityScore: 82,
+                  reasons: ["large search hit"],
+                },
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    await service.searchMail({
+      accountId: "00000000-0000-0000-0000-000000000001",
+      question: "Summarize the long support history",
+      maxContextChars: 1000,
+    });
+
+    expect(providerCalls[0].userPrompt.length).toBeLessThanOrEqual(1000);
+    expect(providerCalls[0].userPrompt).toContain(
+      "Hermes context truncated to 1000 chars",
+    );
+  });
+
   it("returns an empty citation list when no local messages match", async () => {
     const providerCalls: unknown[] = [];
     const service = createHermesEmailSearchQaService({

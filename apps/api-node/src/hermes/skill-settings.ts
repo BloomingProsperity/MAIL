@@ -69,11 +69,16 @@ export function createHermesSkillSettingsService(options: {
       }
 
       const current = (await options.store.getSettings(input.skillId)) ?? {};
-      const settings = normalizeHermesSkillSettings(
-        input.skillId,
-        input.patch,
-        current,
-      );
+      let settings: HermesSkillSettings;
+      try {
+        settings = normalizeHermesSkillSettings(
+          input.skillId,
+          input.patch,
+          current,
+        );
+      } catch {
+        throw new InvalidHermesSkillSettingsRequestError();
+      }
       const saved = await options.store.saveSettings({
         skillId: input.skillId,
         settings,

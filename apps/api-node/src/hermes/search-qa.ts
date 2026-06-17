@@ -14,6 +14,7 @@ import {
   planHermesEmailSearch,
   type HermesEmailSearchPlan,
 } from "./search-planner.js";
+import { limitHermesContextText } from "./message-content.js";
 import type { HermesRunStore, HermesTextProvider } from "./translation.js";
 
 export interface HermesEmailSearchQaInput {
@@ -28,6 +29,7 @@ export interface HermesEmailSearchQaInput {
   memoryScope?: string;
   memoryLayers?: string[];
   memoryLimit?: number;
+  maxContextChars?: number;
 }
 
 export interface HermesEmailSearchQaMatch {
@@ -135,11 +137,9 @@ export function createHermesEmailSearchQaService(
           ? "No matching emails found."
           : await options.textProvider.complete({
               systemPrompt: EMAIL_SEARCH_QA_SYSTEM_PROMPT,
-              userPrompt: emailSearchQaUserPrompt(
-                input,
-                searchPlan,
-                matches,
-                memories,
+              userPrompt: limitHermesContextText(
+                emailSearchQaUserPrompt(input, searchPlan, matches, memories),
+                { maxChars: input.maxContextChars },
               ),
             });
       const skillRunId = options.createId();
@@ -173,6 +173,7 @@ export function createHermesEmailSearchQaService(
             limit,
             memoryScope: input.memoryScope,
             memoryLayers: input.memoryLayers,
+            maxContextChars: input.maxContextChars,
           }),
           output: {
             answerText,

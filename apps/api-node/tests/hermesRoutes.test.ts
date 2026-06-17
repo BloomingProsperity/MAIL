@@ -2,6 +2,8 @@ import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApiHandler } from "../src/http/router";
+import { createHermesSkillSettingsService } from "../src/hermes/skill-settings";
+import type { HermesSkillSettings } from "../src/hermes/skills";
 
 let server: Server | undefined;
 
@@ -320,6 +322,44 @@ describe("Hermes routes", () => {
       },
       { hermesSkillSettingsService },
     );
+  });
+
+  it("rejects Hermes skill settings that bypass frontend budget steps", async () => {
+    const settingsBySkillId: Record<string, HermesSkillSettings> = {};
+    const hermesSkillSettingsService = createHermesSkillSettingsService({
+      store: {
+        async listSettings() {
+          return settingsBySkillId;
+        },
+        async getSettings(skillId) {
+          return settingsBySkillId[skillId];
+        },
+        async saveSettings(input) {
+          settingsBySkillId[input.skillId] = input.settings;
+          return input.settings;
+        },
+      },
+    });
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/translate_text/settings`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ maxContextChars: 12500 }),
+          },
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_hermes_skill_settings_request",
+        });
+      },
+      { hermesSkillSettingsService },
+    );
+    expect(settingsBySkillId).toEqual({});
   });
 
   it("lists Hermes audit events with account, skill, message, and memory filters", async () => {

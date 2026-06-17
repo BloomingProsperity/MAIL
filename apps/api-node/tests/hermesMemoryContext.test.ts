@@ -93,6 +93,94 @@ describe("Hermes memory context", () => {
       },
     ]);
   });
+
+  it("skips memory store queries when the skill memory limit is zero", async () => {
+    const calls: unknown[] = [];
+
+    const result = await loadHermesMemoryContext(
+      {
+        memoryScope: "sender:client@example.com",
+        memoryLayers: ["contact_memory"],
+        memoryLimit: 0,
+      },
+      {
+        memoryLimit: 10,
+        defaultLayers: ["contact_memory"],
+        memoryStore: {
+          async listMemories(input) {
+            calls.push(input);
+            return { items: [] };
+          },
+        },
+      },
+    );
+
+    expect(result).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("deduplicates and caps requested memory layers before querying", async () => {
+    const calls: unknown[] = [];
+
+    await loadHermesMemoryContext(
+      {
+        memoryLayers: [
+          "contact_memory",
+          "procedural_memory",
+          "contact_memory",
+          "writing_style_profile",
+          "translation_preferences",
+          "sender_rules",
+          "follow_up_patterns",
+          "extra_layer",
+        ],
+        memoryLimit: 12,
+      },
+      {
+        memoryLimit: 20,
+        defaultLayers: ["contact_memory"],
+        memoryStore: {
+          async listMemories(input) {
+            calls.push(input);
+            return { items: [] };
+          },
+        },
+      },
+    );
+
+    expect(calls).toEqual([
+      { layer: "contact_memory", scope: "global", limit: 2 },
+      { layer: "procedural_memory", scope: "global", limit: 2 },
+      { layer: "writing_style_profile", scope: "global", limit: 2 },
+      { layer: "translation_preferences", scope: "global", limit: 2 },
+      { layer: "sender_rules", scope: "global", limit: 2 },
+      { layer: "follow_up_patterns", scope: "global", limit: 2 },
+    ]);
+  });
+
+  it("returns empty context when no memory layers are available", async () => {
+    const calls: unknown[] = [];
+
+    const result = await loadHermesMemoryContext(
+      {
+        memoryLayers: [" "],
+        memoryLimit: 6,
+      },
+      {
+        memoryLimit: 6,
+        defaultLayers: [],
+        memoryStore: {
+          async listMemories(input) {
+            calls.push(input);
+            return { items: [] };
+          },
+        },
+      },
+    );
+
+    expect(result).toEqual([]);
+    expect(calls).toEqual([]);
+  });
 });
 
 function memory(
