@@ -1,6 +1,6 @@
 # Current Delivery Plan
 
-Date: 2026-06-16
+Date: 2026-06-17
 
 ## Scope
 
@@ -335,21 +335,24 @@ with more than smoke-level tests.
   `attachments[].reference` contract. Direct compose uploads now POST raw bytes
   to the API. The API streams those bytes into the shared Docker compose
   attachment volume, writes a local object-storage `storageKey` in the same
-  `uploaded_file` manifest, cleans up partial files on upload-limit failures,
-  and avoids embedding large base64 payloads in saved draft JSON when the
-  backend is available. The web app keeps the older base64 path as a local/demo
-  fallback. Worker queued-immediate and scheduled sends hydrate the referenced
-  bytes from the shared Docker compose attachment volume before provider
-  submission, strip internal storage keys from provider payloads, and keep the
-  existing 20-file / 25 MB aggregate send limit. The
-  worker now has a compose attachment cleanup lane that periodically queries active
-  draft/outbox manifests, protects referenced `storageKey` values, and prunes
-  only stale unreferenced blob files from the shared volume using bounded
-  retention and per-run limits. Settings now exposes the same maintenance
-  boundary through `GET /api/maintenance/compose-attachments` and bounded
+  `uploaded_file` manifest, records a sha256 checksum for new uploads, cleans
+  up partial files on upload-limit failures, and avoids embedding large base64
+  payloads in saved draft JSON when the backend is available. The web app keeps
+  the older base64 path as a local/demo fallback. Worker queued-immediate and
+  scheduled sends hydrate the referenced bytes from the shared Docker compose
+  attachment volume, reject checksum mismatches for new uploads, strip internal
+  storage keys from provider payloads, and keep the existing 20-file / 25 MB
+  aggregate send limit. The worker now has a compose attachment cleanup lane
+  that periodically queries active draft/outbox manifests, protects referenced
+  `storageKey` values, and prunes stale unreferenced blob files, stale orphaned
+  `.bin` files, stale `.bin.part` / `.json.part` leftovers, and stale invalid
+  metadata pairs from the shared volume using bounded retention and per-run
+  limits. Settings now exposes the same maintenance boundary through
+  `GET /api/maintenance/compose-attachments` and bounded
   `POST /api/maintenance/compose-attachments/cleanup`, so self-hosted admins can
   inspect stale uploads, protected draft references, invalid metadata, scan
-  limits, and manually prune unreferenced files without shell access. Forwarded
+  limits, and manually prune unreferenced or broken local files without shell
+  access. Forwarded
   provider attachments are still
   snapshotted at draft creation through the bounded EmailEngine attachment
   download adapter, so the private transport manifest keeps both

@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -67,6 +67,10 @@ describe("local compose attachment blob store", () => {
       ).toEqual({
         contentBase64: "aGVsbG8=",
         byteSize: 5,
+      });
+      await expect(readMetadata(rootDir, storageKey)).resolves.toMatchObject({
+        sha256:
+          "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
       });
     } finally {
       await rm(rootDir, { recursive: true, force: true });
@@ -249,4 +253,42 @@ describe("local compose attachment blob store", () => {
       await rm(rootDir, { recursive: true, force: true });
     }
   });
+
+  it("rejects corrupted uploaded blobs when metadata has a checksum", async () => {
+    const rootDir = await mkdtemp(
+      path.join(tmpdir(), "email-hub-compose-attachments-"),
+    );
+    const storageKey = "11111111-1111-4111-8111-111111111111";
+
+    try {
+      const store = createLocalComposeAttachmentBlobStore({
+        rootDir,
+        createId: () => storageKey,
+        now: () => new Date("2026-06-15T00:00:00.000Z"),
+      });
+      await store.saveUploadedAttachment({
+        accountId: "acc_1",
+        bytes: Buffer.from("hello"),
+        filename: "brief.txt",
+        contentType: "text/plain",
+      });
+      await writeFile(path.join(rootDir, `${storageKey}.bin`), "HELLO");
+
+      await expect(
+        store.loadUploadedAttachmentContent({
+          accountId: "acc_1",
+          storageKey,
+          maxBytes: 5,
+        }),
+      ).rejects.toThrow("attachment blob metadata mismatch");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
 });
+
+async function readMetadata(rootDir: string, storageKey: string) {
+  return JSON.parse(
+    await readFile(path.join(rootDir, `${storageKey}.json`), "utf8"),
+  ) as Record<string, unknown>;
+}

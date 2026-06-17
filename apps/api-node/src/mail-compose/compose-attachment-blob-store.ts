@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -44,6 +44,7 @@ interface StoredAttachmentMetadata {
   filename: string;
   contentType: string;
   byteSize: number;
+  sha256?: string;
   inline: boolean;
   contentId?: string;
   createdAt: string;
@@ -82,6 +83,7 @@ export function createLocalComposeAttachmentBlobStore(input: {
           attachment.contentType || "application/octet-stream",
         ),
         byteSize: bytes.byteLength,
+        sha256: sha256Hex(bytes),
         inline: Boolean(attachment.inline),
         ...(attachment.contentId
           ? { contentId: sanitizeContentId(attachment.contentId) }
@@ -119,7 +121,7 @@ export function createLocalComposeAttachmentBlobStore(input: {
 
       await mkdir(rootDir, { recursive: true });
       try {
-        const byteSize = await writeLimitedStream(
+        const upload = await writeLimitedStream(
           attachment.stream,
           tempBlobPath,
           attachment.maxBytes,
@@ -132,7 +134,8 @@ export function createLocalComposeAttachmentBlobStore(input: {
           contentType: sanitizeContentType(
             attachment.contentType || "application/octet-stream",
           ),
-          byteSize,
+          byteSize: upload.byteSize,
+          sha256: upload.sha256,
           inline: Boolean(attachment.inline),
           ...(attachment.contentId
             ? { contentId: sanitizeContentId(attachment.contentId) }
@@ -183,6 +186,9 @@ export function createLocalComposeAttachmentBlobStore(input: {
       if (bytes.byteLength !== metadata.byteSize) {
         throw new Error("attachment blob metadata mismatch");
       }
+      if (metadata.sha256 && sha256Hex(bytes) !== metadata.sha256) {
+        throw new Error("attachment blob metadata mismatch");
+      }
       if (bytes.byteLength > attachment.maxBytes) {
         throw new Error("attachments are too large");
       }
@@ -199,14 +205,18 @@ async function writeLimitedStream(
   stream: NodeJS.ReadableStream,
   destination: string,
   maxBytes: number,
-): Promise<number> {
+): Promise<{ byteSize: number; sha256: string }> {
   const limiter = new ByteLimitTransform(maxBytes);
   await pipeline(stream, limiter, createWriteStream(destination, { flags: "wx" }));
-  return limiter.byteSize;
+  return {
+    byteSize: limiter.byteSize,
+    sha256: limiter.sha256,
+  };
 }
 
 class ByteLimitTransform extends Transform {
   byteSize = 0;
+  private readonly hash = createHash("sha256");
 
   constructor(private readonly maxBytes: number) {
     super();
@@ -223,7 +233,12 @@ class ByteLimitTransform extends Transform {
       return;
     }
 
+    this.hash.update(chunk);
     callback(null, chunk);
+  }
+
+  get sha256(): string {
+    return this.hash.digest("hex");
   }
 }
 
@@ -257,6 +272,10 @@ async function readMetadata(
     filename: sanitizeFilename(metadata.filename),
     contentType: sanitizeContentType(metadata.contentType),
     byteSize: Math.max(0, Math.floor(metadata.byteSize)),
+    ...(typeof metadata.sha256 === "string" &&
+    /^[a-f0-9]{64}$/.test(metadata.sha256)
+      ? { sha256: metadata.sha256 }
+      : {}),
     inline: metadata.inline === true,
     ...(metadata.contentId
       ? { contentId: sanitizeContentId(metadata.contentId) }
@@ -266,6 +285,10 @@ async function readMetadata(
         ? metadata.createdAt
         : new Date(0).toISOString(),
   };
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function transportAttachment(

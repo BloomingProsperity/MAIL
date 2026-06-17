@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -127,6 +127,121 @@ describe("compose attachment maintenance", () => {
     }
   });
 
+  it("reports and prunes stale orphaned blob and partial upload files", async () => {
+    const rootDir = await mkdtemp(
+      path.join(tmpdir(), "email-hub-compose-maintenance-"),
+    );
+    const staleOrphanKey = "11111111-1111-4111-8111-111111111111";
+    const stalePartKey = "22222222-2222-4222-8222-222222222222";
+    const freshPartKey = "33333333-3333-4333-8333-333333333333";
+    const protectedOrphanKey = "44444444-4444-4444-8444-444444444444";
+
+    try {
+      await writeOrphanFile(rootDir, `${staleOrphanKey}.bin`, 10, "2026-06-01T00:00:00.000Z");
+      await writeOrphanFile(rootDir, `${stalePartKey}.bin.part`, 20, "2026-06-01T00:00:00.000Z");
+      await writeOrphanFile(rootDir, `${freshPartKey}.json.part`, 30, "2026-06-15T23:30:00.000Z");
+      await writeOrphanFile(rootDir, `${protectedOrphanKey}.bin`, 40, "2026-06-01T00:00:00.000Z");
+
+      const service = createComposeAttachmentMaintenanceService({
+        referenceStore: {
+          async listActiveStorageKeys() {
+            return [protectedOrphanKey];
+          },
+        },
+        blobStore: createLocalComposeAttachmentMaintenanceBlobStore({ rootDir }),
+        now: () => new Date("2026-06-16T00:00:00.000Z"),
+        retentionMs: 24 * 60 * 60 * 1000,
+        cleanupLimit: 10,
+      });
+
+      await expect(service.getStatus()).resolves.toMatchObject({
+        scanned: 4,
+        uploads: 0,
+        invalid: 4,
+        protected: 1,
+        fresh: 1,
+        staleUnreferenced: 2,
+        staleUnreferencedBytes: 30,
+      });
+
+      const result = await service.cleanup();
+
+      expect(result.cleanup).toEqual({
+        scanned: 4,
+        deleted: 2,
+        retained: 2,
+        skippedFresh: 1,
+        skippedProtected: 1,
+        skippedInvalid: 0,
+        bytesDeleted: 30,
+      });
+      await expect(readFile(path.join(rootDir, `${staleOrphanKey}.bin`))).rejects.toThrow();
+      await expect(readFile(path.join(rootDir, `${stalePartKey}.bin.part`))).rejects.toThrow();
+      await expect(
+        readFile(path.join(rootDir, `${freshPartKey}.json.part`), "utf8"),
+      ).resolves.toBe("x".repeat(30));
+      await expect(
+        readFile(path.join(rootDir, `${protectedOrphanKey}.bin`), "utf8"),
+      ).resolves.toBe("x".repeat(40));
+      expect(result.after.staleUnreferenced).toBe(0);
+      expect(result.after.invalid).toBe(2);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("prunes stale invalid metadata when it is not referenced by an active draft", async () => {
+    const rootDir = await mkdtemp(
+      path.join(tmpdir(), "email-hub-compose-maintenance-"),
+    );
+    const invalidKey = "11111111-1111-4111-8111-111111111111";
+    const invalidMetadata = JSON.stringify({
+      accountId: "account_1",
+      storageKey: "22222222-2222-4222-8222-222222222222",
+      byteSize: 10,
+      createdAt: "2026-06-01T00:00:00.000Z",
+    });
+
+    try {
+      await writeFile(path.join(rootDir, `${invalidKey}.bin`), "corrupt");
+      await writeFile(
+        path.join(rootDir, `${invalidKey}.json`),
+        invalidMetadata,
+        "utf8",
+      );
+      await touchUploadFiles(rootDir, invalidKey, "2026-06-01T00:00:00.000Z");
+
+      const service = createComposeAttachmentMaintenanceService({
+        referenceStore: {
+          async listActiveStorageKeys() {
+            return [];
+          },
+        },
+        blobStore: createLocalComposeAttachmentMaintenanceBlobStore({ rootDir }),
+        now: () => new Date("2026-06-16T00:00:00.000Z"),
+        retentionMs: 24 * 60 * 60 * 1000,
+        cleanupLimit: 10,
+      });
+
+      const result = await service.cleanup();
+
+      expect(result.cleanup).toEqual({
+        scanned: 1,
+        deleted: 1,
+        retained: 0,
+        skippedFresh: 0,
+        skippedProtected: 0,
+        skippedInvalid: 0,
+        bytesDeleted: Buffer.byteLength("corrupt") + Buffer.byteLength(invalidMetadata),
+      });
+      await expect(readFile(path.join(rootDir, `${invalidKey}.bin`))).rejects.toThrow();
+      await expect(readFile(path.join(rootDir, `${invalidKey}.json`))).rejects.toThrow();
+      expect(result.after.invalid).toBe(0);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("queries active uploaded attachment storage keys from draft manifests", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const store = createPostgresComposeAttachmentReferenceStore({
@@ -171,5 +286,30 @@ async function writeUpload(
       createdAt: input.createdAt,
     }),
     "utf8",
+  );
+}
+
+async function writeOrphanFile(
+  rootDir: string,
+  filename: string,
+  byteSize: number,
+  modifiedAt: string,
+) {
+  const filePath = path.join(rootDir, filename);
+  await writeFile(filePath, Buffer.alloc(byteSize, "x"));
+  const timestamp = new Date(modifiedAt);
+  await utimes(filePath, timestamp, timestamp);
+}
+
+async function touchUploadFiles(
+  rootDir: string,
+  storageKey: string,
+  modifiedAt: string,
+) {
+  const timestamp = new Date(modifiedAt);
+  await Promise.all(
+    [".bin", ".json"].map((suffix) =>
+      utimes(path.join(rootDir, `${storageKey}${suffix}`), timestamp, timestamp),
+    ),
   );
 }

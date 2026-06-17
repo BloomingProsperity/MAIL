@@ -1,4 +1,4 @@
-import { readdir, readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 export interface QueryResult<Row extends Record<string, unknown>> {
@@ -90,6 +90,19 @@ interface StoredAttachmentMetadata {
   createdAt: string;
 }
 
+interface UploadArtifact {
+  storageKey: string;
+  paths: string[];
+  byteSize: number;
+  modifiedAtMs: number;
+}
+
+interface ExistingArtifactFile {
+  filePath: string;
+  byteSize: number;
+  modifiedAtMs: number;
+}
+
 export function createPostgresComposeAttachmentReferenceStore(
   client: Queryable,
 ): ComposeAttachmentReferenceStore {
@@ -123,11 +136,19 @@ export function createLocalComposeAttachmentMaintenanceBlobStore(input: {
     async inspectUploads(input) {
       const protectedKeys = normalizedStorageKeySet(input.protectedStorageKeys);
       const files = await listMetadataFiles(rootDir);
-      const selectedFiles = files.slice(0, Math.max(0, input.scanLimit));
+      const orphanArtifacts = await listOrphanUploadArtifacts(rootDir);
+      const scanLimit = Math.max(0, input.scanLimit);
+      const selectedFiles = files.slice(0, scanLimit);
+      const selectedOrphanArtifacts = orphanArtifacts.slice(
+        0,
+        Math.max(0, scanLimit - selectedFiles.length),
+      );
       const result: ComposeAttachmentMaintenanceInspection = {
         scanned: 0,
-        scanLimit: Math.max(0, input.scanLimit),
-        scanLimited: files.length > selectedFiles.length,
+        scanLimit,
+        scanLimited:
+          files.length + orphanArtifacts.length >
+          selectedFiles.length + selectedOrphanArtifacts.length,
         uploads: 0,
         totalBytes: 0,
         protected: 0,
@@ -168,6 +189,19 @@ export function createLocalComposeAttachmentMaintenanceBlobStore(input: {
         }
       }
 
+      for (const artifact of selectedOrphanArtifacts) {
+        result.scanned += 1;
+        result.invalid += 1;
+        if (protectedKeys.has(artifact.storageKey)) {
+          result.protected += 1;
+        } else if (artifact.modifiedAtMs > cutoffMs) {
+          result.fresh += 1;
+        } else {
+          result.staleUnreferenced += 1;
+          result.staleUnreferencedBytes += artifact.byteSize;
+        }
+      }
+
       return result;
     },
 
@@ -176,6 +210,7 @@ export function createLocalComposeAttachmentMaintenanceBlobStore(input: {
       const limit = Math.max(0, Math.floor(input.limit));
       const cutoffMs = input.now.getTime() - Math.max(0, input.minAgeMs);
       const files = await listMetadataFiles(rootDir);
+      const orphanArtifacts = await listOrphanUploadArtifacts(rootDir);
       const result: ComposeAttachmentPruneResult = {
         scanned: 0,
         deleted: 0,
@@ -195,7 +230,19 @@ export function createLocalComposeAttachmentMaintenanceBlobStore(input: {
         try {
           metadata = await readMetadata(rootDir, file.storageKey);
         } catch {
-          result.skippedInvalid += 1;
+          const artifact = await invalidMetadataArtifact(rootDir, file.storageKey);
+          if (
+            !artifact ||
+            protectedKeys.has(file.storageKey) ||
+            artifact.modifiedAtMs > cutoffMs
+          ) {
+            result.skippedInvalid += 1;
+            continue;
+          }
+
+          await deleteArtifact(artifact);
+          result.deleted += 1;
+          result.bytesDeleted += artifact.byteSize;
           continue;
         }
 
@@ -217,6 +264,27 @@ export function createLocalComposeAttachmentMaintenanceBlobStore(input: {
         ]);
         result.deleted += 1;
         result.bytesDeleted += metadata.byteSize;
+      }
+
+      for (const artifact of orphanArtifacts) {
+        if (result.deleted >= limit) {
+          break;
+        }
+        result.scanned += 1;
+        if (protectedKeys.has(artifact.storageKey)) {
+          result.skippedProtected += 1;
+          result.retained += 1;
+          continue;
+        }
+        if (artifact.modifiedAtMs > cutoffMs) {
+          result.skippedFresh += 1;
+          result.retained += 1;
+          continue;
+        }
+
+        await deleteArtifact(artifact);
+        result.deleted += 1;
+        result.bytesDeleted += artifact.byteSize;
       }
 
       return result;
@@ -341,6 +409,113 @@ async function listMetadataFiles(
       }
     })
     .filter((item): item is { storageKey: string } => Boolean(item));
+}
+
+async function listOrphanUploadArtifacts(
+  rootDir: string,
+): Promise<UploadArtifact[]> {
+  let entries: string[];
+  try {
+    entries = await readdir(rootDir);
+  } catch {
+    return [];
+  }
+
+  const entrySet = new Set(entries);
+  const artifacts = await Promise.all(
+    entries
+      .sort((left, right) => left.localeCompare(right))
+      .map(async (entry): Promise<UploadArtifact | undefined> => {
+        const storageKey = storageKeyFromOrphanEntry(entry, entrySet);
+        if (!storageKey) {
+          return undefined;
+        }
+        const filePath = path.join(rootDir, entry);
+        try {
+          const fileStat = await stat(filePath);
+          return {
+            storageKey,
+            paths: [filePath],
+            byteSize: Math.max(0, fileStat.size),
+            modifiedAtMs: fileStat.mtimeMs,
+          };
+        } catch {
+          return undefined;
+        }
+      }),
+  );
+
+  return artifacts.filter((item): item is UploadArtifact => Boolean(item));
+}
+
+async function invalidMetadataArtifact(
+  rootDir: string,
+  storageKey: string,
+): Promise<UploadArtifact | undefined> {
+  const key = safeStorageKey(storageKey);
+  const paths = [metadataPath(rootDir, key), blobPath(rootDir, key)];
+  const stats = await Promise.all(
+    paths.map(async (filePath) => {
+      try {
+        const fileStat = await stat(filePath);
+        return {
+          filePath,
+          byteSize: Math.max(0, fileStat.size),
+          modifiedAtMs: fileStat.mtimeMs,
+        };
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  const existing = stats.filter(
+    (item): item is ExistingArtifactFile => Boolean(item),
+  );
+  if (existing.length === 0) {
+    return undefined;
+  }
+
+  return {
+    storageKey: key,
+    paths: existing.map((item) => item.filePath),
+    byteSize: existing.reduce(
+      (sum, item) => sum + item.byteSize,
+      0,
+    ),
+    modifiedAtMs: Math.max(...existing.map((item) => item.modifiedAtMs)),
+  };
+}
+
+async function deleteArtifact(artifact: UploadArtifact): Promise<void> {
+  await Promise.all(artifact.paths.map((filePath) => rm(filePath, { force: true })));
+}
+
+function storageKeyFromOrphanEntry(
+  entry: string,
+  entrySet: Set<string>,
+): string | undefined {
+  if (entry.endsWith(".bin.part")) {
+    return safeStorageKeyOrUndefined(entry.slice(0, -".bin.part".length));
+  }
+  if (entry.endsWith(".json.part")) {
+    return safeStorageKeyOrUndefined(entry.slice(0, -".json.part".length));
+  }
+  if (!entry.endsWith(".bin")) {
+    return undefined;
+  }
+  const storageKey = safeStorageKeyOrUndefined(entry.slice(0, -".bin".length));
+  if (!storageKey || entrySet.has(`${storageKey}.json`)) {
+    return undefined;
+  }
+  return storageKey;
+}
+
+function safeStorageKeyOrUndefined(value: string): string | undefined {
+  try {
+    return safeStorageKey(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizedStorageKeySet(values: Iterable<string>): Set<string> {
