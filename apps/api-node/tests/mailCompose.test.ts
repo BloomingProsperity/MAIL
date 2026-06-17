@@ -652,6 +652,154 @@ describe("mail compose service", () => {
     });
   });
 
+  it("keeps draft attachments when body-only edits omit attachments", async () => {
+    const calls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async updateDraft(input) {
+          calls.push(input);
+          return {
+            ...draft(),
+            id: input.draftId,
+            accountId: input.accountId,
+            to: input.to,
+            cc: input.cc,
+            bcc: input.bcc,
+            subject: input.subject,
+            bodyText: input.bodyText,
+            attachments: [
+              {
+                id: "upload_1",
+                source: "uploaded_file" as const,
+                attachmentId: "upload_1",
+                filename: "plan.pdf",
+                contentType: "application/pdf",
+                byteSize: 4,
+                inline: false,
+              },
+            ],
+            updatedAt: input.now,
+          };
+        },
+      }),
+      createId: () => "unused",
+      now: () => new Date("2026-06-13T08:30:00.000Z"),
+      transports: {},
+    });
+
+    const updatedDraft = await service.updateDraft({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Launch confirmation",
+      bodyText: "Body-only edit.",
+    });
+
+    expect(calls).toEqual([
+      expect.not.objectContaining({
+        attachments: expect.anything(),
+      }),
+    ]);
+    expect(updatedDraft).toMatchObject({
+      bodyText: "Body-only edit.",
+      attachments: [
+        {
+          id: "upload_1",
+          source: "uploaded_file",
+          filename: "plan.pdf",
+        },
+      ],
+    });
+  });
+
+  it("clears draft attachments when edits pass an explicit empty list", async () => {
+    const calls: unknown[] = [];
+    const service = createMailComposeService({
+      store: createStore({
+        async getDraftWithAccount(input) {
+          calls.push(["get", input]);
+          return {
+            draft: {
+              ...draft(),
+              attachments: [
+                {
+                  id: "upload_1",
+                  source: "uploaded_file" as const,
+                  attachmentId: "upload_1",
+                  filename: "plan.pdf",
+                  contentType: "application/pdf",
+                  byteSize: 4,
+                  inline: false,
+                },
+              ],
+            },
+            transportAttachments: [
+              {
+                id: "upload_1",
+                source: "uploaded_file" as const,
+                attachmentId: "upload_1",
+                filename: "plan.pdf",
+                contentType: "application/pdf",
+                byteSize: 4,
+                inline: false,
+                contentBase64: "cGxhbg==",
+              },
+            ],
+            account: {
+              accountId: "acc_1",
+              email: "me@example.com",
+              syncState: "syncing",
+              engineProvider: "emailengine",
+            },
+          };
+        },
+        async updateDraft(input) {
+          calls.push(["update", input]);
+          return {
+            ...draft(),
+            id: input.draftId,
+            accountId: input.accountId,
+            to: input.to,
+            cc: input.cc,
+            bcc: input.bcc,
+            subject: input.subject,
+            bodyText: input.bodyText,
+            attachments: input.attachments ?? [],
+            updatedAt: input.now,
+          };
+        },
+      }),
+      createId: () => "unused",
+      now: () => new Date("2026-06-13T08:30:00.000Z"),
+      transports: {},
+    });
+
+    const updatedDraft = await service.updateDraft({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      to: [{ address: "lina@example.com" }],
+      subject: "Launch confirmation",
+      bodyText: "Clear attachment edit.",
+      attachments: [],
+    });
+
+    expect(calls).toEqual([
+      ["get", { accountId: "acc_1", draftId: "draft_1" }],
+      [
+        "update",
+        expect.objectContaining({
+          accountId: "acc_1",
+          draftId: "draft_1",
+          attachments: [],
+        }),
+      ],
+    ]);
+    expect(updatedDraft).toMatchObject({
+      bodyText: "Clear attachment edit.",
+      attachments: [],
+    });
+  });
+
   it("rejects updating missing or non-draft rows", async () => {
     const service = createMailComposeService({
       store: createStore({

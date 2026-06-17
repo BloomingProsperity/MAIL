@@ -1368,6 +1368,62 @@ describe("mail compose routes", () => {
     );
   });
 
+  it("passes explicit empty attachments when clearing a composed draft", async () => {
+    const calls: unknown[] = [];
+    const mailComposeService = {
+      async createDraft() {
+        throw new Error("not used");
+      },
+      async updateDraft(input: unknown) {
+        calls.push(input);
+        return {
+          id: "draft_1",
+          accountId: "acc_1",
+          to: [{ address: "client@example.com" }],
+          cc: [],
+          bcc: [],
+          subject: "Updated subject",
+          bodyText: "Updated body",
+          attachments: [],
+          status: "draft",
+          source: "manual",
+          updatedAt: "2026-06-13T10:05:00.000Z",
+        };
+      },
+      async sendDraft() {
+        throw new Error("not used");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/acc_1/compose/drafts/draft_1`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              to: [{ address: "client@example.com" }],
+              subject: "Updated subject",
+              bodyText: "Updated body",
+              attachments: [],
+            }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(calls).toEqual([
+          expect.objectContaining({
+            accountId: "acc_1",
+            draftId: "draft_1",
+            attachments: [],
+          }),
+        ]);
+      },
+      { mailComposeService },
+    );
+  });
+
   it("schedules an existing draft for later delivery", async () => {
     const calls: unknown[] = [];
     const mailComposeService = {

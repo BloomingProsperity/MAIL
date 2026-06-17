@@ -278,6 +278,7 @@ describe("Postgres mail compose store", () => {
     expect(queries[0].text).toMatch(/UPDATE email_drafts/i);
     expect(queries[0].text).toMatch(/AND status = 'draft'/i);
     expect(queries[0].text).toMatch(/error_message = NULL/i);
+    expect(queries[0].text).toMatch(/attachment_manifest = COALESCE/i);
     expect(queries[0].values).toEqual([
       "acc_1",
       "draft_1",
@@ -298,7 +299,7 @@ describe("Postgres mail compose store", () => {
       null,
       null,
       null,
-      JSON.stringify([]),
+      null,
       "run_1",
       "Original Hermes body",
       "2026-06-13T08:30:00.000Z",
@@ -311,6 +312,42 @@ describe("Postgres mail compose store", () => {
       replyToMessageId: "message_1",
       hermesSkillRunId: "run_1",
     });
+  });
+
+  it("clears draft attachment manifests when an empty attachment payload is sent", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresMailComposeStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            {
+              ...draftRow({
+                body_text: "Clear attachments.",
+                attachment_manifest: [],
+              }),
+            },
+          ],
+        };
+      },
+    });
+
+    const draft = await store.updateDraft({
+      accountId: "acc_1",
+      draftId: "draft_1",
+      to: [{ address: "lina@example.com" }],
+      cc: [],
+      bcc: [],
+      subject: "Updated subject",
+      bodyText: "Clear attachments.",
+      source: "manual",
+      attachments: [],
+      now: "2026-06-13T08:30:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/attachment_manifest = COALESCE/i);
+    expect(queries[0].values?.[19]).toBe(JSON.stringify([]));
+    expect(draft?.attachments).toBeUndefined();
   });
 
   it("stores draft attachment manifests without exposing provider ids in the DTO", async () => {

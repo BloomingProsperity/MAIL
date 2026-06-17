@@ -1063,7 +1063,27 @@ export function createMailComposeService(options: {
 
     async updateDraft(input) {
       assertNonEmpty(input.draftId);
-      const normalized = normalizeDraftInput(input);
+      const attachmentsRequested = input.attachments !== undefined;
+      const existing = attachmentsRequested
+        ? await options.store.getDraftWithAccount({
+            accountId: input.accountId,
+            draftId: input.draftId,
+          })
+        : undefined;
+      if (attachmentsRequested && !existing) {
+        throw new InvalidMailComposeRequestError("draft was not found");
+      }
+      const normalized = normalizeDraftInput({
+        ...input,
+        ...(attachmentsRequested
+          ? {
+              attachments: hydrateExistingDraftAttachmentInputs(
+                input.attachments ?? [],
+                existing?.transportAttachments ?? [],
+              ),
+            }
+          : {}),
+      });
       await ensureAllowedSender(
         options.sendIdentityStore,
         normalized.accountId,
@@ -1084,7 +1104,7 @@ export function createMailComposeService(options: {
       const draft = await options.store.updateDraft({
         ...draftInput,
         draftId: input.draftId.trim(),
-        ...(attachments.length > 0 ? { attachments } : {}),
+        ...(attachmentsRequested ? { attachments } : {}),
         ...(threading ? { threading } : {}),
         now: currentIso(options.now),
       });
