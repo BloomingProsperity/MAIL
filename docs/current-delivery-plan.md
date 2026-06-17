@@ -75,7 +75,11 @@ with more than smoke-level tests.
   cannot satisfy the gate. Real webhook, send, attachment-download, and
   mail-action smokes now default to fresh generated GreenMail mailboxes and only
   reuse a fixed mailbox when the operator sets the corresponding
-  `EMAILHUB_SMOKE_*` address and reuse flag explicitly. The default
+  `EMAILHUB_SMOKE_*` address and reuse flag explicitly. The shared IMAP/SMTP
+  onboarding smoke helper now redacts failed connection-test, onboarding, and
+  Sync Center response summaries before they can reach CLI output, so echoed
+  mailbox credentials, bearer tokens, PAT-shaped strings, URL credentials, query
+  strings, and private hosts do not leak from GreenMail gate failures. The default
   `verify:emailengine-launch` now runs the core gate, strict DB gate, and
   GreenMail checks, while `verify:emailengine-launch:core` remains available for
   faster iteration before final sign-off.

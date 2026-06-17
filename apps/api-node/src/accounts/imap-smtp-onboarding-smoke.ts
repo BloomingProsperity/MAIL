@@ -1,6 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import { createApiTokenFetch } from "../api-token-fetch.js";
+import { sanitizeCliError } from "../cli/safe-error.js";
 import type { ImapSmtpOnboardingInput } from "./imap-smtp-onboarding.js";
 
 export interface RunImapSmtpOnboardingSmokeInput {
@@ -53,6 +54,7 @@ export async function runImapSmtpOnboardingSmoke(
     input.fetchImpl ?? createApiTokenFetch(fetch, process.env.EMAILHUB_API_TOKEN);
   const apiBaseUrl = normalizeApiBaseUrl(input.apiBaseUrl);
   const payload = buildImapSmtpOnboardingSmokePayload(input.payload);
+  const sensitiveValues = smokeSensitiveValues(payload);
 
   const connectionTest = await runConnectionTestWithRetry({
     apiBaseUrl,
@@ -61,7 +63,7 @@ export async function runImapSmtpOnboardingSmoke(
     attempts: input.connectionTestAttempts ?? 12,
     retryMs: input.connectionTestRetryMs ?? 2000,
   });
-  assertConnectionTest(connectionTest);
+  assertConnectionTest(connectionTest, sensitiveValues);
 
   const onboarding = await postJson(
     fetchImpl,
@@ -71,8 +73,9 @@ export async function runImapSmtpOnboardingSmoke(
   const onboardingBody = asRecord(onboarding.body);
   if (onboarding.status !== 202) {
     throw new Error(
-      `IMAP/SMTP smoke onboarding returned ${onboarding.status}: ${JSON.stringify(
+      `IMAP/SMTP smoke onboarding returned ${onboarding.status}: ${safeBodySummary(
         onboarding.body,
+        sensitiveValues,
       )}`,
     );
   }
@@ -107,6 +110,7 @@ export async function runImapSmtpOnboardingSmoke(
     fetchImpl,
     accountId,
     syncJobId,
+    sensitiveValues,
   });
 
   return {
@@ -147,12 +151,16 @@ async function runConnectionTestWithRetry(input: {
   return latest!;
 }
 
-function assertConnectionTest(response: HttpJsonResponse): void {
+function assertConnectionTest(
+  response: HttpJsonResponse,
+  sensitiveValues: Array<string | undefined>,
+): void {
   const body = asRecord(response.body);
   if (response.status !== 200 || body.ok !== true) {
     throw new Error(
-      `IMAP/SMTP smoke connection test failed: ${response.status} ${JSON.stringify(
+      `IMAP/SMTP smoke connection test failed: ${response.status} ${safeBodySummary(
         response.body,
+        sensitiveValues,
       )}`,
     );
   }
@@ -170,6 +178,7 @@ async function assertSyncCenterAccount(input: {
   fetchImpl: typeof fetch;
   accountId: string;
   syncJobId: string;
+  sensitiveValues: Array<string | undefined>;
 }): Promise<void> {
   const response = await getJson(
     input.fetchImpl,
@@ -177,8 +186,9 @@ async function assertSyncCenterAccount(input: {
   );
   if (response.status !== 200) {
     throw new Error(
-      `IMAP/SMTP smoke sync center returned ${response.status}: ${JSON.stringify(
+      `IMAP/SMTP smoke sync center returned ${response.status}: ${safeBodySummary(
         response.body,
+        input.sensitiveValues,
       )}`,
     );
   }
@@ -224,6 +234,26 @@ async function getJson(
   const response = await fetchImpl(url);
 
   return { status: response.status, body: await response.json() };
+}
+
+function smokeSensitiveValues(
+  payload: ImapSmtpOnboardingInput,
+): Array<string | undefined> {
+  return [
+    process.env.EMAILHUB_API_TOKEN,
+    payload.email,
+    payload.imap?.username,
+    payload.imap?.secret,
+    payload.smtp?.username,
+    payload.smtp?.secret,
+  ];
+}
+
+function safeBodySummary(
+  body: unknown,
+  sensitiveValues: Array<string | undefined>,
+): string {
+  return sanitizeCliError(JSON.stringify(body), sensitiveValues);
 }
 
 function normalizeEndpoint(

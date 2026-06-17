@@ -137,18 +137,92 @@ describe("IMAP/SMTP onboarding smoke helpers", () => {
       });
     };
 
-    await expect(
+    await expectSanitizedSmokeFailure(
       runImapSmtpOnboardingSmoke({
         apiBaseUrl: "http://127.0.0.1:8080",
         payload: smokePayload(),
         fetchImpl: fetchImpl as typeof fetch,
         connectionTestAttempts: 1,
       }),
-    ).rejects.toThrow("IMAP/SMTP smoke connection test failed");
+      "IMAP/SMTP smoke connection test failed",
+    );
 
     expect(requests).toEqual([
       "http://127.0.0.1:8080/api/accounts/imap-smtp/test",
     ]);
+  });
+
+  it("redacts failed connection test response details", async () => {
+    const fetchImpl = async () => jsonResponse(200, dangerousFailureBody());
+
+    await expectSanitizedSmokeFailure(
+      runImapSmtpOnboardingSmoke({
+        apiBaseUrl: "http://127.0.0.1:8080",
+        payload: smokePayload(),
+        fetchImpl: fetchImpl as typeof fetch,
+        connectionTestAttempts: 1,
+      }),
+      "IMAP/SMTP smoke connection test failed",
+    );
+  });
+
+  it("redacts failed onboarding response details", async () => {
+    const fetchImpl = async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.endsWith("/test")) {
+        return jsonResponse(200, { ok: true });
+      }
+
+      return jsonResponse(500, dangerousFailureBody());
+    };
+
+    await expectSanitizedSmokeFailure(
+      runImapSmtpOnboardingSmoke({
+        apiBaseUrl: "http://127.0.0.1:8080",
+        payload: smokePayload(),
+        fetchImpl: fetchImpl as typeof fetch,
+        connectionTestAttempts: 1,
+      }),
+      "IMAP/SMTP smoke onboarding returned 500",
+    );
+  });
+
+  it("redacts failed sync center response details", async () => {
+    const fetchImpl = async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.endsWith("/test")) {
+        return jsonResponse(200, { ok: true });
+      }
+      if (href.endsWith("/api/accounts/imap-smtp")) {
+        return jsonResponse(202, {
+          task: { status: "completed" },
+          account: {
+            id: "acc_1",
+            email: "support@example.com",
+            provider: "custom_domain",
+            engineProvider: "emailengine",
+          },
+          syncJob: {
+            id: "job_1",
+            jobType: "sync_account",
+            accountId: "acc_1",
+            status: "queued",
+          },
+        });
+      }
+
+      return jsonResponse(503, dangerousFailureBody());
+    };
+
+    await expectSanitizedSmokeFailure(
+      runImapSmtpOnboardingSmoke({
+        apiBaseUrl: "http://127.0.0.1:8080",
+        payload: smokePayload(),
+        fetchImpl: fetchImpl as typeof fetch,
+        connectionTestAttempts: 1,
+      }),
+      "IMAP/SMTP smoke sync center returned 503",
+    );
   });
 
   it("requires onboarding to return the initial sync job", async () => {
@@ -199,6 +273,38 @@ function smokePayload() {
       secret: "smoke-secret",
     },
   });
+}
+
+async function expectSanitizedSmokeFailure(
+  promise: Promise<unknown>,
+  expectedMessage: string,
+): Promise<void> {
+  try {
+    await promise;
+    throw new Error("expected smoke failure");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    expect(message).toContain(expectedMessage);
+    expect(message).not.toContain("smoke-secret");
+    expect(message).not.toContain("support@example.com");
+    expect(message).not.toContain("Bearer raw-token");
+    expect(message).not.toContain("user:secret");
+    expect(message).not.toContain("10.0.0.20");
+    expect(message).not.toContain("github_pat_abc");
+    expect(message).not.toContain("hunter2");
+    expect(message).not.toContain("token=abc");
+  }
+}
+
+function dangerousFailureBody() {
+  return {
+    ok: false,
+    email: "support@example.com",
+    secret: "smoke-secret",
+    authorization: "Bearer raw-token",
+    detail:
+      "connect http://user:secret@10.0.0.20:8080/path?token=abc with github_pat_abc password=hunter2",
+  };
 }
 
 function jsonResponse(status: number, body: unknown): Response {
