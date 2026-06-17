@@ -72,6 +72,48 @@ describe("EmailEngine Docker configuration", () => {
     expect(JSON.stringify(config)).not.toContain("prepared-secret-token");
   });
 
+  it("requires a non-default API token when production API protection is enabled", () => {
+    expect(() =>
+      readApiConfig({ NODE_ENV: "production" } as NodeJS.ProcessEnv),
+    ).toThrow(/EMAILHUB_API_TOKEN/);
+    expect(() =>
+      readApiConfig({
+        EMAILHUB_REQUIRE_API_TOKEN: "true",
+        EMAILHUB_API_TOKEN: "dev-emailhub-token",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/EMAILHUB_API_TOKEN/);
+
+    const config = readApiConfig({
+      NODE_ENV: "production",
+      EMAILHUB_API_TOKEN: "prod-api-token",
+    } as NodeJS.ProcessEnv);
+
+    expect(config.apiAccessTokenConfigured).toBe(true);
+    expect(config.apiAccessTokenRequired).toBe(true);
+    expect(JSON.stringify(config)).not.toContain("prod-api-token");
+  });
+
+  it("documents and wires the self-hosted API token through Docker", async () => {
+    const envExample = await readProjectFile(".env.example");
+    const compose = await readProjectFile("infra", "docker-compose.yml");
+    const prodCompose = await readProjectFile("infra", "docker-compose.prod.yml");
+    const webDockerfile = await readProjectFile("apps", "web", "Dockerfile");
+    const api = serviceSection(compose, "api");
+    const web = serviceSection(compose, "web");
+
+    expect(envExample).toContain("EMAILHUB_API_TOKEN=");
+    expect(envExample).toContain("EMAILHUB_REQUIRE_API_TOKEN=false");
+    expect(envExample).toContain("VITE_EMAILHUB_API_TOKEN=");
+    expect(api).toContain("EMAILHUB_API_TOKEN: ${EMAILHUB_API_TOKEN:-}");
+    expect(api).toContain(
+      "EMAILHUB_REQUIRE_API_TOKEN: ${EMAILHUB_REQUIRE_API_TOKEN:-false}",
+    );
+    expect(web).toContain("VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-}");
+    expect(webDockerfile).toContain("ARG VITE_EMAILHUB_API_TOKEN=");
+    expect(prodCompose).toContain('EMAILHUB_REQUIRE_API_TOKEN: "true"');
+    expect(prodCompose).toContain("authorization:'Bearer '+token");
+  });
+
   it("derives container database URLs from Postgres settings unless explicitly overridden", async () => {
     const envExample = await readProjectFile(".env.example");
     const compose = await readProjectFile("infra", "docker-compose.yml");

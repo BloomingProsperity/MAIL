@@ -420,6 +420,9 @@ export interface AttachmentDownloadService {
 
 export interface ApiConfig {
   apiName: string;
+  apiAccessToken?: string;
+  apiAccessTokenConfigured?: boolean;
+  apiAccessTokenRequired?: boolean;
   emailEngineUrl: string;
   emailEngineWebhookSecret: string;
   emailEngineAccessTokenConfigured?: boolean;
@@ -529,6 +532,17 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       readBodyBuffer(request, maxComposeAttachmentUploadBytes);
 
     try {
+      if (!isApiRequestAuthorized(request, config)) {
+        config.logger?.warn("api_request_unauthorized", {
+          requestId,
+          method: request.method,
+          path: requestPath,
+        });
+        response.setHeader("www-authenticate", 'Bearer realm="email-hub"');
+        writeJson(response, 401, { error: "api_unauthorized" });
+        return;
+      }
+
       if (request.method === "GET" && request.url === "/health") {
         const health = await buildApiHealth(config);
         writeJson(response, health.statusCode, health.body);
@@ -3704,6 +3718,55 @@ function parseRequestId(
   }
 
   return trimmed.slice(0, 128);
+}
+
+function isApiRequestAuthorized(
+  request: IncomingMessage,
+  config: ApiConfig,
+): boolean {
+  const path = getRequestPathname(request.url);
+  if (!path.startsWith("/api/")) {
+    return true;
+  }
+  if (isApiAuthExemptPath(path)) {
+    return true;
+  }
+
+  const expectedToken = config.apiAccessToken?.trim();
+  if (!expectedToken) {
+    return !config.apiAccessTokenRequired;
+  }
+
+  const suppliedToken = readApiAccessToken(request);
+  return suppliedToken ? safeEqual(suppliedToken, expectedToken) : false;
+}
+
+function isApiAuthExemptPath(path: string): boolean {
+  return (
+    path === "/api/webhooks/emailengine" ||
+    path === "/api/mail-engine/auth-server"
+  );
+}
+
+function readApiAccessToken(request: IncomingMessage): string | undefined {
+  const authorization = request.headers.authorization;
+  if (authorization?.startsWith("Bearer ")) {
+    const bearerToken = authorization.slice("Bearer ".length).trim();
+    return bearerToken || undefined;
+  }
+
+  const header = request.headers["x-emailhub-api-token"];
+  const rawToken = Array.isArray(header) ? header[0] : header;
+  const token = rawToken?.trim();
+  return token || undefined;
+}
+
+function getRequestPathname(requestUrl: string | undefined): string {
+  if (!requestUrl) {
+    return "/";
+  }
+
+  return new URL(requestUrl, "http://localhost").pathname;
 }
 
 function isDiagnosticsLogRoute(requestUrl: string | undefined): boolean {

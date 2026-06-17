@@ -8,6 +8,8 @@ COPY apps/web/package.json apps/web/package.json
 RUN npm ci
 
 COPY apps/web apps/web
+ARG VITE_EMAILHUB_API_TOKEN=
+ENV VITE_EMAILHUB_API_TOKEN=$VITE_EMAILHUB_API_TOKEN
 RUN npm run build -w apps/web
 
 FROM nginx:1.27-alpine

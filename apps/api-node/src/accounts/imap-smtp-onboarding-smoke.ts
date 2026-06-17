@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 
+import { createApiTokenFetch } from "../api-token-fetch.js";
 import type { ImapSmtpOnboardingInput } from "./imap-smtp-onboarding.js";
 
 export interface RunImapSmtpOnboardingSmokeInput {
@@ -48,7 +49,8 @@ export function buildImapSmtpOnboardingSmokePayload(
 export async function runImapSmtpOnboardingSmoke(
   input: RunImapSmtpOnboardingSmokeInput,
 ): Promise<ImapSmtpOnboardingSmokeResult> {
-  const fetchImpl = input.fetchImpl ?? fetch;
+  const fetchImpl =
+    input.fetchImpl ?? createApiTokenFetch(fetch, process.env.EMAILHUB_API_TOKEN);
   const apiBaseUrl = normalizeApiBaseUrl(input.apiBaseUrl);
   const payload = buildImapSmtpOnboardingSmokePayload(input.payload);
 

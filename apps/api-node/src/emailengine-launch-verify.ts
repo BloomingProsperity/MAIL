@@ -2,6 +2,7 @@ import {
   normalizeApiBaseUrl,
   verifyEmailEngineLaunch,
 } from "./mail-engine/launch-verifier.js";
+import { createApiTokenFetch } from "./api-token-fetch.js";
 
 const apiBaseUrl =
   process.env.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080";
@@ -11,7 +12,11 @@ const timeoutMs = readPositiveInteger(
 );
 
 try {
-  const result = await verifyEmailEngineLaunch({ apiBaseUrl, timeoutMs });
+  const result = await verifyEmailEngineLaunch({
+    apiBaseUrl,
+    timeoutMs,
+    fetchImpl: createApiTokenFetch(fetch, process.env.EMAILHUB_API_TOKEN),
+  });
   console.log(JSON.stringify(result, null, 2));
   if (!result.ok) {
     process.exitCode = 1;

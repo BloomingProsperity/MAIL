@@ -2388,6 +2388,7 @@ export interface EmailHubApi {
 export interface CreateEmailHubApiOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  apiToken?: string;
 }
 
 export interface ApiErrorPayload {
@@ -2425,7 +2426,7 @@ export class ApiRequestError extends Error {
 export function createEmailHubApi(
   options: CreateEmailHubApiOptions = {},
 ): EmailHubApi {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = createApiFetch(options.fetchImpl ?? fetch, options.apiToken);
   const baseUrl = options.baseUrl?.replace(/\/$/, "") ?? "";
 
   return {
@@ -3726,6 +3727,22 @@ export function createEmailHubApi(
   };
 }
 
+function createApiFetch(fetchImpl: typeof fetch, apiToken?: string): typeof fetch {
+  const token = apiToken?.trim();
+  if (!token) {
+    return fetchImpl;
+  }
+
+  return ((input: RequestInfo | URL, init: RequestInit = {}) =>
+    fetchImpl(input, {
+      ...init,
+      headers: {
+        ...normalizeHeaders(init.headers),
+        authorization: `Bearer ${token}`,
+      },
+    })) as typeof fetch;
+}
+
 async function request<T>(
   fetchImpl: typeof fetch,
   baseUrl: string,
@@ -3751,6 +3768,20 @@ async function request<T>(
   }
 
   return payload as T;
+}
+
+function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
+  if (!headers) {
+    return {};
+  }
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries());
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers);
+  }
+
+  return { ...headers };
 }
 
 async function downloadBlob(

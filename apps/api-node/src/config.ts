@@ -7,8 +7,19 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     env.EMAILENGINE_AUTH_SERVER_SECRET ?? "dev-emailhub-secret";
   const emailEngineServiceSecret =
     env.EENGINE_SECRET ?? "dev-emailhub-secret";
-  return {
+  const apiAccessToken = env.EMAILHUB_API_TOKEN?.trim() ?? "";
+  const apiAccessTokenRequired =
+    env.EMAILHUB_REQUIRE_API_TOKEN === "true" || env.NODE_ENV === "production";
+  if (apiAccessTokenRequired && !isProductionApiToken(apiAccessToken)) {
+    throw new Error(
+      "EMAILHUB_API_TOKEN must be set to a non-default value when API token protection is required",
+    );
+  }
+
+  const config: ApiConfig = {
     apiName: "email-hub-api",
+    apiAccessTokenConfigured: apiAccessToken.length > 0,
+    apiAccessTokenRequired,
     emailEngineUrl: env.EMAILENGINE_URL ?? "http://emailengine:3000",
     emailEngineWebhookSecret: webhookSecret,
     emailEngineWebhookSecretConfigured:
@@ -35,6 +46,16 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
         env.MICROSOFT_OAUTH_CLIENT_ID.trim().length > 0,
     },
   };
+  if (apiAccessToken.length > 0) {
+    Object.defineProperty(config, "apiAccessToken", {
+      value: apiAccessToken,
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  return config;
 }
 
 export function readPort(env: NodeJS.ProcessEnv = process.env): number {
@@ -73,4 +94,8 @@ function readPortValue(value: string | undefined, fallback: number): number {
   }
 
   return parsed;
+}
+
+function isProductionApiToken(value: string): boolean {
+  return value.length > 0 && value !== "dev-emailhub-token";
 }

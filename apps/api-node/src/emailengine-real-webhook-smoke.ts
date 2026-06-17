@@ -1,4 +1,5 @@
 import { buildImapSmtpOnboardingSmokePayload } from "./accounts/imap-smtp-onboarding-smoke.js";
+import { createApiTokenFetch } from "./api-token-fetch.js";
 import { runEmailEngineRealWebhookSmoke } from "./mail-engine/real-webhook-smoke.js";
 import { resolveSmokeMailboxEmail } from "./mail-engine/smoke-defaults.js";
 
@@ -39,6 +40,7 @@ try {
   const result = await runEmailEngineRealWebhookSmoke({
     apiBaseUrl,
     payload,
+    fetchImpl: createApiTokenFetch(fetch, process.env.EMAILHUB_API_TOKEN),
     deliverySmtp: {
       host: process.env.EMAILHUB_SMOKE_DELIVERY_SMTP_HOST ?? "127.0.0.1",
       port: readPort("EMAILHUB_SMOKE_DELIVERY_SMTP_PORT", 3025),

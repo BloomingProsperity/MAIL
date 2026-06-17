@@ -1,4 +1,5 @@
 import { buildImapSmtpOnboardingSmokePayload } from "./accounts/imap-smtp-onboarding-smoke.js";
+import { createApiTokenFetch } from "./api-token-fetch.js";
 import { runEmailEngineSendSmoke } from "./mail-engine/real-roundtrip-smoke.js";
 import { resolveSmokeMailboxEmail } from "./mail-engine/smoke-defaults.js";
 
@@ -96,6 +97,7 @@ try {
     apiBaseUrl,
     payload,
     recipientPayload,
+    fetchImpl: createApiTokenFetch(fetch, process.env.EMAILHUB_API_TOKEN),
     initialSyncReadyAttempts: readPort(
       "EMAILHUB_REAL_WEBHOOK_SMOKE_INITIAL_SYNC_ATTEMPTS",
       180,

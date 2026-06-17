@@ -92,6 +92,8 @@ services:
       API_PORT: 8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DIAGNOSTICS_LOG_CAPACITY: ${DIAGNOSTICS_LOG_CAPACITY:-500}
+      EMAILHUB_API_TOKEN: ${EMAILHUB_API_TOKEN:-}
+      EMAILHUB_REQUIRE_API_TOKEN: ${EMAILHUB_REQUIRE_API_TOKEN:-false}
       DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-emailhub}:${POSTGRES_PASSWORD:-emailhub_dev}@postgres:5432/${POSTGRES_DB:-emailhub}}
       EMAILENGINE_URL: http://emailengine:3000
       EMAILENGINE_ACCESS_TOKEN: ${EMAILENGINE_ACCESS_TOKEN:-}
@@ -194,6 +196,8 @@ services:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
+      args:
+        VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-}
     restart: unless-stopped
     depends_on:
       api:

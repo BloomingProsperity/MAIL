@@ -61,6 +61,50 @@ describe("emailHubApi", () => {
     });
   });
 
+  it("sends the configured API bearer token on JSON and attachment requests", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/download")) {
+        return new Response("attachment body", {
+          headers: {
+            "content-disposition": 'attachment; filename="proof.txt"',
+            "content-type": "text/plain",
+          },
+        });
+      }
+
+      return jsonResponse({ items: [] });
+    });
+    const api = createEmailHubApi({
+      fetchImpl: fetchMock as any,
+      apiToken: " api-secret ",
+    });
+
+    await api.listMailboxes({ accountId: "account_1" });
+    await api.downloadAttachment({
+      accountId: "account_1",
+      attachmentId: "attachment_1",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/accounts/account_1/mailboxes",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: "Bearer api-secret",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/accounts/account_1/attachments/attachment_1/download",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: "Bearer api-secret",
+        }),
+      }),
+    );
+  });
+
   it("loads EmailEngine readiness for production setup guidance", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

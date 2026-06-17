@@ -332,6 +332,12 @@ inspect the current profile. Lower per-skill `maxContextChars` and
 For an EmailEngine-first launch, set these values in `.env` before onboarding
 real mailboxes:
 
+- `EMAILHUB_API_TOKEN`: strong random bearer token for all `/api/*` routes
+  except `/health`, EmailEngine webhooks, and the EmailEngine auth-server
+  callback. Set `EMAILHUB_REQUIRE_API_TOKEN=true` for exposed self-hosted
+  stacks; `infra/docker-compose.prod.yml` does this automatically.
+- `VITE_EMAILHUB_API_TOKEN`: same token when the bundled static web app calls
+  the API directly from a trusted self-hosted browser session.
 - `EMAILENGINE_ACCESS_TOKEN`: raw token used by the Email Hub API and worker.
 - `EMAILENGINE_IMAGE`: pinned EmailEngine container image, defaulting to
   `postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc`.

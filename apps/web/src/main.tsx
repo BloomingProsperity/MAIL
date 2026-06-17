@@ -4,7 +4,12 @@ import { App } from "./App";
 import { createEmailHubApi } from "./lib/emailHubApi";
 import "./styles.css";
 
-const api = createEmailHubApi();
+const env = (import.meta as ImportMeta & {
+  env?: Record<string, string | undefined>;
+}).env;
+const api = createEmailHubApi({
+  apiToken: env?.VITE_EMAILHUB_API_TOKEN,
+});
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

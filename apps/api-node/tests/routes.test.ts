@@ -68,6 +68,66 @@ describe("API routes", () => {
     });
   });
 
+  it("keeps the health route public when API token protection is enabled", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/health`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+          service: "email-hub-api",
+          ok: true,
+        });
+      },
+      {
+        apiAccessToken: "api-secret",
+        apiAccessTokenConfigured: true,
+        apiAccessTokenRequired: true,
+      },
+    );
+  });
+
+  it("requires the configured API token before protected API routes", async () => {
+    await withApi(
+      async (baseUrl) => {
+        const noToken = await fetch(`${baseUrl}/api/mail-providers/capabilities`);
+        const wrongToken = await fetch(
+          `${baseUrl}/api/mail-providers/capabilities`,
+          {
+            headers: { authorization: "Bearer wrong-secret" },
+          },
+        );
+        const bearerToken = await fetch(
+          `${baseUrl}/api/mail-providers/capabilities`,
+          {
+            headers: { authorization: "Bearer api-secret" },
+          },
+        );
+        const headerToken = await fetch(
+          `${baseUrl}/api/mail-providers/capabilities`,
+          {
+            headers: { "x-emailhub-api-token": "api-secret" },
+          },
+        );
+
+        expect(noToken.status).toBe(401);
+        expect(await noToken.json()).toEqual({ error: "api_unauthorized" });
+        expect(wrongToken.status).toBe(401);
+        expect(await wrongToken.json()).toEqual({ error: "api_unauthorized" });
+        expect(bearerToken.status).toBe(200);
+        expect(await bearerToken.json()).toMatchObject({
+          providers: expect.any(Array),
+        });
+        expect(headerToken.status).toBe(200);
+      },
+      {
+        apiAccessToken: "api-secret",
+        apiAccessTokenConfigured: true,
+        apiAccessTokenRequired: true,
+      },
+    );
+  });
+
   it("reports database readiness from the API health route", async () => {
     const databaseHealthCheck = vi.fn(async () => {});
 
@@ -730,6 +790,9 @@ describe("API routes", () => {
         expect(calls).toEqual([{ accountId: "acc_1", proto: "imap" }]);
       },
       {
+        apiAccessToken: "api-secret",
+        apiAccessTokenConfigured: true,
+        apiAccessTokenRequired: true,
         emailEngineAuthServerSecret: "auth-secret",
         emailEngineAuthServerService: {
           async resolveCredentials(input: unknown) {
@@ -759,6 +822,9 @@ describe("API routes", () => {
         expect(calls).toEqual([]);
       },
       {
+        apiAccessToken: "api-secret",
+        apiAccessTokenConfigured: true,
+        apiAccessTokenRequired: true,
         emailEngineAuthServerSecret: "auth-secret",
         emailEngineAuthServerService: {
           async resolveCredentials(input: unknown) {
@@ -1924,52 +1990,59 @@ describe("API routes", () => {
   });
 
   it("accepts signed EmailEngine webhooks, stores events, and queues sync jobs", async () => {
-    await withApi(async (baseUrl, store) => {
-      const body = JSON.stringify({
-        event: "messageDeleted",
-        account: "acc_1",
-        data: { id: "msg_1" },
-      });
-      const response = await fetch(`${baseUrl}/api/webhooks/emailengine`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-ee-wh-signature": sign(body),
-        },
-        body,
-      });
-
-      expect(response.status).toBe(202);
-      const payload = await response.json();
-
-      expect(payload).toMatchObject({
-        events: [
-          {
-            source: "emailengine_webhook",
-            kind: "message_deleted",
-            accountId: "acc_1",
-            providerMessageId: "msg_1",
-            idempotencyKey: expect.stringMatching(
-              /^emailengine:acc_1:messageDeleted:msg_1:/,
-            ),
+    await withApi(
+      async (baseUrl, store) => {
+        const body = JSON.stringify({
+          event: "messageDeleted",
+          account: "acc_1",
+          data: { id: "msg_1" },
+        });
+        const response = await fetch(`${baseUrl}/api/webhooks/emailengine`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-ee-wh-signature": sign(body),
           },
-        ],
-        duplicateCount: 0,
-      });
-      expect(payload.storedEvents[0]).toMatchObject({
-        kind: "message_deleted",
-        accountId: "acc_1",
-        providerMessageId: "msg_1",
-        duplicate: false,
-      });
-      expect(payload.syncJobs[0]).toMatchObject({
-        jobType: "sync_account",
-        accountId: "acc_1",
-        status: "queued",
-      });
-      expect(store.listEvents()).toHaveLength(1);
-      expect(store.listSyncJobs()).toHaveLength(1);
-    });
+          body,
+        });
+
+        expect(response.status).toBe(202);
+        const payload = await response.json();
+
+        expect(payload).toMatchObject({
+          events: [
+            {
+              source: "emailengine_webhook",
+              kind: "message_deleted",
+              accountId: "acc_1",
+              providerMessageId: "msg_1",
+              idempotencyKey: expect.stringMatching(
+                /^emailengine:acc_1:messageDeleted:msg_1:/,
+              ),
+            },
+          ],
+          duplicateCount: 0,
+        });
+        expect(payload.storedEvents[0]).toMatchObject({
+          kind: "message_deleted",
+          accountId: "acc_1",
+          providerMessageId: "msg_1",
+          duplicate: false,
+        });
+        expect(payload.syncJobs[0]).toMatchObject({
+          jobType: "sync_account",
+          accountId: "acc_1",
+          status: "queued",
+        });
+        expect(store.listEvents()).toHaveLength(1);
+        expect(store.listSyncJobs()).toHaveLength(1);
+      },
+      {
+        apiAccessToken: "api-secret",
+        apiAccessTokenConfigured: true,
+        apiAccessTokenRequired: true,
+      },
+    );
   });
 
   it("records EmailEngine webhook ingest diagnostics without storing raw payload secrets", async () => {
