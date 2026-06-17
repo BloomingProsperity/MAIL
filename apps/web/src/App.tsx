@@ -5746,6 +5746,8 @@ function AddMailPage(props: {
     useState<ImapSmtpConnectionDiagnostic[]>([]);
   const [mailEngineHealth, setMailEngineHealth] =
     useState<MailEngineHealthDto | undefined>();
+  const [mailEngineHealthUnavailable, setMailEngineHealthUnavailable] =
+    useState(false);
   const [providerOptions, setProviderOptions] =
     useState<ProviderOption[]>(providers);
   const [csvImportText, setCsvImportText] = useState("");
@@ -5793,6 +5795,7 @@ function AddMailPage(props: {
   useEffect(() => {
     if (!props.api) {
       setMailEngineHealth(undefined);
+      setMailEngineHealthUnavailable(false);
       return;
     }
 
@@ -5802,11 +5805,13 @@ function AddMailPage(props: {
       .then((health) => {
         if (!cancelled) {
           setMailEngineHealth(health);
+          setMailEngineHealthUnavailable(false);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setMailEngineHealth(undefined);
+          setMailEngineHealthUnavailable(true);
         }
       });
 
@@ -6263,8 +6268,11 @@ function AddMailPage(props: {
 
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
 
-      {mailEngineHealth ? (
-        <MailEngineReadinessPanel health={mailEngineHealth} />
+      {props.api && (mailEngineHealth || mailEngineHealthUnavailable) ? (
+        <MailEngineReadinessPanel
+          health={mailEngineHealth}
+          unavailable={mailEngineHealthUnavailable}
+        />
       ) : null}
 
       {onboardingRecoveryDiagnostics.length > 0 ? (
@@ -6650,8 +6658,15 @@ function AddMailPage(props: {
   );
 }
 
-function MailEngineReadinessPanel(props: { health: MailEngineHealthDto }) {
-  const degraded = props.health.readiness.status === "degraded";
+function MailEngineReadinessPanel(props: {
+  health?: MailEngineHealthDto;
+  unavailable?: boolean;
+}) {
+  const degraded =
+    props.unavailable || props.health?.readiness.status === "degraded";
+  const statusRows = props.health
+    ? mailEngineReadinessRows(props.health)
+    : mailEngineUnavailableRows();
   return (
     <section
       className={`page-panel mail-engine-readiness ${
@@ -6661,43 +6676,46 @@ function MailEngineReadinessPanel(props: { health: MailEngineHealthDto }) {
     >
       <div>
         <strong>
-          {degraded ? "EmailEngine 上线还差配置" : "EmailEngine 接入就绪"}
+          {props.unavailable
+            ? "EmailEngine 体检暂时不可用"
+            : degraded
+              ? "EmailEngine 上线还差配置"
+              : "EmailEngine 接入就绪"}
         </strong>
-        <span>{props.health.readiness.summary}</span>
+        <span>
+          {props.health?.readiness.summary ??
+            "无法读取后端上线体检，请先检查 API /health、网络和 API Token。"}
+        </span>
       </div>
       <div className="mail-engine-readiness-grid">
-        <p>
-          <strong>
-            {formatMailEngineHttpStatus(props.health.checks?.http ?? "skipped")}
-          </strong>
-          <span>运行探测</span>
-        </p>
-        <p>
-          <strong>
-            {props.health.capabilities.accessTokenConfigured ? "已配置" : "缺少"}
-          </strong>
-          <span>访问令牌</span>
-        </p>
-        <p>
-          <strong>
-            {formatMailEngineApiAuthStatus(
-              props.health.checks?.apiAuth ?? "skipped",
-            )}
-          </strong>
-          <span>认证探测</span>
-        </p>
-        <p>
-          <strong>
-            {props.health.capabilities.imapSmtpOnboarding ? "可用" : "不可用"}
-          </strong>
-          <span>邮箱接入</span>
-        </p>
-        <p>
-          <strong>{props.health.capabilities.send ? "可用" : "不可用"}</strong>
-          <span>发信链路</span>
-        </p>
+        {statusRows.map((row) => (
+          <p key={row.label}>
+            <strong>{row.value}</strong>
+            <span>{row.label}</span>
+          </p>
+        ))}
       </div>
-      {props.health.readiness.setupActions.length > 0 ? (
+      {props.health &&
+      (props.health.missing.length > 0 || props.health.warnings.length > 0) ? (
+        <div
+          className="mail-engine-status-notes"
+          aria-label="EmailEngine 缺失与警告"
+        >
+          {props.health.missing.length > 0 ? (
+            <p>
+              <strong>缺失</strong>
+              <span>{props.health.missing.join(" / ")}</span>
+            </p>
+          ) : null}
+          {props.health.warnings.length > 0 ? (
+            <p>
+              <strong>警告</strong>
+              <span>{props.health.warnings.join(" / ")}</span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {props.health && props.health.readiness.setupActions.length > 0 ? (
         <div className="mail-engine-setup-actions">
           {props.health.readiness.setupActions.map((action) => (
             <div key={action.code}>
@@ -6710,6 +6728,61 @@ function MailEngineReadinessPanel(props: { health: MailEngineHealthDto }) {
       ) : null}
     </section>
   );
+}
+
+function mailEngineReadinessRows(
+  health: MailEngineHealthDto,
+): Array<{ label: string; value: string }> {
+  return [
+    {
+      label: "运行探测",
+      value: formatMailEngineHttpStatus(health.checks?.http),
+    },
+    {
+      label: "访问令牌",
+      value: health.capabilities.accessTokenConfigured ? "已配置" : "缺少",
+    },
+    {
+      label: "认证探测",
+      value: formatMailEngineApiAuthStatus(health.checks?.apiAuth),
+    },
+    {
+      label: "预置令牌",
+      value: formatMailEngineConfiguredStatus(health.checks?.preparedToken),
+    },
+    {
+      label: "回调密钥",
+      value: formatMailEngineWebhookSecretStatus(health.checks?.webhookSecret),
+    },
+    {
+      label: "邮箱接入",
+      value: health.capabilities.imapSmtpOnboarding ? "可用" : "不可用",
+    },
+    {
+      label: "附件下载",
+      value: health.capabilities.attachmentDownload ? "可用" : "不可用",
+    },
+    {
+      label: "发信链路",
+      value: health.capabilities.send ? "可用" : "不可用",
+    },
+  ];
+}
+
+function mailEngineUnavailableRows(): Array<{ label: string; value: string }> {
+  return [
+    "运行探测",
+    "访问令牌",
+    "认证探测",
+    "预置令牌",
+    "回调密钥",
+    "邮箱接入",
+    "附件下载",
+    "发信链路",
+  ].map((label) => ({
+    label,
+    value: label === "运行探测" || label === "认证探测" ? "未探测" : "未知",
+  }));
 }
 
 function MailEngineLaunchActivityPanel(props: {
@@ -6757,7 +6830,7 @@ function MailEngineLaunchActivityPanel(props: {
 }
 
 function formatMailEngineHttpStatus(
-  status: NonNullable<MailEngineHealthDto["checks"]>["http"],
+  status: NonNullable<MailEngineHealthDto["checks"]>["http"] | undefined,
 ): string {
   if (status === "ok") {
     return "可达";
@@ -6771,7 +6844,7 @@ function formatMailEngineHttpStatus(
 }
 
 function formatMailEngineApiAuthStatus(
-  status: NonNullable<MailEngineHealthDto["checks"]>["apiAuth"],
+  status: NonNullable<MailEngineHealthDto["checks"]>["apiAuth"] | undefined,
 ): string {
   if (status === "ok") {
     return "可用";
@@ -6783,6 +6856,41 @@ function formatMailEngineApiAuthStatus(
 
   if (status === "unavailable") {
     return "不可用";
+  }
+
+  return "未探测";
+}
+
+function formatMailEngineConfiguredStatus(
+  status:
+    | NonNullable<MailEngineHealthDto["checks"]>["accessToken"]
+    | NonNullable<MailEngineHealthDto["checks"]>["preparedToken"]
+    | undefined,
+): string {
+  if (status === "configured") {
+    return "已配置";
+  }
+
+  if (status === "missing") {
+    return "缺少";
+  }
+
+  return "未探测";
+}
+
+function formatMailEngineWebhookSecretStatus(
+  status: NonNullable<MailEngineHealthDto["checks"]>["webhookSecret"] | undefined,
+): string {
+  if (status === "custom") {
+    return "已替换";
+  }
+
+  if (status === "default") {
+    return "默认值";
+  }
+
+  if (status === "missing") {
+    return "缺少";
   }
 
   return "未探测";
@@ -7926,6 +8034,8 @@ function SyncCenterPage(props: {
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
   const [mailEngineHealth, setMailEngineHealth] =
     useState<MailEngineHealthDto | undefined>();
+  const [mailEngineHealthUnavailable, setMailEngineHealthUnavailable] =
+    useState(false);
   const [mailEngineLaunchEvents, setMailEngineLaunchEvents] = useState<
     OperationalEventDto[]
   >([]);
@@ -8222,6 +8332,7 @@ function SyncCenterPage(props: {
   useEffect(() => {
     if (!props.api) {
       setMailEngineHealth(undefined);
+      setMailEngineHealthUnavailable(false);
       return;
     }
 
@@ -8231,11 +8342,13 @@ function SyncCenterPage(props: {
       .then((health) => {
         if (alive) {
           setMailEngineHealth(health);
+          setMailEngineHealthUnavailable(false);
         }
       })
       .catch(() => {
         if (alive) {
           setMailEngineHealth(undefined);
+          setMailEngineHealthUnavailable(true);
         }
       });
 
@@ -8300,8 +8413,11 @@ function SyncCenterPage(props: {
         </div>
       </header>
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
-      {mailEngineHealth ? (
-        <MailEngineReadinessPanel health={mailEngineHealth} />
+      {props.api && (mailEngineHealth || mailEngineHealthUnavailable) ? (
+        <MailEngineReadinessPanel
+          health={mailEngineHealth}
+          unavailable={mailEngineHealthUnavailable}
+        />
       ) : null}
       {props.api ? (
         <MailEngineLaunchActivityPanel

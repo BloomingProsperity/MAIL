@@ -4648,6 +4648,7 @@ describe("Email Hub first UI baseline", () => {
         url: "configured",
         http: "unavailable",
         accessToken: "missing",
+        preparedToken: "missing",
         webhookSecret: "custom",
       },
       capabilities: {
@@ -4658,7 +4659,7 @@ describe("Email Hub first UI baseline", () => {
         send: false,
       },
       missing: ["EMAILENGINE_ACCESS_TOKEN"],
-      warnings: [],
+      warnings: ["EENGINE_PREPARED_TOKEN_MISSING"],
       readiness: {
         status: "degraded",
         summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
@@ -4676,13 +4677,43 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
 
-    expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
-    expect(screen.getByText("运行探测")).toBeTruthy();
-    expect(screen.getByText("不可达")).toBeTruthy();
-    expect(screen.getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
+    const panel = await screen.findByRole("region", {
+      name: "EmailEngine 上线体检",
+    });
+    expect(within(panel).getByText("EmailEngine 上线还差配置")).toBeTruthy();
+    expect(within(panel).getByText("运行探测")).toBeTruthy();
+    expect(within(panel).getByText("不可达")).toBeTruthy();
+    expect(within(panel).getByText("预置令牌")).toBeTruthy();
+    expect(within(panel).getAllByText("缺少").length).toBeGreaterThanOrEqual(2);
+    expect(within(panel).getByText("附件下载")).toBeTruthy();
+    expect(within(panel).getByText("EMAILENGINE_ACCESS_TOKEN")).toBeTruthy();
+    expect(within(panel).getByText("EENGINE_PREPARED_TOKEN_MISSING")).toBeTruthy();
+    expect(within(panel).getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
     expect(
-      screen.getByText("EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN"),
+      within(panel).getByText("EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN"),
     ).toBeTruthy();
+  });
+
+  it("keeps EmailEngine readiness visible when Sync Center health fetch fails", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMailEngineHealth).mockRejectedValueOnce(new Error("offline"));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+
+    const panel = await screen.findByRole("region", {
+      name: "EmailEngine 上线体检",
+    });
+    expect(within(panel).getByText("EmailEngine 体检暂时不可用")).toBeTruthy();
+    expect(
+      within(panel).getByText(
+        "无法读取后端上线体检，请先检查 API /health、网络和 API Token。",
+      ),
+    ).toBeTruthy();
+    expect(within(panel).getByText("运行探测")).toBeTruthy();
+    expect(within(panel).getAllByText("未探测").length).toBeGreaterThanOrEqual(1);
+    expect(within(panel).getByText("附件下载")).toBeTruthy();
+    expect(within(panel).getAllByText("未知").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows recent EmailEngine webhook and worker activity in Sync Center", async () => {
@@ -5614,6 +5645,7 @@ describe("Email Hub first UI baseline", () => {
         url: "configured",
         http: "unavailable",
         accessToken: "missing",
+        preparedToken: "missing",
         webhookSecret: "custom",
       },
       capabilities: {
@@ -5624,7 +5656,7 @@ describe("Email Hub first UI baseline", () => {
         send: false,
       },
       missing: ["EMAILENGINE_ACCESS_TOKEN"],
-      warnings: [],
+      warnings: ["EENGINE_PREPARED_TOKEN_MISSING"],
       readiness: {
         status: "degraded",
         summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
@@ -5644,15 +5676,28 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
     );
 
-    expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
-    expect(screen.getByText("运行探测")).toBeTruthy();
-    expect(screen.getByText("不可达")).toBeTruthy();
-    expect(screen.getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
+    const readinessPanel = await screen.findByRole("region", {
+      name: "EmailEngine 上线体检",
+    });
+    expect(within(readinessPanel).getByText("EmailEngine 上线还差配置")).toBeTruthy();
+    expect(within(readinessPanel).getByText("运行探测")).toBeTruthy();
+    expect(within(readinessPanel).getByText("不可达")).toBeTruthy();
+    expect(within(readinessPanel).getByText("预置令牌")).toBeTruthy();
+    expect(within(readinessPanel).getByText("附件下载")).toBeTruthy();
+    expect(within(readinessPanel).getByText("EMAILENGINE_ACCESS_TOKEN")).toBeTruthy();
     expect(
-      screen.getByText("EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN"),
+      within(readinessPanel).getByText("EENGINE_PREPARED_TOKEN_MISSING"),
+    ).toBeTruthy();
+    expect(within(readinessPanel).getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
+    expect(
+      within(readinessPanel).getByText(
+        "EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN",
+      ),
     ).toBeTruthy();
     expect(
-      screen.getByText("添加邮箱、附件下载、发信和同步任务会失败。"),
+      within(readinessPanel).getByText(
+        "添加邮箱、附件下载、发信和同步任务会失败。",
+      ),
     ).toBeTruthy();
     expect(document.body.textContent ?? "").not.toContain("super-secret-token");
 

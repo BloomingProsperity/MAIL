@@ -2059,6 +2059,7 @@ h2 {
 }
 
 .mail-engine-readiness-grid p,
+.mail-engine-status-notes p,
 .mail-engine-setup-actions > div {
   display: grid;
   gap: 4px;
@@ -2071,12 +2072,14 @@ h2 {
 }
 
 .mail-engine-readiness-grid strong,
+.mail-engine-status-notes strong,
 .mail-engine-setup-actions strong {
   color: var(--text-main);
   font-size: 13px;
 }
 
 .mail-engine-readiness-grid span,
+.mail-engine-status-notes span,
 .mail-engine-setup-actions span,
 .mail-engine-setup-actions p {
   margin: 0;
@@ -2085,6 +2088,7 @@ h2 {
   line-height: 1.45;
 }
 
+.mail-engine-status-notes,
 .mail-engine-setup-actions {
   display: grid;
   gap: 8px;
