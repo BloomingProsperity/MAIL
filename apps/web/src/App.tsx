@@ -37,6 +37,7 @@ import {
   composeBodyHtmlForPayload,
   formatComposeSelection,
 } from "./features/compose/rich-text";
+import { ComposeReview } from "./features/compose/ComposeReview";
 import type { ComposeBodyFormat } from "./features/compose/rich-text";
 import type { MailItem, Tone } from "./features/mail/mail-items";
 import type {
@@ -4319,19 +4320,16 @@ function MailWorkspace(props: {
             </button>
           </div>
           {composePreview ? (
-            <div className="compose-preview-box" role="status">
-              <strong>
-                {composePreview.readyToSend ? "可发送预览" : "预览待处理"}
-              </strong>
-              <span>
-                {composePreview.to.length} 收件人 · {composePreview.estimatedSizeBytes} 字节
-              </span>
-              {composePreview.warnings.length > 0 ? (
-                <em>{formatComposeWarnings(composePreview.warnings)}</em>
-              ) : (
-                <em>{composePreview.subject || "无主题"}</em>
+            <ComposeReview
+              preview={composePreview}
+              bodyText={composeBody}
+              controlledBodyHtml={composeBodyHtmlForPayload(
+                composeBody,
+                composeRichHtmlEnabled,
               )}
-            </div>
+              attachments={composeAttachments}
+              warningsText={formatComposeWarnings(composePreview.warnings)}
+            />
           ) : null}
           <div className="compose-schedule-row">
             <label>

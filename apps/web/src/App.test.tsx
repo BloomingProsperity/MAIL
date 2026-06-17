@@ -7062,6 +7062,10 @@ describe("Email Hub first UI baseline", () => {
         source: "manual",
       });
     });
+    const reviewBody = await screen.findByLabelText("Compose review body");
+    expect(reviewBody.querySelector("blockquote")?.textContent).toBe(
+      "Please review this line",
+    );
   });
 
   it("submits quoted compose bodyHtml after the quote tool is used", async () => {
@@ -7499,7 +7503,15 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(api.sendMailDraft).not.toHaveBeenCalled();
-    expect(await screen.findByText("可发送预览")).toBeTruthy();
+    const review = await screen.findByLabelText("Compose review");
+    expect(within(review).getByText("可发送预览")).toBeTruthy();
+    expect(within(review).getByText("Launch plan")).toBeTruthy();
+    expect(within(screen.getByLabelText("Compose review body")).getByText(
+      "Please review the launch plan.",
+    )).toBeTruthy();
+    expect(within(screen.getByLabelText("Compose review attachments")).getByText(
+      "附件 0",
+    )).toBeTruthy();
   });
 
   it("polishes a composed draft through Hermes before saving it", async () => {

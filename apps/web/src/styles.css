@@ -837,32 +837,95 @@ h2 {
   font-size: 11px;
 }
 
-.compose-preview-box {
+.compose-review {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) auto;
-  align-items: center;
-  gap: 4px 10px;
+  gap: 8px;
   min-width: 0;
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 10px;
   background: var(--bg-soft);
 }
 
-.compose-preview-box strong {
+.compose-review-head,
+.compose-review-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.compose-review-head strong,
+.compose-review-attachments strong {
   font-size: 13px;
 }
 
-.compose-preview-box span,
-.compose-preview-box em {
+.compose-review-head span,
+.compose-review-meta span,
+.compose-review-meta em,
+.compose-review-attachments span,
+.compose-review-attachments em {
   min-width: 0;
   color: var(--text-secondary);
   font-size: 12px;
   font-style: normal;
 }
 
-.compose-preview-box em {
-  grid-column: 1 / -1;
+.compose-review-meta span,
+.compose-review-attachments span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compose-review-body {
+  max-height: 140px;
+  overflow: auto;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  padding: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.compose-review-body p,
+.compose-review-body blockquote,
+.compose-review-body ul {
+  margin: 0;
+}
+
+.compose-review-body blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: 8px;
+  color: var(--text-secondary);
+}
+
+.compose-review-body ul {
+  padding-left: 18px;
+}
+
+.compose-review-attachments {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.compose-review-attachments ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.compose-review-attachments li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  min-width: 0;
 }
 
 .draft-list,

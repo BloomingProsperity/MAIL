@@ -409,7 +409,10 @@ with more than smoke-level tests.
   production helpers for reusable follow-up/meeting/handoff templates, inline
   bold/italic/list/link/quote formatting that emits the existing `bodyHtml`
   draft field through a tested `features/compose` helper, and Hermes draft
-  translation through `/api/hermes/skills/translate_text/run`.
+  translation through `/api/hermes/skills/translate_text/run`. The send preview
+  is now a compact review panel that renders the current controlled rich-text
+  body, delivery warnings, estimated size, and attachment checklist before the
+  user saves, sends, or schedules.
   The outbox panel loads
   `/api/accounts/:accountId/outbox`, and each row routes reschedule, send now,
   cancel, and edit-draft to the matching backend contract. Scheduled outbox
