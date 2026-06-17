@@ -194,7 +194,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(api).toContain(
       "EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS: ${EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS:-600}",
     );
-    expect(web).toContain("VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-}");
+    expect(web).toContain(
+      "VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-${EMAILHUB_API_TOKEN:-}}",
+    );
     expect(web).toContain(
       "VITE_EMAILHUB_DEFAULT_ACCOUNT_ID: ${VITE_EMAILHUB_DEFAULT_ACCOUNT_ID:-}",
     );
@@ -600,14 +602,14 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS=5000");
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_ATTEMPTS=12");
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_WAIT_MS=5000");
-    expect(dockerHealthScript).toContain("env.API_BIND");
-    expect(dockerHealthScript).toContain("env.WEB_BIND");
-    expect(dockerHealthScript).toContain("env.EMAILHUB_API_TOKEN");
+    expect(dockerHealthScript).toContain("runtimeEnv.API_BIND");
+    expect(dockerHealthScript).toContain("runtimeEnv.WEB_BIND");
+    expect(dockerHealthScript).toContain("runtimeEnv.EMAILHUB_API_TOKEN");
     expect(dockerHealthScript).toContain(
-      "env.EMAILHUB_DOCKER_HEALTH_ATTEMPTS",
+      "runtimeEnv.EMAILHUB_DOCKER_HEALTH_ATTEMPTS",
     );
     expect(dockerHealthScript).toContain(
-      "env.EMAILHUB_DOCKER_HEALTH_WAIT_MS",
+      "runtimeEnv.EMAILHUB_DOCKER_HEALTH_WAIT_MS",
     );
     expect(dockerHealthScript).toContain('name: "api_health"');
     expect(dockerHealthScript).toContain('name: "mail_engine_readiness"');

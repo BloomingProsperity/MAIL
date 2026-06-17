@@ -203,7 +203,7 @@ services:
       context: ..
       dockerfile: apps/web/Dockerfile
       args:
-        VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-}
+        VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-${EMAILHUB_API_TOKEN:-}}
         VITE_EMAILHUB_DEFAULT_ACCOUNT_ID: ${VITE_EMAILHUB_DEFAULT_ACCOUNT_ID:-}
     restart: unless-stopped
     depends_on:
