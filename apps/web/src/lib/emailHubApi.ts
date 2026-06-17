@@ -2145,6 +2145,7 @@ export interface EmailHubApi {
     forceRefresh?: boolean;
   }): Promise<HermesMessageTranslationResult>;
   confirmTranslationPreference(input: {
+    accountId: string;
     mode: HermesTranslationPreferenceMode;
     sourceLanguage: string;
     targetLanguage?: string;

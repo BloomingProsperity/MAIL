@@ -2133,6 +2133,7 @@ function MailWorkspace(props: {
   const composeAutosaveGenerationRef = useRef(0);
   const lastSavedComposeSignatureRef = useRef("");
   const readerHermesRequestRef = useRef(0);
+  const readerTranslationPreferenceRequestRef = useRef(0);
 
   function cancelComposeAutosave(status: ComposeAutosaveStatus = "idle") {
     if (composeAutosaveTimerRef.current !== undefined) {
@@ -2183,6 +2184,7 @@ function MailWorkspace(props: {
 
   useEffect(() => {
     readerHermesRequestRef.current += 1;
+    readerTranslationPreferenceRequestRef.current += 1;
     setAttachmentDownloadBusyId(undefined);
     setAttachmentDownloadNotice("");
     setReaderHermesNotice("");
@@ -2842,20 +2844,43 @@ function MailWorkspace(props: {
       return;
     }
 
+    const requestId = readerHermesRequestRef.current + 1;
+    const preferenceRequestId = readerTranslationPreferenceRequestRef.current + 1;
+    readerHermesRequestRef.current = requestId;
+    readerTranslationPreferenceRequestRef.current = preferenceRequestId;
+    const accountId = props.selectedMail.accountId;
+    const senderEmail = props.selectedMail.email;
+    const targetLanguage = readerHermesTranslation.targetLanguage;
+
     setReaderTranslationPreferenceBusy(true);
     try {
       await props.api.confirmTranslationPreference({
+        accountId,
         mode: "always",
         sourceLanguage,
-        targetLanguage: readerHermesTranslation.targetLanguage,
-        memoryScope: `sender:${props.selectedMail.email}`,
-        reason: `Reader translation preference for ${props.selectedMail.email}`,
+        targetLanguage,
+        memoryScope: `sender:${senderEmail}`,
+        reason: `Reader translation preference for ${senderEmail}`,
       });
+      if (
+        readerHermesRequestRef.current !== requestId ||
+        readerTranslationPreferenceRequestRef.current !== preferenceRequestId
+      ) {
+        return;
+      }
       setReaderHermesNotice("Hermes 已记住这个翻译习惯。");
     } catch {
+      if (
+        readerHermesRequestRef.current !== requestId ||
+        readerTranslationPreferenceRequestRef.current !== preferenceRequestId
+      ) {
+        return;
+      }
       setReaderHermesNotice("Hermes 翻译习惯暂时无法保存。");
     } finally {
-      setReaderTranslationPreferenceBusy(false);
+      if (readerTranslationPreferenceRequestRef.current === preferenceRequestId) {
+        setReaderTranslationPreferenceBusy(false);
+      }
     }
   }
 

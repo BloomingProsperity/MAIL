@@ -2910,6 +2910,55 @@ describe("emailHubApi", () => {
     );
   });
 
+  it("confirms Hermes translation preferences with account scope", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          memory: {
+            id: "memory_translation_1",
+            accountId: "account_1",
+            layer: "procedural_memory",
+            scope: "sender:client@example.com",
+            content: { source: "translation_preference" },
+            confidence: 0.92,
+            createdAt: "2026-06-14T08:00:00.000Z",
+            updatedAt: "2026-06-14T08:00:00.000Z",
+          },
+        },
+        201,
+      ),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.confirmTranslationPreference({
+      accountId: "account_1",
+      mode: "always",
+      sourceLanguage: "Chinese",
+      targetLanguage: "English",
+      memoryScope: "sender:client@example.com",
+      reason: "Reader translation preference for client@example.com",
+    });
+
+    expect(result.memory).toMatchObject({
+      id: "memory_translation_1",
+      accountId: "account_1",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/translation-preferences",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          accountId: "account_1",
+          mode: "always",
+          sourceLanguage: "Chinese",
+          targetLanguage: "English",
+          memoryScope: "sender:client@example.com",
+          reason: "Reader translation preference for client@example.com",
+        }),
+      }),
+    );
+  });
+
   it("runs message-scoped Hermes summaries through the account message route", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       jsonResponse(

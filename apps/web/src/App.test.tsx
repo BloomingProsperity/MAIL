@@ -779,6 +779,7 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.confirmTranslationPreference).toHaveBeenCalledWith({
+        accountId: "account_1",
         mode: "always",
         sourceLanguage: "Chinese",
         targetLanguage: "English",
@@ -787,6 +788,89 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText("Hermes 已记住这个翻译习惯。")).toBeTruthy();
+  });
+
+  it("ignores a stale Hermes translation preference after switching messages", async () => {
+    const api = createApiFixture();
+    let resolvePreference: (value: HermesTranslationPreferenceResult) => void =
+      () => {};
+    mockTwoMessageReader(api);
+    vi.mocked(api.translateMessage).mockResolvedValueOnce({
+      skillRunId: "run_translate_before_switch",
+      auditEventId: "audit_translate_before_switch",
+      skillId: "translate_text",
+      accountId: "account_1",
+      messageId: "message_1",
+      sourceLanguage: "Chinese",
+      targetLanguage: "English",
+      translatedText: "Hello before switch.",
+      cached: false,
+    } satisfies HermesMessageTranslationResult);
+    vi.mocked(api.confirmTranslationPreference).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePreference = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "First subject" });
+    await screen.findByText("First backend body");
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Hermes translation source language" }),
+      { target: { value: "Chinese" } },
+    );
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Hermes translation target language" }),
+      { target: { value: "English" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ask Hermes to translate selected message",
+      }),
+    );
+    const translation = await screen.findByLabelText("Hermes 邮件翻译");
+    fireEvent.click(
+      within(translation).getByRole("button", {
+        name: "Remember Hermes translation preference",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.confirmTranslationPreference).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "account_1",
+          memoryScope: "sender:first@example.com",
+        }),
+      );
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "邮件列表" })).getByRole(
+        "button",
+        { name: /Second subject/ },
+      ),
+    );
+    await screen.findByRole("heading", { name: "Second subject" });
+    await screen.findByText("Second backend body");
+
+    await act(async () => {
+      resolvePreference({
+        memory: {
+          id: "memory_stale_translation",
+          accountId: "account_1",
+          layer: "procedural_memory",
+          scope: "sender:first@example.com",
+          confidence: 0.92,
+          content: { source: "translation_preference" },
+          createdAt: "2026-06-13T10:00:00.000Z",
+          updatedAt: "2026-06-13T10:00:00.000Z",
+        },
+      });
+    });
+
+    expect(screen.queryByText("Hermes 已记住这个翻译习惯。")).toBeNull();
+    expect(screen.getByText("Second backend body")).toBeTruthy();
   });
 
   it("runs Hermes organization skills from the message reader", async () => {
@@ -1211,71 +1295,7 @@ describe("Email Hub first UI baseline", () => {
   it("ignores a stale Hermes reader summary after switching messages", async () => {
     const api = createApiFixture();
     let resolveSummary: (value: HermesMessageSummaryResult) => void = () => {};
-    vi.mocked(api.listMessages).mockResolvedValue({
-      items: [
-        {
-          id: "message_1",
-          accountId: "account_1",
-          subject: "First subject",
-          from: { email: "first@example.com", name: "First Sender" },
-          receivedAt: "2026-06-13T10:00:00.000Z",
-          snippet: "First snippet",
-          unread: true,
-          starred: false,
-          mailboxIds: ["mailbox_inbox"],
-          attachmentCount: 0,
-          classification: {
-            bucket: "P1 Urgent",
-            priorityScore: 96,
-            reasons: ["Direct to you"],
-          },
-        },
-        {
-          id: "message_2",
-          accountId: "account_1",
-          subject: "Second subject",
-          from: { email: "second@example.com", name: "Second Sender" },
-          receivedAt: "2026-06-13T10:05:00.000Z",
-          snippet: "Second snippet",
-          unread: false,
-          starred: false,
-          mailboxIds: ["mailbox_inbox"],
-          attachmentCount: 0,
-          classification: {
-            bucket: "P2 Important",
-            priorityScore: 88,
-            reasons: ["Important sender"],
-          },
-        },
-      ],
-    });
-    vi.mocked(api.getMessage).mockImplementation(async (input) => ({
-      id: input.messageId,
-      accountId: "account_1",
-      subject: input.messageId === "message_2" ? "Second subject" : "First subject",
-      from:
-        input.messageId === "message_2"
-          ? { email: "second@example.com", name: "Second Sender" }
-          : { email: "first@example.com", name: "First Sender" },
-      receivedAt: "2026-06-13T10:00:00.000Z",
-      snippet: input.messageId === "message_2" ? "Second snippet" : "First snippet",
-      unread: false,
-      starred: false,
-      mailboxIds: ["mailbox_inbox"],
-      attachmentCount: 0,
-      classification: {
-        bucket: input.messageId === "message_2" ? "P2 Important" : "P1 Urgent",
-        priorityScore: input.messageId === "message_2" ? 88 : 96,
-        reasons: ["Loaded detail"],
-      },
-      to: ["me@example.com"],
-      cc: [],
-      bodyText:
-        input.messageId === "message_2"
-          ? "Second backend body"
-          : "First backend body",
-      attachments: [],
-    }));
+    mockTwoMessageReader(api);
     vi.mocked(api.summarizeMessage).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -8546,6 +8566,72 @@ function createDefaultMessageDetail(): MessageDetailDto {
     bodyText: "Live body from backend",
     attachments: [],
   };
+}
+
+function mockTwoMessageReader(api: EmailHubApi): void {
+  vi.mocked(api.listMessages).mockResolvedValue({
+    items: [
+      {
+        id: "message_1",
+        accountId: "account_1",
+        subject: "First subject",
+        from: { email: "first@example.com", name: "First Sender" },
+        receivedAt: "2026-06-13T10:00:00.000Z",
+        snippet: "First snippet",
+        unread: true,
+        starred: false,
+        mailboxIds: ["mailbox_inbox"],
+        attachmentCount: 0,
+        classification: {
+          bucket: "P1 Urgent",
+          priorityScore: 96,
+          reasons: ["Direct to you"],
+        },
+      },
+      {
+        id: "message_2",
+        accountId: "account_1",
+        subject: "Second subject",
+        from: { email: "second@example.com", name: "Second Sender" },
+        receivedAt: "2026-06-13T10:05:00.000Z",
+        snippet: "Second snippet",
+        unread: false,
+        starred: false,
+        mailboxIds: ["mailbox_inbox"],
+        attachmentCount: 0,
+        classification: {
+          bucket: "P2 Important",
+          priorityScore: 88,
+          reasons: ["Important sender"],
+        },
+      },
+    ],
+  });
+  vi.mocked(api.getMessage).mockImplementation(async (input) => ({
+    id: input.messageId,
+    accountId: "account_1",
+    subject: input.messageId === "message_2" ? "Second subject" : "First subject",
+    from:
+      input.messageId === "message_2"
+        ? { email: "second@example.com", name: "Second Sender" }
+        : { email: "first@example.com", name: "First Sender" },
+    receivedAt: "2026-06-13T10:00:00.000Z",
+    snippet: input.messageId === "message_2" ? "Second snippet" : "First snippet",
+    unread: false,
+    starred: false,
+    mailboxIds: ["mailbox_inbox"],
+    attachmentCount: 0,
+    classification: {
+      bucket: input.messageId === "message_2" ? "P2 Important" : "P1 Urgent",
+      priorityScore: input.messageId === "message_2" ? 88 : 96,
+      reasons: ["Loaded detail"],
+    },
+    to: ["me@example.com"],
+    cc: [],
+    bodyText:
+      input.messageId === "message_2" ? "Second backend body" : "First backend body",
+    attachments: [],
+  }));
 }
 
 function createApiFixture(): EmailHubApi {
