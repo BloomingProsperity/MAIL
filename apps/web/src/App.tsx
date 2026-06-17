@@ -597,6 +597,7 @@ export function App(props: AppProps = {}) {
   const [hermesWorkspaceContextLoading, setHermesWorkspaceContextLoading] =
     useState(false);
   const [hermesDockBusy, setHermesDockBusy] = useState(false);
+  const hermesDockRequestRef = useRef(0);
   const [workspaceFolders, setWorkspaceFolders] = useState<FolderItem[]>(folders);
   const [workspaceMail, setWorkspaceMail] = useState<MailItem[]>(
     props.api ? [] : mailItems,
@@ -778,7 +779,9 @@ export function App(props: AppProps = {}) {
   }
 
   function updateHermesPrompt(value: string) {
+    hermesDockRequestRef.current += 1;
     setHermesPrompt(value);
+    setHermesDockBusy(false);
     setHermesDockNotice(undefined);
     setHermesDockResult(undefined);
     setHermesDockActionPlan(undefined);
@@ -786,6 +789,10 @@ export function App(props: AppProps = {}) {
     setHermesDockLearnedMemory(undefined);
     setHermesDockRuleCandidate(undefined);
     setHermesDockRuleSimulation(undefined);
+  }
+
+  function isCurrentHermesDockRequest(requestId: number): boolean {
+    return hermesDockRequestRef.current === requestId;
   }
 
   async function refreshHermesWorkspaceContext(options: {
@@ -828,7 +835,10 @@ export function App(props: AppProps = {}) {
 
   async function submitHermesDockPrompt(rawPrompt: string) {
     const question = rawPrompt.trim();
+    const requestId = hermesDockRequestRef.current + 1;
+    hermesDockRequestRef.current = requestId;
     if (!question) {
+      setHermesDockBusy(false);
       setHermesDockResult(undefined);
       setHermesDockSearchAccountId(undefined);
       setHermesDockActionPlan(undefined);
@@ -848,12 +858,14 @@ export function App(props: AppProps = {}) {
     setHermesDockRuleCandidate(undefined);
     setHermesDockRuleSimulation(undefined);
     if (!props.api) {
+      setHermesDockBusy(false);
       setHermesDockNotice("连接后 Hermes 会搜索已同步邮件并给出引用答案。");
       return;
     }
 
     const hermesAccountId = selectedMail?.accountId ?? selectedAccountId;
     if (!hermesAccountId) {
+      setHermesDockBusy(false);
       setHermesDockNotice("请先添加邮箱并完成同步，再让 Hermes 搜索邮件。");
       return;
     }
@@ -866,11 +878,17 @@ export function App(props: AppProps = {}) {
           accountId: hermesAccountId,
           force: true,
         });
+        if (!isCurrentHermesDockRequest(requestId)) {
+          return;
+        }
         const plan = await props.api.createHermesActionPlan({
           accountId: hermesAccountId,
           command: question,
           sampleLimit: 25,
         });
+        if (!isCurrentHermesDockRequest(requestId)) {
+          return;
+        }
         setHermesDockActionPlan(plan);
         setHermesDockRuleCandidate(plan.candidate);
         setHermesDockRuleSimulation(plan.simulation);
@@ -878,9 +896,14 @@ export function App(props: AppProps = {}) {
           `Hermes 已生成执行计划，shadow simulation 命中 ${plan.simulation?.matchedCount ?? 0} 封邮件。`,
         );
       } catch (error) {
+        if (!isCurrentHermesDockRequest(requestId)) {
+          return;
+        }
         setHermesDockNotice(hermesActionPlanErrorNotice(error, "create"));
       } finally {
-        setHermesDockBusy(false);
+        if (isCurrentHermesDockRequest(requestId)) {
+          setHermesDockBusy(false);
+        }
       }
       return;
     }
@@ -895,6 +918,9 @@ export function App(props: AppProps = {}) {
         limit: 5,
         ...memoryInput,
       });
+      if (!isCurrentHermesDockRequest(requestId)) {
+        return;
+      }
       setHermesDockResult(result);
       setHermesDockSearchAccountId(hermesAccountId);
       setHermesDockNotice(
@@ -903,6 +929,9 @@ export function App(props: AppProps = {}) {
           : "Hermes 没有找到匹配邮件。",
       );
     } catch (error) {
+      if (!isCurrentHermesDockRequest(requestId)) {
+        return;
+      }
       setHermesDockNotice(
         hermesSkillErrorNotice(error, {
           skillId: "email_search_qa",
@@ -910,7 +939,9 @@ export function App(props: AppProps = {}) {
         }),
       );
     } finally {
-      setHermesDockBusy(false);
+      if (isCurrentHermesDockRequest(requestId)) {
+        setHermesDockBusy(false);
+      }
     }
   }
 
@@ -919,6 +950,8 @@ export function App(props: AppProps = {}) {
       return;
     }
 
+    const requestId = hermesDockRequestRef.current + 1;
+    hermesDockRequestRef.current = requestId;
     setHermesDockBusy(true);
     setHermesDockNotice("正在确认 Hermes 执行计划...");
     try {
@@ -927,6 +960,9 @@ export function App(props: AppProps = {}) {
         accountId: hermesDockRuleCandidate.accountId,
         candidateId: hermesDockRuleCandidate.id,
       });
+      if (!isCurrentHermesDockRequest(requestId)) {
+        return;
+      }
       const rule = confirmation.rule;
       setHermesDockRuleCandidate({
         ...hermesDockRuleCandidate,
@@ -948,6 +984,9 @@ export function App(props: AppProps = {}) {
         accountId: hermesDockRuleCandidate.accountId,
         force: true,
       });
+      if (!isCurrentHermesDockRequest(requestId)) {
+        return;
+      }
       if (target?.kind === "savedView") {
         await loadSavedView(target.id);
         setActiveView("mail");
@@ -961,9 +1000,14 @@ export function App(props: AppProps = {}) {
           : `Hermes 执行计划已完成：${rule.title}${target ? `，已打开${target.label}` : ""}。`,
       );
     } catch (error) {
+      if (!isCurrentHermesDockRequest(requestId)) {
+        return;
+      }
       setHermesDockNotice(hermesActionPlanErrorNotice(error, "confirm"));
     } finally {
-      setHermesDockBusy(false);
+      if (isCurrentHermesDockRequest(requestId)) {
+        setHermesDockBusy(false);
+      }
     }
   }
 
@@ -1229,6 +1273,8 @@ export function App(props: AppProps = {}) {
   }, [props.api, selectedMail?.accountId, selectedMail?.id]);
 
   useEffect(() => {
+    hermesDockRequestRef.current += 1;
+    setHermesDockBusy(false);
     setHermesFollowUpSuggestion(undefined);
     setFollowUpNotice(undefined);
   }, [activeMailId]);

@@ -207,6 +207,72 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
+  it("ignores stale Hermes dock search results after the prompt changes", async () => {
+    const api = createApiFixture();
+    let resolveOldSearch: (value: HermesEmailSearchQaResult) => void = () => {};
+    const searchResult = (
+      answerText: string,
+      searchQuery: string,
+    ): HermesEmailSearchQaResult => ({
+      skillRunId: `run_${searchQuery.replace(/\s+/g, "_")}`,
+      skillId: "email_search_qa",
+      answerText,
+      searchQuery,
+      searchPlan: {
+        searchQuery,
+        quickFilters: [],
+        qScopes: ["sender", "recipients", "subject", "body"],
+        filters: [],
+        listMessagesInput: {
+          q: searchQuery,
+          qScopes: ["sender", "recipients", "subject", "body"],
+        },
+        explanation: [`Search ${searchQuery}.`],
+      },
+      matches: [],
+      citations: [],
+    });
+    vi.mocked(api.searchMailWithHermes)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOldSearch = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(searchResult("Fresh answer should stay visible.", "new query"));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "old query" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+    await waitFor(() => {
+      expect(api.searchMailWithHermes).toHaveBeenCalledWith(
+        expect.objectContaining({ question: "old query" }),
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "new query" },
+    });
+    expect(
+      (screen.getByRole("button", { name: "发送给 Hermes" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+
+    expect(await screen.findByText("Fresh answer should stay visible.")).toBeTruthy();
+    await act(async () => {
+      resolveOldSearch(searchResult("Stale answer should not render.", "old query"));
+    });
+
+    expect(screen.queryByText("Stale answer should not render.")).toBeNull();
+    expect(screen.getByText("Fresh answer should stay visible.")).toBeTruthy();
+  });
+
   it("keeps Hermes dock search scoped when the selected inbox is empty", async () => {
     const api = createApiFixture();
     vi.mocked(api.listMessages).mockResolvedValue({ items: [] });
@@ -370,6 +436,58 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(within(plan).getByText(/历史回填：匹配 4 封，新增 4 个标签关联/)).toBeTruthy();
     expect(within(plan).getByText("用户习惯学习：已写入 procedural_memory")).toBeTruthy();
+  });
+
+  it("ignores a stale Hermes dock action plan after the prompt changes", async () => {
+    const api = createApiFixture();
+    const stalePlan = await api.createHermesActionPlan({
+      accountId: "account_1",
+      command: "把验证码邮件自动放到左侧验证码，账号里的所有验证码邮件都这样处理",
+      sampleLimit: 25,
+    });
+    let resolveOldPlan: (value: HermesActionPlanDto) => void = () => {};
+    vi.mocked(api.createHermesActionPlan).mockClear();
+    vi.mocked(api.createHermesActionPlan).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOldPlan = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: {
+        value: "把验证码邮件自动放到左侧验证码，账号里的所有验证码邮件都这样处理",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+    await waitFor(() => {
+      expect(api.createHermesActionPlan).toHaveBeenCalledWith({
+        accountId: "account_1",
+        command:
+          "把验证码邮件自动放到左侧验证码，账号里的所有验证码邮件都这样处理",
+        sampleLimit: 25,
+      });
+    });
+
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
+      target: { value: "客户上次提到的合同是什么" },
+    });
+    expect(
+      (screen.getByRole("button", { name: "发送给 Hermes" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+
+    await act(async () => {
+      resolveOldPlan(stalePlan);
+    });
+
+    expect(screen.queryByLabelText("Hermes 执行计划")).toBeNull();
+    expect(screen.queryByText("启用验证码智能分组")).toBeNull();
+    expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
   });
 
   it("explains when Hermes action plan creation is disabled by skill settings", async () => {
