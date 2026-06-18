@@ -4,7 +4,7 @@ import type {
   HermesRuleDto,
   HermesRuleExecutionDto,
 } from "../../lib/emailHubApi";
-import { formatHermesAuditSkillId } from "./HermesLearningPanels";
+import { formatHermesAuditSkillId } from "./hermesSkillLabels";
 
 export function formatHermesRuleType(ruleType: string) {
   const labels: Record<string, string> = {

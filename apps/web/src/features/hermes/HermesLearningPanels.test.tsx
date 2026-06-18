@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { EmailHubApi } from "../../lib/emailHubApi";
+import { ApiRequestError, type EmailHubApi } from "../../lib/emailHubApi";
 import {
   HermesAuditLogPanel,
   HermesMemoryManagerPanel,
@@ -88,6 +88,59 @@ describe("Hermes learning panels", () => {
     expect(await screen.findByText("Hermes 学习记录暂时不可用。")).toBeTruthy();
     expect(screen.queryByDisplayValue(/Account one style/)).toBeNull();
     expect(screen.getByText("没有匹配的 Hermes 学习记录。")).toBeTruthy();
+  });
+
+  it("explains disabled Hermes memory review permissions while editing memories", async () => {
+    const api = {
+      listHermesMemories: vi.fn(async () => ({
+        items: [
+          memoryFixture({
+            id: "memory_write_blocked",
+            content: { preference: "Short replies" },
+          }),
+        ],
+      })),
+      updateHermesMemory: vi.fn(async () => {
+        throw new ApiRequestError(403, "hermes_skill_disabled", {
+          error: "hermes_skill_disabled",
+          skillId: "memory_review",
+          requiredPermission: "memory_write",
+        });
+      }),
+      deleteHermesMemory: vi.fn(async () => {
+        throw new ApiRequestError(403, "hermes_skill_disabled", {
+          error: "hermes_skill_disabled",
+          skillId: "memory_review",
+          requiredPermission: "memory_write",
+        });
+      }),
+    } as unknown as EmailHubApi;
+
+    render(<HermesMemoryManagerPanel api={api} accountId="account_1" />);
+
+    expect(await screen.findByDisplayValue(/Short replies/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "保存学习记录" }));
+
+    expect(
+      await screen.findByText(
+        "Hermes 记忆管理能力缺少记忆写入权限，请到设置 > Hermes 配置 > 能力选项打开“记忆管理”的“写入记忆”开关。",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "准备删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(api.deleteHermesMemory).toHaveBeenCalledWith({
+        id: "memory_write_blocked",
+        accountId: "account_1",
+      });
+    });
+    expect(
+      screen.getByText(
+        "Hermes 记忆管理能力缺少记忆写入权限，请到设置 > Hermes 配置 > 能力选项打开“记忆管理”的“写入记忆”开关。",
+      ),
+    ).toBeTruthy();
   });
 
   it("ignores stale memory loads after switching accounts", async () => {

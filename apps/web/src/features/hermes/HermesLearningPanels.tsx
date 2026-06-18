@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
+import { ApiRequestError } from "../../lib/emailHubApi";
 import type {
   EmailHubApi,
   HermesAuditLogEntryDto,
   HermesMemoryDto,
 } from "../../lib/emailHubApi";
+import { hermesSkillDisabledNotice } from "./hermesRules";
+import { formatHermesAuditSkillId } from "./hermesSkillLabels";
+
+export { formatHermesAuditSkillId } from "./hermesSkillLabels";
 
 export interface HermesMemoryManagerPanelProps {
   api?: EmailHubApi;
@@ -137,14 +142,16 @@ export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
           ? "没有匹配的 Hermes 学习记录。"
           : `已读取 ${page.items.length} 条 Hermes 学习记录。`,
       );
-    } catch {
+    } catch (error) {
       if (!isCurrentMemoryLoad(requestId, accountId, api)) {
         return;
       }
       setMemories([]);
       syncMemoryEdits([]);
       setPendingDeleteMemoryId("");
-      setMemoryNotice("Hermes 学习记录暂时不可用。");
+      setMemoryNotice(
+        hermesMemoryErrorNotice(error, "Hermes 学习记录暂时不可用。"),
+      );
     }
   }
 
@@ -241,8 +248,10 @@ export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
         confidenceText: String(saved.confidence),
       });
       setMemoryNotice("Hermes 学习记录已保存。");
-    } catch {
-      setMemoryNotice("保存 Hermes 学习记录失败。");
+    } catch (error) {
+      setMemoryNotice(
+        hermesMemoryErrorNotice(error, "保存 Hermes 学习记录失败。"),
+      );
     } finally {
       setBusyMemoryId("");
     }
@@ -277,8 +286,10 @@ export function HermesMemoryManagerPanel(props: HermesMemoryManagerPanelProps) {
       setMemories((current) => current.filter((item) => item.id !== memory.id));
       setPendingDeleteMemoryId("");
       setMemoryNotice("Hermes 学习记录已删除。");
-    } catch {
-      setMemoryNotice("删除 Hermes 学习记录失败。");
+    } catch (error) {
+      setMemoryNotice(
+        hermesMemoryErrorNotice(error, "删除 Hermes 学习记录失败。"),
+      );
     } finally {
       setBusyMemoryId("");
     }
@@ -689,30 +700,6 @@ export function formatHermesMemoryLayer(layer: string) {
   return labels[layer] ?? layer;
 }
 
-export function formatHermesAuditSkillId(skillId: string | undefined) {
-  if (!skillId) {
-    return "Hermes 操作";
-  }
-
-  const labels: Record<string, string> = {
-    action_item_extract: "待办提取",
-    action_plan: "执行计划",
-    email_search_qa: "搜索问答",
-    followup_tracker: "跟进识别",
-    label_suggest: "标签建议",
-    newsletter_cleanup: "订阅整理",
-    priority_triage: "优先级判断",
-    quick_reply: "快速回复",
-    reply_draft: "写回复",
-    rewrite_polish: "改写润色",
-    memory_review: "记忆管理",
-    rule_suggest: "规则建议",
-    thread_summarize: "邮件总结",
-    translate_text: "邮件翻译",
-  };
-  return labels[skillId] ?? skillId;
-}
-
 function formatHermesAuditTitle(event: HermesAuditLogEntryDto) {
   return event.skillTitle?.trim() || formatHermesAuditSkillId(event.skillId);
 }
@@ -884,6 +871,20 @@ function parseHermesMemoryConfidence(value: string): number | undefined {
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1
     ? parsed
     : undefined;
+}
+
+function hermesMemoryErrorNotice(error: unknown, fallback: string): string {
+  if (
+    error instanceof ApiRequestError &&
+    error.code === "hermes_skill_disabled"
+  ) {
+    return hermesSkillDisabledNotice(
+      error.skillId ?? "memory_review",
+      error.requiredPermission,
+    );
+  }
+
+  return fallback;
 }
 
 function formatHermesPanelDate(value: string): string {

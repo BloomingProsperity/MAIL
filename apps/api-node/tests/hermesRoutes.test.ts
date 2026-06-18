@@ -3692,6 +3692,84 @@ describe("Hermes routes", () => {
     expect(calls).toEqual([]);
   });
 
+  it("blocks Hermes memory writes when memory_review disallows memory writes", async () => {
+    const calls: unknown[] = [];
+    const hermesMemoryStore = {
+      async listMemories() {
+        throw new Error("not used");
+      },
+      async updateMemory(input: unknown) {
+        calls.push(["update", input]);
+        return undefined;
+      },
+      async deleteMemory(input: unknown) {
+        calls.push(["delete", input]);
+        return false;
+      },
+    };
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings() {
+        throw new Error("not used");
+      },
+      async getSkill(skillId: string) {
+        return {
+          id: skillId,
+          title: "记忆管理",
+          mode: "learn",
+          description: "查看、修改、删除偏好",
+          settings: {
+            enabled: true,
+            maxContextChars: 24000,
+            memoryLimit: 6,
+            allowBodyRead: false,
+            allowMemoryWrite: false,
+            requireConfirmation: true,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const responses = await Promise.all([
+          fetch(
+            `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001?accountId=account_1`,
+            {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                content: { preference: "short replies" },
+              }),
+            },
+          ),
+          fetch(
+            `${baseUrl}/api/hermes/memories/00000000-0000-0000-0000-000000000001?accountId=account_1`,
+            { method: "DELETE" },
+          ),
+        ]);
+
+        for (const response of responses) {
+          expect(response.status).toBe(403);
+          expect(await response.json()).toEqual({
+            error: "hermes_skill_disabled",
+            skillId: "memory_review",
+            requiredPermission: "memory_write",
+          });
+        }
+      },
+      { hermesMemoryStore, hermesSkillSettingsService },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
   it("updates one Hermes memory", async () => {
     const calls: unknown[] = [];
     const hermesMemoryStore = {
