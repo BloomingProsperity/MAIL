@@ -426,6 +426,64 @@ describe("Hermes rule routes", () => {
     ]);
   });
 
+  it("rejects rule candidate routes outside the configured API token account scope", async () => {
+    const calls: unknown[] = [];
+    const hermesRuleService = {
+      async listRuleCandidates(input: unknown) {
+        calls.push({ method: "listRuleCandidates", input });
+        return { items: [] };
+      },
+      async updateRuleCandidate(input: unknown) {
+        calls.push({ method: "updateRuleCandidate", input });
+        return {};
+      },
+      async dismissRuleCandidate(input: unknown) {
+        calls.push({ method: "dismissRuleCandidate", input });
+        return {};
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const list = await fetch(
+          `${baseUrl}/api/hermes/rule-candidates?accountId=account_2`,
+        );
+        const update = await fetch(
+          `${baseUrl}/api/hermes/rule-candidates/candidate_codes`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "account_2",
+              labelName: "票据",
+              keywords: ["receipt"],
+            }),
+          },
+        );
+        const dismiss = await fetch(
+          `${baseUrl}/api/hermes/rule-candidates/candidate_codes/dismiss`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "account_2",
+            }),
+          },
+        );
+
+        for (const response of [list, update, dismiss]) {
+          expect(response.status).toBe(404);
+          expect(await response.json()).toEqual({
+            error: "account_not_found",
+          });
+        }
+      },
+      { hermesRuleService, apiAccessAccountIds: ["account_1"] },
+    );
+
+    expect(calls).toEqual([]);
+  });
+
   it("returns not found when dismissing a non-shadow Hermes rule candidate", async () => {
     const hermesRuleService = {
       async dismissRuleCandidate() {

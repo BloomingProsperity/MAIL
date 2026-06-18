@@ -1901,8 +1901,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           hermesRuleCandidateRoute.action === "list" &&
           request.method === "GET"
         ) {
+          const input = parseHermesRuleCandidateListInput(request.url);
+          if (!ensureRouteAccountAccess(input.accountId)) {
+            return;
+          }
           const result = await config.hermesRuleService.listRuleCandidates(
-            parseHermesRuleCandidateListInput(request.url),
+            input,
           );
           writeJson(response, 200, result);
           return;
@@ -1912,11 +1916,15 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           hermesRuleCandidateRoute.action === "update" &&
           request.method === "PATCH"
         ) {
+          const input = parseHermesRuleCandidateUpdateInput(
+            hermesRuleCandidateRoute.candidateId,
+            await readRequestBody(),
+          );
+          if (!ensureRouteAccountAccess(input.accountId)) {
+            return;
+          }
           const result = await config.hermesRuleService.updateRuleCandidate(
-            parseHermesRuleCandidateUpdateInput(
-              hermesRuleCandidateRoute.candidateId,
-              await readRequestBody(),
-            ),
+            input,
           );
           if (!result) {
             writeJson(response, 404, { error: "rule_candidate_not_found" });
@@ -1931,11 +1939,15 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           hermesRuleCandidateRoute.action === "dismiss" &&
           request.method === "POST"
         ) {
+          const input = parseHermesRuleCandidateDismissInput(
+            hermesRuleCandidateRoute.candidateId,
+            await readRequestBody(),
+          );
+          if (!ensureRouteAccountAccess(input.accountId)) {
+            return;
+          }
           const result = await config.hermesRuleService.dismissRuleCandidate(
-            parseHermesRuleCandidateDismissInput(
-              hermesRuleCandidateRoute.candidateId,
-              await readRequestBody(),
-            ),
+            input,
           );
           if (!result) {
             writeJson(response, 404, { error: "rule_candidate_not_found" });
@@ -3998,6 +4010,7 @@ function readScopedRouteAccountId(
   if (
     pathname === "/api/hermes/audit-log" ||
     pathname === "/api/hermes/rule-runs" ||
+    pathname === "/api/hermes/rule-candidates" ||
     pathname.startsWith("/api/hermes/memories")
   ) {
     const accountId = url.searchParams.get("accountId");
@@ -4047,7 +4060,7 @@ function isAdminOnlyForAccountScopedTokenRoute(
     pathname === "/api/hermes/drafts/feedback" ||
     pathname.startsWith("/api/hermes/action-plans") ||
     pathname.startsWith("/api/hermes/follow-ups") ||
-    pathname.startsWith("/api/hermes/rule-candidates") ||
+    isHermesRuleCandidateAdminRoute(url, method) ||
     pathname.startsWith("/api/diagnostics/") ||
     pathname.startsWith("/api/domains") ||
     pathname.startsWith("/api/follow-ups/") ||
@@ -4058,6 +4071,18 @@ function isAdminOnlyForAccountScopedTokenRoute(
     pathname.startsWith("/api/accounts/oauth/") ||
     pathname.startsWith("/api/accounts/transfer/") ||
     pathname.startsWith("/api/hermes/rules")
+  );
+}
+
+function isHermesRuleCandidateAdminRoute(url: URL, method?: string): boolean {
+  if (!url.pathname.startsWith("/api/hermes/rule-candidates")) {
+    return false;
+  }
+
+  return (
+    method === "GET" &&
+    url.pathname === "/api/hermes/rule-candidates" &&
+    !isNonEmptyString(url.searchParams.get("accountId"))
   );
 }
 
