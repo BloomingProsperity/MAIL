@@ -65,6 +65,16 @@ describe("sync center routes", () => {
               reauthRequired: false,
               nextAction: "none",
               accountUpdatedAt: "2026-06-13T08:00:00.000Z",
+              latestSyncJob: {
+                id: "job_1",
+                jobType: "sync_account",
+                status: "running",
+                attempts: 2,
+                maxAttempts: 8,
+                notBefore: "2026-06-13T08:01:00.000Z",
+                leaseExpiresAt: "2026-06-13T08:06:00.000Z",
+                updatedAt: "2026-06-13T08:02:00.000Z",
+              },
             },
           ],
         };
@@ -91,6 +101,16 @@ describe("sync center routes", () => {
               reauthRequired: false,
               nextAction: "none",
               accountUpdatedAt: "2026-06-13T08:00:00.000Z",
+              latestSyncJob: {
+                id: "job_1",
+                jobType: "sync_account",
+                status: "running",
+                attempts: 2,
+                maxAttempts: 8,
+                notBefore: "2026-06-13T08:01:00.000Z",
+                leaseExpiresAt: "2026-06-13T08:06:00.000Z",
+                updatedAt: "2026-06-13T08:02:00.000Z",
+              },
             },
           ],
         });

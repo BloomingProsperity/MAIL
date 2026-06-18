@@ -1,10 +1,11 @@
+import type { SyncCenterJobSummaryDto } from "./syncCenterTypes";
+
 export type MessageListSort = "time" | "smart";
 
 export type GatekeeperMode =
   | "before_inbox"
   | "inside_email"
   | "off_accept_all";
-
 export type HermesRuntimeMode =
   | "builtin"
   | "external_hermes"
@@ -864,7 +865,6 @@ export interface HermesMessageOrganizationResult {
   newsletter: HermesNewsletterCleanupResult;
   actionItems: HermesActionItemExtractResult;
 }
-
 export interface SyncCenterAccountDto {
   accountId: string;
   email: string;
@@ -876,8 +876,8 @@ export interface SyncCenterAccountDto {
   reauthRequired?: boolean;
   nextAction?: string;
   accountUpdatedAt?: string;
-  latestSyncJob?: unknown;
-  latestJob?: unknown;
+  latestSyncJob?: SyncCenterJobSummaryDto;
+  latestJob?: SyncCenterJobSummaryDto;
 }
 
 export interface ReauthorizationTaskDto {
