@@ -287,6 +287,21 @@ export function HermesSkillSettingsPanel(props: {
     setNotice(`已撤回未保存更改：${saved.title}。`);
   }
 
+  function resetAllChangedSkills() {
+    if (unsavedSkills.length === 0) {
+      setNotice("没有需要撤回的能力选项。");
+      return;
+    }
+
+    setSkills(
+      savedSkills.map((skill) => ({
+        ...skill,
+        settings: { ...skill.settings },
+      })),
+    );
+    setNotice(`已撤回 ${unsavedSkills.length} 个未保存能力选项。`);
+  }
+
   async function saveSkill(skill: HermesSkillDto) {
     if (!props.api) {
       setSavedSkills((current) =>
@@ -399,18 +414,30 @@ export function HermesSkillSettingsPanel(props: {
           <h3>能力选项与预算</h3>
           <p>每个能力都可以独立限制正文读取、记忆写入、确认门槛和上下文预算。</p>
         </div>
-        <button
-          className="ghost-button"
-          type="button"
-          aria-label="Save all changed Hermes skill settings"
-          disabled={unsavedSkills.length === 0 || isSavingAnySkill}
-          onClick={() => void saveAllChangedSkills()}
-        >
-          <CheckCircle2 size={15} aria-hidden="true" />
-          {savingSkillId === BULK_SKILL_SAVE_ID
-            ? "保存中"
-            : `保存全部${unsavedSkills.length > 0 ? ` (${unsavedSkills.length})` : ""}`}
-        </button>
+        <div className="inline-actions">
+          <button
+            className="ghost-button"
+            type="button"
+            aria-label="Reset all changed Hermes skill settings"
+            disabled={unsavedSkills.length === 0 || isSavingAnySkill}
+            onClick={resetAllChangedSkills}
+          >
+            <Undo2 size={15} aria-hidden="true" />
+            撤回全部
+          </button>
+          <button
+            className="ghost-button"
+            type="button"
+            aria-label="Save all changed Hermes skill settings"
+            disabled={unsavedSkills.length === 0 || isSavingAnySkill}
+            onClick={() => void saveAllChangedSkills()}
+          >
+            <CheckCircle2 size={15} aria-hidden="true" />
+            {savingSkillId === BULK_SKILL_SAVE_ID
+              ? "保存中"
+              : `保存全部${unsavedSkills.length > 0 ? ` (${unsavedSkills.length})` : ""}`}
+          </button>
+        </div>
       </header>
 
       <div

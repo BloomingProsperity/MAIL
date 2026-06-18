@@ -101,6 +101,46 @@ describe("HermesSkillSettingsPanel", () => {
     expect(updatedSummary.textContent).not.toContain("翻译邮件（停用）");
   });
 
+  it("resets all unsaved skill setting changes", () => {
+    render(<HermesSkillSettingsPanel />);
+
+    const translateCard = screen
+      .getByText("翻译邮件")
+      .closest("article") as HTMLElement;
+    const replyCard = screen
+      .getByText("生成回复草稿")
+      .closest("article") as HTMLElement;
+
+    fireEvent.click(
+      within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
+    );
+    fireEvent.change(
+      within(replyCard).getByLabelText("Hermes skill memory limit 生成回复草稿"),
+      { target: { value: "0" } },
+    );
+    expect(screen.getByLabelText("Hermes unsaved skill changes")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Reset all changed Hermes skill settings",
+      }),
+    );
+
+    expect(
+      screen.getByText("已撤回 2 个未保存能力选项。"),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Hermes unsaved skill changes")).toBeNull();
+    expect(within(translateCard).getByText(/已同步/)).toBeTruthy();
+    expect(within(replyCard).getByText(/已同步/)).toBeTruthy();
+    expect(
+      (
+        within(replyCard).getByLabelText(
+          "Hermes skill memory limit 生成回复草稿",
+        ) as HTMLInputElement
+      ).value,
+    ).toBe("6");
+  });
+
   it("reveals and marks a focused skill from another filter", async () => {
     const { rerender } = render(<HermesSkillSettingsPanel />);
 
