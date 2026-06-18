@@ -43,17 +43,19 @@ describe("HermesSkillSettingsPanel", () => {
     expect(screen.getByText("没有匹配的 Hermes 能力。")).toBeTruthy();
   });
 
-  it("filters skills by title, id, and description search", () => {
+  it("filters skills by title and description search", () => {
     render(<HermesSkillSettingsPanel />);
 
     const searchInput = screen.getByLabelText(
-      "Search Hermes skills",
+      "搜索 Hermes 能力",
     ) as HTMLInputElement;
+    expect(searchInput.placeholder).toBe("翻译、写回复、规则建议");
+    expect(searchInput.placeholder).not.toContain("rule_suggest");
     fireEvent.change(searchInput, { target: { value: "回复" } });
     expect(screen.getByText("生成回复草稿")).toBeTruthy();
     expect(screen.queryByText("翻译邮件")).toBeNull();
 
-    fireEvent.change(searchInput, { target: { value: "rule_suggest" } });
+    fireEvent.change(searchInput, { target: { value: "规则建议" } });
     expect(screen.getByText("规则建议")).toBeTruthy();
     expect(screen.queryByText("生成回复草稿")).toBeNull();
 
@@ -67,6 +69,22 @@ describe("HermesSkillSettingsPanel", () => {
     expect(screen.getByText("没有匹配的 Hermes 能力。")).toBeTruthy();
   });
 
+  it("hides advanced skill budgets until the user opens advanced options", () => {
+    render(<HermesSkillSettingsPanel />);
+
+    expect(screen.queryByLabelText("设置 翻译邮件 上下文字符")).toBeNull();
+    expect(screen.queryByLabelText("设置 翻译邮件 自定义指令")).toBeNull();
+    expect(screen.getByText("显示高级")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "切换 Hermes 高级能力选项" }),
+    );
+
+    expect(screen.getByLabelText("设置 翻译邮件 上下文字符")).toBeTruthy();
+    expect(screen.getByLabelText("设置 翻译邮件 自定义指令")).toBeTruthy();
+    expect(screen.getByText("隐藏高级")).toBeTruthy();
+  });
+
   it("summarizes unsaved skill setting changes", () => {
     render(<HermesSkillSettingsPanel />);
 
@@ -76,12 +94,15 @@ describe("HermesSkillSettingsPanel", () => {
     const replyCard = screen
       .getByText("生成回复草稿")
       .closest("article") as HTMLElement;
+    fireEvent.click(
+      screen.getByRole("button", { name: "切换 Hermes 高级能力选项" }),
+    );
 
     fireEvent.click(
       within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
     );
     fireEvent.change(
-      within(replyCard).getByLabelText("Hermes skill memory limit 生成回复草稿"),
+      within(replyCard).getByLabelText("设置 生成回复草稿 记忆条数"),
       { target: { value: "0" } },
     );
 
@@ -110,12 +131,15 @@ describe("HermesSkillSettingsPanel", () => {
     const replyCard = screen
       .getByText("生成回复草稿")
       .closest("article") as HTMLElement;
+    fireEvent.click(
+      screen.getByRole("button", { name: "切换 Hermes 高级能力选项" }),
+    );
 
     fireEvent.click(
       within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
     );
     fireEvent.change(
-      within(replyCard).getByLabelText("Hermes skill memory limit 生成回复草稿"),
+      within(replyCard).getByLabelText("设置 生成回复草稿 记忆条数"),
       { target: { value: "0" } },
     );
     expect(screen.getByLabelText("Hermes unsaved skill changes")).toBeTruthy();
@@ -135,7 +159,7 @@ describe("HermesSkillSettingsPanel", () => {
     expect(
       (
         within(replyCard).getByLabelText(
-          "Hermes skill memory limit 生成回复草稿",
+          "设置 生成回复草稿 记忆条数",
         ) as HTMLInputElement
       ).value,
     ).toBe("6");
@@ -147,7 +171,7 @@ describe("HermesSkillSettingsPanel", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Show Hermes skill mode draft" }),
     );
-    fireEvent.change(screen.getByLabelText("Search Hermes skills"), {
+    fireEvent.change(screen.getByLabelText("搜索 Hermes 能力"), {
       target: { value: "回复" },
     });
     fireEvent.click(screen.getByLabelText("仅看未保存"));
@@ -172,7 +196,7 @@ describe("HermesSkillSettingsPanel", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(
-      (screen.getByLabelText("Search Hermes skills") as HTMLInputElement).value,
+      (screen.getByLabelText("搜索 Hermes 能力") as HTMLInputElement).value,
     ).toBe("");
   });
 
@@ -225,12 +249,17 @@ describe("HermesSkillSettingsPanel", () => {
     const replyCard = within(panel)
       .getByText("生成回复草稿")
       .closest("article") as HTMLElement;
+    fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "切换 Hermes 高级能力选项",
+      }),
+    );
 
     fireEvent.click(
       within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
     );
     fireEvent.change(
-      within(replyCard).getByLabelText("Hermes skill memory limit 生成回复草稿"),
+      within(replyCard).getByLabelText("设置 生成回复草稿 记忆条数"),
       { target: { value: "0" } },
     );
 
@@ -267,14 +296,19 @@ describe("HermesSkillSettingsPanel", () => {
     render(<HermesSkillSettingsPanel api={api} />);
 
     const panel = await screen.findByLabelText("Hermes skill settings");
+    fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "切换 Hermes 高级能力选项",
+      }),
+    );
     const translateCard = within(panel)
       .getByText("翻译邮件")
       .closest("article") as HTMLElement;
     const contextInput = within(translateCard).getByLabelText(
-      "Hermes skill max context 翻译邮件",
+      "设置 翻译邮件 上下文字符",
     ) as HTMLInputElement;
     const memoryInput = within(translateCard).getByLabelText(
-      "Hermes skill memory limit 翻译邮件",
+      "设置 翻译邮件 记忆条数",
     ) as HTMLInputElement;
 
     fireEvent.change(contextInput, { target: { value: "12500" } });
@@ -356,12 +390,17 @@ describe("HermesSkillSettingsPanel", () => {
     const replyCard = within(panel)
       .getByText("生成回复草稿")
       .closest("article") as HTMLElement;
+    fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "切换 Hermes 高级能力选项",
+      }),
+    );
 
     fireEvent.click(
       within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
     );
     fireEvent.change(
-      within(replyCard).getByLabelText("Hermes skill memory limit 生成回复草稿"),
+      within(replyCard).getByLabelText("设置 生成回复草稿 记忆条数"),
       { target: { value: "0" } },
     );
     fireEvent.click(
@@ -426,6 +465,11 @@ describe("HermesSkillSettingsPanel", () => {
       .getByText("翻译邮件")
       .closest("article") as HTMLElement;
     fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "切换 Hermes 高级能力选项",
+      }),
+    );
+    fireEvent.click(
       within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
     );
     fireEvent.click(
@@ -450,14 +494,14 @@ describe("HermesSkillSettingsPanel", () => {
     expect(
       (
         within(translateCard).getByLabelText(
-          "Hermes skill max context 翻译邮件",
+          "设置 翻译邮件 上下文字符",
         ) as HTMLInputElement
       ).disabled,
     ).toBe(true);
     expect(
       (
         within(translateCard).getByLabelText(
-          "Hermes skill custom instructions 翻译邮件",
+          "设置 翻译邮件 自定义指令",
         ) as HTMLTextAreaElement
       ).disabled,
     ).toBe(true);

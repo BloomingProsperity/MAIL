@@ -1914,17 +1914,22 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(
       within(skillPanel).getByLabelText("Require Hermes confirmation 翻译邮件"),
     );
+    fireEvent.click(
+      within(skillPanel).getByRole("button", {
+        name: "切换 Hermes 高级能力选项",
+      }),
+    );
     fireEvent.change(
-      within(skillPanel).getByLabelText("Hermes skill max context 翻译邮件"),
+      within(skillPanel).getByLabelText("设置 翻译邮件 上下文字符"),
       { target: { value: "12000" } },
     );
     fireEvent.change(
-      within(skillPanel).getByLabelText("Hermes skill memory limit 翻译邮件"),
+      within(skillPanel).getByLabelText("设置 翻译邮件 记忆条数"),
       { target: { value: "2" } },
     );
     fireEvent.change(
       within(skillPanel).getByLabelText(
-        "Hermes skill custom instructions 翻译邮件",
+        "设置 翻译邮件 自定义指令",
       ),
       { target: { value: "Use formal Chinese for customer emails." } },
     );
@@ -1975,17 +1980,22 @@ describe("Email Hub first UI baseline", () => {
     const translateCard = within(skillPanel)
       .getByText("翻译邮件")
       .closest("article") as HTMLElement;
+    fireEvent.click(
+      within(skillPanel).getByRole("button", {
+        name: "切换 Hermes 高级能力选项",
+      }),
+    );
     const enableToggle = within(translateCard).getByLabelText(
       "Enable Hermes skill 翻译邮件",
     ) as HTMLInputElement;
     const maxContextInput = within(translateCard).getByLabelText(
-      "Hermes skill max context 翻译邮件",
+      "设置 翻译邮件 上下文字符",
     ) as HTMLInputElement;
     const memoryLimitInput = within(translateCard).getByLabelText(
-      "Hermes skill memory limit 翻译邮件",
+      "设置 翻译邮件 记忆条数",
     ) as HTMLInputElement;
     const customInstructionsInput = within(translateCard).getByLabelText(
-      "Hermes skill custom instructions 翻译邮件",
+      "设置 翻译邮件 自定义指令",
     ) as HTMLTextAreaElement;
     const resetButton = within(translateCard).getByRole("button", {
       name: "Reset Hermes skill settings 翻译邮件",

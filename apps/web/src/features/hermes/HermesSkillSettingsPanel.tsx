@@ -126,6 +126,7 @@ export function HermesSkillSettingsPanel(props: {
   const [modeFilter, setModeFilter] = useState<SkillModeFilter>("all");
   const [skillSearch, setSkillSearch] = useState("");
   const [showUnsavedOnly, setShowUnsavedOnly] = useState(false);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [savingSkillId, setSavingSkillId] = useState<string>();
   const [notice, setNotice] = useState("正在读取 Hermes 能力选项...");
   const focusedSkillRef = useRef<HTMLElement | null>(null);
@@ -508,10 +509,10 @@ export function HermesSkillSettingsPanel(props: {
         <label className="hermes-skill-search">
           <span>搜索能力</span>
           <input
-            aria-label="Search Hermes skills"
+            aria-label="搜索 Hermes 能力"
             value={skillSearch}
             onChange={(event) => setSkillSearch(event.target.value)}
-            placeholder="翻译、写回复、rule_suggest"
+            placeholder="翻译、写回复、规则建议"
           />
         </label>
         <div className="hermes-skill-mode-filter" aria-label="Hermes skill mode filter">
@@ -538,6 +539,15 @@ export function HermesSkillSettingsPanel(props: {
           />
           <span>仅看未保存</span>
         </label>
+        <button
+          className={showAdvancedOptions ? "ghost-button is-active" : "ghost-button"}
+          type="button"
+          aria-label="切换 Hermes 高级能力选项"
+          aria-pressed={showAdvancedOptions}
+          onClick={() => setShowAdvancedOptions((current) => !current)}
+        >
+          {showAdvancedOptions ? "隐藏高级" : "显示高级"}
+        </button>
       </div>
 
       {unsavedSkillSummaries.length > 0 ? (
@@ -654,70 +664,74 @@ export function HermesSkillSettingsPanel(props: {
                   </label>
                 </div>
 
-                <div className="hermes-skill-budget-grid">
-                  <label>
-                    <span>上下文字符</span>
-                    <input
-                      aria-label={`Hermes skill max context ${skill.title}`}
-                      type="number"
-                      min={skill.settingBounds.maxContextChars.min}
-                      max={skill.settingBounds.maxContextChars.max}
-                      step={skill.settingBounds.maxContextChars.step}
-                      disabled={isSavingAnySkill}
-                      value={skill.settings.maxContextChars}
-                      onChange={(event) =>
-                        updateLocalSkill(skill.id, {
-                          maxContextChars: clampHermesSkillInteger(
-                            event.currentTarget.value,
-                            skill.settings.maxContextChars,
-                            skill.settingBounds.maxContextChars,
-                          ),
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span>记忆条数</span>
-                    <input
-                      aria-label={`Hermes skill memory limit ${skill.title}`}
-                      type="number"
-                      min={skill.settingBounds.memoryLimit.min}
-                      max={skill.settingBounds.memoryLimit.max}
-                      step={skill.settingBounds.memoryLimit.step}
-                      disabled={isSavingAnySkill}
-                      value={skill.settings.memoryLimit}
-                      onChange={(event) =>
-                        updateLocalSkill(skill.id, {
-                          memoryLimit: clampHermesSkillInteger(
-                            event.currentTarget.value,
-                            skill.settings.memoryLimit,
-                            skill.settingBounds.memoryLimit,
-                          ),
-                        })
-                      }
-                    />
-                  </label>
-                </div>
+                {showAdvancedOptions ? (
+                  <>
+                    <div className="hermes-skill-budget-grid">
+                      <label>
+                        <span>上下文字符</span>
+                        <input
+                          aria-label={`设置 ${skill.title} 上下文字符`}
+                          type="number"
+                          min={skill.settingBounds.maxContextChars.min}
+                          max={skill.settingBounds.maxContextChars.max}
+                          step={skill.settingBounds.maxContextChars.step}
+                          disabled={isSavingAnySkill}
+                          value={skill.settings.maxContextChars}
+                          onChange={(event) =>
+                            updateLocalSkill(skill.id, {
+                              maxContextChars: clampHermesSkillInteger(
+                                event.currentTarget.value,
+                                skill.settings.maxContextChars,
+                                skill.settingBounds.maxContextChars,
+                              ),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>记忆条数</span>
+                        <input
+                          aria-label={`设置 ${skill.title} 记忆条数`}
+                          type="number"
+                          min={skill.settingBounds.memoryLimit.min}
+                          max={skill.settingBounds.memoryLimit.max}
+                          step={skill.settingBounds.memoryLimit.step}
+                          disabled={isSavingAnySkill}
+                          value={skill.settings.memoryLimit}
+                          onChange={(event) =>
+                            updateLocalSkill(skill.id, {
+                              memoryLimit: clampHermesSkillInteger(
+                                event.currentTarget.value,
+                                skill.settings.memoryLimit,
+                                skill.settingBounds.memoryLimit,
+                              ),
+                            })
+                          }
+                        />
+                      </label>
+                    </div>
 
-                <label className="hermes-skill-custom-instructions">
-                  <span>自定义指令</span>
-                  <textarea
-                    aria-label={`Hermes skill custom instructions ${skill.title}`}
-                    maxLength={skill.settingBounds.customInstructions.maxLength}
-                    rows={4}
-                    disabled={isSavingAnySkill}
-                    value={skill.settings.customInstructions}
-                    onChange={(event) =>
-                      updateLocalSkill(skill.id, {
-                        customInstructions: event.currentTarget.value,
-                      })
-                    }
-                  />
-                  <span>
-                    {skill.settings.customInstructions.length.toLocaleString()} /{" "}
-                    {skill.settingBounds.customInstructions.maxLength.toLocaleString()}
-                  </span>
-                </label>
+                    <label className="hermes-skill-custom-instructions">
+                      <span>自定义指令</span>
+                      <textarea
+                        aria-label={`设置 ${skill.title} 自定义指令`}
+                        maxLength={skill.settingBounds.customInstructions.maxLength}
+                        rows={4}
+                        disabled={isSavingAnySkill}
+                        value={skill.settings.customInstructions}
+                        onChange={(event) =>
+                          updateLocalSkill(skill.id, {
+                            customInstructions: event.currentTarget.value,
+                          })
+                        }
+                      />
+                      <span>
+                        {skill.settings.customInstructions.length.toLocaleString()} /{" "}
+                        {skill.settingBounds.customInstructions.maxLength.toLocaleString()}
+                      </span>
+                    </label>
+                  </>
+                ) : null}
 
                 <div className="inline-actions">
                   <button
@@ -747,9 +761,10 @@ export function HermesSkillSettingsPanel(props: {
                         : "hermes-skill-sync-status"
                     }
                   >
-                    {hasUnsavedChanges ? "未保存" : "已同步"} ·{" "}
-                    {skill.settings.maxContextChars.toLocaleString()} 字符 ·{" "}
-                    {skill.settings.memoryLimit} 条记忆
+                    {hasUnsavedChanges ? "未保存" : "已同步"}
+                    {showAdvancedOptions
+                      ? ` · ${skill.settings.maxContextChars.toLocaleString()} 字符 · ${skill.settings.memoryLimit} 条记忆`
+                      : ""}
                   </span>
                 </div>
               </div>
