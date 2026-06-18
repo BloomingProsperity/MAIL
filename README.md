@@ -411,6 +411,9 @@ npm run compose:up:test:detached
 npm run verify:emailengine-launch:greenmail
 ```
 
+The GreenMail verifier reads the same `EMAILHUB_ENV_FILE`/`.env` selection as
+the other launch verifiers before it runs the individual smoke scripts.
+
 You can also run the env preflight gate by itself against the same env file:
 
 ```powershell

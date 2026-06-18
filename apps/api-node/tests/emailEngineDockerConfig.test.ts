@@ -707,7 +707,10 @@ describe("EmailEngine Docker configuration", () => {
       "npm run verify:emailengine-launch:env && npm run verify:emailengine-live && npm run verify:emailengine-launch:docker-health && npm run smoke:emailengine-webhook",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:greenmail"]).toBe(
-      "npm run smoke:imap-smtp-onboarding && npm run smoke:imap-smtp-onboarding:auth && npm run smoke:emailengine-real-webhook && npm run smoke:emailengine-send && npm run smoke:emailengine-attachment-download && npm run smoke:emailengine-mail-action",
+      "npm run verify:emailengine-greenmail -w apps/api-node",
+    );
+    expect(apiPackage.scripts["verify:emailengine-greenmail"]).toBe(
+      "tsx src/emailengine-greenmail-verify.ts",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:core"]).toBe(
       "npm run verify:emailengine-launch:offline && npm run verify:emailengine-launch:live",

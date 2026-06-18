@@ -30,7 +30,7 @@
     "verify:emailengine-live": "npm run verify:emailengine-live -w apps/api-node",
     "verify:emailengine-launch:docker-health": "npm run verify:emailengine-docker-health -w apps/api-node",
     "verify:emailengine-launch:live": "npm run verify:emailengine-launch:env && npm run verify:emailengine-live && npm run verify:emailengine-launch:docker-health && npm run smoke:emailengine-webhook",
-    "verify:emailengine-launch:greenmail": "npm run smoke:imap-smtp-onboarding && npm run smoke:imap-smtp-onboarding:auth && npm run smoke:emailengine-real-webhook && npm run smoke:emailengine-send && npm run smoke:emailengine-attachment-download && npm run smoke:emailengine-mail-action",
+    "verify:emailengine-launch:greenmail": "npm run verify:emailengine-greenmail -w apps/api-node",
     "verify:emailengine-launch:strict-db": "npm run stress:sync-queue:postgres:strict",
     "verify:emailengine-launch:core": "npm run verify:emailengine-launch:offline && npm run verify:emailengine-launch:live",
     "verify:emailengine-launch": "npm run verify:emailengine-launch:core && npm run verify:emailengine-launch:strict-db && npm run verify:emailengine-launch:greenmail",
