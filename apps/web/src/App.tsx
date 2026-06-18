@@ -654,8 +654,19 @@ export function App(props: AppProps = {}) {
       return storedAccountId;
     },
   );
+  const [settingsSectionRequest, setSettingsSectionRequest] = useState<{
+    sectionId: SettingsSectionId;
+    requestId: number;
+  }>();
 
   const hermesDockNotice = hermesDockNoticeState?.text;
+
+  function requestSettingsSection(sectionId: SettingsSectionId) {
+    setSettingsSectionRequest((current) => ({
+      sectionId,
+      requestId: (current?.requestId ?? 0) + 1,
+    }));
+  }
 
   function setHermesDockNotice(
     notice: string | undefined,
@@ -672,6 +683,7 @@ export function App(props: AppProps = {}) {
     skillId: string,
     requiredPermission?: HermesSkillRequiredPermission,
   ) {
+    requestSettingsSection("hermes");
     setHermesSkillSettingsFocus((current) => ({
       skillId,
       requiredPermission,
@@ -681,6 +693,7 @@ export function App(props: AppProps = {}) {
   }
 
   function openHermesRuntimeSettings() {
+    requestSettingsSection("hermes");
     setActiveView("settings");
   }
   const [accountDiscoveryReady, setAccountDiscoveryReady] = useState(
@@ -1888,6 +1901,8 @@ export function App(props: AppProps = {}) {
               hermesSkillSettingsFocus?.requiredPermission
             }
             hermesSkillFocusRequestId={hermesSkillSettingsFocus?.requestId}
+            requestedSectionId={settingsSectionRequest?.sectionId}
+            settingsSectionRequestId={settingsSectionRequest?.requestId}
             onHermesRuleApproved={(rule) =>
               void handleSettingsHermesRuleApproved(rule)
             }
@@ -8606,10 +8621,18 @@ function SettingsPage(props: {
   focusedHermesSkillId?: string;
   focusedHermesSkillPermission?: HermesSkillRequiredPermission;
   hermesSkillFocusRequestId?: number;
+  requestedSectionId?: SettingsSectionId;
+  settingsSectionRequestId?: number;
   onHermesRuleApproved?: (rule: HermesRuleDto) => void;
 }) {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("hermes");
   const settingsAccountId = props.accountId ?? PREVIEW_ACCOUNT_ID;
+
+  useEffect(() => {
+    if (props.requestedSectionId) {
+      setActiveSection(props.requestedSectionId);
+    }
+  }, [props.requestedSectionId, props.settingsSectionRequestId]);
 
   return (
     <section className="workspace-page page-scroll">

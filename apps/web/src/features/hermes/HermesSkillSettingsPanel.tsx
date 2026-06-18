@@ -146,6 +146,15 @@ export function HermesSkillSettingsPanel(props: {
     () => new Set(unsavedSkills.map((skill) => skill.id)),
     [unsavedSkills],
   );
+  const unsavedSkillSummaries = useMemo(
+    () =>
+      unsavedSkills
+        .map((skill) =>
+          formatHermesUnsavedSkillSummary(skill, savedSkillsById.get(skill.id)),
+        )
+        .filter((summary): summary is string => Boolean(summary)),
+    [savedSkillsById, unsavedSkills],
+  );
   const skillSearchTerm = skillSearch.trim().toLowerCase();
   const visibleSkills = skills.filter((skill) => {
     return (
@@ -504,6 +513,17 @@ export function HermesSkillSettingsPanel(props: {
         </label>
       </div>
 
+      {unsavedSkillSummaries.length > 0 ? (
+        <div
+          className="backend-notice compact"
+          role="status"
+          aria-label="Hermes unsaved skill changes"
+        >
+          待保存 {unsavedSkillSummaries.length} 个能力：
+          {formatHermesUnsavedSkillSummaryList(unsavedSkillSummaries)}
+        </div>
+      ) : null}
+
       <div className="skill-grid compact hermes-skill-grid">
         {visibleSkills.map((skill) => {
           const hasUnsavedChanges = unsavedSkillIds.has(skill.id);
@@ -845,6 +865,64 @@ function isHermesSkillUnsaved(
   return savedSkill
     ? !areHermesSkillSettingsEqual(skill.settings, savedSkill.settings)
     : false;
+}
+
+function formatHermesUnsavedSkillSummary(
+  skill: HermesSkillDto,
+  savedSkill: HermesSkillDto | undefined,
+): string | undefined {
+  if (!savedSkill) {
+    return undefined;
+  }
+
+  const changes: string[] = [];
+  if (skill.settings.enabled !== savedSkill.settings.enabled) {
+    changes.push(skill.settings.enabled ? "启用" : "停用");
+  }
+  if (skill.settings.allowBodyRead !== savedSkill.settings.allowBodyRead) {
+    changes.push(skill.settings.allowBodyRead ? "读取正文开启" : "读取正文关闭");
+  }
+  if (skill.settings.allowMemoryWrite !== savedSkill.settings.allowMemoryWrite) {
+    changes.push(skill.settings.allowMemoryWrite ? "写入记忆开启" : "写入记忆关闭");
+  }
+  if (
+    skill.settings.requireConfirmation !==
+    savedSkill.settings.requireConfirmation
+  ) {
+    changes.push(
+      skill.settings.requireConfirmation ? "需要确认" : "无需确认",
+    );
+  }
+  if (skill.settings.maxContextChars !== savedSkill.settings.maxContextChars) {
+    changes.push(`上下文 ${skill.settings.maxContextChars.toLocaleString()}`);
+  }
+  if (skill.settings.memoryLimit !== savedSkill.settings.memoryLimit) {
+    changes.push(`记忆 ${skill.settings.memoryLimit}`);
+  }
+  if (
+    skill.settings.customInstructions !==
+    savedSkill.settings.customInstructions
+  ) {
+    changes.push("自定义指令");
+  }
+
+  if (changes.length === 0) {
+    return undefined;
+  }
+
+  const visibleChanges = changes.slice(0, 3);
+  const hiddenChangeCount = changes.length - visibleChanges.length;
+  return `${skill.title}（${visibleChanges.join("、")}${
+    hiddenChangeCount > 0 ? ` 等 ${hiddenChangeCount} 项` : ""
+  }）`;
+}
+
+function formatHermesUnsavedSkillSummaryList(summaries: string[]): string {
+  const visibleSummaries = summaries.slice(0, 3);
+  const hiddenSummaryCount = summaries.length - visibleSummaries.length;
+  return `${visibleSummaries.join("；")}${
+    hiddenSummaryCount > 0 ? `；另有 ${hiddenSummaryCount} 个能力` : ""
+  }`;
 }
 
 function areHermesSkillSettingsEqual(
