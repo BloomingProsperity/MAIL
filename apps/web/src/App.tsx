@@ -83,6 +83,12 @@ import {
   providerCapabilityToOption,
   type AddMailProviderOption,
 } from "./features/add-mail/providerCapabilities";
+import { ProtonBridgeServerFieldsPanel } from "./features/add-mail/ProtonBridgeServerFieldsPanel";
+import {
+  buildProtonBridgeOnboardingInput,
+  defaultProtonBridgeServerFields,
+  type ProtonBridgeServerFields,
+} from "./features/add-mail/protonBridgeOnboarding";
 import { SyncCenterAccountNextAction } from "./features/sync-center/SyncCenterAccountNextAction";
 import { SyncCenterLatestJobSummary } from "./features/sync-center/SyncCenterLatestJobSummary";
 import { ConnectionDiagnosticList } from "./features/sync-center/ConnectionDiagnosticList";
@@ -5531,6 +5537,8 @@ function AddMailPage(props: {
       sendPort: "465",
       sendSecure: true,
     });
+  const [protonBridgeServerFields, setProtonBridgeServerFields] =
+    useState<ProtonBridgeServerFields>(defaultProtonBridgeServerFields);
   const [busyProvider, setBusyProvider] = useState("");
   const [diagnostics, setDiagnostics] = useState<OperationalEventDto[]>([]);
   const [onboardingRecoveryDiagnostics, setOnboardingRecoveryDiagnostics] =
@@ -5713,6 +5721,7 @@ function AddMailPage(props: {
       email,
       username,
       secret,
+      bridgeFields: protonBridgeServerFields,
     });
     if (!input) {
       setNotice(
@@ -5825,6 +5834,13 @@ function AddMailPage(props: {
     value: CustomServerFields[K],
   ) {
     setCustomServerFields((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateProtonBridgeServerField<K extends keyof ProtonBridgeServerFields>(
+    key: K,
+    value: ProtonBridgeServerFields[K],
+  ) {
+    setProtonBridgeServerFields((current) => ({ ...current, [key]: value }));
   }
 
   function clearCustomServerSecret() {
@@ -6118,6 +6134,12 @@ function AddMailPage(props: {
               邮箱地址填写 Proton 邮箱；Bridge 用户名和 Bridge 密码都使用 Proton Bridge 里显示的值，不是 Proton 账号密码。
             </span>
           </div>
+        ) : null}
+        {showBridgeFieldHelp ? (
+          <ProtonBridgeServerFieldsPanel
+            fields={protonBridgeServerFields}
+            onFieldChange={updateProtonBridgeServerField}
+          />
         ) : null}
       </section>
 
@@ -6953,12 +6975,27 @@ function downloadTextFile(
 
 function buildPresetOnboardingInput(
   provider: AddMailProviderOption,
-  fields: { email: string; username: string; secret: string },
+  fields: {
+    email: string;
+    username: string;
+    secret: string;
+    bridgeFields: ProtonBridgeServerFields;
+  },
 ): ImapSmtpOnboardingInput | undefined {
   const email = fields.email.trim();
   const username = fields.username.trim();
   const secret = fields.secret.trim();
-  if (!email || !secret || (provider.action === "bridge" && !username)) {
+  if (provider.action === "bridge") {
+    return buildProtonBridgeOnboardingInput({
+      email,
+      provider: provider.provider,
+      username,
+      secret,
+      fields: fields.bridgeFields,
+    });
+  }
+
+  if (!email || !secret) {
     return undefined;
   }
 
