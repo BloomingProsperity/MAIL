@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import {
   Archive,
   Bold,
@@ -73,6 +73,7 @@ import {
   type HermesSearchLaunchOptions,
 } from "./features/hermes/hermesSearchLaunch";
 import { SearchSavedViewFilter } from "./features/search/SearchSavedViewFilter";
+import { useResizablePane } from "./features/layout/useResizablePane";
 import {
   detectHermesCommandIntent,
   hermesReaderCommandNotice,
@@ -107,6 +108,7 @@ import { DomainAliasSettingsPanel } from "./features/domain-alias/DomainAliasSet
 import { FollowUpTodoPanel } from "./features/follow-ups/FollowUpTodoPanel";
 import { GatekeeperSettingsPanel } from "./features/gatekeeper/GatekeeperSettingsPanel";
 import { ComposeAttachmentMaintenancePanel } from "./features/maintenance/ComposeAttachmentMaintenancePanel";
+import { SystemStatusSettingsPanel } from "./features/settings/SystemStatusSettingsPanel";
 import {
   apiErrorConnectionDiagnostics,
   connectionDiagnosticsFromTestResult,
@@ -121,7 +123,6 @@ import type {
   AccountImportPreviewRow,
   AccountTransferImportResult,
   EmailHubApi,
-  ApiHealthDto,
   HermesEmailSearchQaResult,
   HermesActionItem,
   HermesActionPlanDto,
@@ -175,6 +176,7 @@ type SettingsSectionId =
   | "gatekeeper"
   | "aliases"
   | "domains"
+  | "system"
   | "notifications";
 type MailDensity = "roomy" | "comfortable" | "compact";
 const MAX_COMPOSE_ATTACHMENTS = 20;
@@ -294,7 +296,6 @@ const navItems: Array<{ id: ViewId; label: string; icon: typeof Inbox; count?: n
   { id: "mail", label: "邮箱", icon: Inbox },
   { id: "add-mail", label: "添加邮箱", icon: MailPlus },
   { id: "sync", label: "同步中心", icon: Clock3 },
-  { id: "search", label: "搜索", icon: Search },
   { id: "settings", label: "设置", icon: Settings }
 ];
 
@@ -309,6 +310,7 @@ const settingsSections: Array<{
   { id: "gatekeeper", label: "新发件人处理", description: "陌生来信进入哪里", icon: ShieldCheck },
   { id: "aliases", label: "别名转发", description: "转发规则和目标邮箱", icon: Send },
   { id: "domains", label: "域名管理", description: "域名验证与收信设置", icon: ShieldCheck },
+  { id: "system", label: "系统状态", description: "自托管服务诊断", icon: CheckCircle2 },
   { id: "notifications", label: "数据维护", description: "清理、审计、隐私", icon: Settings }
 ];
 
@@ -583,6 +585,12 @@ export function App(props: AppProps = {}) {
   const oauthCallback = readOAuthCallbackFromLocation(
     typeof window === "undefined" ? undefined : window.location,
   );
+  const sidebarResize = useResizablePane({
+    initialSize: 168,
+    minSize: 76,
+    maxSize: 280,
+    storageKey: "email-hub:layout:sidebar",
+  });
   const [activeView, setActiveView] = useState<ViewId>("mail");
   const [activeAddMailProviderGroup, setActiveAddMailProviderGroup] = useState<
     AddMailProviderGroupId | undefined
@@ -727,6 +735,9 @@ export function App(props: AppProps = {}) {
     quickCategories: navigationQuickCategories,
     mail: workspaceMail,
   });
+  const appShellStyle = {
+    "--sidebar-width": `${sidebarResize.size}px`,
+  } as CSSProperties;
 
   function rememberSelectedAccount(nextAccountId: string | undefined) {
     if (!nextAccountId) {
@@ -815,6 +826,8 @@ export function App(props: AppProps = {}) {
   ) {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) {
+      setSearchLaunch(undefined);
+      setActiveView("search");
       return;
     }
 
@@ -1678,7 +1691,7 @@ export function App(props: AppProps = {}) {
           fallback: "Hermes 跟进暂时不可用。",
           unavailable: {
             hermes_message_followup_unavailable:
-              "Hermes 跟进识别服务暂时不可用，请检查后端配置。",
+              "Hermes 跟进识别服务暂时不可用，请联系管理员检查服务配置。",
           },
         }),
       );
@@ -1715,7 +1728,7 @@ export function App(props: AppProps = {}) {
           fallback: "Hermes 跟进保存失败。",
           unavailable: {
             hermes_follow_up_unavailable:
-              "Hermes 跟进保存服务暂时不可用，请检查后端配置。",
+              "Hermes 跟进保存服务暂时不可用，请联系管理员检查服务配置。",
           },
         }),
       );
@@ -1733,7 +1746,7 @@ export function App(props: AppProps = {}) {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={appShellStyle}>
       <aside className="global-sidebar" aria-label="全局功能栏">
         <div className="brand-row">
           <div className="brand-icon">
@@ -1796,10 +1809,15 @@ export function App(props: AppProps = {}) {
           <span className="online-dot" />
           <div>
             <strong>已连接 {connectedAccountCount} 个邮箱</strong>
-            <span>{connectedAccountCount > 0 ? "Hermes 后端在线" : "等待邮箱接入"}</span>
+            <span>{connectedAccountCount > 0 ? "Hermes 服务可用" : "等待邮箱接入"}</span>
           </div>
         </div>
       </aside>
+      <div
+        className="pane-resize-handle sidebar-resize-handle"
+        aria-label="调整左侧栏宽度"
+        {...sidebarResize.separatorProps}
+      />
 
       <main className="main-area">
         {activeView === "mail" ? (
@@ -2219,6 +2237,18 @@ function MailWorkspace(props: {
   ) => void;
   onOpenHermesRuntimeSettings: () => void;
 }) {
+  const directoryResize = useResizablePane({
+    initialSize: 168,
+    minSize: 132,
+    maxSize: 260,
+    storageKey: "email-hub:layout:mail-directory",
+  });
+  const messageListResize = useResizablePane({
+    initialSize: 320,
+    minSize: 260,
+    maxSize: 520,
+    storageKey: "email-hub:layout:message-list",
+  });
   const [topSearchQuery, setTopSearchQuery] = useState("");
   const [labelFormOpen, setLabelFormOpen] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
@@ -3953,10 +3983,6 @@ function MailWorkspace(props: {
   function submitTopSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedQuery = topSearchQuery.trim();
-    if (!trimmedQuery) {
-      return;
-    }
-
     props.onGlobalSearch(trimmedQuery);
   }
 
@@ -4026,6 +4052,10 @@ function MailWorkspace(props: {
   );
   const allVisibleSelected =
     props.mail.length > 0 && selectedVisibleMail.length === props.mail.length;
+  const mailGridStyle = {
+    "--mail-directory-width": `${directoryResize.size}px`,
+    "--message-list-width": `${messageListResize.size}px`,
+  } as CSSProperties;
 
   useEffect(() => {
     setSelectedMailKeys((current) => {
@@ -4691,7 +4721,11 @@ function MailWorkspace(props: {
         </div>
       </section>
 
-      <div className={`mail-grid outlook-layout layout-${props.density}`} aria-label="邮箱三栏工作台">
+      <div
+        className={`mail-grid outlook-layout layout-${props.density}`}
+        aria-label="邮箱三栏工作台"
+        style={mailGridStyle}
+      >
         <aside className="mail-directory" aria-label="邮箱目录栏">
           <div className="directory-actions">
             <button
@@ -4805,6 +4839,11 @@ function MailWorkspace(props: {
             ))}
           </div>
         </aside>
+        <div
+          className="pane-resize-handle mail-pane-resize-handle"
+          aria-label="调整邮箱目录宽度"
+          {...directoryResize.separatorProps}
+        />
 
           <section className={`message-list-panel density-${props.density}`} aria-label="邮件列表">
             <div className="list-toolbar">
@@ -4971,6 +5010,11 @@ function MailWorkspace(props: {
               );
             })}
           </section>
+          <div
+            className="pane-resize-handle mail-pane-resize-handle"
+            aria-label="调整邮件列表宽度"
+            {...messageListResize.separatorProps}
+          />
 
         <article className="reader-panel">
           <div className="reader-toolbar">
@@ -5659,6 +5703,13 @@ function AddMailPage(props: {
         ? visibleBridgeProvider
         : undefined;
   const showBridgeFieldHelp = Boolean(bridgeCredentialProvider);
+  const credentialProvider =
+    activeCredentialProvider &&
+    (activeCredentialProvider.action === "password" ||
+      activeCredentialProvider.action === "bridge")
+      ? activeCredentialProvider
+      : undefined;
+  const showCredentialFields = Boolean(credentialProvider);
   const mailOnboardingUnavailable =
     mailEngineHealth?.capabilities.imapSmtpOnboarding === false;
 
@@ -5669,7 +5720,7 @@ function AddMailPage(props: {
     }
 
     if (mailOnboardingUnavailable && provider.action !== "manual") {
-      setNotice("邮箱接入服务还没准备好，请先按上线体检完成配置。");
+      setNotice("邮箱接入服务还没准备好，请稍后再试。");
       return;
     }
 
@@ -5698,11 +5749,31 @@ function AddMailPage(props: {
 
     if (provider.action === "manual") {
       setManualProvider(provider);
+      setActiveCredentialProvider(undefined);
       setNotice(`${provider.title} 需要填写收信和发信服务器信息。`);
       return;
     }
 
     setActiveCredentialProvider(provider);
+    setManualProvider(undefined);
+    setNotice(
+      provider.action === "bridge"
+        ? `${provider.title} 需要 Proton Bridge 中显示的用户名和密码。`
+        : `${provider.title} 需要邮箱授权码或专用密码。`,
+    );
+  }
+
+  async function connectCredentialProvider() {
+    const provider = credentialProvider;
+    if (!props.api || !provider) {
+      return;
+    }
+
+    if (mailOnboardingUnavailable) {
+      setNotice("邮箱接入服务还没准备好，请稍后再试。");
+      return;
+    }
+
     const inputResult = buildPresetOnboardingInput(provider, {
       email,
       username,
@@ -5760,7 +5831,7 @@ function AddMailPage(props: {
     }
 
     if (mailOnboardingUnavailable) {
-      setNotice("邮箱接入服务还没准备好，请先按上线体检完成配置。");
+      setNotice("邮箱接入服务还没准备好，请稍后再试。");
       return;
     }
 
@@ -6091,42 +6162,74 @@ function AddMailPage(props: {
             onChange={(event) => setEmail(event.currentTarget.value)}
           />
         </label>
-        <label>
-          <span>{showBridgeFieldHelp ? "Bridge 用户名" : "登录用户名"}</span>
-          <input
-            aria-label="Add mail username"
-            value={username}
-            placeholder={
-              showBridgeFieldHelp ? "Proton Bridge 中显示的用户名" : "不填则使用邮箱地址"
-            }
-            onChange={(event) => setUsername(event.currentTarget.value)}
-          />
-        </label>
-        <label>
-          <span>{showBridgeFieldHelp ? "Bridge 密码" : "授权码或专用密码"}</span>
-          <input
-            aria-label="Add mail secret"
-            value={secret}
-            type="password"
-            placeholder={
-              showBridgeFieldHelp ? "Proton Bridge 中显示的密码" : "用于连接邮箱"
-            }
-            onChange={(event) => setSecret(event.currentTarget.value)}
-          />
-        </label>
-        {showBridgeFieldHelp ? (
-          <div className="bridge-field-help" aria-label="Proton Bridge 接入提示">
-            <strong>先启动 Proton Bridge 并保持登录。</strong>
-            <span>
-              邮箱地址填写 Proton 邮箱；Bridge 用户名和 Bridge 密码都使用 Proton Bridge 里显示的值，不是 Proton 账号密码。
-            </span>
-          </div>
-        ) : null}
-        {showBridgeFieldHelp ? (
-          <ProtonBridgeServerFieldsPanel
-            fields={protonBridgeServerFields}
-            onFieldChange={updateProtonBridgeServerField}
-          />
+        {showCredentialFields ? (
+          <>
+            <label>
+              <span>{showBridgeFieldHelp ? "Bridge 用户名" : "登录用户名"}</span>
+              <input
+                aria-label="Add mail username"
+                value={username}
+                placeholder={
+                  showBridgeFieldHelp
+                    ? "Proton Bridge 中显示的用户名"
+                    : "不填则使用邮箱地址"
+                }
+                onChange={(event) => setUsername(event.currentTarget.value)}
+              />
+            </label>
+            <label>
+              <span>{showBridgeFieldHelp ? "Bridge 密码" : "授权码或专用密码"}</span>
+              <input
+                aria-label="Add mail secret"
+                value={secret}
+                type="password"
+                placeholder={
+                  showBridgeFieldHelp
+                    ? "Proton Bridge 中显示的密码"
+                    : "邮箱授权码或专用密码"
+                }
+                onChange={(event) => setSecret(event.currentTarget.value)}
+              />
+            </label>
+            <div className="credential-submit-row">
+              <div>
+                <strong>{credentialProvider?.title}</strong>
+                <span>
+                  {showBridgeFieldHelp
+                    ? "只使用 Proton Bridge 里显示的用户名和密码。"
+                    : "主流网页登录邮箱不会要求填写邮箱密码。"}
+                </span>
+              </div>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={
+                  !credentialProvider ||
+                  busyProvider === credentialProvider.provider ||
+                  mailOnboardingUnavailable
+                }
+                onClick={() => void connectCredentialProvider()}
+              >
+                {credentialProvider && busyProvider === credentialProvider.provider
+                  ? "正在测试"
+                  : `测试并接入${credentialProvider?.title ?? ""}`}
+              </button>
+            </div>
+            {showBridgeFieldHelp ? (
+              <div className="bridge-field-help" aria-label="Proton Bridge 接入提示">
+                <strong>先启动 Proton Bridge 并保持登录。</strong>
+                <span>
+                  邮箱地址填写 Proton 邮箱；Bridge 用户名和 Bridge 密码都使用 Proton Bridge 里显示的值，不是 Proton 账号密码。
+                </span>
+              </div>
+            ) : null}
+            {showBridgeFieldHelp ? (
+              <ProtonBridgeServerFieldsPanel
+                fields={protonBridgeServerFields}
+                onFieldChange={updateProtonBridgeServerField}
+              />
+            ) : null}
+          </>
         ) : null}
       </section>
 
@@ -6262,11 +6365,12 @@ function AddMailPage(props: {
         })}
       </div>
 
-      <section className="page-panel import-transfer-panel" aria-label="批量导入和账号转移">
-        <div className="custom-server-heading">
+      <details className="page-panel import-transfer-panel" aria-label="高级导入和账号迁移">
+        <summary>高级导入 / 账号迁移</summary>
+        <div className="custom-server-heading import-transfer-heading">
           <div>
             <h2>批量导入 / 账号转移</h2>
-            <p>CSV 先预览再创建任务；迁移包只保存安全配置，导入后从同步中心重新授权。</p>
+            <p>适合个人域名、企业邮箱或批量迁移；主流邮箱建议直接网页登录。</p>
           </div>
           {showSyncCenterAction ? (
             <button
@@ -6416,7 +6520,7 @@ function AddMailPage(props: {
             onStartOAuthTask={(task) => void startImportedOAuthTask(task)}
           />
         ) : null}
-      </section>
+      </details>
 
       {diagnostics.length > 0 ? (
         <section className="page-panel diagnostic-list" aria-label="添加邮箱诊断">
@@ -6431,258 +6535,6 @@ function AddMailPage(props: {
       ) : null}
     </section>
   );
-}
-
-function MailEngineReadinessPanel(props: {
-  health?: MailEngineHealthDto;
-  unavailable?: boolean;
-}) {
-  const degraded =
-    props.unavailable || props.health?.readiness.status === "degraded";
-  const statusRows = props.health
-    ? mailEngineReadinessRows(props.health)
-    : mailEngineUnavailableRows();
-  return (
-    <section
-      className={`page-panel mail-engine-readiness ${
-        degraded ? "is-degraded" : "is-ready"
-      }`}
-      aria-label="EmailEngine 上线体检"
-    >
-      <div>
-        <strong>
-          {props.unavailable
-            ? "EmailEngine 体检暂时不可用"
-            : degraded
-              ? "EmailEngine 上线还差配置"
-              : "EmailEngine 接入就绪"}
-        </strong>
-        <span>
-          {props.health?.readiness.summary ??
-            "无法读取后端上线体检，请先检查 API /health、网络和 API Token。"}
-        </span>
-      </div>
-      <div className="mail-engine-readiness-grid">
-        {statusRows.map((row) => (
-          <p key={row.label}>
-            <strong>{row.value}</strong>
-            <span>{row.label}</span>
-          </p>
-        ))}
-      </div>
-      {props.health &&
-      (props.health.missing.length > 0 || props.health.warnings.length > 0) ? (
-        <div
-          className="mail-engine-status-notes"
-          aria-label="EmailEngine 缺失与警告"
-        >
-          {props.health.missing.length > 0 ? (
-            <p>
-              <strong>缺失</strong>
-              <span>{props.health.missing.join(" / ")}</span>
-            </p>
-          ) : null}
-          {props.health.warnings.length > 0 ? (
-            <p>
-              <strong>警告</strong>
-              <span>{props.health.warnings.join(" / ")}</span>
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {props.health && props.health.readiness.setupActions.length > 0 ? (
-        <div className="mail-engine-setup-actions">
-          {props.health.readiness.setupActions.map((action) => (
-            <div key={action.code}>
-              <strong>{action.label}</strong>
-              <span>{action.env.join(" / ")}</span>
-              <p>{action.effect}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function mailEngineReadinessRows(
-  health: MailEngineHealthDto,
-): Array<{ label: string; value: string }> {
-  return [
-    {
-      label: "运行探测",
-      value: formatMailEngineHttpStatus(health.checks?.http),
-    },
-    {
-      label: "访问令牌",
-      value: health.capabilities.accessTokenConfigured ? "已配置" : "缺少",
-    },
-    {
-      label: "认证探测",
-      value: formatMailEngineApiAuthStatus(health.checks?.apiAuth),
-    },
-    {
-      label: "预置令牌",
-      value: formatMailEngineConfiguredStatus(health.checks?.preparedToken),
-    },
-    {
-      label: "回调密钥",
-      value: formatMailEngineWebhookSecretStatus(health.checks?.webhookSecret),
-    },
-    {
-      label: "邮箱接入",
-      value: health.capabilities.imapSmtpOnboarding ? "可用" : "不可用",
-    },
-    {
-      label: "附件下载",
-      value: health.capabilities.attachmentDownload ? "可用" : "不可用",
-    },
-    {
-      label: "发信链路",
-      value: health.capabilities.send ? "可用" : "不可用",
-    },
-  ];
-}
-
-function mailEngineUnavailableRows(): Array<{ label: string; value: string }> {
-  return [
-    "运行探测",
-    "访问令牌",
-    "认证探测",
-    "预置令牌",
-    "回调密钥",
-    "邮箱接入",
-    "附件下载",
-    "发信链路",
-  ].map((label) => ({
-    label,
-    value: label === "运行探测" || label === "认证探测" ? "未探测" : "未知",
-  }));
-}
-
-function formatApiDatabaseHealth(
-  status: "ok" | "unavailable" | undefined,
-): string {
-  if (status === "ok") {
-    return "可用";
-  }
-
-  if (status === "unavailable") {
-    return "不可用";
-  }
-
-  return "未探测";
-}
-
-function MailEngineLaunchActivityPanel(props: {
-  events: OperationalEventDto[];
-  notice: string;
-}) {
-  return (
-    <section
-      className="page-panel sync-diagnostics-panel"
-      aria-label="EmailEngine 运行事件体检"
-    >
-      <div className="sync-diagnostics-header">
-        <div>
-          <h2>EmailEngine 运行事件体检</h2>
-          <p>最近 webhook、同步 worker 和重试链路活动。</p>
-        </div>
-      </div>
-      {props.notice ? (
-        <div className="backend-notice" role="status">
-          {props.notice}
-        </div>
-      ) : null}
-      {props.events.length > 0 ? (
-        <div className="diagnostic-list">
-          {props.events.map((event) => (
-            <div className="diagnostic-row sync-diagnostic-row" key={event.id}>
-              <div>
-                <strong>{friendlySyncDiagnosticTitle(event)}</strong>
-                <span>
-                  {formatOperationalEventSource(event)} ·{" "}
-                  {formatOperationalEventLevel(event.level)}
-                  {event.jobId ? ` · ${event.jobId}` : ""}
-                </span>
-                {friendlySyncDiagnosticDetail(event) ? (
-                  <p>{friendlySyncDiagnosticDetail(event)}</p>
-                ) : null}
-              </div>
-              <span>{formatMailDate(event.occurredAt)}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function formatMailEngineHttpStatus(
-  status: NonNullable<MailEngineHealthDto["checks"]>["http"] | undefined,
-): string {
-  if (status === "ok") {
-    return "可达";
-  }
-
-  if (status === "unavailable") {
-    return "不可达";
-  }
-
-  return "未探测";
-}
-
-function formatMailEngineApiAuthStatus(
-  status: NonNullable<MailEngineHealthDto["checks"]>["apiAuth"] | undefined,
-): string {
-  if (status === "ok") {
-    return "可用";
-  }
-
-  if (status === "unauthorized") {
-    return "被拒绝";
-  }
-
-  if (status === "unavailable") {
-    return "不可用";
-  }
-
-  return "未探测";
-}
-
-function formatMailEngineConfiguredStatus(
-  status:
-    | NonNullable<MailEngineHealthDto["checks"]>["accessToken"]
-    | NonNullable<MailEngineHealthDto["checks"]>["preparedToken"]
-    | undefined,
-): string {
-  if (status === "configured") {
-    return "已配置";
-  }
-
-  if (status === "missing") {
-    return "缺少";
-  }
-
-  return "未探测";
-}
-
-function formatMailEngineWebhookSecretStatus(
-  status: NonNullable<MailEngineHealthDto["checks"]>["webhookSecret"] | undefined,
-): string {
-  if (status === "custom") {
-    return "已替换";
-  }
-
-  if (status === "default") {
-    return "默认值";
-  }
-
-  if (status === "missing") {
-    return "缺少";
-  }
-
-  return "未探测";
 }
 
 function CsvImportPreviewTable(props: {
@@ -7032,26 +6884,14 @@ function friendlySyncDiagnosticDetail(event: OperationalEventDto): string | unde
   return event.message;
 }
 
-function latestOperationalEvents(
-  events: OperationalEventDto[],
-  limit: number,
-): OperationalEventDto[] {
-  return [...events]
-    .sort(
-      (left, right) =>
-        Date.parse(right.occurredAt) - Date.parse(left.occurredAt),
-    )
-    .slice(0, limit);
-}
-
 function formatOperationalEventSource(event: OperationalEventDto): string {
   if (event.event === "emailengine_webhook_ingested") {
-    return "Webhook";
+    return "邮箱服务";
   }
 
   const labels: Record<string, string> = {
-    "email-hub-api": "API",
-    "email-hub-worker": "Worker",
+    "email-hub-api": "服务",
+    "email-hub-worker": "同步服务",
   };
 
   return labels[event.service] ?? event.service;
@@ -7102,7 +6942,7 @@ function formatReauthorizationSource(source: string) {
 
 function formatOperationalEventLevel(level: OperationalEventDto["level"]) {
   const labels: Record<OperationalEventDto["level"], string> = {
-    debug: "调试",
+    debug: "记录",
     info: "信息",
     warn: "提醒",
     error: "错误",
@@ -7156,16 +6996,6 @@ function SyncCenterPage(props: {
   );
   const [diagnosticNotice, setDiagnosticNotice] = useState("");
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
-  const [apiHealth, setApiHealth] = useState<ApiHealthDto | undefined>();
-  const [apiHealthUnavailable, setApiHealthUnavailable] = useState(false);
-  const [mailEngineHealth, setMailEngineHealth] =
-    useState<MailEngineHealthDto | undefined>();
-  const [mailEngineHealthUnavailable, setMailEngineHealthUnavailable] =
-    useState(false);
-  const [mailEngineLaunchEvents, setMailEngineLaunchEvents] = useState<
-    OperationalEventDto[]
-  >([]);
-  const [mailEngineLaunchNotice, setMailEngineLaunchNotice] = useState("");
 
   function mergeAccountState(update: { accountId: string; syncState: string }) {
     setAccounts((current) =>
@@ -7428,7 +7258,7 @@ function SyncCenterPage(props: {
         }
       ]);
       setReauthorizations([]);
-      setNotice("正在显示本地预览，连接服务后会同步真实状态。");
+      setNotice("正在显示演示数据，连接服务后会同步真实状态。");
       return;
     }
 
@@ -7455,109 +7285,6 @@ function SyncCenterPage(props: {
     };
   }, [props.api]);
 
-  useEffect(() => {
-    if (!props.api) {
-      setApiHealth(undefined);
-      setApiHealthUnavailable(false);
-      return;
-    }
-
-    let alive = true;
-    props.api
-      .getApiHealth()
-      .then((health) => {
-        if (alive) {
-          setApiHealth(health);
-          setApiHealthUnavailable(false);
-        }
-      })
-      .catch(() => {
-        if (alive) {
-          setApiHealth(undefined);
-          setApiHealthUnavailable(true);
-        }
-      });
-
-    return () => {
-      alive = false;
-    };
-  }, [props.api]);
-
-  useEffect(() => {
-    if (!props.api) {
-      setMailEngineHealth(undefined);
-      setMailEngineHealthUnavailable(false);
-      return;
-    }
-
-    let alive = true;
-    props.api
-      .getMailEngineHealth()
-      .then((health) => {
-        if (alive) {
-          setMailEngineHealth(health);
-          setMailEngineHealthUnavailable(false);
-        }
-      })
-      .catch(() => {
-        if (alive) {
-          setMailEngineHealth(undefined);
-          setMailEngineHealthUnavailable(true);
-        }
-      });
-
-    return () => {
-      alive = false;
-    };
-  }, [props.api]);
-
-  useEffect(() => {
-    if (!props.api) {
-      setMailEngineLaunchEvents([]);
-      setMailEngineLaunchNotice("");
-      return;
-    }
-
-    let alive = true;
-    setMailEngineLaunchNotice("正在读取最近运行事件...");
-    void Promise.all([
-      props.api.listOperationalEvents({
-        service: "email-hub-api",
-        event: "emailengine_webhook_ingested",
-        lane: "sync",
-        limit: 3,
-      }),
-      props.api.listOperationalEvents({
-        service: "email-hub-worker",
-        lane: "sync",
-        limit: 5,
-      }),
-    ])
-      .then(([webhookPage, workerPage]) => {
-        if (!alive) {
-          return;
-        }
-        const events = latestOperationalEvents(
-          [...webhookPage.items, ...workerPage.items],
-          5,
-        );
-        setMailEngineLaunchEvents(events);
-        setMailEngineLaunchNotice(
-          events.length > 0 ? "" : "还没有最近运行事件。",
-        );
-      })
-      .catch(() => {
-        if (alive) {
-          setMailEngineLaunchEvents([]);
-          setMailEngineLaunchNotice("最近运行事件暂时不可用。");
-        }
-      });
-
-    return () => {
-      alive = false;
-    };
-  }, [props.api]);
-
   return (
     <section className="workspace-page page-scroll">
       <header className="topbar single">
@@ -7567,21 +7294,6 @@ function SyncCenterPage(props: {
         </div>
       </header>
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
-      {props.api && (apiHealth || apiHealthUnavailable) ? (
-        <ApiHealthPanel health={apiHealth} unavailable={apiHealthUnavailable} />
-      ) : null}
-      {props.api && (mailEngineHealth || mailEngineHealthUnavailable) ? (
-        <MailEngineReadinessPanel
-          health={mailEngineHealth}
-          unavailable={mailEngineHealthUnavailable}
-        />
-      ) : null}
-      {props.api ? (
-        <MailEngineLaunchActivityPanel
-          events={mailEngineLaunchEvents}
-          notice={mailEngineLaunchNotice}
-        />
-      ) : null}
       <section className="page-panel">
         {accounts.map((account) => (
           <div className="task-row" key={account.accountId}>
@@ -7906,42 +7618,6 @@ function SyncCenterPage(props: {
   );
 }
 
-function ApiHealthPanel(props: { health?: ApiHealthDto; unavailable?: boolean }) {
-  const degraded = props.unavailable || props.health?.ok === false;
-  const databaseStatus = props.health?.checks?.database;
-  return (
-    <section
-      className={`page-panel api-health-panel ${
-        degraded ? "is-degraded" : "is-ready"
-      }`}
-      aria-label="API 运行体检"
-    >
-      <div>
-        <strong>{degraded ? "后端运行需要检查" : "后端运行正常"}</strong>
-        <span>
-          {props.unavailable
-            ? "无法读取 API /health，请检查后端进程、网络和 API Token。"
-            : props.health?.ok
-              ? "API 正常响应，数据库探测结果如下。"
-              : "API 已响应，但依赖探测未全部通过。"}
-        </span>
-      </div>
-      <div className="api-health-grid">
-        <p>
-          <strong>
-            {props.health?.ok ? "可用" : props.unavailable ? "未知" : "异常"}
-          </strong>
-          <span>API</span>
-        </p>
-        <p>
-          <strong>{formatApiDatabaseHealth(databaseStatus)}</strong>
-          <span>数据库</span>
-        </p>
-      </div>
-    </section>
-  );
-}
-
 function SearchPage(props: {
   api?: EmailHubApi;
   accountId: string;
@@ -8075,7 +7751,7 @@ function SearchPage(props: {
         },
       ]);
       setHasSearched(true);
-      setNotice("本地预览结果。连接后会搜索已同步邮件。");
+      setNotice("演示搜索结果。连接服务后会搜索已同步邮件。");
       return true;
     }
 
@@ -8579,6 +8255,9 @@ function SettingsPage(props: {
           ) : null}
           {activeSection === "domains" ? (
             <DomainAliasSettingsPanel api={props.api} mode="domains" />
+          ) : null}
+          {activeSection === "system" ? (
+            <SystemStatusSettingsPanel api={props.api} />
           ) : null}
           {activeSection === "notifications" ? (
             <ComposeAttachmentMaintenancePanel api={props.api} />

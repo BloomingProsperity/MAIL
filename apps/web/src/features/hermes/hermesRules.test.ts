@@ -43,7 +43,7 @@ describe("hermesRules helpers", () => {
         }),
         "confirm",
       ),
-    ).toBe("Hermes 执行计划存储暂时不可用，请检查后端配置。");
+    ).toBe("Hermes 执行计划存储暂时不可用，请联系管理员检查服务配置。");
 
     expect(
       hermesActionPlanErrorNotice(

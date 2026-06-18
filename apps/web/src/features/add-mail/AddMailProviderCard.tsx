@@ -20,6 +20,7 @@ export function AddMailProviderCard(props: {
   onConnect: () => void;
 }) {
   const provider = props.provider;
+  const idleLabel = providerActionLabel(provider.action);
   return (
     <article className="provider-card">
       <ProviderIcon
@@ -57,10 +58,24 @@ export function AddMailProviderCard(props: {
         disabled={props.busy || props.disabled}
         onClick={props.onConnect}
       >
-        {props.busy ? "连接中" : "连接"}
+        {props.busy ? "连接中" : idleLabel}
       </button>
     </article>
   );
+}
+
+function providerActionLabel(action: AddMailProviderOption["action"]) {
+  if (action === "oauth") {
+    return "网页登录";
+  }
+  if (action === "manual") {
+    return "手动设置";
+  }
+  if (action === "bridge") {
+    return "填写 Bridge";
+  }
+
+  return "填写授权码";
 }
 
 function ProviderIcon(props: { provider: string; title: string; mark: string }) {

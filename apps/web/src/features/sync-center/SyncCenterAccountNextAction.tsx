@@ -6,7 +6,7 @@ const nextActionCopy: Record<string, string> = {
   fix_sync_error: "打开诊断并处理同步失败",
   reauthorize: "重新授权这个邮箱",
   resume_sync: "恢复同步后继续收信",
-  connect_backend: "连接后端服务",
+  connect_backend: "等待邮箱服务连接",
 };
 
 const providerRecoveryCopy: Record<string, string> = {

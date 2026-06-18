@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { ApiRequestError } from "./lib/emailHubApi";
 import type {
@@ -53,11 +53,36 @@ import type {
 } from "./lib/emailHubApi";
 
 describe("Email Hub first UI baseline", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     sessionStorage.clear();
+    localStorage.clear();
     window.history.replaceState({}, "", "/");
   });
+
+  function openSearchPageFromTopbar(query = "") {
+    fireEvent.change(screen.getByLabelText("全局搜索邮件"), {
+      target: { value: query },
+    });
+    fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
+  }
+
+  async function selectCredentialProvider(providerTitle: string) {
+    fireEvent.click(
+      await screen.findByRole("button", { name: `连接 ${providerTitle}` }),
+    );
+    await screen.findByLabelText("Add mail secret");
+  }
+
+  function submitCredentialProvider(providerTitle: string) {
+    fireEvent.click(
+      screen.getByRole("button", { name: `测试并接入${providerTitle}` }),
+    );
+  }
 
   it("keeps global functions in the left sidebar and mail folders in the second column", () => {
     const { container } = render(<App />);
@@ -69,10 +94,11 @@ describe("Email Hub first UI baseline", () => {
     expect(navLabels).toContain("邮箱128");
     expect(navLabels).toContain("添加邮箱");
     expect(navLabels).toContain("同步中心");
-    expect(navLabels).toContain("搜索");
     expect(navLabels).toContain("设置");
+    expect(navLabels).not.toContain("搜索");
     expect(navLabels).not.toContain("待办9");
     expect(navLabels).not.toContain("Hermes");
+    expect(screen.getByRole("search", { name: "全局邮件搜索" })).toBeTruthy();
 
     const directory = screen.getByLabelText("邮箱目录栏");
     expect(within(directory).getByRole("button", { name: /收件箱/ })).toBeTruthy();
@@ -82,6 +108,28 @@ describe("Email Hub first UI baseline", () => {
     expect(within(directory).getByRole("button", { name: /垃圾邮件/ })).toBeTruthy();
     expect(within(directory).getByRole("button", { name: /已删除/ })).toBeTruthy();
     expect(within(directory).getByRole("button", { name: /附件/ })).toBeTruthy();
+  });
+
+  it("lets users resize the sidebar and mailbox panes with accessible separators", () => {
+    const { container } = render(<App />);
+
+    const sidebarSeparator = screen.getByRole("separator", {
+      name: "调整左侧栏宽度",
+    });
+    const sidebarWidth = Number(sidebarSeparator.getAttribute("aria-valuenow"));
+    fireEvent.keyDown(sidebarSeparator, { key: "ArrowRight" });
+    expect(container.querySelector(".app-shell")?.getAttribute("style")).toContain(
+      `--sidebar-width: ${sidebarWidth + 16}px`,
+    );
+
+    const listSeparator = screen.getByRole("separator", {
+      name: "调整邮件列表宽度",
+    });
+    const listWidth = Number(listSeparator.getAttribute("aria-valuenow"));
+    fireEvent.keyDown(listSeparator, { key: "ArrowRight" });
+    expect(container.querySelector(".mail-grid")?.getAttribute("style")).toContain(
+      `--message-list-width: ${listWidth + 16}px`,
+    );
   });
 
   it("keeps Hermes as a blurred compact dock that opens on demand and hides after idle", () => {
@@ -3504,9 +3552,7 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
-    );
+    openSearchPageFromTopbar();
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "signed contract" },
     });
@@ -3553,9 +3599,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
-    );
+    openSearchPageFromTopbar();
     await screen.findByRole("button", { name: "Search label 客户" });
 
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
@@ -3625,9 +3669,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
-    );
+    openSearchPageFromTopbar();
 
     fireEvent.click(screen.getByRole("button", { name: "Search saved view 验证码" }));
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
@@ -3704,9 +3746,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
-    );
+    openSearchPageFromTopbar();
     fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
       target: { value: "客户上次提到的合同在哪里" },
     });
@@ -3832,9 +3872,7 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
-    );
+    openSearchPageFromTopbar();
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "Q3 invoice" },
     });
@@ -3863,9 +3901,7 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
-    );
+    openSearchPageFromTopbar();
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "billing contact" },
     });
@@ -3912,9 +3948,7 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
-    );
+    openSearchPageFromTopbar();
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "missing invoice" },
     });
@@ -4147,6 +4181,13 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(
       within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
     );
+
+    const advancedImport = screen.getByLabelText(
+      "高级导入和账号迁移",
+    ) as HTMLDetailsElement;
+    expect(advancedImport.open).toBe(false);
+    fireEvent.click(screen.getByText("高级导入 / 账号迁移"));
+    expect(advancedImport.open).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "下载 CSV 模板" }));
     expect(
@@ -5155,266 +5196,33 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
   });
 
-  it("shows API database health in Sync Center", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.getApiHealth).mockResolvedValueOnce({
-      service: "email-hub-api",
-      ok: true,
-      checks: {
-        database: "ok",
-      },
-    });
-
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
-
-    const panel = await screen.findByRole("region", {
-      name: "API 运行体检",
-    });
-    expect(within(panel).getByText("后端运行正常")).toBeTruthy();
-    expect(within(panel).getByText("API 正常响应，数据库探测结果如下。")).toBeTruthy();
-    expect(within(panel).getByText("API")).toBeTruthy();
-    expect(within(panel).getByText("数据库")).toBeTruthy();
-    expect(within(panel).getAllByText("可用").length).toBeGreaterThanOrEqual(2);
-    await waitFor(() => {
-      expect(api.getApiHealth).toHaveBeenCalled();
-    });
-  });
-
-  it("keeps API health visible when Sync Center health fetch fails", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.getApiHealth).mockRejectedValueOnce(new Error("offline"));
-
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
-
-    const panel = await screen.findByRole("region", {
-      name: "API 运行体检",
-    });
-    expect(within(panel).getByText("后端运行需要检查")).toBeTruthy();
-    expect(
-      within(panel).getByText(
-        "无法读取 API /health，请检查后端进程、网络和 API Token。",
-      ),
-    ).toBeTruthy();
-    expect(within(panel).getByText("未知")).toBeTruthy();
-    expect(within(panel).getByText("未探测")).toBeTruthy();
-  });
-
-  it("shows EmailEngine readiness in Sync Center", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
-      provider: "emailengine",
-      ok: false,
-      detail: "adapter boundary ready: http://emailengine:3000",
-      checks: {
-        url: "configured",
-        http: "unavailable",
-        accessToken: "missing",
-        preparedToken: "missing",
-        webhookSecret: "custom",
-      },
-      capabilities: {
-        urlConfigured: true,
-        accessTokenConfigured: false,
-        imapSmtpOnboarding: false,
-        attachmentDownload: false,
-        send: false,
-      },
-      missing: ["EMAILENGINE_ACCESS_TOKEN"],
-      warnings: ["EENGINE_PREPARED_TOKEN_MISSING"],
-      readiness: {
-        status: "degraded",
-        summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
-        setupActions: [
-          {
-            code: "set_emailengine_access_token",
-            label: "设置 EmailEngine 访问令牌",
-            env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
-            effect: "添加邮箱、附件下载、发信和同步任务会失败。",
-          },
-        ],
-      },
-    });
-
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
-
-    const panel = await screen.findByRole("region", {
-      name: "EmailEngine 上线体检",
-    });
-    expect(within(panel).getByText("EmailEngine 上线还差配置")).toBeTruthy();
-    expect(within(panel).getByText("运行探测")).toBeTruthy();
-    expect(within(panel).getByText("不可达")).toBeTruthy();
-    expect(within(panel).getByText("预置令牌")).toBeTruthy();
-    expect(within(panel).getAllByText("缺少").length).toBeGreaterThanOrEqual(2);
-    expect(within(panel).getByText("附件下载")).toBeTruthy();
-    expect(within(panel).getByText("EMAILENGINE_ACCESS_TOKEN")).toBeTruthy();
-    expect(within(panel).getByText("EENGINE_PREPARED_TOKEN_MISSING")).toBeTruthy();
-    expect(within(panel).getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
-    expect(
-      within(panel).getByText("EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN"),
-    ).toBeTruthy();
-  });
-
-  it("keeps EmailEngine readiness visible when Sync Center health fetch fails", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.getMailEngineHealth).mockRejectedValueOnce(new Error("offline"));
-
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
-
-    const panel = await screen.findByRole("region", {
-      name: "EmailEngine 上线体检",
-    });
-    expect(within(panel).getByText("EmailEngine 体检暂时不可用")).toBeTruthy();
-    expect(
-      within(panel).getByText(
-        "无法读取后端上线体检，请先检查 API /health、网络和 API Token。",
-      ),
-    ).toBeTruthy();
-    expect(within(panel).getByText("运行探测")).toBeTruthy();
-    expect(within(panel).getAllByText("未探测").length).toBeGreaterThanOrEqual(1);
-    expect(within(panel).getByText("附件下载")).toBeTruthy();
-    expect(within(panel).getAllByText("未知").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("shows recent EmailEngine webhook and worker activity in Sync Center", async () => {
+  it("keeps operations diagnostics out of Sync Center and opens them from Settings", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
     fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
 
-    const panel = await screen.findByRole("region", {
-      name: "EmailEngine 运行事件体检",
-    });
-    expect(
-      within(panel).getByText("最近 webhook、同步 worker 和重试链路活动。"),
-    ).toBeTruthy();
-
-    await waitFor(() => {
-      expect(api.listOperationalEvents).toHaveBeenCalledWith({
-        service: "email-hub-api",
-        event: "emailengine_webhook_ingested",
-        lane: "sync",
-        limit: 3,
-      });
-      expect(api.listOperationalEvents).toHaveBeenCalledWith({
-        service: "email-hub-worker",
-        lane: "sync",
-        limit: 5,
-      });
-    });
-
-    expect(await within(panel).findByText("同步任务已处理")).toBeTruthy();
-    expect(within(panel).getByText("邮箱服务状态已更新")).toBeTruthy();
-    expect(
-      within(panel).getByText(
-        "后台已处理一条同步任务，邮箱镜像链路有最近活动。",
-      ),
-    ).toBeTruthy();
-    expect(
-      within(panel).getByText("系统已收到邮箱服务回调，正在按本地同步状态处理。"),
-    ).toBeTruthy();
-    expect(within(panel).getByText(/Worker · 信息 · job_sync/)).toBeTruthy();
-    expect(within(panel).getByText(/Webhook · 信息 · job_webhook/)).toBeTruthy();
-  });
-
-  it("keeps Sync Center usable when recent EmailEngine events are unavailable", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.listOperationalEvents).mockRejectedValue(new Error("offline"));
-
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
-
-    const panel = await screen.findByRole("region", {
-      name: "EmailEngine 运行事件体检",
-    });
-    expect(
-      await within(panel).findByText("最近运行事件暂时不可用。"),
-    ).toBeTruthy();
     expect(await screen.findByText("sync@example.com")).toBeTruthy();
-  });
-
-  it("surfaces rejected EmailEngine access tokens in Sync Center", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
-      provider: "emailengine",
-      ok: false,
-      detail: "adapter boundary ready: http://emailengine:3000",
-      checks: {
-        url: "configured",
-        http: "ok",
-        accessToken: "configured",
-        apiAuth: "unauthorized",
-        webhookSecret: "custom",
-      },
-      capabilities: {
-        urlConfigured: true,
-        accessTokenConfigured: true,
-        imapSmtpOnboarding: false,
-        attachmentDownload: false,
-        send: false,
-      },
-      missing: [],
-      warnings: ["EMAILENGINE_ACCESS_TOKEN_REJECTED"],
-      readiness: {
-        status: "degraded",
-        summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
-        setupActions: [
-          {
-            code: "replace_emailengine_access_token",
-            label: "更新 EmailEngine 访问令牌",
-            env: ["EMAILENGINE_ACCESS_TOKEN", "EENGINE_PREPARED_TOKEN"],
-            effect:
-              "EmailEngine 拒绝当前访问令牌，添加邮箱、附件下载、发信和同步任务会失败。",
-          },
-        ],
-      },
-    });
-
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
-
-    expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
-    expect(screen.getByText("认证探测")).toBeTruthy();
-    expect(screen.getByText("被拒绝")).toBeTruthy();
-    expect(screen.getByText("更新 EmailEngine 访问令牌")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "API 运行体检" })).toBeNull();
     expect(
-      screen.getByText(
-        "EmailEngine 拒绝当前访问令牌，添加邮箱、附件下载、发信和同步任务会失败。",
+      screen.queryByRole("region", { name: "EmailEngine 上线体检" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "EmailEngine 运行事件体检" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "设置目录" })).getByRole(
+        "button",
+        { name: "系统状态" },
       ),
+    );
+
+    expect(await screen.findByRole("region", { name: "API 运行体检" })).toBeTruthy();
+    expect(
+      await screen.findByRole("region", { name: "EmailEngine 上线体检" }),
     ).toBeTruthy();
-  });
-
-  it("keeps EmailEngine readiness visible when older APIs omit runtime checks", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
-      provider: "emailengine",
-      ok: false,
-      detail: "adapter boundary ready: http://emailengine:3000",
-      capabilities: {
-        urlConfigured: true,
-        accessTokenConfigured: false,
-        imapSmtpOnboarding: false,
-        attachmentDownload: false,
-        send: false,
-      },
-      missing: ["EMAILENGINE_ACCESS_TOKEN"],
-      warnings: [],
-      readiness: {
-        status: "degraded",
-        summary: "EmailEngine 配置未完全就绪，部分上线能力会降级。",
-        setupActions: [],
-      },
-    });
-
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
-
-    expect(await screen.findByText("EmailEngine 上线还差配置")).toBeTruthy();
-    expect(screen.getByText("运行探测")).toBeTruthy();
-    expect(screen.getAllByText("未探测").length).toBeGreaterThanOrEqual(1);
   });
 
   it("starts OAuth reauthorization from Sync Center", async () => {
@@ -5767,7 +5575,7 @@ describe("Email Hub first UI baseline", () => {
       "account_outlook",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    openSearchPageFromTopbar();
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "contract" },
     });
@@ -5799,6 +5607,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(
       within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
     );
+    expect(screen.queryByLabelText("Add mail secret")).toBeNull();
     fireEvent.click(await screen.findByRole("button", { name: "连接 Gmail" }));
 
     await waitFor(() => {
@@ -5847,11 +5656,13 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(await screen.findByLabelText("Add mail email"), {
       target: { value: "owner@gmail.com" },
     });
+    expect(screen.queryByLabelText("Add mail secret")).toBeNull();
+    await selectCredentialProvider("Gmail");
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "google-app-password" },
     });
     expect(await screen.findByText("输入 Google 应用专用密码")).toBeTruthy();
-    fireEvent.click(await screen.findByRole("button", { name: "连接 Gmail" }));
+    submitCredentialProvider("Gmail");
 
     await waitFor(() => {
       expect(api.testImapSmtpConnection).toHaveBeenCalledWith({
@@ -6176,10 +5987,11 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "support@qq.com" },
     });
+    await selectCredentialProvider("QQ 邮箱");
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "qq-auth-code" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 QQ 邮箱" }));
+    submitCredentialProvider("QQ 邮箱");
 
     await waitFor(() => {
       expect(api.testImapSmtpConnection).toHaveBeenCalledWith({
@@ -6367,10 +6179,11 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "support@qq.com" },
     });
+    await selectCredentialProvider("QQ 邮箱");
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "qq-auth-code" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 QQ 邮箱" }));
+    submitCredentialProvider("QQ 邮箱");
 
     await waitFor(() => {
       expect(api.listMailboxes).toHaveBeenCalledWith({
@@ -6410,10 +6223,11 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "archive@163.com" },
     });
+    await selectCredentialProvider("163 邮箱");
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "bad-auth-code" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 163 邮箱" }));
+    submitCredentialProvider("163 邮箱");
 
     await waitFor(() => {
       expect(api.testImapSmtpConnection).toHaveBeenCalledWith({
@@ -6534,13 +6348,14 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "me@proton.me" },
     });
+    await selectCredentialProvider("Proton Mail");
     fireEvent.change(screen.getByLabelText("Add mail username"), {
       target: { value: "bridge-user" },
     });
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "bridge-password" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+    submitCredentialProvider("Proton Mail");
 
     expect(await screen.findByText("Proton Bridge 未连接")).toBeTruthy();
     expect(
@@ -6567,10 +6382,11 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "me@proton.me" },
     });
+    await selectCredentialProvider("Proton Mail");
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "bridge-password" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+    submitCredentialProvider("Proton Mail");
 
     expect(
       await screen.findByText(
@@ -6599,13 +6415,14 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "me@proton.me" },
     });
+    await selectCredentialProvider("Proton Mail");
     fireEvent.change(screen.getByLabelText("Add mail username"), {
       target: { value: "bridge-user" },
     });
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "bridge-password" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+    submitCredentialProvider("Proton Mail");
 
     await waitFor(() => {
       expect(api.testImapSmtpConnection).toHaveBeenCalledWith({
@@ -6659,10 +6476,11 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "support@qq.com" },
     });
+    await selectCredentialProvider("QQ 邮箱");
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "qq-auth-code" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 QQ 邮箱" }));
+    submitCredentialProvider("QQ 邮箱");
 
     expect(
       await screen.findByText("QQ 邮箱 暂时无法接入，请按恢复建议处理后重试。"),
@@ -6718,10 +6536,11 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "support@qq.com" },
     });
+    await selectCredentialProvider("QQ 邮箱");
     fireEvent.change(screen.getByLabelText("Add mail secret"), {
       target: { value: "qq-auth-code" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 QQ 邮箱" }));
+    submitCredentialProvider("QQ 邮箱");
 
     expect(
       await screen.findByText(
@@ -6805,7 +6624,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 跟进保存服务暂时不可用，请检查后端配置。",
+        "Hermes 跟进保存服务暂时不可用，请联系管理员检查服务配置。",
       ),
     ).toBeTruthy();
     expect(screen.getByText("Check whether Lina replied")).toBeTruthy();

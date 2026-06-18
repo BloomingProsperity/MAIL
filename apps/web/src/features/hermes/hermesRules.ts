@@ -113,7 +113,7 @@ export function hermesActionPlanErrorNotice(
       );
     }
     if (error.code === "hermes_action_plans_unavailable") {
-      return "Hermes 执行计划存储暂时不可用，请检查后端配置。";
+      return "Hermes 执行计划存储暂时不可用，请联系管理员检查服务配置。";
     }
     if (error.code === "hermes_runtime_not_configured") {
       return "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。";

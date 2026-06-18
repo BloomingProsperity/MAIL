@@ -28,6 +28,8 @@ describe("Add Mail Proton Bridge", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "me@proton.me" },
     });
+    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+    await screen.findByLabelText("Add mail secret");
     fireEvent.change(screen.getByLabelText("Add mail username"), {
       target: { value: "bridge-user" },
     });
@@ -40,7 +42,7 @@ describe("Add Mail Proton Bridge", () => {
     fireEvent.change(screen.getByLabelText("Proton Bridge send host"), {
       target: { value: "host.docker.internal" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+    fireEvent.click(screen.getByRole("button", { name: "测试并接入Proton Mail" }));
 
     const expectedInput = {
       email: "me@proton.me",
@@ -87,6 +89,8 @@ describe("Add Mail Proton Bridge", () => {
     fireEvent.change(screen.getByLabelText("Add mail email"), {
       target: { value: "me@proton.me" },
     });
+    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+    await screen.findByLabelText("Add mail secret");
     fireEvent.change(screen.getByLabelText("Add mail username"), {
       target: { value: "bridge-user" },
     });
@@ -96,7 +100,7 @@ describe("Add Mail Proton Bridge", () => {
     fireEvent.change(screen.getByLabelText("Proton Bridge receive host"), {
       target: { value: "host.docker.internal" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+    fireEvent.click(screen.getByRole("button", { name: "测试并接入Proton Mail" }));
 
     expect(
       await screen.findByText(

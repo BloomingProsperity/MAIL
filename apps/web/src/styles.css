@@ -81,11 +81,32 @@ h2 {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 168px) 6px minmax(0, 1fr);
   width: 100%;
   height: 100vh;
   min-height: 0;
   overflow: hidden;
+}
+
+.pane-resize-handle {
+  position: relative;
+  min-width: 6px;
+  background: transparent;
+  cursor: col-resize;
+  outline: 0;
+}
+
+.pane-resize-handle::after {
+  position: absolute;
+  inset: 10px 2px;
+  border-radius: 999px;
+  background: transparent;
+  content: "";
+}
+
+.pane-resize-handle:hover::after,
+.pane-resize-handle:focus-visible::after {
+  background: var(--primary-border);
 }
 
 .global-sidebar {
@@ -271,6 +292,8 @@ h2 {
   overflow: auto;
   padding: 8px 10px 58px;
 }
+
+.oauth-shell { grid-template-columns: 1fr; }
 
 .workspace-page {
   width: 100%;
@@ -503,7 +526,12 @@ h2 {
 
 .mail-grid {
   display: grid;
-  grid-template-columns: 168px minmax(286px, 332px) minmax(0, 1fr);
+  grid-template-columns:
+    var(--mail-directory-width, 168px)
+    6px
+    minmax(260px, var(--message-list-width, 320px))
+    6px
+    minmax(0, 1fr);
   width: 100%;
   min-height: calc(100vh - 96px); order: 1;
   flex: 1;
@@ -515,11 +543,21 @@ h2 {
 }
 
 .mail-grid.layout-roomy {
-  grid-template-columns: 178px minmax(310px, 360px) minmax(0, 1fr);
+  grid-template-columns:
+    var(--mail-directory-width, 178px)
+    6px
+    minmax(280px, var(--message-list-width, 360px))
+    6px
+    minmax(0, 1fr);
 }
 
 .mail-grid.layout-compact {
-  grid-template-columns: 156px minmax(278px, 316px) minmax(0, 1fr);
+  grid-template-columns:
+    var(--mail-directory-width, 156px)
+    6px
+    minmax(240px, var(--message-list-width, 300px))
+    6px
+    minmax(0, 1fr);
 }
 
 .compose-outbox-band {
@@ -1648,7 +1686,7 @@ h2 {
 
 .add-mail-form {
   display: grid;
-  grid-template-columns: minmax(180px, 1.1fr) minmax(150px, 0.9fr) minmax(180px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   align-items: end;
   gap: 10px;
   margin-bottom: 12px;
@@ -1679,6 +1717,30 @@ h2 {
 .add-mail-form input:focus {
   border-color: var(--primary-border);
   box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.credential-submit-row {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg-soft);
+}
+
+.credential-submit-row strong,
+.credential-submit-row span {
+  display: block;
+}
+
+.credential-submit-row span {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .bridge-field-help {
@@ -1787,6 +1849,16 @@ h2 {
   display: grid;
   gap: 12px;
   margin-top: 12px;
+}
+
+.import-transfer-panel summary {
+  cursor: pointer;
+  color: var(--text-main);
+  font-weight: 800;
+}
+
+.import-transfer-panel[open] summary {
+  margin-bottom: 4px;
 }
 
 .import-transfer-grid {
@@ -2104,90 +2176,6 @@ h2 {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
-}
-
-.api-health-panel,
-.mail-engine-readiness {
-  display: grid;
-  gap: 12px;
-  margin-top: 0;
-  border-color: var(--border-light);
-}
-
-.api-health-panel.is-degraded,
-.mail-engine-readiness.is-degraded {
-  border-color: rgba(213, 89, 75, 0.3);
-  background: rgba(213, 89, 75, 0.06);
-}
-
-.api-health-panel.is-ready,
-.mail-engine-readiness.is-ready {
-  border-color: rgba(55, 130, 96, 0.28);
-  background: rgba(55, 130, 96, 0.06);
-}
-
-.api-health-panel > div:first-child,
-.mail-engine-readiness > div:first-child {
-  display: grid;
-  gap: 4px;
-}
-
-.api-health-panel > div:first-child strong,
-.mail-engine-readiness > div:first-child strong {
-  font-size: 14px;
-}
-
-.api-health-panel > div:first-child span,
-.mail-engine-readiness > div:first-child span {
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.api-health-grid,
-.mail-engine-readiness-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
-  gap: 8px;
-}
-
-.api-health-grid p,
-.mail-engine-readiness-grid p,
-.mail-engine-status-notes p,
-.mail-engine-setup-actions > div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  margin: 0;
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  padding: 9px 10px;
-  background: var(--bg-panel);
-}
-
-.api-health-grid strong,
-.mail-engine-readiness-grid strong,
-.mail-engine-status-notes strong,
-.mail-engine-setup-actions strong {
-  color: var(--text-main);
-  font-size: 13px;
-}
-
-.api-health-grid span,
-.mail-engine-readiness-grid span,
-.mail-engine-status-notes span,
-.mail-engine-setup-actions span,
-.mail-engine-setup-actions p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.mail-engine-status-notes,
-.mail-engine-setup-actions {
-  display: grid;
-  gap: 8px;
 }
 
 .settings-module {
@@ -3278,7 +3266,11 @@ h2 {
 
 @media (max-width: 1180px) {
   .app-shell {
-    grid-template-columns: 76px minmax(0, 1fr);
+    grid-template-columns: 76px 0 minmax(0, 1fr);
+  }
+
+  .sidebar-resize-handle {
+    display: none;
   }
 
   .brand-row div:last-child,
@@ -3295,12 +3287,16 @@ h2 {
   }
 
   .mail-grid {
-    grid-template-columns: 184px minmax(280px, 330px) minmax(0, 1fr);
+    grid-template-columns: 184px 0 minmax(280px, 330px) 0 minmax(0, 1fr);
   }
 
   .mail-grid.layout-roomy,
   .mail-grid.layout-compact {
-    grid-template-columns: 184px minmax(280px, 330px) minmax(0, 1fr);
+    grid-template-columns: 184px 0 minmax(280px, 330px) 0 minmax(0, 1fr);
+  }
+
+  .mail-pane-resize-handle {
+    display: none;
   }
 
   .hermes-dock {
@@ -3364,6 +3360,10 @@ h2 {
     .search-advanced-grid,
     .skill-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pane-resize-handle {
+    display: none;
   }
 
   .custom-server-heading {

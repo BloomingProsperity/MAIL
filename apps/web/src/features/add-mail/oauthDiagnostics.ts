@@ -11,7 +11,7 @@ export function formatOAuthStartError(
     return `${providerTitle} 网页登录服务暂时不可用，请稍后重试。`;
   }
   if (profile.missingProviderConfig) {
-    return `${providerTitle} 网页登录配置还没完成，请让管理员配置服务端登录凭据和 EmailEngine OAuth 应用后再试。`;
+    return `${providerTitle} 网页登录配置还没完成，请让管理员配置服务商登录凭据后再试。`;
   }
   if (profile.redirectMismatch) {
     return `${providerTitle} 登录回调地址不匹配，请确认当前访问域名已加入服务商登录回调地址。`;
@@ -39,7 +39,7 @@ export function formatOAuthCallbackError(input: {
     return "授权没有返回长期同步权限，请重新登录并同意离线访问。";
   }
   if (profile.missingProviderConfig) {
-    return "网页登录配置还没完成，请让管理员配置服务端登录凭据和 EmailEngine OAuth 应用后再试。";
+    return "网页登录配置还没完成，请让管理员配置服务商登录凭据后再试。";
   }
   if (profile.redirectMismatch) {
     return "登录回调地址不匹配，请确认当前访问域名已加入服务商登录回调地址。";

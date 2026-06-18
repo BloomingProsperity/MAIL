@@ -17,7 +17,7 @@ describe("OAuth diagnostics", () => {
         }),
       ),
     ).toBe(
-      "Gmail 网页登录配置还没完成，请让管理员配置服务端登录凭据和 EmailEngine OAuth 应用后再试。",
+      "Gmail 网页登录配置还没完成，请让管理员配置服务商登录凭据后再试。",
     );
   });
 
