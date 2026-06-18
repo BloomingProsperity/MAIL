@@ -1802,6 +1802,9 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
     );
 
+    expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "网关地址" })).toBeNull();
+    fireEvent.click(screen.getByText("管理员高级配置"));
     expect(
       await screen.findByDisplayValue("http://hermes:4000/v1/chat/completions"),
     ).toBeTruthy();
@@ -1850,9 +1853,7 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
     );
 
-    expect(
-      await screen.findByDisplayValue("http://hermes:4000/v1/chat/completions"),
-    ).toBeTruthy();
+    expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
 
     await waitFor(() => {
@@ -2132,6 +2133,7 @@ describe("Email Hub first UI baseline", () => {
     );
 
     expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
+    fireEvent.click(screen.getByText("管理员高级配置"));
     fireEvent.click(screen.getByRole("button", { name: "清除访问密钥" }));
 
     await waitFor(() => {
@@ -3057,6 +3059,9 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
     );
 
+    expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Hermes 网关" })).toBeNull();
+    fireEvent.click(screen.getByText("管理员高级配置"));
     const providerSelect = screen.getByLabelText("Hermes 网关");
     expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
       .toBeTruthy();
@@ -3100,6 +3105,7 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
     );
 
+    fireEvent.click(await screen.findByText("管理员高级配置"));
     expect(
       await screen.findByDisplayValue("http://hermes:4000/v1/chat/completions"),
     ).toBeTruthy();
@@ -3137,6 +3143,9 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
     );
 
+    expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Hermes 网关" })).toBeNull();
+    fireEvent.click(screen.getByText("管理员高级配置"));
     const providerSelect = screen.getByLabelText("Hermes 网关");
     expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
       .toBeTruthy();
@@ -3152,6 +3161,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
 
     expect(container.textContent).not.toMatch(/\bAPI\b|OpenAI-compatible/i);
+    fireEvent.click(screen.getByText("管理员高级配置"));
     const providerSelect = screen.getByLabelText("Hermes 网关");
     expect(
       within(providerSelect).queryByRole("option", {

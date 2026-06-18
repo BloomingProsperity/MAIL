@@ -115,6 +115,7 @@ export function HermesRuntimeSettingsPanel(props: {
     useState<HermesRuntimeUpdatePolicy>("manual");
   const [updateChannel, setUpdateChannel] =
     useState<HermesRuntimeUpdateChannel>("stable");
+  const [showAdminDetails, setShowAdminDetails] = useState(false);
   const [version, setVersion] = useState<HermesRuntimeVersionStatus>();
   const [hermesProviders, setHermesProviders] = useState<
     HermesProviderCatalogItem[]
@@ -156,6 +157,11 @@ export function HermesRuntimeSettingsPanel(props: {
   const accountOptions = props.accountOptions ?? scopedAccountOptions;
   const effectiveAccountId = scopedAccountId || undefined;
   const isRuntimeBusy = busyAction !== undefined;
+  const connectionStatus = enabled
+    ? apiKeyConfigured
+      ? "已连接"
+      : "待配置"
+    : "已停用";
 
   function applyProviderSelection(nextProviderKey: string) {
     const provider = providerOptions.find((item) => item.key === nextProviderKey);
@@ -455,7 +461,7 @@ export function HermesRuntimeSettingsPanel(props: {
       <header className="settings-panel-head">
         <div>
           <h2>Hermes 配置</h2>
-          <p>AI 入口、访问密钥、学习记录和规则集中管理。</p>
+          <p>AI 状态、学习记录和规则集中管理。</p>
         </div>
         <button
           className="ghost-button"
@@ -470,6 +476,7 @@ export function HermesRuntimeSettingsPanel(props: {
       <form className="settings-form" onSubmit={saveSettings}>
         <div className="settings-card-grid">
           <article className="settings-module">
+            <h3>Hermes AI</h3>
             <label className="field-toggle">
               <input
                 type="checkbox"
@@ -479,67 +486,11 @@ export function HermesRuntimeSettingsPanel(props: {
               />
               <span>启用 Hermes</span>
             </label>
-            <label>
-              <span>连接方式</span>
-              <select
-                value="external_hermes"
-                disabled={isRuntimeBusy}
-                onChange={() => setMode("external_hermes")}
-              >
-                <option value="external_hermes">Hermes 服务</option>
-              </select>
-            </label>
-            <label>
-              <span>Hermes 网关</span>
-              <select
-                value={providerKey}
-                disabled={isRuntimeBusy}
-                onChange={(event) => applyProviderSelection(event.target.value)}
-              >
-                {providerOptions.map((provider) => (
-                  <option
-                    key={provider.key}
-                    value={provider.key}
-                    disabled={!isHermesProviderRuntimeSelectable(provider)}
-                  >
-                    {provider.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>网关地址</span>
-              <input
-                value={endpointUrl}
-                onChange={(event) => setEndpointUrl(event.target.value)}
-                disabled={
-                  isRuntimeBusy || selectedProvider?.endpointEditable === false
-                }
-                placeholder="http://hermes:4000/v1/chat/completions"
-              />
-            </label>
-          </article>
-
-          <article className="settings-module">
-            <label>
-              <span>路由或模型</span>
-              <input
-                value={model}
-                disabled={isRuntimeBusy}
-                onChange={(event) => setModel(event.target.value)}
-                placeholder="hermes-email"
-              />
-            </label>
-            <label>
-              <span>访问密钥</span>
-              <input
-                value={apiKey}
-                disabled={isRuntimeBusy}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={apiKeyConfigured ? "已保存，留空则不修改" : "可留空"}
-                type="password"
-              />
-            </label>
+            <p>
+              状态：{connectionStatus}
+              {version?.installedVersion ? ` · 当前 ${version.installedVersion}` : ""}
+              {version?.latestVersion ? ` · 最新 ${version.latestVersion}` : ""}
+            </p>
             <div className="inline-actions">
               <button
                 className="primary-button"
@@ -556,66 +507,137 @@ export function HermesRuntimeSettingsPanel(props: {
               >
                 测试连接
               </button>
-              {apiKeyConfigured ? (
-                <button
-                  className="ghost-button"
-                  type="button"
-                  disabled={isRuntimeBusy}
-                  onClick={() => void clearApiKey()}
-                >
-                  清除访问密钥
-                </button>
-              ) : null}
             </div>
           </article>
-        </div>
 
-        <div className="settings-card-grid">
-          <article className="settings-module">
-            <h3>版本策略</h3>
-            <label>
-              <span>提醒方式</span>
-              <select
-                value={updatePolicy}
-                disabled={isRuntimeBusy}
-                onChange={(event) =>
-                  setUpdatePolicy(
-                    event.target.value as HermesRuntimeUpdatePolicy,
-                  )
-                }
-              >
-                <option value="manual">手动确认</option>
-                <option value="notify">有更新时提醒</option>
-                <option value="auto_patch">仅小版本自动</option>
-              </select>
-            </label>
-            <label>
-              <span>更新通道</span>
-              <select
-                value={updateChannel}
-                disabled={isRuntimeBusy}
-                onChange={(event) =>
-                  setUpdateChannel(
-                    event.target.value as HermesRuntimeUpdateChannel,
-                  )
-                }
-              >
-                <option value="stable">稳定</option>
-                <option value="preview">预览</option>
-              </select>
-            </label>
-            <p>
-              {version?.installedVersion
-                ? `当前 ${version.installedVersion}`
-                : "当前版本待检测"}
-              {version?.latestVersion ? ` · 最新 ${version.latestVersion}` : ""}
-            </p>
-          </article>
           <article className="settings-module">
             <h3>学习边界</h3>
             <p>写回复、归档、星标、移动标签和你的修改会进入可查看的学习记录。</p>
             <p>写操作默认先预览，不会直接发送邮件。</p>
           </article>
+        </div>
+
+        <div className="settings-subpanel">
+          <button
+            className="ghost-button"
+            type="button"
+            aria-expanded={showAdminDetails}
+            onClick={() => setShowAdminDetails((current) => !current)}
+          >
+            管理员高级配置
+          </button>
+          {showAdminDetails ? (
+            <div className="settings-card-grid">
+              <article className="settings-module">
+                <label>
+                  <span>连接方式</span>
+                  <select
+                    value="external_hermes"
+                    disabled={isRuntimeBusy}
+                    onChange={() => setMode("external_hermes")}
+                  >
+                    <option value="external_hermes">Hermes 服务</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Hermes 网关</span>
+                  <select
+                    value={providerKey}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) => applyProviderSelection(event.target.value)}
+                  >
+                    {providerOptions.map((provider) => (
+                      <option
+                        key={provider.key}
+                        value={provider.key}
+                        disabled={!isHermesProviderRuntimeSelectable(provider)}
+                      >
+                        {provider.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>网关地址</span>
+                  <input
+                    value={endpointUrl}
+                    onChange={(event) => setEndpointUrl(event.target.value)}
+                    disabled={
+                      isRuntimeBusy || selectedProvider?.endpointEditable === false
+                    }
+                    placeholder="http://hermes:4000/v1/chat/completions"
+                  />
+                </label>
+              </article>
+
+              <article className="settings-module">
+                <label>
+                  <span>路由或模型</span>
+                  <input
+                    value={model}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) => setModel(event.target.value)}
+                    placeholder="hermes-email"
+                  />
+                </label>
+                <label>
+                  <span>访问密钥</span>
+                  <input
+                    value={apiKey}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) => setApiKey(event.target.value)}
+                    placeholder={
+                      apiKeyConfigured ? "已保存，留空则不修改" : "可留空"
+                    }
+                    type="password"
+                  />
+                </label>
+                <label>
+                  <span>提醒方式</span>
+                  <select
+                    value={updatePolicy}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) =>
+                      setUpdatePolicy(
+                        event.target.value as HermesRuntimeUpdatePolicy,
+                      )
+                    }
+                  >
+                    <option value="manual">手动确认</option>
+                    <option value="notify">有更新时提醒</option>
+                    <option value="auto_patch">仅小版本自动</option>
+                  </select>
+                </label>
+                <label>
+                  <span>更新通道</span>
+                  <select
+                    value={updateChannel}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) =>
+                      setUpdateChannel(
+                        event.target.value as HermesRuntimeUpdateChannel,
+                      )
+                    }
+                  >
+                    <option value="stable">稳定</option>
+                    <option value="preview">预览</option>
+                  </select>
+                </label>
+                {apiKeyConfigured ? (
+                  <div className="inline-actions">
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      disabled={isRuntimeBusy}
+                      onClick={() => void clearApiKey()}
+                    >
+                      清除访问密钥
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            </div>
+          ) : null}
         </div>
       </form>
 
