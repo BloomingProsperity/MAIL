@@ -150,7 +150,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
-    const context = await screen.findByLabelText("Hermes mailbox context");
+    const context = await screen.findByLabelText("Hermes 邮箱环境");
     expect(within(context).getByText("1 个账号")).toBeTruthy();
     expect(within(context).getByText("2 个分组")).toBeTruthy();
     expect(within(context).getByText("规则需确认")).toBeTruthy();
@@ -3740,6 +3740,9 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(await screen.findByText("Hermes search result")).toBeTruthy();
+    expect(screen.getByLabelText("Hermes 搜索回答").textContent).toContain(
+      "客户合同在最新邮件里。",
+    );
     expect(screen.getByRole("status").textContent).toContain(
       "Hermes 已同步搜索条件",
     );

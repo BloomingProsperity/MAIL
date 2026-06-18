@@ -56,7 +56,10 @@ import {
 } from "./features/hermes/HermesReaderOrganizationPanels";
 import { HermesDock } from "./features/hermes/HermesDock";
 import { HermesNotice } from "./features/hermes/HermesNotice";
-import { HermesNaturalLanguageSearchPanel } from "./features/hermes/HermesNaturalLanguageSearchPanel";
+import {
+  HermesNaturalLanguageSearchPanel,
+  HermesSearchAnswerPanel,
+} from "./features/hermes/HermesNaturalLanguageSearchPanel";
 import type { HermesQuickReplyAction } from "./features/hermes/HermesComposeAssistPanel";
 import type { HermesOrganizationApplyAction } from "./features/hermes/HermesReaderOrganizationPanels";
 import { HermesRuntimeSettingsPanel } from "./features/hermes/HermesRuntimeSettingsPanel";
@@ -8119,6 +8122,8 @@ function SearchPage(props: {
   const [labelIds, setLabelIds] = useState<string[]>([]);
   const [tagMode, setTagMode] = useState<MailTagMode>("any");
   const [hermesSearchBusy, setHermesSearchBusy] = useState(false);
+  const [hermesSearchResult, setHermesSearchResult] =
+    useState<HermesEmailSearchQaResult>();
   const notice = noticeState.text;
 
   function setNotice(
@@ -8266,6 +8271,7 @@ function SearchPage(props: {
 
   async function runSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setHermesSearchResult(undefined);
     await executeSearch(query);
   }
 
@@ -8286,6 +8292,7 @@ function SearchPage(props: {
     }
 
     setHermesSearchBusy(true);
+    setHermesSearchResult(undefined);
     setNotice("Hermes 正在理解问题并搜索当前邮箱...");
     try {
       const result = await props.api.searchMailWithHermes({
@@ -8319,12 +8326,14 @@ function SearchPage(props: {
       if (!searched) {
         return;
       }
+      setHermesSearchResult(result);
       setNotice(
         result.matches.length > 0
           ? `Hermes 已读取 ${result.matches.length} 个候选结果，并同步到搜索结果。`
           : "Hermes 已同步搜索条件，但没有找到候选结果。",
       );
     } catch (error) {
+      setHermesSearchResult(undefined);
       setNotice(
         hermesSkillErrorNotice(error, {
           skillId: "email_search_qa",
@@ -8345,6 +8354,7 @@ function SearchPage(props: {
     }
 
     setQuery(props.launch.query);
+    setHermesSearchResult(undefined);
     setQuickFilters(props.launch.quickFilters ?? []);
     setQScopes(props.launch.qScopes ?? [
       "sender",
@@ -8404,6 +8414,10 @@ function SearchPage(props: {
             busy={hermesSearchBusy}
             onQueryChange={setNaturalLanguageQuery}
             onSubmit={() => void runHermesNaturalLanguageSearch()}
+          />
+          <HermesSearchAnswerPanel
+            result={hermesSearchResult}
+            formatDate={formatMailDate}
           />
           <div className="filter-row">
             <button
