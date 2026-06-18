@@ -114,6 +114,18 @@ describe("EmailEngine Docker health verify CLI runner", () => {
           expected: ["*"],
         },
         {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["notifyText"],
+          expected: false,
+        },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["notifyAttachments"],
+          expected: false,
+        },
+        {
           service: "api",
           name: "EMAILENGINE_ACCESS_TOKEN",
           expected: "engine-token",
@@ -613,6 +625,18 @@ describe("EmailEngine Docker health verify CLI runner", () => {
           name: "EENGINE_SETTINGS",
           valuePath: ["webhookEvents"],
           expected: ["*"],
+        },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["notifyText"],
+          expected: false,
+        },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["notifyAttachments"],
+          expected: false,
         },
         {
           service: "api",

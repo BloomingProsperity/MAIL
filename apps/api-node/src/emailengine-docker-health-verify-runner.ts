@@ -303,6 +303,18 @@ export function dockerHealthEnvInvariants(
       expected: ["*"],
     },
     {
+      service: "emailengine",
+      name: "EENGINE_SETTINGS",
+      valuePath: ["notifyText"],
+      expected: false,
+    },
+    {
+      service: "emailengine",
+      name: "EENGINE_SETTINGS",
+      valuePath: ["notifyAttachments"],
+      expected: false,
+    },
+    {
       service: "api",
       name: "EMAILENGINE_ACCESS_TOKEN",
       expected: emailEngineAccessToken,

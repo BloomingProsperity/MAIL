@@ -267,6 +267,8 @@ describe("EmailEngine Docker configuration", () => {
     );
     expect(emailEngine).toContain('"webhooksEnabled":true');
     expect(emailEngine).toContain('"webhookEvents":["*"]');
+    expect(emailEngine).toContain('"notifyText":false');
+    expect(emailEngine).toContain('"notifyAttachments":false');
     expect(emailEngine).toContain(
       '"serviceSecret":"${EMAILENGINE_WEBHOOK_SECRET:-dev-emailhub-secret}"',
     );

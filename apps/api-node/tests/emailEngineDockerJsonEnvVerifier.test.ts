@@ -21,6 +21,18 @@ describe("Docker compose JSON env verifier", () => {
           valuePath: ["webhookEvents"],
           expected: ["*"],
         },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["notifyText"],
+          expected: false,
+        },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["notifyAttachments"],
+          expected: false,
+        },
       ],
       runCommand: async (input) => {
         if (input.args.includes("ps")) {
@@ -31,6 +43,8 @@ describe("Docker compose JSON env verifier", () => {
           stdout: JSON.stringify({
             webhooksEnabled: true,
             webhookEvents: ["*"],
+            notifyText: false,
+            notifyAttachments: false,
           }),
           stderr: "",
         };
@@ -48,6 +62,16 @@ describe("Docker compose JSON env verifier", () => {
         ok: true,
         service: "emailengine",
         name: "EENGINE_SETTINGS.webhookEvents",
+      },
+      "emailengine.EENGINE_SETTINGS.notifyText": {
+        ok: true,
+        service: "emailengine",
+        name: "EENGINE_SETTINGS.notifyText",
+      },
+      "emailengine.EENGINE_SETTINGS.notifyAttachments": {
+        ok: true,
+        service: "emailengine",
+        name: "EENGINE_SETTINGS.notifyAttachments",
       },
     });
   });
@@ -70,6 +94,18 @@ describe("Docker compose JSON env verifier", () => {
           valuePath: ["webhookEvents"],
           expected: ["*"],
         },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["notifyText"],
+          expected: false,
+        },
+        {
+          service: "emailengine",
+          name: "EENGINE_SETTINGS",
+          valuePath: ["notifyAttachments"],
+          expected: false,
+        },
       ],
       runCommand: async (input) => {
         if (input.args.includes("ps")) {
@@ -80,6 +116,8 @@ describe("Docker compose JSON env verifier", () => {
           stdout: JSON.stringify({
             webhooksEnabled: false,
             webhookEvents: ["messageNew"],
+            notifyText: true,
+            notifyAttachments: true,
           }),
           stderr: "",
         };
@@ -100,10 +138,24 @@ describe("Docker compose JSON env verifier", () => {
         name: "EENGINE_SETTINGS.webhookEvents",
         detail: "env_value_mismatch",
       },
+      "emailengine.EENGINE_SETTINGS.notifyText": {
+        ok: false,
+        service: "emailengine",
+        name: "EENGINE_SETTINGS.notifyText",
+        detail: "env_value_mismatch",
+      },
+      "emailengine.EENGINE_SETTINGS.notifyAttachments": {
+        ok: false,
+        service: "emailengine",
+        name: "EENGINE_SETTINGS.notifyAttachments",
+        detail: "env_value_mismatch",
+      },
     });
     expect(result.requiredFollowUps).toEqual([
       "Fix Docker env invariant: emailengine.EENGINE_SETTINGS.webhooksEnabled.",
       "Fix Docker env invariant: emailengine.EENGINE_SETTINGS.webhookEvents.",
+      "Fix Docker env invariant: emailengine.EENGINE_SETTINGS.notifyText.",
+      "Fix Docker env invariant: emailengine.EENGINE_SETTINGS.notifyAttachments.",
     ]);
     const serialized = JSON.stringify(result);
     expect(serialized).not.toContain("messageNew");
