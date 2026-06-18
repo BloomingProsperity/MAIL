@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { sanitizeCliError } from "./cli/safe-error.js";
@@ -48,7 +49,10 @@ export async function runEmailEngineDockerHealthVerifyCli(
     runtimeEnv.EMAILHUB_DOCKER_HEALTH_WAIT_MS,
     5_000,
   );
-  const composeProjectName = readDockerComposeProjectName(runtimeEnv);
+  const composeProjectName = readDockerComposeProjectName(
+    runtimeEnv,
+    projectRoot,
+  );
   const apiHeaders = bearerTokenHeaders(runtimeEnv.EMAILHUB_API_TOKEN);
   const writeStdout = options.writeStdout ?? console.log;
   const writeStderr = options.writeStderr ?? console.error;
@@ -157,11 +161,25 @@ export async function runEmailEngineDockerHealthVerifyCli(
   }
 }
 
-function readDockerComposeProjectName(env: CliEnv): string | undefined {
+export function readDockerComposeProjectName(
+  env: CliEnv,
+  projectRoot: string,
+): string {
   const value =
     env.EMAILHUB_DOCKER_COMPOSE_PROJECT_NAME ?? env.COMPOSE_PROJECT_NAME;
   const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
+  return sanitizeDockerComposeProjectName(trimmed || basename(projectRoot));
+}
+
+function sanitizeDockerComposeProjectName(value: string): string {
+  const sanitized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .replace(/[^a-z0-9]+$/, "");
+
+  return sanitized || "email-hub";
 }
 
 export function dockerHealthPreparedTokenPairs(

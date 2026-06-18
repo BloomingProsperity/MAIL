@@ -9,6 +9,7 @@ import {
   dockerHealthImageInvariants,
   dockerHealthPreparedTokenPairs,
   readNonNegativeInteger,
+  readDockerComposeProjectName,
   readPositiveInteger,
   runEmailEngineDockerHealthVerifyCli,
 } from "../src/emailengine-docker-health-verify-runner";
@@ -30,6 +31,21 @@ describe("EmailEngine Docker health verify CLI runner", () => {
       "infra/docker-compose.test.yml",
       "infra/docker-compose.prod.yml",
     ]);
+  });
+
+  it("uses the repo basename as the default compose project name", () => {
+    expect(
+      readDockerComposeProjectName(
+        {},
+        "/home/ubuntu/emailhub-workspaces/emailhub-server-workspace-20260615193033",
+      ),
+    ).toBe("emailhub-server-workspace-20260615193033");
+    expect(
+      readDockerComposeProjectName(
+        { COMPOSE_PROJECT_NAME: "Email Hub Prod!" },
+        "/repo/email-hub-current",
+      ),
+    ).toBe("email-hub-prod");
   });
 
   it("returns zero and wires prod compose health checks when the gate passes", async () => {
