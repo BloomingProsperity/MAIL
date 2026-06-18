@@ -70,6 +70,7 @@ import {
   searchLaunchFromHermesResult,
   type HermesSearchLaunchOptions,
 } from "./features/hermes/hermesSearchLaunch";
+import { SyncCenterAccountNextAction } from "./features/sync-center/SyncCenterAccountNextAction";
 import type { ComposeBodyFormat } from "./features/compose/rich-text";
 import type { MailItem, Tone } from "./features/mail/mail-items";
 import type {
@@ -7752,6 +7753,7 @@ function SyncCenterPage(props: {
             <div>
               <strong>{account.email}</strong>
               <span>{formatProviderLabel(account.provider)} · {formatSyncStateLabel(account.syncState)}</span>
+              <SyncCenterAccountNextAction account={account} />
             </div>
             <div className="task-actions">
               <button
