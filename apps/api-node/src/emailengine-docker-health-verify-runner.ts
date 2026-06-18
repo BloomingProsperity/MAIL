@@ -108,6 +108,11 @@ export async function runEmailEngineDockerHealthVerifyCli(
           headers: basicAuthHeaders("emailengine", authServerSecret),
         },
         {
+          name: "mail_engine_auth_server_rejects_unauthorized",
+          url: `${apiBaseUrl}/api/mail-engine/auth-server?account=__emailhub_launch_probe__&proto=health_probe`,
+          expect: "emailengine_auth_server_unauthorized",
+        },
+        {
           name: "web_home",
           url: `${webBaseUrl}/`,
           expect: "http_ok",

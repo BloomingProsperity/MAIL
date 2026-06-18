@@ -649,7 +649,13 @@ describe("EmailEngine Docker configuration", () => {
     expect(dockerHealthScript).toContain('name: "mail_engine_readiness"');
     expect(dockerHealthScript).toContain('name: "mail_engine_auth_server"');
     expect(dockerHealthScript).toContain(
+      'name: "mail_engine_auth_server_rejects_unauthorized"',
+    );
+    expect(dockerHealthScript).toContain(
       'expect: "emailengine_auth_server_basic"',
+    );
+    expect(dockerHealthScript).toContain(
+      'expect: "emailengine_auth_server_unauthorized"',
     );
     expect(dockerHealthScript).toContain('name: "web_home"');
     expect(rootPackage.scripts["verify:emailengine-launch:live"]).toBe(

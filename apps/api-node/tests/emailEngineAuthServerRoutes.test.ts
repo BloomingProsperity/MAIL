@@ -42,6 +42,39 @@ afterEach(async () => {
 });
 
 describe("EmailEngine auth-server route", () => {
+  it("rejects unauthenticated health probes before resolving credentials", async () => {
+    const calls: unknown[] = [];
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/mail-engine/auth-server?account=__emailhub_launch_probe__&proto=health_probe`,
+        );
+
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({
+          error: "emailengine_auth_server_unauthorized",
+        });
+        expect(calls).toEqual([]);
+      },
+      {
+        apiAccessToken: "api-secret",
+        apiAccessTokenConfigured: true,
+        apiAccessTokenRequired: true,
+        emailEngineAuthServerSecret: "auth-secret",
+        emailEngineAuthServerService: {
+          async resolveCredentials(input: unknown) {
+            calls.push(input);
+            return {
+              user: "me@gmail.com",
+              accessToken: "access-token",
+            };
+          },
+        },
+      },
+    );
+  });
+
   it("rejects health probes before resolving credentials", async () => {
     const calls: unknown[] = [];
 
