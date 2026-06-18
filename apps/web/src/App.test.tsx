@@ -3515,6 +3515,7 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
         limit: 50,
         q: "signed contract",
         sort: "smart",
@@ -3581,6 +3582,7 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
         limit: 50,
         q: "contract",
         sort: "smart",
@@ -3787,6 +3789,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "Q3 invoice" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Search all accounts" }));
     fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
 
     const result = await screen.findByRole("button", {
@@ -3822,6 +3825,7 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
         limit: 50,
         q: "billing contact",
         qScopes: ["sender", "subject", "body"],
@@ -3869,6 +3873,7 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
         limit: 50,
         q: "missing invoice",
         qScopes: ["sender", "recipients", "subject", "body"],
@@ -6144,7 +6149,7 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("surfaces EmailEngine production setup gaps from Add Mail", async () => {
+  it("keeps EmailEngine setup details out of Add Mail while blocking unavailable onboarding", async () => {
     const api = createApiFixture();
     vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
       provider: "emailengine",
@@ -6185,29 +6190,14 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
     );
 
-    const readinessPanel = await screen.findByRole("region", {
-      name: "EmailEngine 上线体检",
-    });
-    expect(within(readinessPanel).getByText("EmailEngine 上线还差配置")).toBeTruthy();
-    expect(within(readinessPanel).getByText("运行探测")).toBeTruthy();
-    expect(within(readinessPanel).getByText("不可达")).toBeTruthy();
-    expect(within(readinessPanel).getByText("预置令牌")).toBeTruthy();
-    expect(within(readinessPanel).getByText("附件下载")).toBeTruthy();
-    expect(within(readinessPanel).getByText("EMAILENGINE_ACCESS_TOKEN")).toBeTruthy();
+    expect(await screen.findByText("邮箱接入服务还没准备好，请稍后再试。")).toBeTruthy();
     expect(
-      within(readinessPanel).getByText("EENGINE_PREPARED_TOKEN_MISSING"),
-    ).toBeTruthy();
-    expect(within(readinessPanel).getByText("设置 EmailEngine 访问令牌")).toBeTruthy();
-    expect(
-      within(readinessPanel).getByText(
-        "EMAILENGINE_ACCESS_TOKEN / EENGINE_PREPARED_TOKEN",
-      ),
-    ).toBeTruthy();
-    expect(
-      within(readinessPanel).getByText(
-        "添加邮箱、附件下载、发信和同步任务会失败。",
-      ),
-    ).toBeTruthy();
+      screen.queryByRole("region", { name: "EmailEngine 上线体检" }),
+    ).toBeNull();
+    expect(document.body.textContent ?? "").not.toContain("EMAILENGINE_ACCESS_TOKEN");
+    expect(document.body.textContent ?? "").not.toContain(
+      "EENGINE_PREPARED_TOKEN_MISSING",
+    );
     expect(document.body.textContent ?? "").not.toContain("super-secret-token");
 
     const qqConnect = await screen.findByRole("button", { name: "连接 QQ 邮箱" });

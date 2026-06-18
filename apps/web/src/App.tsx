@@ -6049,6 +6049,11 @@ function AddMailPage(props: {
   const showSyncCenterAction =
     (csvImportResult?.summary.needsOAuth ?? 0) > 0 ||
     (transferImportResult?.reauthRequiredCount ?? 0) > 0;
+  const mailOnboardingNotice = mailOnboardingUnavailable
+    ? "邮箱接入服务还没准备好，请稍后再试。"
+    : mailEngineHealthUnavailable
+      ? "邮箱接入服务状态暂时不可用，如连接失败请稍后再试。"
+      : "";
 
   return (
     <section className="workspace-page page-scroll">
@@ -6060,12 +6065,10 @@ function AddMailPage(props: {
       </header>
 
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
-
-      {props.api && (mailEngineHealth || mailEngineHealthUnavailable) ? (
-        <MailEngineReadinessPanel
-          health={mailEngineHealth}
-          unavailable={mailEngineHealthUnavailable}
-        />
+      {mailOnboardingNotice ? (
+        <div className="backend-notice" role="status">
+          {mailOnboardingNotice}
+        </div>
       ) : null}
 
       <ConnectionDiagnosticList
@@ -7955,12 +7958,13 @@ function SearchPage(props: {
   const [results, setResults] = useState<MailItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [noticeState, setNoticeState] = useState<HermesNoticeState>({
-    text: props.restrictToAccount
-      ? "输入关键词后搜索当前邮箱。"
-      : "输入关键词后搜索所有已同步邮件。",
+    text:
+      props.restrictToAccount || props.accountId
+        ? "输入关键词后搜索当前邮箱。"
+        : "输入关键词后搜索所有已同步邮件。",
   });
   const [searchAllAccounts, setSearchAllAccounts] = useState(
-    () => !props.restrictToAccount,
+    () => !props.restrictToAccount && !props.accountId,
   );
   const [quickFilters, setQuickFilters] = useState<MailQuickFilter[]>([]);
   const [qScopes, setQScopes] = useState<MailSearchScope[]>([
@@ -8265,7 +8269,7 @@ function SearchPage(props: {
   }, [props.launch?.requestId]);
 
   useEffect(() => {
-    if (props.restrictToAccount) {
+    if (props.restrictToAccount || props.accountId) {
       setSearchAllAccounts(false);
       setNotice((current) =>
         current === "输入关键词后搜索所有已同步邮件。"
@@ -8273,7 +8277,7 @@ function SearchPage(props: {
           : current,
       );
     }
-  }, [props.restrictToAccount]);
+  }, [props.accountId, props.restrictToAccount]);
 
   return (
     <section className="workspace-page page-scroll narrow">
