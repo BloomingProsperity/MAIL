@@ -44,6 +44,7 @@
     "dev": "npm run dev -w apps/web",
     "build": "npm run build -w apps/web",
     "test": "npm run test -w apps/web",
-    "lint": "npm run lint -w apps/web"
+    "lint:file-size": "node scripts/check-file-size.mjs",
+    "lint": "npm run lint:file-size && npm run lint -w apps/web"
   }
 }

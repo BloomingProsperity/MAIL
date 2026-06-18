@@ -11,6 +11,8 @@ Email Hub is a monorepo. `apps/web` contains the React/Vite/TypeScript frontend.
 - `npm run dev:api` starts the Node API.
 - `npm run build` builds the web app.
 - `npm run build:backend` compiles the API and worker.
+- `npm run lint:file-size` enforces the handwritten file-size guard and legacy
+  large-file caps.
 - `npm test` runs frontend tests.
 - `npm run test:backend` runs API and worker tests.
 - `docker compose -f infra/docker-compose.yml up --build` starts web, API, worker, Postgres, Redis, and EmailEngine.
@@ -28,6 +30,11 @@ Keep files small and responsibilities obvious. Prefer clear module folders such 
 All handwritten source, test, script, and configuration files should stay focused and easy to review. Avoid creating or extending 1,000+ line handwritten files unless they are generated artifacts, static fixtures, or have a documented exception. When a change adds a new page, route flow, adapter, panel, worker lane, test harness, or other substantial behavior, put it in a dedicated component, hook, service, feature module, helper, or fixture instead of growing a mixed file.
 
 Large existing files are technical debt, not a pattern to copy. For the existing oversized `apps/web/src/App.tsx`, treat it as a legacy shell rather than a place to keep adding whole features. New frontend work should move page- or feature-level code into focused files such as `pages/`, `features/`, `components/`, or hooks/util modules. Future cleanup should happen opportunistically: extract one stable feature at a time, keep behavior unchanged, and verify with focused tests instead of pausing launch work for a risky broad rewrite.
+
+Run `npm run lint:file-size` when adding or moving handwritten source, tests,
+scripts, or configuration. Current oversized files are locked to explicit
+legacy caps; do not raise those caps unless the change first extracts or reduces
+the oversized file.
 
 ## Testing Guidelines
 
