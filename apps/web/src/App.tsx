@@ -85,10 +85,15 @@ import {
 } from "./features/add-mail/providerCapabilities";
 import { ProtonBridgeServerFieldsPanel } from "./features/add-mail/ProtonBridgeServerFieldsPanel";
 import {
-  buildProtonBridgeOnboardingInput,
   defaultProtonBridgeServerFields,
   type ProtonBridgeServerFields,
 } from "./features/add-mail/protonBridgeOnboarding";
+import {
+  buildManualOnboardingInput,
+  buildPresetOnboardingInput,
+  defaultCustomServerFields,
+  type CustomServerFields,
+} from "./features/add-mail/onboardingInput";
 import { SyncCenterAccountNextAction } from "./features/sync-center/SyncCenterAccountNextAction";
 import { SyncCenterLatestJobSummary } from "./features/sync-center/SyncCenterLatestJobSummary";
 import { ConnectionDiagnosticList } from "./features/sync-center/ConnectionDiagnosticList";
@@ -135,7 +140,6 @@ import type {
   HermesRetentionMaintenanceStatusDto,
   HermesWorkspaceContextDto,
   ImapSmtpConnectionDiagnostic,
-  ImapSmtpOnboardingInput,
   LabelDto,
   AccountTransferPackage,
   MailAction,
@@ -5499,17 +5503,6 @@ function formatComposeAutosaveStatus(status: ComposeAutosaveStatus): string {
   }
 }
 
-interface CustomServerFields {
-  username: string;
-  secret: string;
-  receiveHost: string;
-  receivePort: string;
-  receiveSecure: boolean;
-  sendHost: string;
-  sendPort: string;
-  sendSecure: boolean;
-}
-
 function AddMailPage(props: {
   api?: EmailHubApi;
   providerGroupId?: AddMailProviderGroupId;
@@ -5527,16 +5520,7 @@ function AddMailPage(props: {
   const [activeCredentialProvider, setActiveCredentialProvider] =
     useState<AddMailProviderOption | undefined>();
   const [customServerFields, setCustomServerFields] =
-    useState<CustomServerFields>({
-      username: "",
-      secret: "",
-      receiveHost: "",
-      receivePort: "993",
-      receiveSecure: true,
-      sendHost: "",
-      sendPort: "465",
-      sendSecure: true,
-    });
+    useState<CustomServerFields>(defaultCustomServerFields);
   const [protonBridgeServerFields, setProtonBridgeServerFields] =
     useState<ProtonBridgeServerFields>(defaultProtonBridgeServerFields);
   const [busyProvider, setBusyProvider] = useState("");
@@ -5717,20 +5701,17 @@ function AddMailPage(props: {
     }
 
     setActiveCredentialProvider(provider);
-    const input = buildPresetOnboardingInput(provider, {
+    const inputResult = buildPresetOnboardingInput(provider, {
       email,
       username,
       secret,
       bridgeFields: protonBridgeServerFields,
     });
-    if (!input) {
-      setNotice(
-        provider.action === "bridge"
-          ? `${provider.title} 需要先填写邮箱、Bridge 用户名和 Bridge 密码。`
-          : `${provider.title} 需要先填写邮箱和授权码。`,
-      );
+    if (!inputResult.ok) {
+      setNotice(inputResult.notice);
       return;
     }
+    const input = inputResult.input;
 
     setBusyProvider(provider.provider);
     setDiagnostics([]);
@@ -5781,14 +5762,15 @@ function AddMailPage(props: {
       return;
     }
 
-    const input = buildManualOnboardingInput(manualProvider, {
+    const inputResult = buildManualOnboardingInput(manualProvider, {
       email,
       fields: customServerFields,
     });
-    if (!input) {
-      setNotice(`${manualProvider.title} 需要填写邮箱、服务器、用户名和密码。`);
+    if (!inputResult.ok) {
+      setNotice(inputResult.notice);
       return;
     }
+    const input = inputResult.input;
 
     setBusyProvider(manualProvider.provider);
     setDiagnostics([]);
@@ -6971,89 +6953,6 @@ function downloadTextFile(
     URL.revokeObjectURL(url);
   }
   return true;
-}
-
-function buildPresetOnboardingInput(
-  provider: AddMailProviderOption,
-  fields: {
-    email: string;
-    username: string;
-    secret: string;
-    bridgeFields: ProtonBridgeServerFields;
-  },
-): ImapSmtpOnboardingInput | undefined {
-  const email = fields.email.trim();
-  const username = fields.username.trim();
-  const secret = fields.secret.trim();
-  if (provider.action === "bridge") {
-    return buildProtonBridgeOnboardingInput({
-      email,
-      provider: provider.provider,
-      username,
-      secret,
-      fields: fields.bridgeFields,
-    });
-  }
-
-  if (!email || !secret) {
-    return undefined;
-  }
-
-  return {
-    email,
-    provider: provider.provider,
-    secret,
-    ...(username ? { username } : {}),
-  };
-}
-
-function buildManualOnboardingInput(
-  provider: AddMailProviderOption,
-  input: { email: string; fields: CustomServerFields },
-): ImapSmtpOnboardingInput | undefined {
-  const email = input.email.trim();
-  const username = input.fields.username.trim() || email;
-  const secret = input.fields.secret.trim();
-  const receiveHost = input.fields.receiveHost.trim();
-  const sendHost = input.fields.sendHost.trim();
-  const receivePort = toServerPort(input.fields.receivePort);
-  const sendPort = toServerPort(input.fields.sendPort);
-
-  if (
-    !email ||
-    !username ||
-    !secret ||
-    !receiveHost ||
-    !sendHost ||
-    !receivePort ||
-    !sendPort
-  ) {
-    return undefined;
-  }
-
-  return {
-    email,
-    provider: provider.provider === "custom" ? "custom_domain" : provider.provider,
-    imap: {
-      host: receiveHost,
-      port: receivePort,
-      secure: input.fields.receiveSecure,
-      username,
-      secret,
-    },
-    smtp: {
-      host: sendHost,
-      port: sendPort,
-      secure: input.fields.sendSecure,
-      username,
-      secret,
-    },
-  };
-}
-
-function toServerPort(value: string): number | undefined {
-  const port = Number(value.trim());
-  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : undefined;
 }
 
 function friendlyDiagnosticMessage(event: OperationalEventDto): string {

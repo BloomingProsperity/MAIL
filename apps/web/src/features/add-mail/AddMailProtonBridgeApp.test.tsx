@@ -68,6 +68,44 @@ describe("Add Mail Proton Bridge", () => {
       screen.getByLabelText("Proton Bridge 网络位置提示").textContent,
     ).toContain("Email Hub 服务器能访问");
   });
+
+  it("stops Proton Bridge testing when only one Bridge host is filled", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.getMailProviderCapabilities).mockRejectedValueOnce(
+      new Error("catalog unavailable"),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", {
+        name: "添加邮箱",
+      }),
+    );
+    const providerNav = await screen.findByLabelText("添加邮箱服务商分类");
+    fireEvent.click(within(providerNav).getByRole("button", { name: /Proton/ }));
+
+    fireEvent.change(screen.getByLabelText("Add mail email"), {
+      target: { value: "me@proton.me" },
+    });
+    fireEvent.change(screen.getByLabelText("Add mail username"), {
+      target: { value: "bridge-user" },
+    });
+    fireEvent.change(screen.getByLabelText("Add mail secret"), {
+      target: { value: "bridge-password" },
+    });
+    fireEvent.change(screen.getByLabelText("Proton Bridge receive host"), {
+      target: { value: "host.docker.internal" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "连接 Proton Mail" }));
+
+    expect(
+      await screen.findByText(
+        "Proton Mail 的 Bridge 收信和发信地址需要一起填写，或都留空使用服务器默认配置。",
+      ),
+    ).toBeTruthy();
+    expect(api.testImapSmtpConnection).not.toHaveBeenCalled();
+    expect(api.onboardImapSmtpAccount).not.toHaveBeenCalled();
+  });
 });
 
 function createApiFixture(): EmailHubApi {

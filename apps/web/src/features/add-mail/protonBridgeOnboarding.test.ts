@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildProtonBridgeOnboardingInput,
+  buildProtonBridgeOnboardingResult,
   defaultProtonBridgeServerFields,
 } from "./protonBridgeOnboarding";
 
@@ -57,9 +58,10 @@ describe("buildProtonBridgeOnboardingInput", () => {
 
   it("rejects incomplete Bridge connection details before testing", () => {
     expect(
-      buildProtonBridgeOnboardingInput({
+      buildProtonBridgeOnboardingResult({
         email: "me@proton.me",
         provider: "proton_bridge",
+        title: "Proton Mail",
         username: "bridge-user",
         secret: "bridge-secret",
         fields: {
@@ -69,6 +71,9 @@ describe("buildProtonBridgeOnboardingInput", () => {
           sendHost: "host.docker.internal",
         },
       }),
-    ).toBeUndefined();
+    ).toEqual({
+      ok: false,
+      notice: "Proton Mail 的 Bridge 收信端口需要是 1 到 65535 的数字。",
+    });
   });
 });
