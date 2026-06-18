@@ -140,6 +140,70 @@ describe("EmailEngine launch verifier", () => {
     expect(JSON.stringify(result)).not.toContain("secret-token");
   });
 
+  it("fails launch when EmailEngine health is up but token-auth API is unavailable", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockResolvedValueOnce(
+        Response.json({
+          provider: "emailengine",
+          ok: false,
+          checks: {
+            http: "ok",
+            apiAuth: "unavailable",
+          },
+          capabilities: {
+            imapSmtpOnboarding: false,
+            attachmentDownload: false,
+            send: false,
+          },
+          missing: [],
+          warnings: ["EMAILENGINE_API_AUTH_UNAVAILABLE"],
+          readiness: {
+            status: "degraded",
+            setupActions: [
+              {
+                code: "check_emailengine_api_auth",
+                label: "检查 EmailEngine API 认证接口",
+                env: ["EMAILENGINE_URL", "EMAILENGINE_ACCESS_TOKEN"],
+                effect:
+                  "API 当前无法通过 EmailEngine 认证接口，添加邮箱、附件下载、发信和同步任务会失败。",
+              },
+            ],
+          },
+        }),
+      );
+
+    const result = await verifyEmailEngineLaunch({
+      apiBaseUrl: "http://127.0.0.1:8080",
+      fetchImpl: fetchImpl as typeof fetch,
+      now: () => new Date("2026-06-17T10:00:00.000Z"),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.checks.emailEngineReadiness).toEqual({
+      ok: false,
+      statusCode: 200,
+      status: "degraded",
+      detail: "emailengine_health_not_ok",
+    });
+    expect(result.checks.tokenBackedCapabilities).toEqual({
+      ok: false,
+      detail:
+        "missing_capabilities:imapSmtpOnboarding,attachmentDownload,send",
+    });
+    expect(result.checks.launchReadinessClean).toEqual({
+      ok: false,
+      detail:
+        "warnings:EMAILENGINE_API_AUTH_UNAVAILABLE;setup_actions:check_emailengine_api_auth",
+    });
+    expect(result.requiredFollowUps).toEqual([
+      "check_emailengine_api_auth | 检查 EmailEngine API 认证接口 | env=EMAILENGINE_URL,EMAILENGINE_ACCESS_TOKEN",
+      "Wire token-backed EmailEngine capabilities before launch: imapSmtpOnboarding, attachmentDownload, send.",
+      "Resolve EmailEngine launch readiness warnings before launch: warnings:EMAILENGINE_API_AUTH_UNAVAILABLE;setup_actions:check_emailengine_api_auth.",
+    ]);
+  });
+
   it("fails closed when readiness claims ready but launch warnings remain", async () => {
     const fetchImpl = vi
       .fn()
