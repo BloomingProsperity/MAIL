@@ -33,12 +33,18 @@ describe("server wiring", () => {
     );
   });
 
-  it("wires native send transport into API compose for immediate sends", async () => {
+  it("keeps native send transport behind an explicit paused-engine flag", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");
 
+    expect(source).toMatch(/readNativeEngineEnabled/);
+    expect(source).toMatch(
+      /const nativeEngineEnabled = readNativeEngineEnabled\(process\.env\)/,
+    );
     expect(source).toMatch(/createConfiguredNativeSendTransport/);
-    expect(source).toMatch(/native:\s*createConfiguredNativeSendTransport/);
+    expect(source).toMatch(
+      /\.\.\.\(nativeEngineEnabled\s*\?\s*\{\s*native:\s*createConfiguredNativeSendTransport/s,
+    );
     expect(source).toMatch(/client:\s*pool/);
     expect(source).toMatch(/createId:\s*randomUUID/);
   });

@@ -18,6 +18,7 @@ import { createReauthorizationRecoveryService } from "./accounts/reauthorization
 import {
   readApiConfig,
   readImapSmtpProviderPresetOverrides,
+  readNativeEngineEnabled,
   readPort,
 } from "./config.js";
 import { createConfiguredHermesTranslationService } from "./hermes/configured-service.js";
@@ -99,6 +100,7 @@ import { createRuntimeShutdownHandler } from "./runtime-shutdown.js";
 
 const port = readPort();
 const config = readApiConfig();
+const nativeEngineEnabled = readNativeEngineEnabled(process.env);
 const diagnosticsLogStore = createInMemoryDiagnosticsLogStore({
   capacity: readDiagnosticsLogCapacity(process.env.DIAGNOSTICS_LOG_CAPACITY),
 });
@@ -415,10 +417,14 @@ if (pool) {
             }),
           }
         : {}),
-      native: createConfiguredNativeSendTransport({
-        client: pool,
-        createId: randomUUID,
-      }),
+      ...(nativeEngineEnabled
+        ? {
+            native: createConfiguredNativeSendTransport({
+              client: pool,
+              createId: randomUUID,
+            }),
+          }
+        : {}),
     },
     createId: randomUUID,
     hermesDraftFeedbackStore: config.hermesDraftFeedbackStore,

@@ -236,6 +236,45 @@ describe("scheduled send runner", () => {
     });
   });
 
+  it("blocks native scheduled sends while the Native Engine is paused", async () => {
+    const store = createStore([
+      {
+        ...job(),
+        engineProvider: "native",
+        nativeProvider: "gmail",
+      },
+    ]);
+    const gmailCalls: unknown[] = [];
+
+    const result = await runScheduledSendOnce({
+      store,
+      workerId: "worker-a",
+      now: new Date("2026-06-13T12:30:00.000Z"),
+      leaseSeconds: 30,
+      nativeEngineEnabled: false,
+      transports: {
+        gmail: {
+          async submitMessage(input) {
+            gmailCalls.push(input);
+            return { messageId: "gmail_msg_1" };
+          },
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      scheduledId: "schedule_1",
+      errorMessage:
+        "Native Engine is paused for EmailEngine-first launch; cannot submit native scheduled send schedule_1",
+    });
+    expect(gmailCalls).toEqual([]);
+    expect(store.failed[0]).toMatchObject({
+      errorMessage:
+        "Native Engine is paused for EmailEngine-first launch; cannot submit native scheduled send schedule_1",
+    });
+  });
+
   it("marks a scheduled send failed when the provider rejects submission", async () => {
     const store = createStore([job()]);
 

@@ -219,6 +219,41 @@ describe("sync account dispatcher", () => {
     });
   });
 
+  it("blocks native sync when the Native Engine is paused", async () => {
+    const accountSettingsStore = {
+      getAccountSyncPlan: vi.fn().mockResolvedValue({
+        accountId: "acc_1",
+        email: "me@gmail.com",
+        provider: "gmail",
+        authMethod: "oauth",
+        engineProvider: "native",
+        nativeProvider: "gmail",
+        capabilities: { read: true },
+        settings: { syncMode: "history" },
+      }),
+    };
+    const emailEngineHandler = vi.fn();
+    const nativeSyncProcessor = {
+      syncAccount: vi.fn(),
+      discoverMailboxes: vi.fn(),
+    };
+    const dispatcher = createSyncAccountDispatcher({
+      accountSettingsStore,
+      emailEngineHandler,
+      nativeSyncProcessor,
+      nativeEngineEnabled: false,
+    });
+
+    const rejected = dispatcher(baseJob);
+    await expect(rejected).rejects.toBeInstanceOf(NonRetryableQueueError);
+    await expect(rejected).rejects.toThrow(
+      "Native Engine is paused for EmailEngine-first launch",
+    );
+    expect(emailEngineHandler).not.toHaveBeenCalled();
+    expect(nativeSyncProcessor.syncAccount).not.toHaveBeenCalled();
+    expect(nativeSyncProcessor.discoverMailboxes).not.toHaveBeenCalled();
+  });
+
   it("passes native continuation payloads to the native sync processor", async () => {
     const nativeSyncProcessor = {
       syncAccount: vi.fn().mockResolvedValue({

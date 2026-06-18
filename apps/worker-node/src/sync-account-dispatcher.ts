@@ -24,6 +24,7 @@ export interface CreateSyncAccountDispatcherInput {
   accountStateHandler?: SyncAccountJobHandler;
   emailEngineHandler: SyncAccountJobHandler;
   nativeSyncProcessor: NativeSyncProcessor;
+  nativeEngineEnabled?: boolean;
   continuationQueue?: {
     enqueueJob(input: EnqueueJobInput): Promise<SyncJobRecord>;
   };
@@ -78,6 +79,12 @@ export function createSyncAccountDispatcher(
     if (plan.engineProvider === "emailengine") {
       await input.emailEngineHandler(job);
       return;
+    }
+
+    if (input.nativeEngineEnabled === false) {
+      throw new NonRetryableQueueError(
+        `Native Engine is paused for EmailEngine-first launch; cannot sync native account ${job.accountId}`,
+      );
     }
 
     await syncNativeAccount({

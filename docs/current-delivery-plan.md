@@ -5,9 +5,9 @@ Date: 2026-06-17
 ## Scope
 
 This plan covers the current Email Hub delivery slice: keep EmailEngine as the
-fast production path, keep Native Engine progressing behind provider adapters,
-connect frontend surfaces to existing backend contracts, and verify the stack
-with more than smoke-level tests.
+fast production path, keep Native Engine paused behind
+`EMAILHUB_NATIVE_ENGINE_ENABLED=false`, connect frontend surfaces to existing
+backend contracts, and verify the stack with more than smoke-level tests.
 
 ## Module Plans
 
@@ -575,6 +575,7 @@ with more than smoke-level tests.
 3. Pause new Native Engine product work until the EmailEngine-first launch gate
    is green. Native code can keep adapter-boundary tests and regressions fixes,
    but it must not displace Docker self-hosting, EmailEngine verification,
-   Hermes wiring, or Compose/Smart Inbox launch work.
+   Hermes wiring, or Compose/Smart Inbox launch work. Production launch gates
+   must reject `EMAILHUB_NATIVE_ENGINE_ENABLED=true`.
 4. Continue running frontend tests/build, backend tests/build, Docker compose
    config validation, and targeted stress/smoke commands in the kaifa workspace.

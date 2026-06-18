@@ -27,6 +27,7 @@ export interface EngineCommandDispatcherOptions {
     "updateMessage" | "moveMessage" | "deleteMessage"
   >;
   nativeCommandProcessor: NativeEngineCommandProcessor;
+  nativeEngineEnabled?: boolean;
 }
 
 export function createEngineCommandDispatcher(
@@ -53,6 +54,11 @@ export function createEngineCommandDispatcher(
     }
 
     if (plan.engineProvider === "native") {
+      if (options.nativeEngineEnabled === false) {
+        throw new NonRetryableQueueError(
+          `Native Engine is paused for EmailEngine-first launch; cannot execute native command ${command.id}`,
+        );
+      }
       await dispatchNative(options, plan, command);
       return;
     }

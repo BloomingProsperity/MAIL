@@ -87,6 +87,12 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   return config;
 }
 
+export function readNativeEngineEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.EMAILHUB_NATIVE_ENGINE_ENABLED?.trim().toLowerCase() === "true";
+}
+
 export function readPort(env: NodeJS.ProcessEnv = process.env): number {
   const parsed = Number.parseInt(env.API_PORT ?? "8080", 10);
   return Number.isFinite(parsed) ? parsed : 8080;

@@ -568,6 +568,39 @@ describe("engine command dispatcher", () => {
     });
   });
 
+  it("blocks native engine commands when the Native Engine is paused", async () => {
+    const executeCommand = vi.fn();
+    const dispatcher = createEngineCommandDispatcher({
+      accountSettingsStore: {
+        getAccountSyncPlan: vi.fn().mockResolvedValue({
+          accountId: "acc_1",
+          email: "me@gmail.com",
+          provider: "gmail",
+          authMethod: "oauth",
+          engineProvider: "native",
+          nativeProvider: "gmail",
+          capabilities: {},
+          settings: {},
+        }),
+      },
+      targetResolver: {},
+      emailEngine: {
+        updateMessage: vi.fn(),
+        moveMessage: vi.fn(),
+        deleteMessage: vi.fn(),
+      },
+      nativeCommandProcessor: { executeCommand },
+      nativeEngineEnabled: false,
+    });
+
+    const rejected = dispatcher(baseCommand);
+    await expect(rejected).rejects.toBeInstanceOf(NonRetryableQueueError);
+    await expect(rejected).rejects.toThrow(
+      "Native Engine is paused for EmailEngine-first launch",
+    );
+    expect(executeCommand).not.toHaveBeenCalled();
+  });
+
   it("throws for paused accounts so the queue can retry later", async () => {
     const dispatcher = createEngineCommandDispatcher({
       accountSettingsStore: {

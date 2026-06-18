@@ -13,6 +13,7 @@ export interface EmailEngineProductionEnvPreflightResult {
     requiredSecrets: PreflightCheck;
     containerImage: PreflightCheck;
     webApiToken: PreflightCheck;
+    nativeEngine: PreflightCheck;
     optionalIntegrations: PreflightCheck;
   };
   requiredFollowUps: string[];
@@ -74,17 +75,19 @@ export function verifyEmailEngineProductionEnv(
   const requiredSecrets = checkRequiredProductionSecrets(options.env);
   const containerImage = checkEmailEngineImage(options.env);
   const webApiToken = checkWebApiTokenCompatibility(options.env);
+  const nativeEngine = checkNativeEnginePaused(options.env);
   const optionalIntegrations = checkOptionalIntegrations(options.env);
   const requiredFollowUps = [
     ...requiredSecrets.issues,
     ...containerImage.issues,
     ...webApiToken.issues,
+    ...nativeEngine.issues,
   ]
     .filter((issue) => issue.severity === "error")
     .map((issue) => issue.detail);
 
   return {
-    ok: requiredSecrets.ok && containerImage.ok && webApiToken.ok,
+    ok: requiredSecrets.ok && containerImage.ok && webApiToken.ok && nativeEngine.ok,
     gate: "emailengine_prod_env",
     ...(options.envFile ? { envFile: options.envFile } : {}),
     checkedAt,
@@ -92,6 +95,7 @@ export function verifyEmailEngineProductionEnv(
       requiredSecrets,
       containerImage,
       webApiToken,
+      nativeEngine,
       optionalIntegrations,
     },
     requiredFollowUps,
@@ -268,6 +272,29 @@ function checkWebApiTokenCompatibility(
   }
 
   return { ok: true, issues: [] };
+}
+
+function checkNativeEnginePaused(
+  env: Record<string, string | undefined>,
+): PreflightCheck {
+  const nativeEngineEnabled =
+    env.EMAILHUB_NATIVE_ENGINE_ENABLED?.trim().toLowerCase() === "true";
+  if (!nativeEngineEnabled) {
+    return { ok: true, issues: [] };
+  }
+
+  return {
+    ok: false,
+    issues: [
+      {
+        code: "native_engine_enabled",
+        severity: "error",
+        env: ["EMAILHUB_NATIVE_ENGINE_ENABLED"],
+        detail:
+          "EMAILHUB_NATIVE_ENGINE_ENABLED must stay false for the EmailEngine-first production launch; the self-built Native Engine is paused.",
+      },
+    ],
+  };
 }
 
 function checkOptionalIntegrations(

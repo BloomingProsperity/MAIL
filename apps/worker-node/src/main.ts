@@ -6,7 +6,10 @@ import { createConfiguredAliasDeliveryTransport } from "./alias-routing/alias-de
 import { createPostgresAliasRoutingStore } from "./alias-routing/postgres-alias-routing-store.js";
 import { createPostgresAccountProviderSettingsStore } from "./account-provider-settings-store.js";
 import { createAccountStateJobHandler } from "./account-state-processor.js";
-import { createEngineCommandDispatcher } from "./engine-command-dispatcher.js";
+import {
+  createEngineCommandDispatcher,
+  type NativeEngineCommandProcessor,
+} from "./engine-command-dispatcher.js";
 import { createPostgresEngineCommandTargetResolver } from "./engine-command-resolver.js";
 import { runEngineCommandBatch } from "./engine-command-runner.js";
 import { createEmailEngineClient } from "./mail-engine/email-engine-client.js";
@@ -21,7 +24,10 @@ import {
   createConfiguredNativeSendIdentityDiscovery,
   createConfiguredNativeSendTransports,
 } from "./mail-provider/native-adapters.js";
-import { createNativeSyncProcessor } from "./mail-provider/native-sync-processor.js";
+import {
+  createNativeSyncProcessor,
+  type NativeSyncProcessor,
+} from "./mail-provider/native-sync-processor.js";
 import { createPostgresProviderRefStore } from "./provider-ref-store.js";
 import { createPostgresEngineCommandQueue } from "./postgres-engine-command-queue.js";
 import { createPostgresFollowUpReminderStore } from "./postgres-follow-up-reminder-store.js";
@@ -54,6 +60,7 @@ import {
   createRuntimeShutdownHandler,
   type RuntimeShutdownResource,
 } from "./runtime-shutdown.js";
+import { NonRetryableQueueError } from "./queue-errors.js";
 
 const worker = describeWorker();
 
@@ -73,6 +80,7 @@ const {
   hermesRetentionCleanupIntervalMs,
   hermesRetentionMs,
   hermesRetentionCleanupLimit,
+  nativeEngineEnabled,
 } = runtimeConfig;
 const databaseUrl = process.env.DATABASE_URL;
 const emailEngineUrl = process.env.EMAILENGINE_URL ?? "http://emailengine:3000";
@@ -134,23 +142,27 @@ if (!databaseUrl) {
     emailEngineAccessToken,
     reauthorizationMarker: accountSettingsStore,
   });
-  const nativeSyncProcessor = createNativeSyncProcessor({
-    adapters: createConfiguredNativeAdapters({
-      credentialClient: pool,
-      env: process.env,
-    }),
-    sendIdentityDiscovery: createConfiguredNativeSendIdentityDiscovery({
-      credentialClient: pool,
-      env: process.env,
-    }),
-    cursorStore: createPostgresSyncCursorStore(pool),
-    providerRefStore: createPostgresProviderRefStore(pool),
-    mirrorStore: createPostgresMirrorStore(pool),
-  });
-  const nativeSendTransports = createConfiguredNativeSendTransports({
-    credentialClient: pool,
-    env: process.env,
-  });
+  const nativeSyncProcessor = nativeEngineEnabled
+    ? createNativeSyncProcessor({
+        adapters: createConfiguredNativeAdapters({
+          credentialClient: pool,
+          env: process.env,
+        }),
+        sendIdentityDiscovery: createConfiguredNativeSendIdentityDiscovery({
+          credentialClient: pool,
+          env: process.env,
+        }),
+        cursorStore: createPostgresSyncCursorStore(pool),
+        providerRefStore: createPostgresProviderRefStore(pool),
+        mirrorStore: createPostgresMirrorStore(pool),
+      })
+    : createDisabledNativeSyncProcessor();
+  const nativeSendTransports = nativeEngineEnabled
+    ? createConfiguredNativeSendTransports({
+        credentialClient: pool,
+        env: process.env,
+      })
+    : {};
   const handleJob = createSyncAccountDispatcher({
     accountSettingsStore,
     accountStateHandler: createAccountStateJobHandler({
@@ -159,17 +171,21 @@ if (!databaseUrl) {
     }),
     emailEngineHandler,
     nativeSyncProcessor,
+    nativeEngineEnabled,
     continuationQueue: queue,
   });
   const handleCommand = createEngineCommandDispatcher({
     accountSettingsStore,
     targetResolver,
     emailEngine,
-    nativeCommandProcessor: createConfiguredNativeCommandProcessor({
-      credentialClient: pool,
-      targetResolver,
-      env: process.env,
-    }),
+    nativeEngineEnabled,
+    nativeCommandProcessor: nativeEngineEnabled
+      ? createConfiguredNativeCommandProcessor({
+          credentialClient: pool,
+          targetResolver,
+          env: process.env,
+        })
+      : createDisabledNativeCommandProcessor(),
   });
   const runComposeAttachmentCleanup = createComposeAttachmentCleanupLane({
     referenceStore: composeAttachmentReferenceStore,
@@ -220,6 +236,7 @@ if (!databaseUrl) {
             now: new Date(),
             leaseSeconds,
             concurrency,
+            nativeEngineEnabled,
             transports: {
               emailengine: emailEngine,
               ...nativeSendTransports,
@@ -398,6 +415,31 @@ function createEmailEngineForCommands(input: {
     baseUrl: input.emailEngineUrl,
     accessToken: input.emailEngineAccessToken,
   });
+}
+
+function createDisabledNativeSyncProcessor(): NativeSyncProcessor {
+  return {
+    async syncAccount(input) {
+      throw new NonRetryableQueueError(
+        `Native Engine is paused for EmailEngine-first launch; cannot sync native account ${input.accountId}`,
+      );
+    },
+    async discoverMailboxes(input) {
+      throw new NonRetryableQueueError(
+        `Native Engine is paused for EmailEngine-first launch; cannot discover native mailboxes for ${input.accountId}`,
+      );
+    },
+  };
+}
+
+function createDisabledNativeCommandProcessor(): NativeEngineCommandProcessor {
+  return {
+    async executeCommand(input) {
+      throw new NonRetryableQueueError(
+        `Native Engine is paused for EmailEngine-first launch; cannot execute native command ${input.command.id}`,
+      );
+    },
+  };
 }
 
 function createEmailEngineHandler(input: {

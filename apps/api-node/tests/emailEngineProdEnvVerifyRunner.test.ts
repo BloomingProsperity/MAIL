@@ -41,6 +41,7 @@ describe("EmailEngine production env verify CLI runner", () => {
         requiredSecrets: { ok: true, issues: [] },
         containerImage: { ok: true, issues: [] },
         webApiToken: { ok: true, issues: [] },
+        nativeEngine: { ok: true, issues: [] },
         optionalIntegrations: { ok: true },
       },
     });
@@ -229,6 +230,32 @@ describe("EmailEngine production env verify CLI runner", () => {
     expect(versioned.checks.containerImage).toEqual({ ok: true, issues: [] });
     expect(digested.ok).toBe(true);
     expect(digested.checks.containerImage).toEqual({ ok: true, issues: [] });
+  });
+
+  it("fails the production launch gate when the paused native engine is enabled", () => {
+    const result = verifyEmailEngineProductionEnv({
+      env: productionEnv({
+        EMAILHUB_NATIVE_ENGINE_ENABLED: "true",
+      }),
+      now: () => new Date("2026-06-17T12:00:00.000Z"),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.checks.nativeEngine).toEqual({
+      ok: false,
+      issues: [
+        {
+          code: "native_engine_enabled",
+          severity: "error",
+          env: ["EMAILHUB_NATIVE_ENGINE_ENABLED"],
+          detail:
+            "EMAILHUB_NATIVE_ENGINE_ENABLED must stay false for the EmailEngine-first production launch; the self-built Native Engine is paused.",
+        },
+      ],
+    });
+    expect(result.requiredFollowUps).toContain(
+      "EMAILHUB_NATIVE_ENGINE_ENABLED must stay false for the EmailEngine-first production launch; the self-built Native Engine is paused.",
+    );
   });
 
   it("uses the selected env file and lets process env override it", async () => {

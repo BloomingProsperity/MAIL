@@ -65,16 +65,20 @@ describe("worker main wiring", () => {
     expect(main).toContain("createHermesRetentionCleanupLane");
   });
 
-  it("routes scheduled sends through EmailEngine and native transports", async () => {
+  it("keeps native worker processors behind the paused-engine flag", async () => {
     const main = await readFile(mainPath, "utf8");
 
+    expect(main).toContain("nativeEngineEnabled");
     expect(main).toContain("createConfiguredNativeSendTransports");
+    expect(main).toContain("createDisabledNativeSyncProcessor");
+    expect(main).toContain("createDisabledNativeCommandProcessor");
     expect(main).toContain("createPostgresSendIdentityVerifier");
     expect(main).toContain("nativeSendTransports");
     expect(main).toContain("sendIdentityVerifier");
     expect(main).toContain("transports: {");
     expect(main).toContain("emailengine: emailEngine");
     expect(main).toContain("...nativeSendTransports");
+    expect(main).toContain("nativeEngineEnabled");
   });
 
   it("discovers native send identities during native mailbox discovery", async () => {

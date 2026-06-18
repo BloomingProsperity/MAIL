@@ -8,6 +8,7 @@ export interface WorkerRuntimeConfig {
   hermesRetentionCleanupIntervalMs: number;
   hermesRetentionMs: number;
   hermesRetentionCleanupLimit: number;
+  nativeEngineEnabled: boolean;
 }
 
 const DEFAULT_LEASE_SECONDS = 60;
@@ -87,6 +88,8 @@ export function readWorkerRuntimeConfig(
       min: 1,
       max: 10000,
     }),
+    nativeEngineEnabled:
+      env.EMAILHUB_NATIVE_ENGINE_ENABLED?.trim().toLowerCase() === "true",
   };
 }
 

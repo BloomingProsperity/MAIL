@@ -121,6 +121,7 @@ export interface RunScheduledSendOnceInput {
   leaseSeconds: number;
   transport?: ScheduledSendTransport;
   transports?: Partial<Record<ScheduledSendTransportKey, ScheduledSendTransport>>;
+  nativeEngineEnabled?: boolean;
   sendIdentityVerifier?: ScheduledSendIdentityVerifier;
   attachmentBlobStore?: ScheduledAttachmentBlobStore;
 }
@@ -281,6 +282,12 @@ function transportForJob(
   input: RunScheduledSendOnceInput,
   job: ScheduledSendJob,
 ): ScheduledSendTransport {
+  if (job.engineProvider === "native" && input.nativeEngineEnabled === false) {
+    throw new Error(
+      `Native Engine is paused for EmailEngine-first launch; cannot submit native scheduled send ${job.id}`,
+    );
+  }
+
   const key = transportKeyForJob(job);
   const selected = input.transports?.[key] ?? input.transport;
   if (!selected) {

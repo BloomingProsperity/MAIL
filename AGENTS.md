@@ -36,6 +36,18 @@ scripts, or configuration. Current oversized files are locked to explicit
 legacy caps; do not raise those caps unless the change first extracts or reduces
 the oversized file.
 
+## Self-Developed Core Isolation
+
+Do not place self-developed mail core, Native Engine, model runtime, or other
+large core services directly in the repository root or mix them into the
+EmailEngine-first launch path. The root stays for workspace orchestration,
+Docker entrypoints, docs, and shared configuration only. Future native/core
+work must live behind an explicit boundary such as `apps/native-engine/`,
+`packages/native-core/`, or another dedicated module with its own tests,
+service contract, and Docker boundary. Existing adapter shims inside API or
+worker code may remain only as gated compatibility code; they must not become
+the default production path while Native Engine is paused.
+
 ## Testing Guidelines
 
 Tests use Vitest. Place backend tests under each workspace `tests/` directory and frontend tests beside source files. Prefer strong behavior tests over snapshots, for example webhook signature rejection, OAuth token redaction, retry dead-lettering, or "mail folders remain in the second column." Write failing tests before production changes when adding behavior.

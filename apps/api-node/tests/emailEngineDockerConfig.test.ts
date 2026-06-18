@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { readApiConfig } from "../src/config";
+import { readApiConfig, readNativeEngineEnabled } from "../src/config";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
 const DEFAULT_EMAILENGINE_IMAGE =
@@ -59,6 +59,27 @@ describe("EmailEngine Docker configuration", () => {
     expect(api).toContain(
       "EMAILENGINE_AUTH_SERVER_SECRET: ${EMAILENGINE_AUTH_SERVER_SECRET:-dev-emailhub-secret}",
     );
+  });
+
+  it("keeps the self-built Native Engine disabled in default Docker wiring", async () => {
+    const envExample = await readProjectFile(".env.example");
+    const compose = await readProjectFile("infra", "docker-compose.yml");
+    const api = serviceSection(compose, "api");
+    const worker = serviceSection(compose, "worker");
+
+    expect(envExample).toContain("EMAILHUB_NATIVE_ENGINE_ENABLED=false");
+    expect(api).toContain(
+      "EMAILHUB_NATIVE_ENGINE_ENABLED: ${EMAILHUB_NATIVE_ENGINE_ENABLED:-false}",
+    );
+    expect(worker).toContain(
+      "EMAILHUB_NATIVE_ENGINE_ENABLED: ${EMAILHUB_NATIVE_ENGINE_ENABLED:-false}",
+    );
+    expect(readNativeEngineEnabled({} as NodeJS.ProcessEnv)).toBe(false);
+    expect(
+      readNativeEngineEnabled({
+        EMAILHUB_NATIVE_ENGINE_ENABLED: "true",
+      } as NodeJS.ProcessEnv),
+    ).toBe(true);
   });
 
   it("reads the prepared token flag without exposing token values", () => {
