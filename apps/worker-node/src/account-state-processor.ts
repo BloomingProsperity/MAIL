@@ -5,7 +5,7 @@ import type { SyncJobRecord } from "./sync-job-queue.js";
 export interface AccountStateStore {
   markAccountReauthRequired(input: {
     accountId: string;
-    reason: "auth_failed" | "sync_failed";
+    reason: AccountRecoveryReason;
     at: string;
   }): Promise<{ taskId?: string }>;
 }
@@ -21,6 +21,11 @@ export type AccountStateJobHandler = (job: SyncJobRecord) => Promise<void>;
 type AccountStatePayload = {
   kind?: string;
 };
+
+export type AccountRecoveryReason =
+  | "auth_failed"
+  | "sync_failed"
+  | "account_deleted";
 
 export function createAccountStateJobHandler(
   input: CreateAccountStateJobHandlerInput,
@@ -64,12 +69,18 @@ export function createAccountStateJobHandler(
   };
 }
 
-function reauthReason(
-  payload: AccountStatePayload,
-): "auth_failed" | "sync_failed" | undefined {
-  return payload.kind === "auth_failed" || payload.kind === "sync_failed"
+function reauthReason(payload: AccountStatePayload): AccountRecoveryReason | undefined {
+  return isAccountRecoveryReason(payload.kind)
     ? payload.kind
     : undefined;
+}
+
+function isAccountRecoveryReason(kind: unknown): kind is AccountRecoveryReason {
+  return (
+    kind === "auth_failed" ||
+    kind === "sync_failed" ||
+    kind === "account_deleted"
+  );
 }
 
 function asPayload(value: unknown): AccountStatePayload {

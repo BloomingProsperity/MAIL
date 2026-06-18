@@ -167,4 +167,37 @@ describe("postgres account provider settings store", () => {
     ]);
     expect(result).toEqual({ taskId: "task_reauth_1" });
   });
+
+  it("marks EmailEngine-deleted accounts with a recovery reason", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return { rows: [{ task_id: "task_deleted_1" }] };
+      },
+    };
+
+    const store = createPostgresAccountProviderSettingsStore(client, {
+      createId: () => "task_deleted_1",
+    });
+
+    const result = await store.markAccountReauthRequired({
+      accountId: "44444444-4444-4444-4444-444444444444",
+      reason: "account_deleted",
+      at: "2026-06-12T09:03:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/sync_state = 'reauth_required'/i);
+    expect(queries[0].text).toMatch(/emailengine_account_state/i);
+    expect(queries[0].text).not.toMatch(
+      /account_credentials|stored_secrets|secret_ref|secret_value|access_token|refresh_token/i,
+    );
+    expect(queries[0].values).toEqual([
+      "44444444-4444-4444-4444-444444444444",
+      "2026-06-12T09:03:00.000Z",
+      "task_deleted_1",
+      "account_deleted",
+    ]);
+    expect(result).toEqual({ taskId: "task_deleted_1" });
+  });
 });

@@ -548,4 +548,30 @@ describe("sync account processor", () => {
     expect(emailEngine.listMailboxes).not.toHaveBeenCalled();
     expect(mirrorStore.upsertMailboxes).not.toHaveBeenCalled();
   });
+
+  it("no-ops account_deleted jobs that were misqueued as sync work", async () => {
+    const emailEngine = {
+      listMailboxes: vi.fn(),
+      getMessage: vi.fn(),
+      listMessages: vi.fn(),
+    };
+    const mirrorStore = {
+      upsertMailboxes: vi.fn(),
+      upsertMessage: vi.fn(),
+      recordMessageDeleted: vi.fn(),
+    };
+    const handler = createSyncAccountJobHandler({ emailEngine, mirrorStore });
+
+    await handler({
+      ...baseJob,
+      payload: { kind: "account_deleted" },
+    });
+
+    expect(emailEngine.listMailboxes).not.toHaveBeenCalled();
+    expect(emailEngine.getMessage).not.toHaveBeenCalled();
+    expect(emailEngine.listMessages).not.toHaveBeenCalled();
+    expect(mirrorStore.upsertMailboxes).not.toHaveBeenCalled();
+    expect(mirrorStore.upsertMessage).not.toHaveBeenCalled();
+    expect(mirrorStore.recordMessageDeleted).not.toHaveBeenCalled();
+  });
 });

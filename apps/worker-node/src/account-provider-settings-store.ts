@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { NativeProvider } from "./mail-provider/contract.js";
+import type { AccountRecoveryReason } from "./account-state-processor.js";
 
 export interface QueryResult<Row extends Record<string, unknown>> {
   rows: Row[];
@@ -29,7 +30,7 @@ export interface AccountProviderSettingsStore {
   getAccountSyncPlan(accountId: string): Promise<AccountSyncPlan | undefined>;
   markAccountReauthRequired(input: {
     accountId: string;
-    reason: "auth_failed" | "sync_failed";
+    reason: AccountRecoveryReason;
     at: string;
   }): Promise<{ taskId?: string }>;
 }

@@ -58,7 +58,10 @@ export function createSyncAccountJobHandler(
     }
 
     const payload = asPayload(job.payload);
-    if (payload.kind === "unknown_notification") {
+    if (
+      payload.kind === "unknown_notification" ||
+      payload.kind === "account_deleted"
+    ) {
       return;
     }
 

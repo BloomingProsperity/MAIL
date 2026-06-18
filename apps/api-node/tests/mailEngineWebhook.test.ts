@@ -298,6 +298,23 @@ describe("EmailEngine webhook contract", () => {
     expect(events[0]).not.toHaveProperty("providerMessageId");
   });
 
+  it("normalizes EmailEngine account deletion as an account-state event", () => {
+    const events = normalizeEmailEngineWebhook({
+      event: "accountDeleted",
+      account: "acc_deleted",
+      eventId: "evt_account_deleted",
+    });
+
+    expect(events[0]).toMatchObject({
+      source: "emailengine_webhook",
+      kind: "account_deleted",
+      accountId: "acc_deleted",
+      idempotencyKey: "emailengine:acc_deleted:event-id:evt_account_deleted",
+    });
+    expect(events[0]).not.toHaveProperty("providerMessageId");
+    expect(events[0]).not.toHaveProperty("mailboxId");
+  });
+
   it("treats missing provider messages as delete events so the mirror can converge", () => {
     const events = normalizeEmailEngineWebhook({
       event: "messageMissing",

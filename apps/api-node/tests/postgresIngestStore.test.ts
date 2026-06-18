@@ -296,6 +296,84 @@ describe("postgres ingest store", () => {
     );
   });
 
+  it("queues accountDeleted events as account_state jobs", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+
+        if (text.includes("INSERT INTO mail_engine_events")) {
+          return {
+            rows: [
+              {
+                id: "event_account_deleted",
+                source: "emailengine_webhook",
+                kind: "account_deleted",
+                account_id: "acc_deleted",
+                mailbox_id: null,
+                provider_message_id: null,
+                provider_thread_id: null,
+                provider_email_id: null,
+                rfc_message_id: null,
+                provider_uid: null,
+                provider_path: null,
+                resource_key: null,
+                resource_identity: {},
+                idempotency_key:
+                  "emailengine:acc_deleted:event-id:evt_account_deleted",
+                raw_payload: { event: "accountDeleted" },
+                received_at: "2026-06-16T02:31:08.000Z",
+              },
+            ],
+          };
+        }
+
+        if (text.includes("INSERT INTO sync_jobs")) {
+          return {
+            rows: [
+              {
+                id: "job_account_deleted",
+                job_type: "account_state",
+                account_id: "acc_deleted",
+                mailbox_id: null,
+                trigger_event_id: "event_account_deleted",
+                status: "queued",
+                idempotency_key:
+                  "job:emailengine:acc_deleted:event-id:evt_account_deleted",
+                created_at: "2026-06-16T02:31:08.000Z",
+              },
+            ],
+          };
+        }
+
+        return { rows: [] };
+      },
+    };
+
+    const store = createPostgresMailEngineIngestStore(client);
+    const result = await store.ingestWebhook({
+      events: [
+        {
+          source: "emailengine_webhook",
+          kind: "account_deleted",
+          accountId: "acc_deleted",
+          idempotencyKey: "emailengine:acc_deleted:event-id:evt_account_deleted",
+        },
+      ],
+      rawPayload: { event: "accountDeleted" },
+    });
+
+    expect(queries[1].values?.[1]).toBe("account_state");
+    expect(queries[1].values?.[6]).toMatchObject({
+      kind: "account_deleted",
+    });
+    expect(result.syncJobs[0]).toMatchObject({
+      id: "job_account_deleted",
+      jobType: "account_state",
+      accountId: "acc_deleted",
+    });
+  });
+
   it("repairs a missing sync job when EmailEngine retries an already stored event", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

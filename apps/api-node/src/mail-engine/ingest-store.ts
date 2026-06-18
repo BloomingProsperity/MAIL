@@ -138,7 +138,13 @@ function createSyncJob(
 }
 
 function jobTypeForEvent(kind: MailEngineEventKind): SyncJobType {
-  return kind === "auth_failed" || kind === "sync_failed"
-    ? "account_state"
-    : "sync_account";
+  return isAccountStateEvent(kind) ? "account_state" : "sync_account";
+}
+
+function isAccountStateEvent(kind: MailEngineEventKind): boolean {
+  return (
+    kind === "auth_failed" ||
+    kind === "sync_failed" ||
+    kind === "account_deleted"
+  );
 }

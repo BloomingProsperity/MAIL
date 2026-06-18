@@ -78,6 +78,48 @@ describe("account state processor", () => {
     });
   });
 
+  it("marks EmailEngine-deleted accounts as requiring recovery instead of syncing them", async () => {
+    const store = {
+      markAccountReauthRequired: vi
+        .fn()
+        .mockResolvedValue({ taskId: "task_deleted_1" }),
+    };
+    const diagnostics = {
+      record: vi.fn().mockResolvedValue(undefined),
+    };
+    const handler = createAccountStateJobHandler({
+      store,
+      diagnostics,
+      now: () => new Date("2026-06-12T09:03:00.000Z"),
+    });
+
+    await handler({
+      ...baseJob,
+      triggerEventId: "event_account_deleted",
+      payload: { kind: "account_deleted" },
+    });
+
+    expect(store.markAccountReauthRequired).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      reason: "account_deleted",
+      at: "2026-06-12T09:03:00.000Z",
+    });
+    expect(diagnostics.record).toHaveBeenCalledWith({
+      service: "email-hub-worker",
+      level: "warn",
+      event: "account_reauthorization_required",
+      message: "Account acc_1 requires reauthorization after account_deleted",
+      accountId: "acc_1",
+      lane: "sync",
+      jobId: "job_state_1",
+      context: {
+        reason: "account_deleted",
+        taskId: "task_deleted_1",
+        triggerEventId: "event_account_deleted",
+      },
+    });
+  });
+
   it("rejects account_state jobs that do not identify an account", async () => {
     const handler = createAccountStateJobHandler({
       store: { markAccountReauthRequired: vi.fn() },

@@ -116,4 +116,36 @@ describe("mail engine ingest store", () => {
       "job:emailengine:acc_1:event-id:evt_updated",
     ]);
   });
+
+  it("queues account deletion as account-state work instead of another mailbox sync", async () => {
+    const store = createInMemoryMailEngineIngestStore();
+
+    const result = await store.ingestWebhook({
+      events: [
+        {
+          source: "emailengine_webhook",
+          kind: "account_deleted",
+          accountId: "acc_deleted",
+          idempotencyKey: "emailengine:acc_deleted:event-id:evt_account_deleted",
+        },
+      ],
+      rawPayload: { event: "accountDeleted" },
+    });
+
+    expect(result.events[0]).toMatchObject({
+      kind: "account_deleted",
+      accountId: "acc_deleted",
+    });
+    expect(result.syncJobs).toEqual([
+      expect.objectContaining({
+        jobType: "account_state",
+        accountId: "acc_deleted",
+        idempotencyKey: "job:emailengine:acc_deleted:event-id:evt_account_deleted",
+        status: "queued",
+      }),
+    ]);
+    expect(store.listSyncJobs()[0]).toMatchObject({
+      jobType: "account_state",
+    });
+  });
 });

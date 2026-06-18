@@ -4,6 +4,7 @@ export type MailEngineEventSource = "emailengine_webhook";
 
 export type MailEngineEventKind =
   | "sync_requested"
+  | "account_deleted"
   | "message_upserted"
   | "message_deleted"
   | "flags_changed"
@@ -74,7 +75,7 @@ export const DEFAULT_EMAILENGINE_WEBHOOK_MAX_SKEW_MS = 10 * 60 * 1000;
 const eventKindByName: Record<string, MailEngineEventKind> = {
   accountAdded: "sync_requested",
   accountInitialized: "sync_requested",
-  accountDeleted: "sync_requested",
+  accountDeleted: "account_deleted",
   messageNew: "message_upserted",
   messageUpdated: "message_upserted",
   messageDeleted: "message_deleted",
