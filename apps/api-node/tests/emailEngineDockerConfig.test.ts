@@ -436,12 +436,19 @@ describe("EmailEngine Docker configuration", () => {
     );
     const testCompose = await readProjectFile("infra", "docker-compose.test.yml");
     const greenmail = serviceSection(testCompose, "greenmail-test");
+    const greenmailAuth = serviceSection(testCompose, "greenmail-auth-test");
 
     expect(rootPackage.scripts["smoke:imap-smtp-onboarding"]).toBe(
       "npm run smoke:imap-smtp-onboarding -w apps/api-node",
     );
+    expect(rootPackage.scripts["smoke:imap-smtp-onboarding:auth"]).toBe(
+      "npm run smoke:imap-smtp-onboarding:auth -w apps/api-node",
+    );
     expect(apiPackage.scripts["smoke:imap-smtp-onboarding"]).toBe(
       "tsx src/imap-smtp-onboarding-smoke.ts",
+    );
+    expect(apiPackage.scripts["smoke:imap-smtp-onboarding:auth"]).toBe(
+      "tsx src/imap-smtp-auth-onboarding-smoke.ts",
     );
     expect(greenmail).toContain("image: greenmail/standalone:");
     expect(greenmail).toContain("-Dgreenmail.setup.test.all");
@@ -451,6 +458,19 @@ describe("EmailEngine Docker configuration", () => {
     );
     expect(greenmail).toContain(
       "${GREENMAIL_IMAP_BIND:-127.0.0.1:3143}:3143",
+    );
+    expect(greenmailAuth).toContain("image: greenmail/standalone:");
+    expect(greenmailAuth).toContain("-Dgreenmail.setup.test.all");
+    expect(greenmailAuth).not.toContain("-Dgreenmail.auth.disabled");
+    expect(greenmailAuth).toContain(
+      "-Dgreenmail.users=emailhub-auth-smoke:emailhub-auth-secret@example.com",
+    );
+    expect(greenmailAuth).toContain("-Dgreenmail.users.login=email");
+    expect(greenmailAuth).toContain(
+      "${GREENMAIL_AUTH_SMTP_BIND:-127.0.0.1:4025}:3025",
+    );
+    expect(greenmailAuth).toContain(
+      "${GREENMAIL_AUTH_IMAP_BIND:-127.0.0.1:4143}:3143",
     );
     expect(testCompose).toContain("${POSTGRES_TEST_BIND:-127.0.0.1:55432}:5432");
   });
@@ -542,6 +562,8 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain(
       "EMAILHUB_MAIL_ACTION_SMOKE_WORKER_DIAGNOSTIC_POLL_MS=2000",
     );
+    expect(envExample).toContain("GREENMAIL_AUTH_SMTP_BIND=127.0.0.1:4025");
+    expect(envExample).toContain("GREENMAIL_AUTH_IMAP_BIND=127.0.0.1:4143");
   });
 
   it("exposes layered EmailEngine-first launch verification gates", async () => {
@@ -662,7 +684,7 @@ describe("EmailEngine Docker configuration", () => {
       "npm run verify:emailengine-launch:env && npm run verify:emailengine-live && npm run verify:emailengine-launch:docker-health && npm run smoke:emailengine-webhook",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:greenmail"]).toBe(
-      "npm run smoke:imap-smtp-onboarding && npm run smoke:emailengine-real-webhook && npm run smoke:emailengine-send && npm run smoke:emailengine-attachment-download && npm run smoke:emailengine-mail-action",
+      "npm run smoke:imap-smtp-onboarding && npm run smoke:imap-smtp-onboarding:auth && npm run smoke:emailengine-real-webhook && npm run smoke:emailengine-send && npm run smoke:emailengine-attachment-download && npm run smoke:emailengine-mail-action",
     );
     expect(rootPackage.scripts["verify:emailengine-launch:core"]).toBe(
       "npm run verify:emailengine-launch:offline && npm run verify:emailengine-launch:live",

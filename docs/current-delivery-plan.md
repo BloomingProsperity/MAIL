@@ -90,9 +90,14 @@ with more than smoke-level tests.
   concurrency gate, failing immediately instead of silently skipping when no
   disposable test database is configured.
   `verify:emailengine-launch:greenmail` groups the IMAP/SMTP onboarding smoke,
-  real EmailEngine webhook smoke, outgoing worker send smoke, attachment
-  download smoke, and user mail-action/outbox worker smoke against the
-  GreenMail test stack. The mail-action smoke uses a fresh mailbox by default,
+  an auth-enabled IMAP/SMTP onboarding smoke, real EmailEngine webhook smoke,
+  outgoing worker send smoke, attachment download smoke, and user
+  mail-action/outbox worker smoke against the GreenMail test stack. The
+  auth-enabled onboarding smoke targets the separate `greenmail-auth-test`
+  service with a fixed pre-provisioned mailbox. It first requires a wrong
+  secret to fail, then proves EmailEngine is using the configured username and
+  secret instead of only passing through the auth-disabled development mailbox.
+  The mail-action smoke uses a fresh mailbox by default,
   delivers a unique message, queues a Sync Center manual resync, calls the
   public `mark_read` route, and requires the returned engine command id to reach
   a `processed` worker diagnostic in the `engine_commands` lane, so local

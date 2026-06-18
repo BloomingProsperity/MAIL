@@ -11,6 +11,19 @@ services:
       - "${GREENMAIL_SMTP_BIND:-127.0.0.1:3025}:3025"
       - "${GREENMAIL_IMAP_BIND:-127.0.0.1:3143}:3143"
 
+  greenmail-auth-test:
+    image: greenmail/standalone:2.1.8
+    restart: unless-stopped
+    environment:
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.setup.test.all
+        -Dgreenmail.hostname=0.0.0.0
+        -Dgreenmail.users=emailhub-auth-smoke:emailhub-auth-secret@example.com
+        -Dgreenmail.users.login=email
+    ports:
+      - "${GREENMAIL_AUTH_SMTP_BIND:-127.0.0.1:4025}:3025"
+      - "${GREENMAIL_AUTH_IMAP_BIND:-127.0.0.1:4143}:3143"
+
   postgres-test:
     image: postgres:16-alpine
     restart: unless-stopped

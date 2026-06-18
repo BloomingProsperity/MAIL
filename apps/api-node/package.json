@@ -13,6 +13,7 @@
     "smoke:emailengine-attachment-download": "tsx src/emailengine-attachment-download-smoke.ts",
     "smoke:emailengine-mail-action": "tsx src/emailengine-mail-action-smoke.ts",
     "smoke:imap-smtp-onboarding": "tsx src/imap-smtp-onboarding-smoke.ts",
+    "smoke:imap-smtp-onboarding:auth": "tsx src/imap-smtp-auth-onboarding-smoke.ts",
     "verify:emailengine-prod-env": "tsx src/emailengine-prod-env-verify.ts",
     "verify:emailengine-live": "tsx src/emailengine-launch-verify.ts",
     "verify:emailengine-docker-health": "tsx src/emailengine-docker-health-verify.ts",

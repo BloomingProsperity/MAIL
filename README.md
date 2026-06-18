@@ -592,6 +592,13 @@ The same GreenMail-backed checks are also grouped as:
 npm run verify:emailengine-launch:greenmail
 ```
 
+That group includes both the default auth-disabled GreenMail onboarding smoke
+and `npm run smoke:imap-smtp-onboarding:auth`, which targets the
+`greenmail-auth-test` service and its fixed
+`emailhub-auth-smoke@example.com` mailbox. The auth smoke first requires a
+wrong secret to fail, then proves the configured IMAP/SMTP username and secret
+are accepted by EmailEngine.
+
 `/health` checks API readiness plus a Postgres `SELECT 1`; EmailEngine
 capability and launch diagnostics remain at `/api/mail-engine/health`.
 Postgres, Redis, and EmailEngine are internal Docker services by default. Use

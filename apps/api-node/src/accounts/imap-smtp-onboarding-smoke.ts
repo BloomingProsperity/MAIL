@@ -20,6 +20,11 @@ export interface ImapSmtpOnboardingSmokeResult {
   syncJobStatus: string;
 }
 
+export interface RunImapSmtpOnboardingAuthSmokeInput
+  extends RunImapSmtpOnboardingSmokeInput {
+  rejectedPayload: ImapSmtpOnboardingInput;
+}
+
 interface HttpJsonResponse {
   status: number;
   body: unknown;
@@ -122,6 +127,36 @@ export async function runImapSmtpOnboardingSmoke(
   };
 }
 
+export async function runImapSmtpOnboardingAuthSmoke(
+  input: RunImapSmtpOnboardingAuthSmokeInput,
+): Promise<ImapSmtpOnboardingSmokeResult> {
+  const fetchImpl =
+    input.fetchImpl ?? createApiTokenFetch(fetch, process.env.EMAILHUB_API_TOKEN);
+  const apiBaseUrl = normalizeApiBaseUrl(input.apiBaseUrl);
+  const payload = buildImapSmtpOnboardingSmokePayload(input.payload);
+  const rejectedPayload = buildImapSmtpOnboardingSmokePayload(
+    input.rejectedPayload,
+  );
+  const sensitiveValues = [
+    ...smokeSensitiveValues(payload),
+    ...smokeSensitiveValues(rejectedPayload),
+  ];
+
+  const rejectedConnectionTest = await postJson(
+    fetchImpl,
+    `${apiBaseUrl}/api/accounts/imap-smtp/test`,
+    rejectedPayload,
+  );
+  assertRejectedConnectionTest(rejectedConnectionTest, sensitiveValues);
+
+  return runImapSmtpOnboardingSmoke({
+    ...input,
+    apiBaseUrl,
+    payload,
+    fetchImpl,
+  });
+}
+
 async function runConnectionTestWithRetry(input: {
   apiBaseUrl: string;
   payload: ImapSmtpOnboardingInput;
@@ -149,6 +184,21 @@ async function runConnectionTestWithRetry(input: {
   }
 
   return latest!;
+}
+
+function assertRejectedConnectionTest(
+  response: HttpJsonResponse,
+  sensitiveValues: Array<string | undefined>,
+): void {
+  const body = asRecord(response.body);
+  if (response.status !== 200 || body.ok !== false) {
+    throw new Error(
+      `Auth-enabled IMAP/SMTP smoke accepted invalid credentials: ${response.status} ${safeBodySummary(
+        response.body,
+        sensitiveValues,
+      )}`,
+    );
+  }
 }
 
 function assertConnectionTest(
