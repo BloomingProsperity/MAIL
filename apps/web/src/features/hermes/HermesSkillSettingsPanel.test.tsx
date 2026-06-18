@@ -43,12 +43,39 @@ describe("HermesSkillSettingsPanel", () => {
     expect(screen.getByText("没有匹配的 Hermes 能力。")).toBeTruthy();
   });
 
+  it("filters skills by title, id, and description search", () => {
+    render(<HermesSkillSettingsPanel />);
+
+    const searchInput = screen.getByLabelText(
+      "Search Hermes skills",
+    ) as HTMLInputElement;
+    fireEvent.change(searchInput, { target: { value: "回复" } });
+    expect(screen.getByText("生成回复草稿")).toBeTruthy();
+    expect(screen.queryByText("翻译邮件")).toBeNull();
+
+    fireEvent.change(searchInput, { target: { value: "rule_suggest" } });
+    expect(screen.getByText("规则建议")).toBeTruthy();
+    expect(screen.queryByText("生成回复草稿")).toBeNull();
+
+    fireEvent.change(searchInput, { target: { value: "自然语言" } });
+    expect(screen.getByText("自然语言查邮件")).toBeTruthy();
+    expect(screen.queryByText("规则建议")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show Hermes skill mode draft" }),
+    );
+    expect(screen.getByText("没有匹配的 Hermes 能力。")).toBeTruthy();
+  });
+
   it("reveals and marks a focused skill from another filter", async () => {
     const { rerender } = render(<HermesSkillSettingsPanel />);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Show Hermes skill mode draft" }),
     );
+    fireEvent.change(screen.getByLabelText("Search Hermes skills"), {
+      target: { value: "回复" },
+    });
     fireEvent.click(screen.getByLabelText("仅看未保存"));
     expect(screen.queryByText("翻译邮件")).toBeNull();
 
@@ -70,6 +97,9 @@ describe("HermesSkillSettingsPanel", () => {
         .getByRole("button", { name: "Show Hermes skill mode read" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
+    expect(
+      (screen.getByLabelText("Search Hermes skills") as HTMLInputElement).value,
+    ).toBe("");
   });
 
   it("focuses the requested skill permission toggle", async () => {

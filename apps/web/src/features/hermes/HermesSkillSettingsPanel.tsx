@@ -124,6 +124,7 @@ export function HermesSkillSettingsPanel(props: {
     fallbackHermesResourceProfile,
   );
   const [modeFilter, setModeFilter] = useState<SkillModeFilter>("all");
+  const [skillSearch, setSkillSearch] = useState("");
   const [showUnsavedOnly, setShowUnsavedOnly] = useState(false);
   const [savingSkillId, setSavingSkillId] = useState<string>();
   const [notice, setNotice] = useState("正在读取 Hermes 能力选项...");
@@ -145,10 +146,12 @@ export function HermesSkillSettingsPanel(props: {
     () => new Set(unsavedSkills.map((skill) => skill.id)),
     [unsavedSkills],
   );
+  const skillSearchTerm = skillSearch.trim().toLowerCase();
   const visibleSkills = skills.filter((skill) => {
     return (
       (modeFilter === "all" || skill.mode === modeFilter) &&
-      (!showUnsavedOnly || unsavedSkillIds.has(skill.id))
+      (!showUnsavedOnly || unsavedSkillIds.has(skill.id)) &&
+      isHermesSkillSearchMatch(skill, skillSearchTerm)
     );
   });
   const isSavingAnySkill = Boolean(savingSkillId);
@@ -169,6 +172,7 @@ export function HermesSkillSettingsPanel(props: {
 
     const focusedSkill = skills.find((skill) => skill.id === props.focusedSkillId);
     setShowUnsavedOnly(false);
+    setSkillSearch("");
     setModeFilter(focusedSkill?.mode ?? "all");
     if (focusedSkill) {
       handledFocusRequestRef.current = focusRequestKey;
@@ -465,6 +469,15 @@ export function HermesSkillSettingsPanel(props: {
       ) : null}
 
       <div className="hermes-skill-filter-row">
+        <label className="hermes-skill-search">
+          <span>搜索能力</span>
+          <input
+            aria-label="Search Hermes skills"
+            value={skillSearch}
+            onChange={(event) => setSkillSearch(event.target.value)}
+            placeholder="翻译、写回复、rule_suggest"
+          />
+        </label>
         <div className="hermes-skill-mode-filter" aria-label="Hermes skill mode filter">
           {skillModeFilters.map((filter) => (
             <button
@@ -746,6 +759,25 @@ function formatHermesSkillMode(mode: HermesSkillDto["mode"]): string {
     learn: "学习",
   };
   return labels[mode];
+}
+
+function isHermesSkillSearchMatch(
+  skill: HermesSkillDto,
+  searchTerm: string,
+): boolean {
+  if (!searchTerm) {
+    return true;
+  }
+
+  return [
+    skill.id,
+    skill.title,
+    skill.description,
+    formatHermesSkillMode(skill.mode),
+  ]
+    .join("\n")
+    .toLowerCase()
+    .includes(searchTerm);
 }
 
 function formatHermesDeploymentProfile(
