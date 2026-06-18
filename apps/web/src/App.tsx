@@ -43,6 +43,7 @@ import {
   HermesReaderTranslationControls,
   HermesReaderTranslationResult,
 } from "./features/hermes/HermesReaderTranslationPanel";
+import { useReaderTranslationPreferences } from "./features/hermes/useReaderTranslationPreferences";
 import {
   HermesComposeDraftTools,
   HermesReplyAssistantPanel,
@@ -2205,8 +2206,10 @@ function MailWorkspace(props: {
     useState<HermesNoticeState>({ text: "" });
   const [readerHermesBusy, setReaderHermesBusy] =
     useState<ReaderHermesBusy | undefined>();
-  const [readerTranslationSource, setReaderTranslationSource] = useState("auto");
-  const [readerTranslationTarget, setReaderTranslationTarget] = useState("Chinese");
+  const readerTranslationPreferences =
+    useReaderTranslationPreferences("Chinese");
+  const readerTranslationSource = readerTranslationPreferences.sourceLanguage;
+  const readerTranslationTarget = readerTranslationPreferences.targetLanguage;
   const [readerTranslationPreferenceBusy, setReaderTranslationPreferenceBusy] =
     useState(false);
   const [readerHermesSummary, setReaderHermesSummary] =
@@ -2240,6 +2243,14 @@ function MailWorkspace(props: {
 
   function setReaderHermesNotice(notice: string, skillId?: string) {
     setReaderHermesNoticeState({ text: notice, skillId });
+  }
+
+  function selectReaderTranslationSource(sourceLanguage: string) {
+    readerTranslationPreferences.selectSourceLanguageForSender({
+      accountId: props.selectedMail.accountId,
+      senderEmail: props.selectedMail.email,
+      sourceLanguage,
+    });
   }
 
   function cancelComposeAutosave(status: ComposeAutosaveStatus = "idle") {
@@ -2339,7 +2350,10 @@ function MailWorkspace(props: {
     setReaderHermesTranslation(undefined);
     setReaderHermesOrganization(undefined);
     setReaderHermesBusy(undefined);
-    setReaderTranslationSource("auto");
+    readerTranslationPreferences.applyPreferenceForSender({
+      accountId: props.selectedMail.accountId,
+      senderEmail: props.selectedMail.email,
+    });
     setReaderHermesApplyBusy(undefined);
     setReaderTranslationPreferenceBusy(false);
   }, [props.selectedMail.id]);
@@ -3034,6 +3048,12 @@ function MailWorkspace(props: {
       ) {
         return;
       }
+      readerTranslationPreferences.rememberPreference({
+        accountId,
+        senderEmail,
+        sourceLanguage,
+        targetLanguage,
+      });
       setReaderHermesNotice("Hermes 已记住这个翻译习惯。");
     } catch {
       if (
@@ -4884,8 +4904,10 @@ function MailWorkspace(props: {
               sourceLanguage={readerTranslationSource}
               targetLanguage={readerTranslationTarget}
               busy={Boolean(readerHermesBusy)}
-              onSourceLanguageChange={setReaderTranslationSource}
-              onTargetLanguageChange={setReaderTranslationTarget}
+              onSourceLanguageChange={selectReaderTranslationSource}
+              onTargetLanguageChange={
+                readerTranslationPreferences.setTargetLanguage
+              }
               onTranslate={() => void askHermesForReaderTranslation()}
             />
             <button
