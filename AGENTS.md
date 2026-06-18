@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Email Hub is a monorepo. `apps/web` contains the React/Vite/TypeScript frontend. `apps/api-node` is the MVP Node API for health checks, EmailEngine webhooks, and future onboarding routes. `apps/worker-node` is the Node background worker for sync, mirror, Hermes, and import lanes. The older Rust crates in `apps/api` and `apps/worker` are legacy skeletons kept as reference for a later native sidecar. Docker and SQL migrations live in `infra/`; research and implementation notes live in `research/` and `docs/`.
+Email Hub is a monorepo. `apps/web` contains the React/Vite/TypeScript frontend. `apps/api-node` is the MVP Node API for health checks, EmailEngine webhooks, and future onboarding routes. `apps/worker-node` is the Node background worker for sync, mirror, Hermes, and import lanes. Self-developed Native/Core experiments live under `apps/native-engine/` and must stay outside the EmailEngine-first launch path. Docker and SQL migrations live in `infra/`; research and implementation notes live in `research/` and `docs/`.
 
 ## Build, Test, and Development Commands
 
@@ -47,6 +47,45 @@ work must live behind an explicit boundary such as `apps/native-engine/`,
 service contract, and Docker boundary. Existing adapter shims inside API or
 worker code may remain only as gated compatibility code; they must not become
 the default production path while Native Engine is paused.
+
+For the EmailEngine-first launch, self-developed Native/Core code must be
+isolated from production deployment. Do not expose Native Engine controls,
+labels, routes, or configuration in the user UI. Do not add Native Engine
+containers, env toggles, or runtime branches to the launch Docker path. If a
+Native/Core experiment is preserved, move it behind a separate module boundary
+and keep it outside the default web/API/worker production build.
+
+## Product Surface Rules
+
+Keep the ordinary user experience clean and mail-client-like. The left
+navigation order is: mailbox, add mailbox, search, Hermes, domain setup, and
+settings. Search appears in the top bar, not as a left-sidebar workspace when
+the mailbox shell is visible. The mailbox folder list should follow Outlook-like
+mail folders: Inbox, Drafts, Sent, Deleted, Junk, Archive, All Mail, flagged or
+reminder states, and attachments. Do not add separate task or rule workspaces
+for ordinary users; follow-up work is represented as Outlook-style flags,
+reminders, or reply states on mail.
+
+Compose and reply behavior should follow Outlook-style interaction. New
+compose opens in a floating window with a polished scale/transition effect, and
+reply/forward can open as an editable module in the right-side reading pane.
+The three-column mailbox should not be pushed down by compose surfaces.
+
+Hermes is the only AI entry. The ordinary Hermes page shows only a user-editable
+assistant name, LLM provider selection, API key entry, and connection test. Do
+not expose skills, memory, audit logs, resource budgets, rule internals, or
+system prompts in the ordinary UI; those capabilities are system-owned and may
+only appear in clearly separated administrator surfaces when needed.
+
+Settings may include an administrator section, but administrator content should
+be grouped and collapsed with drawers/sections instead of shown as a wall of
+system controls. Ordinary pages must not ask users to configure system internals
+other than the Hermes provider/key flow and the domain setup flow.
+
+Domain setup is a first-class left-navigation area named "配置域名". It should
+support manual DNS instructions, DNS verification, and Cloudflare-assisted setup.
+Cloudflare automation must have a clear token permission boundary and should not
+hide the manual record-copy path.
 
 ## Testing Guidelines
 

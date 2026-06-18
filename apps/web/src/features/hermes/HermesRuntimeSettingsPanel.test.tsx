@@ -5,272 +5,202 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   EmailHubApi,
   HermesRuntimeSettingsDto,
 } from "../../lib/emailHubApi";
 import { HermesRuntimeSettingsPanel } from "./HermesRuntimeSettingsPanel";
 
-const childPanelCalls = vi.hoisted(() => ({
-  audit: vi.fn(),
-  memory: vi.fn(),
-  rules: vi.fn(),
-}));
-
-vi.mock("./HermesLearningPanels", () => ({
-  formatHermesMemoryLayer: (layer: string) => layer,
-  HermesAuditLogPanel: (props: { accountId?: string }) => {
-    childPanelCalls.audit(props);
-    return (
-      <div aria-label="mock Hermes audit panel">
-        audit:{props.accountId ?? "none"}
-      </div>
-    );
-  },
-  HermesMemoryManagerPanel: (props: { accountId?: string }) => {
-    childPanelCalls.memory(props);
-    return (
-      <div aria-label="mock Hermes memory panel">
-        memory:{props.accountId ?? "none"}
-      </div>
-    );
-  },
-}));
-
-vi.mock("./HermesRuleManagerPanel", () => ({
-  HermesRuleManagerPanel: (props: { accountId?: string }) => {
-    childPanelCalls.rules(props);
-    return (
-      <div aria-label="mock Hermes rules panel">
-        rules:{props.accountId ?? "none"}
-      </div>
-    );
-  },
-}));
-
-vi.mock("./HermesSkillSettingsPanel", () => ({
-  HermesSkillSettingsPanel: () => (
-    <div aria-label="mock Hermes skill settings" />
-  ),
-}));
-
 describe("HermesRuntimeSettingsPanel", () => {
   afterEach(() => {
     cleanup();
   });
 
-  beforeEach(() => {
-    childPanelCalls.audit.mockClear();
-    childPanelCalls.memory.mockClear();
-    childPanelCalls.rules.mockClear();
-  });
-
-  it("shows Hermes service connection fields on the Hermes page", async () => {
+  it("shows only the ordinary Hermes connection controls", async () => {
     const api = createRuntimeApiFixture();
     vi.mocked(api.getHermesRuntimeSettings).mockResolvedValueOnce(
       runtimeSettingsFixture({
+        assistantName: "小邮",
+        providerKey: "openai-api",
         apiKeyConfigured: false,
-        endpointUrl: "http://hermes:4000/v1/chat/completions",
       }),
     );
 
-    render(<HermesRuntimeSettingsPanel api={api} accountId="account_1" />);
+    render(<HermesRuntimeSettingsPanel api={api} />);
 
-    await screen.findByText("Hermes 访问密钥未配置。");
-    expect(screen.getByText(/状态：待配置/)).toBeTruthy();
-    expect(screen.getByLabelText("AI 服务")).toBeTruthy();
-    expect((screen.getByLabelText("服务地址") as HTMLInputElement).value).toBe(
-      "http://hermes:4000/v1/chat/completions",
-    );
-    expect((screen.getByLabelText("模型名称") as HTMLInputElement).value).toBe(
-      "hermes-email",
-    );
-    expect(screen.queryByText("连接方式")).toBeNull();
-    expect(screen.queryByText("Hermes 网关")).toBeNull();
-    expect(screen.queryByText("路由或模型")).toBeNull();
-    expect(screen.queryByText("模型接口")).toBeNull();
-    expect(screen.queryByLabelText("mock Hermes skill settings")).toBeNull();
-    expect(screen.queryByLabelText("mock Hermes rules panel")).toBeNull();
-    expect(screen.queryByLabelText("mock Hermes memory panel")).toBeNull();
-    expect(screen.queryByLabelText("mock Hermes audit panel")).toBeNull();
+    expect(await screen.findByDisplayValue("小邮")).toBeTruthy();
+    expect(screen.getByLabelText("LLM 服务商")).toBeTruthy();
+    expect(screen.getByLabelText("API Key")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "测试连接" })).toBeTruthy();
+
+    expect(screen.queryByText("能力选项")).toBeNull();
+    expect(screen.queryByText("规则")).toBeNull();
+    expect(screen.queryByText("学习记录")).toBeNull();
+    expect(screen.queryByText("检查更新")).toBeNull();
+    expect(screen.queryByLabelText("模型名称")).toBeNull();
+    expect(screen.queryByLabelText("服务地址")).toBeNull();
   });
 
-  it("routes the selected account scope to rules, memories, and audit logs", async () => {
+  it("saves the assistant name, selected provider, and API key", async () => {
     const api = createRuntimeApiFixture();
 
-    render(<HermesRuntimeSettingsPanel api={api} accountId="account_1" />);
+    render(<HermesRuntimeSettingsPanel api={api} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "打开 规则" }));
-    const scopeSelect = await screen.findByRole("combobox", {
-      name: "Select Hermes settings account",
+    await screen.findByText("AI 连接已保存。");
+    fireEvent.change(screen.getByLabelText("助手名称"), {
+      target: { value: "Mail Copilot" },
     });
-    expect((scopeSelect as HTMLSelectElement).value).toBe("account_1");
+    fireEvent.change(screen.getByLabelText("LLM 服务商"), {
+      target: { value: "nvidia" },
+    });
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "runtime-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
 
     await waitFor(() => {
-      expect(childPanelCalls.rules).toHaveBeenLastCalledWith(
-        expect.objectContaining({ accountId: "account_1" }),
+      expect(api.updateHermesRuntimeSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          enabled: true,
+          mode: "external_hermes",
+          assistantName: "Mail Copilot",
+          providerKey: "nvidia",
+          endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+          model: "nvidia/llama-3.3-nemotron-super-49b-v1",
+          apiKey: "runtime-secret",
+          updatePolicy: "manual",
+          updateChannel: "stable",
+        }),
       );
     });
-
-    fireEvent.change(scopeSelect, { target: { value: "account_2" } });
-
-    await waitFor(() => {
-      expect(childPanelCalls.rules).toHaveBeenLastCalledWith(
-        expect.objectContaining({ accountId: "account_2" }),
-      );
-    });
-    expect(screen.getByLabelText("mock Hermes rules panel").textContent).toBe(
-      "rules:account_2",
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "打开 学习记录" }));
-    await waitFor(() => {
-      expect(childPanelCalls.memory).toHaveBeenLastCalledWith(
-        expect.objectContaining({ accountId: "account_2" }),
-      );
-    });
-    expect(screen.getByLabelText("mock Hermes memory panel").textContent).toBe(
-      "memory:account_2",
-    );
-    expect(screen.queryByLabelText("mock Hermes audit panel")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "切换 Hermes 审计记录" }));
-    await waitFor(() => {
-      expect(childPanelCalls.audit).toHaveBeenLastCalledWith(
-        expect.objectContaining({ accountId: "account_2" }),
-      );
-    });
-    expect(screen.getByLabelText("mock Hermes audit panel").textContent).toBe(
-      "audit:account_2",
-    );
-    expect(api.listSyncCenterAccounts).toHaveBeenCalledTimes(1);
   });
 
-  it("opens skill settings directly when a skill focus request arrives", async () => {
+  it("tests unsaved provider input through the provider probe without leaking the key", async () => {
     const api = createRuntimeApiFixture();
 
-    render(
-      <HermesRuntimeSettingsPanel
-        api={api}
-        accountId="account_1"
-        focusedSkillId="translate_text"
-        focusRequestId={1}
-      />,
-    );
+    render(<HermesRuntimeSettingsPanel api={api} />);
 
-    expect(await screen.findByLabelText("mock Hermes skill settings")).toBeTruthy();
-    expect(screen.queryByLabelText("mock Hermes rules panel")).toBeNull();
+    await screen.findByText("AI 连接已保存。");
+    fireEvent.change(screen.getByLabelText("LLM 服务商"), {
+      target: { value: "deepseek" },
+    });
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "probe-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+
+    await screen.findByText("连接成功。");
+    expect(api.probeHermesProvider).toHaveBeenCalledWith({
+      providerKey: "deepseek",
+      model: "deepseek-chat",
+      apiKey: "probe-secret",
+    });
+    expect(screen.queryByText("probe-secret")).toBeNull();
   });
 
-  it("locks runtime actions and fields while settings are saving", async () => {
+  it("only asks for a service address when a custom provider is selected", async () => {
     const api = createRuntimeApiFixture();
-    const pendingSave = deferred<HermesRuntimeSettingsDto>();
-    vi.mocked(api.updateHermesRuntimeSettings).mockReturnValueOnce(
-      pendingSave.promise,
-    );
 
-    render(<HermesRuntimeSettingsPanel api={api} accountId="account_1" />);
+    render(<HermesRuntimeSettingsPanel api={api} />);
 
-    await screen.findByText("Hermes 已连接访问密钥。");
-    const saveButton = screen.getByRole("button", {
-      name: "保存配置",
-    }) as HTMLButtonElement;
-    const testButton = screen.getByRole("button", {
-      name: "测试连接",
-    }) as HTMLButtonElement;
-    const clearButton = screen.getByRole("button", {
-      name: "清除访问密钥",
-    }) as HTMLButtonElement;
-    const updateButton = screen.getByRole("button", {
-      name: "检查更新",
-    }) as HTMLButtonElement;
+    await screen.findByText("AI 连接已保存。");
+    expect(screen.queryByLabelText("自定义服务地址")).toBeNull();
 
-    fireEvent.click(saveButton);
-
-    expect(await screen.findByText("正在保存 Hermes 配置...")).toBeTruthy();
-    await waitFor(() => {
-      expect(saveButton.disabled).toBe(true);
-      expect(testButton.disabled).toBe(true);
-      expect(clearButton.disabled).toBe(true);
-      expect(updateButton.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("LLM 服务商"), {
+      target: { value: "custom" },
     });
-    expect(
-      (
-        screen.getByDisplayValue(
-          "http://hermes.local/v1/chat/completions",
-        ) as HTMLInputElement
-      ).disabled,
-    ).toBe(true);
-
-    fireEvent.click(saveButton);
-    fireEvent.click(testButton);
-    fireEvent.click(clearButton);
-    fireEvent.click(updateButton);
-
-    expect(api.updateHermesRuntimeSettings).toHaveBeenCalledTimes(1);
-    expect(api.testHermesRuntimeConnection).not.toHaveBeenCalled();
-    expect(api.clearHermesRuntimeApiKey).not.toHaveBeenCalled();
-    expect(api.checkHermesRuntimeUpdate).not.toHaveBeenCalled();
-
-    pendingSave.resolve(
-      runtimeSettingsFixture({
-        model: "hermes-email-saved",
-      }),
-    );
-
-    expect(await screen.findByText("Hermes 配置已保存。")).toBeTruthy();
-    await waitFor(() => {
-      expect(saveButton.disabled).toBe(false);
-      expect(testButton.disabled).toBe(false);
-      expect(clearButton.disabled).toBe(false);
-      expect(updateButton.disabled).toBe(false);
-    });
+    expect(screen.getByLabelText("自定义服务地址")).toBeTruthy();
   });
 });
 
 function createRuntimeApiFixture(): EmailHubApi {
   return {
-    getHermesProviders: vi.fn(async () => ({ providers: [] })),
+    getHermesProviders: vi.fn(async () => ({
+      providers: [
+        {
+          key: "openai-api",
+          label: "OpenAI",
+          category: "cloud",
+          authType: "api_key",
+          requestProtocol: "openai_chat_completions",
+          endpointEditable: true,
+          aliases: ["openai"],
+          modelExamples: ["gpt-5.2"],
+          capabilities: ["chat", "email_skills"],
+          defaultEndpoint: "https://api.openai.com/v1/chat/completions",
+        },
+        {
+          key: "deepseek",
+          label: "DeepSeek",
+          category: "cloud",
+          authType: "api_key",
+          requestProtocol: "openai_chat_completions",
+          endpointEditable: true,
+          aliases: [],
+          modelExamples: ["deepseek-chat"],
+          capabilities: ["chat", "email_skills"],
+          defaultEndpoint: "https://api.deepseek.com/v1/chat/completions",
+        },
+        {
+          key: "nvidia",
+          label: "NVIDIA Build",
+          category: "cloud",
+          authType: "api_key",
+          requestProtocol: "openai_chat_completions",
+          endpointEditable: true,
+          aliases: ["nvidia-nim"],
+          modelExamples: ["nvidia/llama-3.3-nemotron-super-49b-v1"],
+          capabilities: ["chat", "email_skills"],
+          defaultEndpoint: "https://integrate.api.nvidia.com/v1/chat/completions",
+        },
+        {
+          key: "custom",
+          label: "自定义兼容服务",
+          category: "custom",
+          authType: "api_key_optional",
+          requestProtocol: "openai_chat_completions",
+          endpointEditable: true,
+          aliases: ["openai-compatible"],
+          modelExamples: ["custom-model"],
+          capabilities: ["chat", "email_skills"],
+        },
+      ],
+    })),
     getHermesRuntimeSettings: vi.fn(async () => runtimeSettingsFixture()),
-    updateHermesRuntimeSettings: vi.fn(async () => runtimeSettingsFixture()),
+    updateHermesRuntimeSettings: vi.fn(async (input) =>
+      runtimeSettingsFixture({
+        assistantName: input.assistantName,
+        providerKey: input.providerKey,
+        endpointUrl: input.endpointUrl,
+        model: input.model,
+        apiKeyConfigured: Boolean(input.apiKey),
+      }),
+    ),
     testHermesRuntimeConnection: vi.fn(async () => ({
       ok: true,
       checkedAt: "2026-06-14T08:00:00.000Z",
-      providerKey: "hermes",
+      providerKey: "openai-api",
       requestProtocol: "openai_chat_completions",
-      endpointUrl: "http://hermes.local/v1/chat/completions",
-      model: "hermes-email",
+      endpointUrl: "https://api.openai.com/v1/chat/completions",
+      model: "gpt-5.2",
+    })),
+    probeHermesProvider: vi.fn(async () => ({
+      ok: true,
+      status: "ready",
+      providerKey: "deepseek",
+      label: "DeepSeek",
+      category: "cloud",
+      authType: "api_key",
+      endpointUrl: "https://api.deepseek.com/v1/chat/completions",
+      model: "deepseek-chat",
+      missing: [],
+      checkedAt: "2026-06-14T08:00:00.000Z",
     })),
     clearHermesRuntimeApiKey: vi.fn(async () =>
       runtimeSettingsFixture({ apiKeyConfigured: false }),
     ),
-    checkHermesRuntimeUpdate: vi.fn(async () => ({
-      installedVersion: "0.1.0",
-      latestVersion: "0.1.0",
-      updateAvailable: false,
-      updatePolicy: "manual",
-      updateChannel: "stable",
-      lastCheckedAt: "2026-06-14T08:05:00.000Z",
-    })),
-    listSyncCenterAccounts: vi.fn(async () => ({
-      items: [
-        {
-          accountId: "account_1",
-          email: "work@example.com",
-          provider: "gmail",
-          displayName: "Work Gmail",
-          syncState: "running",
-        },
-        {
-          accountId: "account_2",
-          email: "me@example.com",
-          provider: "outlook",
-          displayName: "Personal Outlook",
-          syncState: "running",
-        },
-      ],
-    })),
   } as unknown as EmailHubApi;
 }
 
@@ -280,9 +210,10 @@ function runtimeSettingsFixture(
   return {
     enabled: true,
     mode: "external_hermes",
-    providerKey: "hermes",
-    endpointUrl: "http://hermes.local/v1/chat/completions",
-    model: "hermes-email",
+    assistantName: "Hermes",
+    providerKey: "openai-api",
+    endpointUrl: "https://api.openai.com/v1/chat/completions",
+    model: "gpt-5.2",
     apiKeyConfigured: true,
     updatePolicy: "manual",
     updateChannel: "stable",
@@ -293,18 +224,4 @@ function runtimeSettingsFixture(
     updatedAt: "2026-06-14T08:00:00.000Z",
     ...overrides,
   };
-}
-
-function deferred<T>(): {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (error?: unknown) => void;
-} {
-  let resolve: (value: T) => void = () => {};
-  let reject: (error?: unknown) => void = () => {};
-  const promise = new Promise<T>((promiseResolve, promiseReject) => {
-    resolve = promiseResolve;
-    reject = promiseReject;
-  });
-  return { promise, resolve, reject };
 }

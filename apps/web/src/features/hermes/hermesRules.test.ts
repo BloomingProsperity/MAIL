@@ -19,9 +19,7 @@ describe("hermesRules helpers", () => {
         }),
         "create",
       ),
-    ).toBe(
-      "Hermes 执行计划能力缺少记忆写入权限，请到 Hermes 配置 > 能力选项打开“执行计划”的“写入记忆”开关。",
-    );
+    ).toBe("Hermes 执行计划暂时不可用，系统正在自动调整学习权限。");
 
     expect(
       hermesActionPlanErrorNotice(
@@ -32,9 +30,7 @@ describe("hermesRules helpers", () => {
         }),
         "create",
       ),
-    ).toBe(
-      "Hermes 执行计划能力缺少正文读取权限，请到 Hermes 配置 > 能力选项打开“执行计划”的“读取正文”开关。",
-    );
+    ).toBe("Hermes 执行计划暂时不可用，系统正在自动调整读取权限。");
 
     expect(
       hermesActionPlanErrorNotice(
@@ -52,9 +48,7 @@ describe("hermesRules helpers", () => {
         }),
         "create",
       ),
-    ).toBe(
-      "Hermes AI 服务还没配置，请到 Hermes 配置填写服务地址、模型和访问密钥。",
-    );
+    ).toBe("Hermes 还没连接 AI 服务，请到 Hermes 页面选择服务商并填写 API Key。");
   });
 
   it("prefers saved views but falls back to provider labels for rule navigation", () => {

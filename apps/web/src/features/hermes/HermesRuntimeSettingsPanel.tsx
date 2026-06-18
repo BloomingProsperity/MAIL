@@ -5,72 +5,99 @@ import type {
   EmailHubApi,
   HermesProviderCatalogItem,
   HermesProviderProbeMissing,
-  HermesRuleDto,
-  HermesRuntimeMode,
-  HermesRuntimeUpdateChannel,
-  HermesRuntimeUpdatePolicy,
-  HermesSkillRequiredPermission,
-  HermesRuntimeVersionStatus,
-  SyncCenterAccountDto,
 } from "../../lib/emailHubApi";
-import {
-  HermesAccountScopePanel,
-  type HermesAccountScopeOption,
-} from "./HermesAccountScopePanel";
-import {
-  HermesAuditLogPanel,
-  HermesMemoryManagerPanel,
-  formatHermesMemoryLayer,
-} from "./HermesLearningPanels";
-import { HermesRuleManagerPanel } from "./HermesRuleManagerPanel";
-import { HermesSkillSettingsPanel } from "./HermesSkillSettingsPanel";
 import "./HermesRuntimeSettingsPanel.css";
 
-type HermesRuntimeBusyAction = "save" | "test" | "clear-key" | "check-update";
-type HermesRuntimeSectionId = "service" | "skills" | "rules" | "learning";
-
-const hermesRuntimeSections: Array<{
-  id: HermesRuntimeSectionId;
-  label: string;
-  description: string;
-}> = [
-  { id: "service", label: "服务配置", description: "连接和密钥" },
-  { id: "skills", label: "能力选项", description: "总结、翻译、写回复" },
-  { id: "rules", label: "规则", description: "确认后执行" },
-  { id: "learning", label: "学习记录", description: "记忆和审计" },
-];
+type HermesRuntimeBusyAction = "save" | "test" | "clear-key";
 
 const fallbackHermesProviders: HermesProviderCatalogItem[] = [
   {
-    key: "hermes",
-    label: "Hermes 服务",
-    category: "gateway",
-    authType: "api_key_optional",
+    key: "openai-api",
+    label: "OpenAI",
+    category: "cloud",
+    authType: "api_key",
+    requestProtocol: "openai_chat_completions",
+    endpointEditable: true,
+    aliases: ["openai"],
+    modelExamples: ["gpt-5.2"],
+    capabilities: ["chat", "email_skills"],
+    defaultEndpoint: "https://api.openai.com/v1/chat/completions",
+  },
+  {
+    key: "anthropic",
+    label: "Anthropic",
+    category: "cloud",
+    authType: "api_key",
+    requestProtocol: "anthropic_messages",
+    endpointEditable: true,
+    aliases: ["claude"],
+    modelExamples: ["claude-sonnet-4-6"],
+    capabilities: ["chat", "email_skills"],
+    defaultEndpoint: "https://api.anthropic.com/v1/messages",
+  },
+  {
+    key: "gemini",
+    label: "Google Gemini",
+    category: "cloud",
+    authType: "api_key",
+    requestProtocol: "gemini_generate_content",
+    endpointEditable: true,
+    aliases: ["google"],
+    modelExamples: ["gemini-3-pro"],
+    capabilities: ["chat", "email_skills"],
+  },
+  {
+    key: "deepseek",
+    label: "DeepSeek",
+    category: "cloud",
+    authType: "api_key",
     requestProtocol: "openai_chat_completions",
     endpointEditable: true,
     aliases: [],
-    modelExamples: ["hermes-email"],
-    capabilities: ["chat", "email_skills", "memory"],
-    defaultEndpoint: "http://hermes:4000/v1/chat/completions",
+    modelExamples: ["deepseek-chat"],
+    capabilities: ["chat", "email_skills"],
+    defaultEndpoint: "https://api.deepseek.com/v1/chat/completions",
+  },
+  {
+    key: "nvidia",
+    label: "NVIDIA Build",
+    category: "cloud",
+    authType: "api_key",
+    requestProtocol: "openai_chat_completions",
+    endpointEditable: true,
+    aliases: ["nvidia-nim"],
+    modelExamples: ["nvidia/llama-3.3-nemotron-super-49b-v1"],
+    capabilities: ["chat", "email_skills"],
+    defaultEndpoint: "https://integrate.api.nvidia.com/v1/chat/completions",
   },
   {
     key: "custom",
-    label: "自定义 AI 服务",
+    label: "自定义兼容服务",
     category: "custom",
     authType: "api_key_optional",
     requestProtocol: "openai_chat_completions",
     endpointEditable: true,
-    aliases: ["hermes-gateway"],
-    modelExamples: ["hermes-email"],
-    capabilities: ["chat", "email_skills", "memory"],
+    aliases: ["openai-compatible"],
+    modelExamples: ["custom-model"],
+    capabilities: ["chat", "email_skills"],
   },
 ];
 
-function isHermesProviderRuntimeSelectable(
-  provider: HermesProviderCatalogItem,
-): boolean {
+const visibleProviderKeys = new Set([
+  "openai-api",
+  "anthropic",
+  "gemini",
+  "deepseek",
+  "openrouter",
+  "alibaba",
+  "kimi-coding",
+  "nvidia",
+  "custom",
+]);
+
+function isUserSelectableProvider(provider: HermesProviderCatalogItem): boolean {
   return (
-    isHermesRuntimeGatewayProvider(provider) &&
+    visibleProviderKeys.has(provider.key) &&
     provider.requestProtocol !== "external_oauth" &&
     provider.requestProtocol !== "aws_bedrock" &&
     provider.authType !== "oauth" &&
@@ -78,80 +105,52 @@ function isHermesProviderRuntimeSelectable(
   );
 }
 
-function isHermesRuntimeGatewayProvider(
-  provider: HermesProviderCatalogItem,
-): boolean {
-  return provider.key === "hermes" || provider.key === "custom";
+function providerDefaultModel(provider?: HermesProviderCatalogItem): string {
+  return provider?.modelExamples[0] ?? "custom-model";
+}
+
+function providerDefaultEndpoint(
+  provider?: HermesProviderCatalogItem,
+): string | undefined {
+  return provider?.defaultEndpoint;
 }
 
 function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string {
   const labels: Record<HermesProviderProbeMissing, string> = {
     endpoint_url: "服务地址",
-    model: "模型名称",
-    api_key: "访问密钥",
-    oauth_session: "外部登录",
+    model: "模型",
+    api_key: "API Key",
+    oauth_session: "登录授权",
     aws_credentials: "云服务凭证",
   };
   return fields.map((field) => labels[field]).join("、");
 }
 
-function syncCenterAccountToScopeOption(
-  account: SyncCenterAccountDto,
-): HermesAccountScopeOption {
-  return {
-    id: account.accountId,
-    label: account.displayName?.trim() || account.email || account.accountId,
-    email: account.email,
-  };
-}
-
 export function HermesRuntimeSettingsPanel(props: {
   api?: EmailHubApi;
-  accountId?: string;
-  focusedSkillId?: string;
-  focusedPermission?: HermesSkillRequiredPermission;
-  focusRequestId?: number;
-  accountOptions?: HermesAccountScopeOption[];
-  onAccountScopeChange?: (accountId: string) => void;
-  onHermesRuleApproved?: (rule: HermesRuleDto) => void;
 }) {
-  const [enabled, setEnabled] = useState(true);
-  const [mode, setMode] = useState<HermesRuntimeMode>("external_hermes");
-  const [providerKey, setProviderKey] = useState("hermes");
-  const [endpointUrl, setEndpointUrl] = useState(
-    "http://hermes:4000/v1/chat/completions",
-  );
-  const [model, setModel] = useState("hermes-email");
+  const [assistantName, setAssistantName] = useState("Hermes");
+  const [providerKey, setProviderKey] = useState("openai-api");
+  const [endpointUrl, setEndpointUrl] = useState("");
+  const [model, setModel] = useState("gpt-5.2");
   const [apiKey, setApiKey] = useState("");
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
-  const [updatePolicy, setUpdatePolicy] =
-    useState<HermesRuntimeUpdatePolicy>("manual");
-  const [updateChannel, setUpdateChannel] =
-    useState<HermesRuntimeUpdateChannel>("stable");
-  const [version, setVersion] = useState<HermesRuntimeVersionStatus>();
   const [hermesProviders, setHermesProviders] = useState<
     HermesProviderCatalogItem[]
   >(fallbackHermesProviders);
-  const [scopedAccountId, setScopedAccountId] = useState(props.accountId ?? "");
-  const [scopedAccountOptions, setScopedAccountOptions] = useState<
-    HermesAccountScopeOption[]
-  >([]);
-  const [auditMemoryFocus, setAuditMemoryFocus] = useState<
-    { memoryId: string; label: string } | undefined
-  >();
-  const [activeSection, setActiveSection] =
-    useState<HermesRuntimeSectionId>("service");
-  const [showAuditLog, setShowAuditLog] = useState(false);
-  const [notice, setNotice] = useState("正在读取 Hermes 配置...");
+  const [notice, setNotice] = useState("请选择服务商并输入 API Key。");
   const [busyAction, setBusyAction] = useState<HermesRuntimeBusyAction>();
-  const providerOptions = useMemo<HermesProviderCatalogItem[]>(() => {
-    const runtimeProviders = hermesProviders.filter(isHermesRuntimeGatewayProvider);
-    if (runtimeProviders.some((provider) => provider.key === providerKey)) {
-      return runtimeProviders;
+
+  const providerOptions = useMemo(() => {
+    const catalog = hermesProviders.filter(isUserSelectableProvider);
+    const merged = catalog.length > 0 ? catalog : fallbackHermesProviders;
+
+    if (merged.some((provider) => provider.key === providerKey)) {
+      return merged;
     }
 
     return [
-      ...runtimeProviders,
+      ...merged,
       {
         key: providerKey,
         label: providerKey,
@@ -160,71 +159,24 @@ export function HermesRuntimeSettingsPanel(props: {
         requestProtocol: "openai_chat_completions" as const,
         endpointEditable: true,
         aliases: [],
-        modelExamples: [model],
+        modelExamples: [model || "custom-model"],
         capabilities: ["chat", "email_skills"],
+        ...(endpointUrl ? { defaultEndpoint: endpointUrl } : {}),
       },
     ];
-  }, [hermesProviders, model, providerKey]);
+  }, [endpointUrl, hermesProviders, model, providerKey]);
+
   const selectedProvider = useMemo(
     () => providerOptions.find((provider) => provider.key === providerKey),
     [providerKey, providerOptions],
   );
-  const accountOptions = props.accountOptions ?? scopedAccountOptions;
-  const effectiveAccountId = scopedAccountId || undefined;
+  const customProviderSelected = providerKey === "custom";
   const isRuntimeBusy = busyAction !== undefined;
-  const connectionStatus = enabled
-    ? apiKeyConfigured
-      ? "已连接"
-      : "待配置"
-    : "已停用";
-
-  function applyProviderSelection(nextProviderKey: string) {
-    const provider = providerOptions.find((item) => item.key === nextProviderKey);
-
-    if (provider && !isHermesProviderRuntimeSelectable(provider)) {
-      setNotice("这个 AI 服务需要先完成外部配置，暂时不能直接选择。");
-      return;
-    }
-
-    setProviderKey(nextProviderKey);
-    if (!provider) {
-      return;
-    }
-
-    if (provider.defaultEndpoint !== undefined) {
-      setEndpointUrl(provider.defaultEndpoint);
-    } else if (!provider.endpointEditable) {
-      setEndpointUrl("");
-    }
-
-    if (provider.modelExamples[0]) {
-      setModel(provider.modelExamples[0]);
-    }
-  }
-
-  function updateAccountScope(accountId: string) {
-    setScopedAccountId(accountId);
-    setAuditMemoryFocus(undefined);
-    props.onAccountScopeChange?.(accountId);
-  }
-
-  function currentRuntimePayload() {
-    return {
-      enabled,
-      mode,
-      providerKey,
-      endpointUrl,
-      model,
-      updatePolicy,
-      updateChannel,
-    };
-  }
 
   useEffect(() => {
     let alive = true;
 
     if (!props.api) {
-      setNotice("本地预览配置，连接后会保存到后端。");
       return () => {
         alive = false;
       };
@@ -234,53 +186,39 @@ export function HermesRuntimeSettingsPanel(props: {
       .getHermesProviders()
       .then((catalog) => {
         if (!alive) return;
-        const runtimeProviders = catalog.providers.filter(
-          isHermesRuntimeGatewayProvider,
-        );
+        const runtimeProviders = catalog.providers.filter(isUserSelectableProvider);
         if (runtimeProviders.length > 0) {
           setHermesProviders(runtimeProviders);
         }
       })
       .catch(() => {
         if (!alive) return;
-        setNotice("暂时无法读取 AI 服务列表，已使用本地兜底。");
+        setNotice("暂时无法读取服务商列表。");
       });
 
     void props.api
       .getHermesRuntimeSettings()
       .then((settings) => {
         if (!alive) return;
-        setEnabled(settings.enabled);
-        setMode("external_hermes");
-        setProviderKey(
-          settings.providerKey === "hermes" || settings.providerKey === "custom"
-            ? settings.providerKey
-            : "hermes",
+        const nextProviderKey =
+          settings.providerKey === "hermes" ? "openai-api" : settings.providerKey;
+        const provider = providerOptions.find(
+          (item) => item.key === nextProviderKey,
         );
-        setEndpointUrl(settings.endpointUrl ?? "");
-        setModel(settings.model);
+        setAssistantName(settings.assistantName || "Hermes");
+        setProviderKey(nextProviderKey);
+        setEndpointUrl(settings.endpointUrl ?? providerDefaultEndpoint(provider) ?? "");
+        setModel(settings.model || providerDefaultModel(provider));
         setApiKeyConfigured(settings.apiKeyConfigured);
-        setUpdatePolicy(settings.updatePolicy);
-        setUpdateChannel(settings.updateChannel);
-        setVersion({
-          installedVersion: settings.installedVersion,
-          latestVersion: settings.latestVersion,
-          updateAvailable: settings.updateAvailable,
-          updatePolicy: settings.updatePolicy,
-          updateChannel: settings.updateChannel,
-          lastCheckedAt: settings.lastCheckedAt,
-        });
         setNotice(
-          settings.providerKey !== "hermes" && settings.providerKey !== "custom"
-            ? "Hermes 是唯一 AI 入口，已切回 Hermes 服务。"
-            : settings.apiKeyConfigured
-              ? "Hermes 已连接访问密钥。"
-              : "Hermes 访问密钥未配置。",
+          settings.apiKeyConfigured
+            ? "AI 连接已保存。"
+            : "请选择服务商并输入 API Key。",
         );
       })
       .catch(() => {
         if (!alive) return;
-        setNotice("暂时无法读取 Hermes 配置。");
+        setNotice("暂时无法读取 AI 配置。");
       });
 
     return () => {
@@ -288,92 +226,62 @@ export function HermesRuntimeSettingsPanel(props: {
     };
   }, [props.api]);
 
-  useEffect(() => {
-    setScopedAccountId(props.accountId ?? "");
-    setAuditMemoryFocus(undefined);
-  }, [props.accountId]);
+  function applyProviderSelection(nextProviderKey: string) {
+    const provider = providerOptions.find((item) => item.key === nextProviderKey);
+    setProviderKey(nextProviderKey);
+    setModel(providerDefaultModel(provider));
+    setEndpointUrl(providerDefaultEndpoint(provider) ?? "");
+  }
 
-  useEffect(() => {
-    if (props.focusRequestId || props.focusedSkillId || props.focusedPermission) {
-      setActiveSection("skills");
-    }
-  }, [props.focusRequestId, props.focusedPermission, props.focusedSkillId]);
+  function runtimePayload() {
+    const provider = selectedProvider;
+    const nextEndpointUrl = customProviderSelected
+      ? endpointUrl.trim()
+      : providerDefaultEndpoint(provider);
 
-  useEffect(() => {
-    let alive = true;
-
-    if (props.accountOptions) {
-      return () => {
-        alive = false;
-      };
-    }
-
-    if (!props.api) {
-      setScopedAccountOptions([]);
-      return () => {
-        alive = false;
-      };
-    }
-
-    void props.api
-      .listSyncCenterAccounts()
-      .then((page) => {
-        if (!alive) return;
-        setScopedAccountOptions(page.items.map(syncCenterAccountToScopeOption));
-      })
-      .catch(() => {
-        if (!alive) return;
-        setScopedAccountOptions([]);
-      });
-
-    return () => {
-      alive = false;
+    return {
+      enabled: true,
+      mode: "external_hermes" as const,
+      assistantName,
+      providerKey,
+      ...(nextEndpointUrl ? { endpointUrl: nextEndpointUrl } : {}),
+      model: model || providerDefaultModel(provider),
+      updatePolicy: "manual" as const,
+      updateChannel: "stable" as const,
     };
-  }, [props.accountOptions, props.api]);
+  }
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busyAction) {
       return;
     }
-
+    if (customProviderSelected && !endpointUrl.trim()) {
+      setNotice("请填写自定义服务地址。");
+      return;
+    }
     if (!props.api) {
       setApiKeyConfigured(Boolean(apiKey.trim()));
-      setNotice("预览配置已更新。");
+      setNotice("AI 连接已保存。");
       return;
     }
 
     setBusyAction("save");
-    setNotice("正在保存 Hermes 配置...");
+    setNotice("正在保存 AI 连接...");
     try {
       const saved = await props.api.updateHermesRuntimeSettings({
-        enabled,
-        mode: "external_hermes",
-        providerKey,
-        endpointUrl,
-        model,
+        ...runtimePayload(),
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
-        updatePolicy,
-        updateChannel,
       });
-      setEnabled(saved.enabled);
-      setMode(saved.mode);
-      setProviderKey(saved.providerKey);
+      setAssistantName(saved.assistantName || assistantName || "Hermes");
+      setProviderKey(saved.providerKey === "hermes" ? "openai-api" : saved.providerKey);
       setEndpointUrl(saved.endpointUrl ?? "");
       setModel(saved.model);
       setApiKey("");
       setApiKeyConfigured(saved.apiKeyConfigured);
-      setVersion({
-        installedVersion: saved.installedVersion,
-        latestVersion: saved.latestVersion,
-        updateAvailable: saved.updateAvailable,
-        updatePolicy: saved.updatePolicy,
-        updateChannel: saved.updateChannel,
-        lastCheckedAt: saved.lastCheckedAt,
-      });
-      setNotice("Hermes 配置已保存。");
+      setNotice("AI 连接已保存。");
     } catch {
-      setNotice("保存失败，请检查服务地址和模型名称。");
+      setNotice("保存失败，请检查服务商和 API Key。");
     } finally {
       setBusyAction(undefined);
     }
@@ -383,39 +291,39 @@ export function HermesRuntimeSettingsPanel(props: {
     if (busyAction) {
       return;
     }
+    if (customProviderSelected && !endpointUrl.trim()) {
+      setNotice("请填写自定义服务地址。");
+      return;
+    }
     if (!props.api) {
-      setNotice("预览模式不会发起连接测试。");
+      setNotice("请连接后端后再测试。");
       return;
     }
 
     setBusyAction("test");
-    setNotice("正在测试 Hermes 连接...");
+    setNotice("正在测试连接...");
     try {
       const typedApiKey = apiKey.trim();
-      const result =
-        typedApiKey || !apiKeyConfigured
-          ? await props.api.probeHermesProvider({
-              providerKey,
-              endpointUrl,
-              model,
-              ...(typedApiKey ? { apiKey: typedApiKey } : {}),
-            })
-          : await props.api.testHermesRuntimeConnection();
+      const result = typedApiKey
+        ? await props.api.probeHermesProvider({
+            providerKey,
+            ...(customProviderSelected ? { endpointUrl: endpointUrl.trim() } : {}),
+            model: model || providerDefaultModel(selectedProvider),
+            apiKey: typedApiKey,
+          })
+        : await props.api.testHermesRuntimeConnection();
+
       if (result.ok) {
-        setNotice(`当前配置可用：${result.model ?? model}`);
-        return;
-      }
-      if ("status" in result && result.status === "external_auth_required") {
-        setNotice("这个 AI 服务需要先完成外部配置。");
+        setNotice("连接成功。");
         return;
       }
       if ("status" in result && result.status === "missing_configuration") {
         setNotice(`请补全：${formatHermesMissingFields(result.missing)}`);
         return;
       }
-      setNotice("连接失败，请检查服务地址、模型名称和访问密钥。");
+      setNotice("连接失败，请检查服务商和 API Key。");
     } catch {
-      setNotice("连接失败，请检查服务地址、模型名称和访问密钥。");
+      setNotice("连接失败，请检查服务商和 API Key。");
     } finally {
       setBusyAction(undefined);
     }
@@ -428,26 +336,17 @@ export function HermesRuntimeSettingsPanel(props: {
     if (!props.api) {
       setApiKey("");
       setApiKeyConfigured(false);
-      setNotice("访问密钥已清除。");
+      setNotice("API Key 已清除。");
       return;
     }
 
     setBusyAction("clear-key");
-    setNotice("正在清除访问密钥...");
+    setNotice("正在清除 API Key...");
     try {
-      const saved = await props.api.clearHermesRuntimeApiKey(
-        currentRuntimePayload(),
-      );
-      setEnabled(saved.enabled);
-      setMode(saved.mode);
-      setProviderKey(saved.providerKey);
-      setEndpointUrl(saved.endpointUrl ?? "");
-      setModel(saved.model);
+      const saved = await props.api.clearHermesRuntimeApiKey(runtimePayload());
       setApiKey("");
       setApiKeyConfigured(saved.apiKeyConfigured);
-      setUpdatePolicy(saved.updatePolicy);
-      setUpdateChannel(saved.updateChannel);
-      setNotice("访问密钥已清除。");
+      setNotice("API Key 已清除。");
     } catch {
       setNotice("清除失败，请稍后再试。");
     } finally {
@@ -455,277 +354,96 @@ export function HermesRuntimeSettingsPanel(props: {
     }
   }
 
-  async function checkUpdate() {
-    if (busyAction) {
-      return;
-    }
-    if (!props.api) {
-      setNotice("预览模式不会检查更新。");
-      return;
-    }
-
-    setBusyAction("check-update");
-    setNotice("正在检查 Hermes 版本...");
-    try {
-      const result = await props.api.checkHermesRuntimeUpdate();
-      setVersion(result);
-      setNotice(result.updateAvailable ? "发现可用更新。" : "当前版本已是最新。");
-    } catch {
-      setNotice("暂时无法检查更新。");
-    } finally {
-      setBusyAction(undefined);
-    }
-  }
-
   return (
-    <section className="settings-panel" aria-label="Hermes 配置">
+    <section className="settings-panel hermes-connect-panel" aria-label="Hermes 配置">
       <header className="settings-panel-head">
         <div>
-          <h2>Hermes 配置</h2>
-          <p>AI 状态、学习记录和规则集中管理。</p>
+          <h2>{assistantName || "Hermes"}</h2>
+          <p>连接 AI 服务后，邮箱搜索、翻译、总结和写信辅助会使用同一个入口。</p>
         </div>
-        <button
-          className="ghost-button"
-          type="button"
-          disabled={isRuntimeBusy}
-          onClick={checkUpdate}
-        >
-          检查更新
-        </button>
       </header>
 
-      <div className="hermes-runtime-tabs" aria-label="Hermes 页面分区">
-        {hermesRuntimeSections.map((section) => (
-          <button
-            key={section.id}
-            className={activeSection === section.id ? "active" : ""}
-            type="button"
-            aria-label={`打开 ${section.label}`}
-            aria-pressed={activeSection === section.id}
-            onClick={() => setActiveSection(section.id)}
-          >
-            <span>{section.label}</span>
-            <small>{section.description}</small>
-          </button>
-        ))}
-      </div>
-
-      {activeSection === "service" ? (
-        <>
-          <form className="settings-form" onSubmit={saveSettings}>
-            <div className="settings-card-grid">
-              <article className="settings-module">
-                <h3>Hermes AI</h3>
-                <label className="field-toggle">
-                  <input
-                    type="checkbox"
-                    checked={enabled}
-                    disabled={isRuntimeBusy}
-                    onChange={(event) => setEnabled(event.target.checked)}
-                  />
-                  <span>启用 Hermes</span>
-                </label>
-                <p>
-                  状态：{connectionStatus}
-                  {version?.installedVersion ? ` · 当前 ${version.installedVersion}` : ""}
-                  {version?.latestVersion ? ` · 最新 ${version.latestVersion}` : ""}
-                </p>
-                <div className="inline-actions">
-                  <button
-                    className="primary-button"
-                    type="submit"
-                    disabled={isRuntimeBusy}
-                  >
-                    保存配置
-                  </button>
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    disabled={isRuntimeBusy}
-                    onClick={testConnection}
-                  >
-                    测试连接
-                  </button>
-                </div>
-              </article>
-
-              <article className="settings-module">
-                <h3>AI 服务</h3>
-                <label>
-                  <span>AI 服务</span>
-                  <select
-                    value={providerKey}
-                    disabled={isRuntimeBusy}
-                    onChange={(event) => applyProviderSelection(event.target.value)}
-                  >
-                    {providerOptions.map((provider) => (
-                      <option
-                        key={provider.key}
-                        value={provider.key}
-                        disabled={!isHermesProviderRuntimeSelectable(provider)}
-                      >
-                        {provider.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>服务地址</span>
-                  <input
-                    value={endpointUrl}
-                    onChange={(event) => setEndpointUrl(event.target.value)}
-                    disabled={
-                      isRuntimeBusy || selectedProvider?.endpointEditable === false
-                    }
-                    placeholder="http://hermes:4000/v1/chat/completions"
-                  />
-                </label>
-              </article>
-
-              <article className="settings-module">
-                <h3>模型与密钥</h3>
-                <label>
-                  <span>模型名称</span>
-                  <input
-                    value={model}
-                    disabled={isRuntimeBusy}
-                    onChange={(event) => setModel(event.target.value)}
-                    placeholder="hermes-email"
-                  />
-                </label>
-                <label>
-                  <span>访问密钥</span>
-                  <input
-                    value={apiKey}
-                    disabled={isRuntimeBusy}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder={apiKeyConfigured ? "已保存，留空则不修改" : "可留空"}
-                    type="password"
-                  />
-                </label>
-                {apiKeyConfigured ? (
-                  <div className="inline-actions">
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      disabled={isRuntimeBusy}
-                      onClick={() => void clearApiKey()}
-                    >
-                      清除访问密钥
-                    </button>
-                  </div>
-                ) : null}
-              </article>
-
-              <article className="settings-module">
-                <h3>学习边界</h3>
-                <p>写回复、归档、星标、移动标签和你的修改会进入可查看的学习记录。</p>
-                <p>写操作默认先预览，不会直接发送邮件。</p>
-                <label>
-                  <span>提醒方式</span>
-                  <select
-                    value={updatePolicy}
-                    disabled={isRuntimeBusy}
-                    onChange={(event) =>
-                      setUpdatePolicy(
-                        event.target.value as HermesRuntimeUpdatePolicy,
-                      )
-                    }
-                  >
-                    <option value="manual">手动确认</option>
-                    <option value="notify">有更新时提醒</option>
-                    <option value="auto_patch">仅小版本自动</option>
-                  </select>
-                </label>
-                <label>
-                  <span>更新通道</span>
-                  <select
-                    value={updateChannel}
-                    disabled={isRuntimeBusy}
-                    onChange={(event) =>
-                      setUpdateChannel(
-                        event.target.value as HermesRuntimeUpdateChannel,
-                      )
-                    }
-                  >
-                    <option value="stable">稳定</option>
-                    <option value="preview">预览</option>
-                  </select>
-                </label>
-              </article>
-            </div>
-          </form>
-
-          <div className="backend-notice" role="status">
-            {notice}
-          </div>
-        </>
-      ) : null}
-
-      {activeSection === "skills" ? (
-        <HermesSkillSettingsPanel
-          api={props.api}
-          focusedSkillId={props.focusedSkillId}
-          focusedPermission={props.focusedPermission}
-          focusRequestId={props.focusRequestId}
-        />
-      ) : null}
-
-      {activeSection === "rules" ? (
-        <>
-          <HermesAccountScopePanel
-            accountId={effectiveAccountId}
-            accounts={accountOptions}
-            onAccountChange={updateAccountScope}
-          />
-          <HermesRuleManagerPanel
-            api={props.api}
-            accountId={effectiveAccountId}
-            onRuleApproved={props.onHermesRuleApproved}
-          />
-        </>
-      ) : null}
-
-      {activeSection === "learning" ? (
-        <>
-          <HermesAccountScopePanel
-            accountId={effectiveAccountId}
-            accounts={accountOptions}
-            onAccountChange={updateAccountScope}
-          />
-          <HermesMemoryManagerPanel
-            api={props.api}
-            accountId={effectiveAccountId}
-            onInspectMemoryUsage={(memory) => {
-              setAuditMemoryFocus({
-                memoryId: memory.id,
-                label: `${formatHermesMemoryLayer(memory.layer)} · ${memory.scope}`,
-              });
-              setShowAuditLog(true);
-            }}
-          />
-          <div className="inline-actions">
-            <button
-              className={showAuditLog ? "ghost-button is-active" : "ghost-button"}
-              type="button"
-              aria-label="切换 Hermes 审计记录"
-              aria-pressed={showAuditLog}
-              onClick={() => setShowAuditLog((current) => !current)}
-            >
-              {showAuditLog ? "隐藏审计记录" : "查看审计记录"}
-            </button>
-          </div>
-          {showAuditLog ? (
-            <HermesAuditLogPanel
-              api={props.api}
-              accountId={effectiveAccountId}
-              focusedMemoryId={auditMemoryFocus?.memoryId}
-              focusedMemoryLabel={auditMemoryFocus?.label}
-              onClearFocusedMemory={() => setAuditMemoryFocus(undefined)}
+      <form className="settings-form hermes-connect-form" onSubmit={saveSettings}>
+        <article className="settings-module hermes-connect-card">
+          <label>
+            <span>助手名称</span>
+            <input
+              aria-label="助手名称"
+              value={assistantName}
+              disabled={isRuntimeBusy}
+              maxLength={40}
+              onChange={(event) => setAssistantName(event.target.value)}
+              placeholder="Hermes"
             />
+          </label>
+          <label>
+            <span>LLM 服务商</span>
+            <select
+              aria-label="LLM 服务商"
+              value={providerKey}
+              disabled={isRuntimeBusy}
+              onChange={(event) => applyProviderSelection(event.target.value)}
+            >
+              {providerOptions.map((provider) => (
+                <option key={provider.key} value={provider.key}>
+                  {provider.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {customProviderSelected ? (
+            <label>
+              <span>自定义服务地址</span>
+              <input
+                aria-label="自定义服务地址"
+                value={endpointUrl}
+                disabled={isRuntimeBusy}
+                onChange={(event) => setEndpointUrl(event.target.value)}
+                placeholder="https://api.example.com/v1/chat/completions"
+              />
+            </label>
           ) : null}
-        </>
-      ) : null}
+          <label>
+            <span>API Key</span>
+            <input
+              aria-label="API Key"
+              value={apiKey}
+              disabled={isRuntimeBusy}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder={apiKeyConfigured ? "已保存，留空则不修改" : "输入 API Key"}
+              type="password"
+            />
+          </label>
+        </article>
+
+        <div className="inline-actions hermes-connect-actions">
+          <button className="primary-button" type="submit" disabled={isRuntimeBusy}>
+            保存配置
+          </button>
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={isRuntimeBusy}
+            onClick={() => void testConnection()}
+          >
+            测试连接
+          </button>
+          {apiKeyConfigured ? (
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={isRuntimeBusy}
+              onClick={() => void clearApiKey()}
+            >
+              清除 API Key
+            </button>
+          ) : null}
+        </div>
+      </form>
+
+      <div className="backend-notice" role="status">
+        {notice}
+      </div>
     </section>
   );
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const DEFAULT_MAX_LINES = 1000;
 
@@ -62,6 +62,9 @@ let checkedCount = 0;
 
 for (const file of files) {
   if (!isTrackedHandwrittenFile(file)) {
+    continue;
+  }
+  if (!existsSync(file)) {
     continue;
   }
 

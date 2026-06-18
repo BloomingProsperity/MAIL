@@ -8,7 +8,6 @@ import type {
   HermesRuleCandidateDto,
   HermesRuleHistoryBackfillDto,
   HermesRuleSimulationDto,
-  HermesSkillRequiredPermission,
   HermesWorkspaceContextDto,
 } from "../../lib/emailHubApi";
 import { hermesRulePreview } from "./hermesRules";
@@ -31,8 +30,6 @@ export function HermesDock(props: {
   workspaceContext?: HermesWorkspaceContextDto;
   workspaceContextLoading?: boolean;
   busy: boolean;
-  noticeActionSkillId?: string;
-  noticeActionPermission?: HermesSkillRequiredPermission;
   noticeActionLabel?: string;
   formatDate: (value: string) => string;
   onPromptChange: (value: string) => void;
@@ -41,10 +38,6 @@ export function HermesDock(props: {
   onApproveRule: () => void;
   onNoticeAction?: () => void;
   onOpenSearch: (query: string, options?: HermesSearchLaunchOptions) => void;
-  onOpenHermesSkillSettings: (
-    skillId: string,
-    requiredPermission?: HermesSkillRequiredPermission,
-  ) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [activityVersion, setActivityVersion] = useState(0);
@@ -139,11 +132,8 @@ export function HermesDock(props: {
             <HermesNotice
               className="dock-result-status"
               notice={props.notice}
-              skillId={props.noticeActionSkillId}
-              requiredPermission={props.noticeActionPermission}
               actionLabel={props.noticeActionLabel}
               onAction={props.onNoticeAction}
-              onOpenSkillSettings={props.onOpenHermesSkillSettings}
             />
           ) : null}
           {result ? (

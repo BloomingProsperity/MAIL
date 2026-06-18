@@ -14,7 +14,6 @@ describe("worker runtime configuration", () => {
       hermesRetentionCleanupIntervalMs: 3600000,
       hermesRetentionMs: 2592000000,
       hermesRetentionCleanupLimit: 500,
-      nativeEngineEnabled: false,
     });
   });
 
@@ -30,7 +29,6 @@ describe("worker runtime configuration", () => {
         HERMES_RETENTION_CLEANUP_INTERVAL_MS: "999",
         HERMES_RETENTION_DAYS: "0",
         HERMES_RETENTION_CLEANUP_LIMIT: "0",
-        EMAILHUB_NATIVE_ENGINE_ENABLED: "false",
       }),
     ).toEqual({
       leaseSeconds: 60,
@@ -42,7 +40,6 @@ describe("worker runtime configuration", () => {
       hermesRetentionCleanupIntervalMs: 60000,
       hermesRetentionMs: 86400000,
       hermesRetentionCleanupLimit: 1,
-      nativeEngineEnabled: false,
     });
   });
 
@@ -58,7 +55,6 @@ describe("worker runtime configuration", () => {
         HERMES_RETENTION_CLEANUP_INTERVAL_MS: "999999999",
         HERMES_RETENTION_DAYS: "999999",
         HERMES_RETENTION_CLEANUP_LIMIT: "999999",
-        EMAILHUB_NATIVE_ENGINE_ENABLED: "true",
       }),
     ).toEqual({
       leaseSeconds: 3600,
@@ -70,7 +66,6 @@ describe("worker runtime configuration", () => {
       hermesRetentionCleanupIntervalMs: 86400000,
       hermesRetentionMs: 31536000000,
       hermesRetentionCleanupLimit: 10000,
-      nativeEngineEnabled: true,
     });
   });
 });

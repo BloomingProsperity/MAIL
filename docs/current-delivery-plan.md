@@ -256,23 +256,16 @@ backend contracts, and verify the stack with more than smoke-level tests.
   management routes require the admin API token. Non-account operational
   surfaces, including maintenance cleanup/status, EmailEngine health/readiness,
   and provider capability catalogs, also require the admin token.
-- Current runtime configuration status: Email Hub already persists Hermes
-  runtime settings through `/api/hermes/runtime`, stores the API key in
-  `stored_secrets`, and lets the Settings UI test the configured gateway before
-  mail skills use it. Database settings take precedence over env settings;
-  `HERMES_CHAT_COMPLETIONS_URL`, `HERMES_PROVIDER`, `HERMES_MODEL`, and
-  `HERMES_API_KEY` remain the Docker/env fallback when no database setting has
-  been saved. Once a database setting exists it is explicit, including
-  disabled settings; the API does not silently fall back to env in that case.
-  The default product path is still Hermes-first: the UI exposes a Hermes
-  gateway and route/model, not direct model-provider setup. Docker self-hosting
-  now has an optional `infra/docker-compose.hermes.yml` overlay that starts a
-  LiteLLM-backed service named `hermes` and wires the API to
-  `http://hermes:4000/v1/chat/completions`. Core mailbox testing can still run
-  without AI, while internal tests that exercise real AI should start
-  `compose:up:hermes:detached` or `compose:up:prod:hermes:detached` and run the
-  runtime connection test after `HERMES_API_KEY` and the upstream
-  `HERMES_LITELLM_*` settings are configured.
+- Current runtime configuration status: Email Hub persists Hermes runtime
+  settings through `/api/hermes/runtime`, stores the API key in
+  `stored_secrets`, and lets the sidebar Hermes page test the configured
+  provider before mail skills use it. Real AI provider/key configuration is
+  UI-owned; Docker/env no longer provides a fallback model provider for the API.
+  Docker self-hosting still has an optional `infra/docker-compose.hermes.yml`
+  overlay that starts a LiteLLM-backed service named `hermes`; configure that
+  gateway with `HERMES_GATEWAY_API_KEY` and `HERMES_LITELLM_*`, then select it
+  through the Hermes page like any other provider. Core mailbox testing can
+  still run without AI.
 - Current data-boundary status: `hermes_memories`, `hermes_skill_runs`, and
   `hermes_audit_events` now have structure-level `account_id` columns for new
   data. Account-bound skill runs write that scope into both run and audit rows,
@@ -312,8 +305,8 @@ backend contracts, and verify the stack with more than smoke-level tests.
 - Failure: missing endpoint/model/key, external auth required, provider failure,
   prompt output parse failure.
 - Tests: provider catalog/probe, runtime config, audit log, memory context,
-  editable skill settings, context-budget truncation, retention cleanup, and
-  each skill with preview-only assertions.
+  internal skill budgets, context-budget truncation, retention cleanup, and each
+  skill with preview-only assertions.
 - Current writing-style status: Hermes reply drafts, quick replies, and
   rewrite/polish results now feed the same explicit final-edit feedback path.
   Saving, sending, scheduling, or updating a Hermes-polished compose draft
@@ -328,7 +321,7 @@ backend contracts, and verify the stack with more than smoke-level tests.
   dock renders Hermes' answer plus cited app-owned message ids, subjects,
   senders, dates, and Smart Inbox buckets, and can hand the resolved
   `searchQuery` to the Search workspace for deterministic filtering. Hermes
-  search QA now applies the editable per-skill context budget before calling
+  search QA now applies the internal per-skill context budget before calling
   Hermes, so large result snippets cannot create an unbounded prompt. Hermes
   search remains read-only: it answers and cites, but does not move, delete, or
   send mail.
@@ -345,27 +338,15 @@ backend contracts, and verify the stack with more than smoke-level tests.
   editable body with translated text, and the compose payload carries the
   originating skill run id and translated draft text into the same feedback
   trail used by Hermes-polished drafts.
-- Current memory-management status: The sidebar Hermes workspace now exposes the app-owned Hermes
-  learning records. The frontend lists records through
-  `/api/hermes/memories`, supports layer/scope/limit filtering, validates JSON
-  object content and `0..1` confidence before saving, updates records through
-  `PATCH /api/hermes/memories/:id`, and requires a second click before
-  permanent deletion through `DELETE /api/hermes/memories/:id`. The learning
-  record and audit-log panels now live under `features/hermes` instead
-  of the legacy `App.tsx` shell, with focused tests for low-confidence memory
-  review and audit events that used memory.
-- Current skill-governance status: The sidebar Hermes workspace now exposes backend-owned Hermes
-  skill options for each built-in skill. Users can edit enabled state,
-  body-read permission, memory-write permission, confirmation requirement,
-  context character budget, and memory limit through the API instead of
-  changing code or environment variables. `GET /api/hermes/resource-profile`
-  now summarizes enabled skill count, max per-run context budget, memory
-  fan-out, retention cleanup policy, managed Hermes tables, and self-hosted
-  machine guidance; the Hermes workspace displays the same profile before the editable
-  skill cards so operators can lower budgets before a node is under pressure.
-  Saving a skill refreshes the profile immediately, and the UI surfaces the
-  returned guardrails plus CPU/RAM/disk guidance for external-Hermes and local
-  model deployments.
+- Current memory-management status: Hermes learning records remain app-owned
+  Postgres data and are used automatically by backend skills. The ordinary
+  sidebar Hermes workspace does not expose memory review, audit logs, or JSON
+  editing.
+- Current skill-governance status: Hermes skill budgets and guardrails remain
+  backend-owned. `GET /api/hermes/resource-profile` can support internal/admin
+  diagnostics, but ordinary users do not edit enabled state, body-read
+  permission, memory-write permission, confirmation requirement, context
+  character budget, or memory limit.
 - Current action-plan status: Hermes rule candidates are now recoverable after
   refresh through `GET /api/hermes/rule-candidates`, and Settings loads shadow
   candidates alongside enabled rules. Shadow `content_label` candidates are
@@ -454,7 +435,7 @@ backend contracts, and verify the stack with more than smoke-level tests.
 
 ### 6. Frontend Wiring
 
-- Trigger: user navigates Mail, Add Mailbox, Sync Center, Search, Settings.
+- Trigger: user navigates Mail, Add Mailbox, Search, Hermes, Domain Setup, and Settings.
 - State: React local state mirrors API DTOs only; preview data is a fallback.
 - API: consume provider capabilities, top-bar global search, Hermes dock
   search QA, reader summary/translation, Search workspace filters, CSV import,

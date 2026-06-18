@@ -20,6 +20,7 @@ export type HermesRuntimeSettingsSource = "database" | "environment" | "default"
 export interface HermesRuntimeSettingsDto {
   enabled: boolean;
   mode: HermesRuntimeMode;
+  assistantName?: string;
   providerKey: string;
   endpointUrl?: string;
   model: string;
@@ -46,6 +47,7 @@ export interface HermesRuntimeConnectionSettings {
 export interface HermesRuntimeUpdateInput {
   enabled: boolean;
   mode: HermesRuntimeMode;
+  assistantName?: string;
   providerKey?: string;
   endpointUrl?: string;
   model: string;
@@ -243,6 +245,7 @@ function normalizePublicRuntimeSettings(
     return {
       ...settings,
       mode: "external_hermes",
+      assistantName: normalizeAssistantName(settings.assistantName),
       providerKey,
       ...(settings.endpointUrl
         ? {
@@ -303,6 +306,7 @@ function normalizeRuntimeUpdate(
   }
 
   const model = normalizeModel(input.model);
+  const assistantName = normalizeAssistantName(input.assistantName);
   const providerKey = normalizeRuntimeProviderKey(
     input.providerKey ?? defaultProviderKey(input.mode),
   );
@@ -320,6 +324,7 @@ function normalizeRuntimeUpdate(
   return {
     enabled: Boolean(input.enabled),
     mode: "external_hermes",
+    assistantName,
     providerKey,
     ...(endpointUrl ? { endpointUrl } : {}),
     model,
@@ -365,6 +370,15 @@ function normalizeModel(value: string): string {
   return model;
 }
 
+function normalizeAssistantName(value: string | undefined): string {
+  const name = value?.trim() || "Hermes";
+  if (name.length > 40) {
+    throw new InvalidHermesRuntimeConfigRequestError();
+  }
+
+  return name;
+}
+
 function normalizeProviderKey(value: string): string {
   const providerKey = value.trim().toLowerCase();
   if (
@@ -380,7 +394,14 @@ function normalizeProviderKey(value: string): string {
 
 function normalizeRuntimeProviderKey(value: string): string {
   const providerKey = normalizeProviderKey(value);
-  if (providerKey !== "hermes" && providerKey !== "custom") {
+  const provider = findHermesProvider(providerKey);
+  if (
+    provider &&
+    (provider.requestProtocol === "external_oauth" ||
+      provider.requestProtocol === "aws_bedrock" ||
+      provider.authType === "oauth" ||
+      provider.authType === "aws_credentials")
+  ) {
     throw new InvalidHermesRuntimeConfigRequestError();
   }
 
@@ -388,58 +409,31 @@ function normalizeRuntimeProviderKey(value: string): string {
 }
 
 function defaultProviderKey(mode: HermesRuntimeMode): string {
-  return mode === "external_hermes" ? "hermes" : "custom";
+  return mode === "external_hermes" ? "openai-api" : "custom";
 }
 
 function envToPublicSettings(
   env: NodeJS.ProcessEnv,
 ): HermesRuntimeSettingsDto | undefined {
-  const connection = envToConnectionSettings(env);
-  if (!connection) {
-    return undefined;
-  }
-
-  return {
-    enabled: true,
-    mode: "external_hermes",
-    providerKey: connection.providerKey,
-    endpointUrl: connection.endpointUrl,
-    model: connection.model,
-    apiKeyConfigured: Boolean(connection.apiKey),
-    updatePolicy: "manual",
-    updateChannel: "stable",
-    updateAvailable: false,
-    source: "environment",
-  };
+  void env;
+  return undefined;
 }
 
 function envToConnectionSettings(
   env: NodeJS.ProcessEnv,
 ): HermesRuntimeConnectionSettings | undefined {
-  const endpointUrl = env.HERMES_CHAT_COMPLETIONS_URL?.trim();
-  if (!endpointUrl) {
-    return undefined;
-  }
-
-  return {
-    enabled: true,
-    providerKey: normalizeRuntimeProviderKey(
-      env.HERMES_PROVIDER?.trim() || "custom",
-    ),
-    endpointUrl,
-    model: env.HERMES_MODEL?.trim() || "hermes-email",
-    ...(env.HERMES_API_KEY?.trim()
-      ? { apiKey: env.HERMES_API_KEY.trim() }
-      : {}),
-  };
+  void env;
+  return undefined;
 }
 
 function defaultSettings(): HermesRuntimeSettingsDto {
   return {
     enabled: false,
     mode: "external_hermes",
-    providerKey: "hermes",
-    model: "hermes-email",
+    assistantName: "Hermes",
+    providerKey: "openai-api",
+    endpointUrl: "https://api.openai.com/v1/chat/completions",
+    model: "gpt-5.2",
     apiKeyConfigured: false,
     updatePolicy: "manual",
     updateChannel: "stable",

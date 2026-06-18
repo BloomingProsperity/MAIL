@@ -78,7 +78,7 @@ export function createEmailEngineLaunchReadinessReport(
 ): EmailEngineLaunchReadinessReport {
   const checkedAt = (options.now ?? (() => new Date()))().toISOString();
   const internalSecrets = checkRequiredInternalSecrets(options.env);
-  const nativeEngine = checkNativeEnginePaused(options.env);
+  const nativeEngine = checkNativeEngineNotConfigured(options.env);
   const smokeConfig = checkSmokeConfig(options.env);
   const optionalIntegrations = checkOptionalIntegrations(options.env);
   const production = verifyEmailEngineProductionEnv({
@@ -114,7 +114,6 @@ export function createEmailEngineLaunchReadinessReport(
     runnableSuites: readinessSuites({
       internalTestReady,
       productionReady: production.ok,
-      hermesReady: hasValue(options.env.HERMES_CHAT_COMPLETIONS_URL),
       gmailReady:
         hasValue(options.env.GOOGLE_OAUTH_CLIENT_ID) &&
         hasValue(options.env.GOOGLE_OAUTH_CLIENT_SECRET) &&
@@ -166,10 +165,10 @@ function checkRequiredInternalSecrets(
   };
 }
 
-function checkNativeEnginePaused(
+function checkNativeEngineNotConfigured(
   env: Record<string, string | undefined>,
 ): PreflightCheck {
-  if (env.EMAILHUB_NATIVE_ENGINE_ENABLED?.trim().toLowerCase() !== "true") {
+  if (env.EMAILHUB_NATIVE_ENGINE_ENABLED === undefined) {
     return { ok: true, issues: [] };
   }
 
@@ -181,7 +180,7 @@ function checkNativeEnginePaused(
         severity: "error",
         env: ["EMAILHUB_NATIVE_ENGINE_ENABLED"],
         detail:
-          "EMAILHUB_NATIVE_ENGINE_ENABLED must stay false for EmailEngine-first internal testing; Native Engine is paused.",
+          "EMAILHUB_NATIVE_ENGINE_ENABLED must not be configured for EmailEngine-first internal testing; self-developed Native/Core code is outside the launch path.",
       },
     ],
   };
@@ -229,15 +228,6 @@ function checkOptionalIntegrations(
 ): PreflightCheck {
   const issues: PreflightIssue[] = [];
 
-  if (!hasValue(env.HERMES_CHAT_COMPLETIONS_URL)) {
-    issues.push({
-      code: "hermes_runtime_not_env_configured",
-      severity: "warning",
-      env: ["HERMES_CHAT_COMPLETIONS_URL", "HERMES_MODEL", "HERMES_API_KEY"],
-      detail:
-        "Hermes can still be configured from the sidebar Hermes workspace, but real Hermes AI skills are not env-ready yet.",
-    });
-  }
   if (
     !hasValue(env.GOOGLE_OAUTH_CLIENT_ID) ||
     !hasValue(env.GOOGLE_OAUTH_CLIENT_SECRET) ||
@@ -291,7 +281,6 @@ function productionDeltaCheck(followUps: string[]): PreflightCheck {
 function readinessSuites(input: {
   internalTestReady: boolean;
   productionReady: boolean;
-  hermesReady: boolean;
   gmailReady: boolean;
   outlookReady: boolean;
   strictDbReady: boolean;
@@ -337,10 +326,9 @@ function readinessSuites(input: {
     {
       name: "hermes_real_ai",
       command: "Configure Hermes from the sidebar Hermes workspace, then exercise search, translate, summary, and compose skills.",
-      status: input.hermesReady ? "ready" : "optional",
-      detail: input.hermesReady
-        ? "Hermes env runtime is configured."
-        : "Hermes runtime can be set from the sidebar Hermes workspace; env-level Hermes is not configured.",
+      status: "optional",
+      detail:
+        "Hermes is configured from the sidebar Hermes workspace; verify it after the stack is running.",
     },
     {
       name: "gmail_oauth",

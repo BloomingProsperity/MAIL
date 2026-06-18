@@ -275,7 +275,7 @@ export function dockerHealthEnvInvariants(
     {
       service: "api",
       name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
-      expected: "false",
+      expected: { kind: "absent" },
     },
     {
       service: "worker",
@@ -285,7 +285,7 @@ export function dockerHealthEnvInvariants(
     {
       service: "worker",
       name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
-      expected: "false",
+      expected: { kind: "absent" },
     },
     {
       service: "emailengine",

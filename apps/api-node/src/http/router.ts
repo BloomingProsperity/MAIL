@@ -4568,6 +4568,7 @@ function parseHermesProviderProbeJsonObject(
 function parseHermesRuntimeUpdateInput(body: string): {
   enabled: boolean;
   mode: HermesRuntimeMode;
+  assistantName?: string;
   providerKey?: string;
   endpointUrl?: string;
   model: string;
@@ -4588,6 +4589,9 @@ function parseHermesRuntimeUpdateInput(body: string): {
   return {
     enabled: payload.enabled,
     mode: payload.mode as HermesRuntimeMode,
+    ...(typeof payload.assistantName === "string"
+      ? { assistantName: payload.assistantName }
+      : {}),
     ...(typeof payload.providerKey === "string"
       ? { providerKey: payload.providerKey }
       : {}),

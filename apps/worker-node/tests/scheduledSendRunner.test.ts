@@ -182,6 +182,7 @@ describe("scheduled send runner", () => {
       workerId: "worker-a",
       now: new Date("2026-06-13T12:30:00.000Z"),
       leaseSeconds: 30,
+      nonEmailEngineProvidersEnabled: true,
       transports: {
         emailengine: {
           async submitMessage(input) {
@@ -223,6 +224,7 @@ describe("scheduled send runner", () => {
       workerId: "worker-a",
       now: new Date("2026-06-13T12:30:00.000Z"),
       leaseSeconds: 30,
+      nonEmailEngineProvidersEnabled: true,
       transports: {},
     });
 
@@ -236,7 +238,7 @@ describe("scheduled send runner", () => {
     });
   });
 
-  it("blocks native scheduled sends while the Native Engine is paused", async () => {
+  it("blocks non-EmailEngine scheduled sends on the EmailEngine-first launch path", async () => {
     const store = createStore([
       {
         ...job(),
@@ -251,7 +253,6 @@ describe("scheduled send runner", () => {
       workerId: "worker-a",
       now: new Date("2026-06-13T12:30:00.000Z"),
       leaseSeconds: 30,
-      nativeEngineEnabled: false,
       transports: {
         gmail: {
           async submitMessage(input) {
@@ -266,12 +267,12 @@ describe("scheduled send runner", () => {
       status: "failed",
       scheduledId: "schedule_1",
       errorMessage:
-        "Native Engine is paused for EmailEngine-first launch; cannot submit native scheduled send schedule_1",
+        "Non-EmailEngine account routing is disabled for launch; cannot submit scheduled send schedule_1",
     });
     expect(gmailCalls).toEqual([]);
     expect(store.failed[0]).toMatchObject({
       errorMessage:
-        "Native Engine is paused for EmailEngine-first launch; cannot submit native scheduled send schedule_1",
+        "Non-EmailEngine account routing is disabled for launch; cannot submit scheduled send schedule_1",
     });
   });
 

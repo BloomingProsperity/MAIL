@@ -9,13 +9,14 @@ import type {
 } from "./engine-command-resolver.js";
 import { EmailEngineRequestError } from "./mail-engine/email-engine-client.js";
 import type { EmailEngineClient } from "./mail-engine/email-engine-client.js";
-import type { NativeProvider } from "./mail-provider/contract.js";
 import { NonRetryableQueueError } from "./queue-errors.js";
+
+type PausedProvider = "gmail" | "graph" | "imap";
 
 export interface NativeEngineCommandProcessor {
   executeCommand(input: {
     command: EngineCommandRecord;
-    provider: NativeProvider;
+    provider: PausedProvider;
   }): Promise<void>;
 }
 
@@ -27,7 +28,7 @@ export interface EngineCommandDispatcherOptions {
     "updateMessage" | "moveMessage" | "deleteMessage"
   >;
   nativeCommandProcessor: NativeEngineCommandProcessor;
-  nativeEngineEnabled?: boolean;
+  nonEmailEngineProvidersEnabled?: boolean;
 }
 
 export function createEngineCommandDispatcher(
@@ -54,9 +55,9 @@ export function createEngineCommandDispatcher(
     }
 
     if (plan.engineProvider === "native") {
-      if (options.nativeEngineEnabled === false) {
+      if (options.nonEmailEngineProvidersEnabled !== true) {
         throw new NonRetryableQueueError(
-          `Native Engine is paused for EmailEngine-first launch; cannot execute native command ${command.id}`,
+          `Non-EmailEngine account routing is disabled for launch; cannot execute command ${command.id}`,
         );
       }
       await dispatchNative(options, plan, command);

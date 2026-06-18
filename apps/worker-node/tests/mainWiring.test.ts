@@ -65,27 +65,22 @@ describe("worker main wiring", () => {
     expect(main).toContain("createHermesRetentionCleanupLane");
   });
 
-  it("keeps native worker processors behind the paused-engine flag", async () => {
+  it("keeps self-developed Native/Core processors out of worker launch wiring", async () => {
     const main = await readFile(mainPath, "utf8");
 
-    expect(main).toContain("nativeEngineEnabled");
-    expect(main).toContain("createConfiguredNativeSendTransports");
+    expect(main).not.toContain("nativeEngineEnabled");
+    expect(main).not.toContain("createConfiguredNativeSendTransports");
+    expect(main).not.toContain("createConfiguredNativeAdapters");
+    expect(main).not.toContain("createConfiguredNativeCommandProcessor");
+    expect(main).not.toContain("createConfiguredNativeSendIdentityDiscovery");
+    expect(main).toContain("const nonEmailEngineProvidersEnabled = false");
     expect(main).toContain("createDisabledNativeSyncProcessor");
     expect(main).toContain("createDisabledNativeCommandProcessor");
     expect(main).toContain("createPostgresSendIdentityVerifier");
-    expect(main).toContain("nativeSendTransports");
     expect(main).toContain("sendIdentityVerifier");
     expect(main).toContain("transports: {");
     expect(main).toContain("emailengine: emailEngine");
-    expect(main).toContain("...nativeSendTransports");
-    expect(main).toContain("nativeEngineEnabled");
-  });
-
-  it("discovers native send identities during native mailbox discovery", async () => {
-    const main = await readFile(mainPath, "utf8");
-
-    expect(main).toContain("createConfiguredNativeSendIdentityDiscovery");
-    expect(main).toContain("sendIdentityDiscovery:");
+    expect(main).not.toContain("...nativeSendTransports");
   });
 
   it("names every worker lane for structured failure logs", async () => {

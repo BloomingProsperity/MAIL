@@ -8,7 +8,7 @@ COPY apps/web/package.json apps/web/package.json
 RUN npm ci
 
 COPY apps/api-node apps/api-node
-RUN npm run build -w apps/api-node
+RUN npx tsc -p apps/api-node/tsconfig.prod.json
 
 FROM node:24-alpine
 

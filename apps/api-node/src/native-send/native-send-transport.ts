@@ -12,16 +12,16 @@ import type {
   GmailSubmitClient,
   GraphSubmitClient,
 } from "./provider-submit-clients.js";
-import type { Queryable } from "./oauth-access-token.js";
+import type { Queryable } from "../accounts/oauth-access-token.js";
 import {
   GOOGLE_OAUTH_REFRESH_TOKEN_KIND,
   MICROSOFT_OAUTH_REFRESH_TOKEN_KIND,
   createDatabaseAccessTokenProvider,
-} from "./oauth-access-token.js";
+} from "../accounts/oauth-access-token.js";
 import {
   createGoogleOAuthRefreshClient,
   createMicrosoftOAuthRefreshClient,
-} from "./oauth-token-clients.js";
+} from "../accounts/oauth-token-clients.js";
 import {
   NativeProviderSubmitError,
   createGmailSubmitClient,

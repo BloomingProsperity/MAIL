@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { MICROSOFT_GRAPH_MAIL_SCOPE } from "../src/accounts/oauth-scopes";
-import { readApiConfig, readNativeEngineEnabled } from "../src/config";
+import { readApiConfig } from "../src/config";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
 const DEFAULT_EMAILENGINE_IMAGE =
@@ -62,25 +62,15 @@ describe("EmailEngine Docker configuration", () => {
     );
   });
 
-  it("keeps the self-built Native Engine disabled in default Docker wiring", async () => {
+  it("keeps self-developed Native/Core switches out of default Docker wiring", async () => {
     const envExample = await readProjectFile(".env.example");
     const compose = await readProjectFile("infra", "docker-compose.yml");
     const api = serviceSection(compose, "api");
     const worker = serviceSection(compose, "worker");
 
-    expect(envExample).toContain("EMAILHUB_NATIVE_ENGINE_ENABLED=false");
-    expect(api).toContain(
-      "EMAILHUB_NATIVE_ENGINE_ENABLED: ${EMAILHUB_NATIVE_ENGINE_ENABLED:-false}",
-    );
-    expect(worker).toContain(
-      "EMAILHUB_NATIVE_ENGINE_ENABLED: ${EMAILHUB_NATIVE_ENGINE_ENABLED:-false}",
-    );
-    expect(readNativeEngineEnabled({} as NodeJS.ProcessEnv)).toBe(false);
-    expect(
-      readNativeEngineEnabled({
-        EMAILHUB_NATIVE_ENGINE_ENABLED: "true",
-      } as NodeJS.ProcessEnv),
-    ).toBe(true);
+    expect(envExample).not.toContain("EMAILHUB_NATIVE_ENGINE_ENABLED");
+    expect(api).not.toContain("EMAILHUB_NATIVE_ENGINE_ENABLED");
+    expect(worker).not.toContain("EMAILHUB_NATIVE_ENGINE_ENABLED");
   });
 
   it("reads the prepared token flag without exposing token values", () => {
@@ -387,7 +377,7 @@ describe("EmailEngine Docker configuration", () => {
     expect(compose).toContain("emailhub-compose-attachments:");
   });
 
-  it("injects Hermes runtime environment into the API container", async () => {
+  it("keeps Hermes runtime configuration in the app while supporting an optional gateway", async () => {
     const envExample = await readProjectFile(".env.example");
     const compose = await readProjectFile("infra", "docker-compose.yml");
     const readme = await readProjectFile("README.md");
@@ -404,13 +394,14 @@ describe("EmailEngine Docker configuration", () => {
     const hermesOverlayApi = serviceSection(hermesCompose, "api");
     const hermes = serviceSection(hermesCompose, "hermes");
 
-    expect(envExample).toContain("HERMES_PROVIDER=hermes");
-    expect(envExample).toContain("HERMES_CHAT_COMPLETIONS_URL=");
-    expect(envExample).toContain("HERMES_API_KEY=");
-    expect(envExample).toContain("HERMES_MODEL=hermes-email");
+    expect(envExample).not.toContain("HERMES_PROVIDER=");
+    expect(envExample).not.toContain("HERMES_CHAT_COMPLETIONS_URL=");
+    expect(envExample).not.toContain("HERMES_API_KEY=");
+    expect(envExample).not.toContain("HERMES_MODEL=");
     expect(envExample).toContain(
       "HERMES_GATEWAY_IMAGE=ghcr.io/berriai/litellm:v1.89.1",
     );
+    expect(envExample).toContain("HERMES_GATEWAY_API_KEY=");
     expect(envExample).toContain("HERMES_BIND=127.0.0.1:8081");
     expect(envExample).toContain("HERMES_LITELLM_MODEL=openai/gpt-4o-mini");
     expect(envExample).toContain("HERMES_LITELLM_API_KEY=");
@@ -418,16 +409,14 @@ describe("EmailEngine Docker configuration", () => {
       "HERMES_LITELLM_API_BASE=https://api.openai.com/v1",
     );
     expect(envExample).toContain("HERMES_LITELLM_LOG=INFO");
-    expect(api).toContain("HERMES_PROVIDER: ${HERMES_PROVIDER:-hermes}");
-    expect(api).toContain(
-      "HERMES_CHAT_COMPLETIONS_URL: ${HERMES_CHAT_COMPLETIONS_URL:-}",
-    );
-    expect(api).toContain("HERMES_API_KEY: ${HERMES_API_KEY:-}");
-    expect(api).toContain("HERMES_MODEL: ${HERMES_MODEL:-hermes-email}");
+    expect(api).not.toContain("HERMES_PROVIDER");
+    expect(api).not.toContain("HERMES_CHAT_COMPLETIONS_URL");
+    expect(api).not.toContain("HERMES_API_KEY");
+    expect(api).not.toContain("HERMES_MODEL");
     expect(hermes).toContain(
       "image: ${HERMES_GATEWAY_IMAGE:-ghcr.io/berriai/litellm:",
     );
-    expect(hermes).toContain("LITELLM_MASTER_KEY: ${HERMES_API_KEY:?");
+    expect(hermes).toContain("LITELLM_MASTER_KEY: ${HERMES_GATEWAY_API_KEY:?");
     expect(hermes).toContain(
       "HERMES_LITELLM_MODEL: ${HERMES_LITELLM_MODEL:-openai/gpt-4o-mini}",
     );
@@ -441,19 +430,17 @@ describe("EmailEngine Docker configuration", () => {
     expect(hermes).toContain("${HERMES_BIND:-127.0.0.1:8081}:4000");
     expect(hermes).toContain("/health/liveliness");
     expect(hermesOverlayApi).toContain("condition: service_healthy");
-    expect(hermesOverlayApi).toContain("HERMES_PROVIDER: hermes");
-    expect(hermesOverlayApi).toContain(
-      "HERMES_CHAT_COMPLETIONS_URL: http://hermes:4000/v1/chat/completions",
-    );
-    expect(hermesOverlayApi).toContain("HERMES_MODEL: hermes-email");
+    expect(hermesOverlayApi).not.toContain("HERMES_PROVIDER");
+    expect(hermesOverlayApi).not.toContain("HERMES_CHAT_COMPLETIONS_URL");
+    expect(hermesOverlayApi).not.toContain("HERMES_MODEL");
     expect(litellmConfig).toContain("model_name: hermes-email");
     expect(litellmConfig).toContain("model: os.environ/HERMES_LITELLM_MODEL");
     expect(litellmConfig).toContain("api_key: os.environ/HERMES_LITELLM_API_KEY");
     expect(readme).toContain("infra/docker-compose.hermes.yml");
     expect(readme).toContain("npm run compose:up:hermes:detached");
     expect(readme).toContain("npm run compose:up:prod:hermes:detached");
-    expect(readme).toContain("http://hermes:4000/v1/chat/completions");
-    expect(readme).toContain("POST /api/hermes/runtime/test");
+    expect(readme).toContain("HERMES_GATEWAY_API_KEY");
+    expect(readme).toContain("choose a provider, enter the API Key");
   });
 
   it("passes Gmail and Outlook OAuth settings into self-hosted API and worker containers", async () => {
@@ -908,8 +895,11 @@ describe("EmailEngine Docker configuration", () => {
     expect(readme).toContain("npm run compose:up:prod");
     expect(readme).toContain("npm run compose:up:prod:hermes:detached");
     expect(readme).toContain("infra/docker-compose.hermes.yml");
-    expect(readme).toContain("http://hermes:4000/v1/chat/completions");
+    expect(readme).toContain("HERMES_GATEWAY_API_KEY");
+    expect(readme).toContain("open Hermes from");
+    expect(readme).not.toContain("HERMES_API_KEY`: bearer key");
     expect(deliveryPlan).toContain("infra/docker-compose.hermes.yml");
+    expect(deliveryPlan).toContain("UI-owned");
     expect(deliveryPlan).not.toContain(
       "does not yet bundle a runnable `hermes` service",
     );

@@ -4,27 +4,42 @@ import type {
   AccountProviderSettingsStore,
   AccountSyncPlan,
 } from "./account-provider-settings-store.js";
-import type {
-  ProviderMailbox,
-  NativeProvider,
-  ProviderMailboxIdentity,
-  ProviderSyncContinuation,
-} from "./mail-provider/contract.js";
-import type {
-  NativeSyncAccountResult,
-  NativeSyncProcessor,
-} from "./mail-provider/native-sync-processor.js";
 import { NonRetryableQueueError } from "./queue-errors.js";
 import type { EnqueueJobInput, SyncJobRecord } from "./sync-job-queue.js";
 
 export type SyncAccountJobHandler = (job: SyncJobRecord) => Promise<void>;
+
+type PausedProvider = "gmail" | "graph" | "imap";
+type ProviderMailboxIdentity = Record<string, unknown> & {
+  provider: PausedProvider;
+};
+type ProviderSyncContinuation = Record<string, unknown>;
+type ProviderMailbox = {
+  identity: ProviderMailboxIdentity;
+};
+type NativeSyncAccountResult = {
+  continuation?: ProviderSyncContinuation;
+};
+interface NativeSyncProcessor {
+  discoverMailboxes(input: {
+    accountId: string;
+    provider: PausedProvider;
+  }): Promise<{ mailboxes: ProviderMailbox[] }>;
+  syncAccount(input: {
+    accountId: string;
+    provider: PausedProvider;
+    mailbox?: ProviderMailboxIdentity;
+    limit?: number;
+    continuation?: ProviderSyncContinuation;
+  }): Promise<NativeSyncAccountResult>;
+}
 
 export interface CreateSyncAccountDispatcherInput {
   accountSettingsStore: AccountProviderSettingsStore;
   accountStateHandler?: SyncAccountJobHandler;
   emailEngineHandler: SyncAccountJobHandler;
   nativeSyncProcessor: NativeSyncProcessor;
-  nativeEngineEnabled?: boolean;
+  nonEmailEngineProvidersEnabled?: boolean;
   continuationQueue?: {
     enqueueJob(input: EnqueueJobInput): Promise<SyncJobRecord>;
   };
@@ -81,9 +96,9 @@ export function createSyncAccountDispatcher(
       return;
     }
 
-    if (input.nativeEngineEnabled === false) {
+    if (input.nonEmailEngineProvidersEnabled !== true) {
       throw new NonRetryableQueueError(
-        `Native Engine is paused for EmailEngine-first launch; cannot sync native account ${job.accountId}`,
+        `Non-EmailEngine account routing is disabled for launch; cannot sync account ${job.accountId}`,
       );
     }
 
@@ -130,7 +145,7 @@ async function syncNativeAccount(input: {
   if (input.payload.kind === "native_folder_discovery") {
     const result = await input.nativeSyncProcessor.discoverMailboxes({
       accountId: input.job.accountId!,
-      provider: input.plan.nativeProvider as NativeProvider,
+      provider: input.plan.nativeProvider as PausedProvider,
     });
 
     await enqueueFolderResyncJobs({
@@ -142,7 +157,7 @@ async function syncNativeAccount(input: {
 
   const result = await input.nativeSyncProcessor.syncAccount({
     accountId: input.job.accountId!,
-    provider: input.plan.nativeProvider as NativeProvider,
+    provider: input.plan.nativeProvider as PausedProvider,
     ...(input.payload.mailbox
       ? { mailbox: providerMailboxPayload(input.payload.mailbox) }
       : {}),
@@ -180,7 +195,7 @@ async function enqueueFolderResyncJobs(input: {
     return;
   }
 
-  const nativeProvider = input.dispatcher.plan.nativeProvider as NativeProvider;
+  const nativeProvider = input.dispatcher.plan.nativeProvider as PausedProvider;
   for (const mailbox of input.mailboxes) {
     const folderPayload = {
       kind: "folder_resync",
@@ -251,7 +266,7 @@ async function enqueueContinuation(input: {
     return;
   }
 
-  const nativeProvider = input.dispatcher.plan.nativeProvider as NativeProvider;
+  const nativeProvider = input.dispatcher.plan.nativeProvider as PausedProvider;
   const continuationPayload = {
     kind: "native_continuation",
     ...(Number.isInteger(input.dispatcher.payload.limit) &&

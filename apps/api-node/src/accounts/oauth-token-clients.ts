@@ -1,4 +1,4 @@
-import { MICROSOFT_GRAPH_MAIL_SCOPE } from "../accounts/oauth-scopes.js";
+import { MICROSOFT_GRAPH_MAIL_SCOPE } from "./oauth-scopes.js";
 
 export interface RefreshedAccessToken {
   accessToken: string;

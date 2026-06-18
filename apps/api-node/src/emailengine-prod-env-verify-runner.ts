@@ -72,7 +72,7 @@ export function productionEnvSecretValues(
     env.EMAILENGINE_AUTH_SERVER_SECRET,
     env.EENGINE_SECRET,
     env.POSTGRES_PASSWORD,
-    env.HERMES_API_KEY,
+    env.HERMES_GATEWAY_API_KEY,
     env.GOOGLE_OAUTH_CLIENT_SECRET,
     env.MICROSOFT_OAUTH_CLIENT_SECRET,
   ];

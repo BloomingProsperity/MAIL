@@ -288,9 +288,10 @@ describe("Hermes runtime routes", () => {
         return {
           enabled: true,
           mode: "external_hermes",
-          providerKey: "hermes",
-          endpointUrl: "http://hermes:4000/v1/chat/completions",
-          model: "hermes-email",
+          assistantName: "Hermes",
+          providerKey: "openai-api",
+          endpointUrl: "https://api.openai.com/v1/chat/completions",
+          model: "gpt-5.2",
           apiKeyConfigured: true,
           updatePolicy: "manual",
           updateChannel: "stable",
@@ -306,9 +307,10 @@ describe("Hermes runtime routes", () => {
         return {
           enabled: true,
           mode: "external_hermes",
-          providerKey: "custom",
-          endpointUrl: "https://gateway.example.test/v1/chat/completions",
-          model: "hermes-2-pro",
+          assistantName: "Mail Copilot",
+          providerKey: "nvidia",
+          endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+          model: "nvidia/llama-3.3-nemotron-super-49b-v1",
           apiKeyConfigured: true,
           updatePolicy: "notify",
           updateChannel: "stable",
@@ -330,9 +332,10 @@ describe("Hermes runtime routes", () => {
           body: JSON.stringify({
             enabled: true,
             mode: "external_hermes",
-            providerKey: "custom",
-            endpointUrl: "https://gateway.example.test/v1/chat/completions",
-            model: "hermes-2-pro",
+            assistantName: "Mail Copilot",
+            providerKey: "nvidia",
+            endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+            model: "nvidia/llama-3.3-nemotron-super-49b-v1",
             apiKey: "runtime-secret",
             updatePolicy: "notify",
             updateChannel: "stable",
@@ -346,8 +349,10 @@ describe("Hermes runtime routes", () => {
         expect(saved.status).toBe(200);
         const savedBody = await saved.json();
         expect(savedBody).toMatchObject({
-          endpointUrl: "https://gateway.example.test/v1/chat/completions",
-          model: "hermes-2-pro",
+          assistantName: "Mail Copilot",
+          providerKey: "nvidia",
+          endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+          model: "nvidia/llama-3.3-nemotron-super-49b-v1",
           apiKeyConfigured: true,
         });
         expect(JSON.stringify(savedBody)).not.toContain("runtime-secret");
@@ -355,9 +360,10 @@ describe("Hermes runtime routes", () => {
           {
             enabled: true,
             mode: "external_hermes",
-            providerKey: "custom",
-            endpointUrl: "https://gateway.example.test/v1/chat/completions",
-            model: "hermes-2-pro",
+            assistantName: "Mail Copilot",
+            providerKey: "nvidia",
+            endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+            model: "nvidia/llama-3.3-nemotron-super-49b-v1",
             apiKey: "runtime-secret",
             updatePolicy: "notify",
             updateChannel: "stable",

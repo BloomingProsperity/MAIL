@@ -1,12 +1,4 @@
-import type { AccessTokenProvider } from "../accounts/oauth-access-token.js";
-
-export interface GmailSubmitClient {
-  sendMessage(input: {
-    accountId: string;
-    raw: string;
-    threadId?: string;
-  }): Promise<{ id?: string; threadId?: string }>;
-}
+import type { AccessTokenProvider } from "./oauth-access-token.js";
 
 export interface GraphSubmitClient {
   sendMail(input: {
@@ -18,56 +10,13 @@ export interface GraphSubmitClient {
   }): Promise<unknown>;
 }
 
-export class NativeProviderSubmitError extends Error {
+export class GraphSubmitError extends Error {
   constructor(
-    readonly provider: string,
     readonly status: number,
     readonly code: string,
   ) {
-    super(`${provider} send failed: ${status} ${code}`);
+    super(`Microsoft Graph send failed: ${status} ${code}`);
   }
-}
-
-export function createGmailSubmitClient(input: {
-  accessTokenProvider: AccessTokenProvider;
-  baseUrl?: string;
-  fetchImpl?: typeof fetch;
-  userId?: string;
-}): GmailSubmitClient {
-  const baseUrl = (input.baseUrl ?? "https://gmail.googleapis.com/gmail/v1").replace(
-    /\/+$/,
-    "",
-  );
-  const fetchImpl = input.fetchImpl ?? fetch;
-  const userId = input.userId ?? "me";
-
-  return {
-    async sendMessage(message) {
-      const token = await input.accessTokenProvider.getAccessToken(
-        message.accountId,
-      );
-      const response = await fetchImpl(
-        `${baseUrl}/users/${encodeURIComponent(userId)}/messages/send`,
-        {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${token}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            raw: message.raw,
-            ...(message.threadId ? { threadId: message.threadId } : {}),
-          }),
-        },
-      );
-      const body = await readJson(response);
-      if (!response.ok) {
-        throw providerError("Gmail", response.status, body);
-      }
-
-      return asSendMessageResult(body);
-    },
-  };
 }
 
 export function createGraphSubmitClient(input: {
@@ -98,7 +47,7 @@ export function createGraphSubmitClient(input: {
         });
         const body = await readJson(response);
         if (!response.ok) {
-          throw providerError("Microsoft Graph", response.status, body);
+          throw graphError(response.status, body);
         }
 
         return body;
@@ -121,7 +70,7 @@ export function createGraphSubmitClient(input: {
       });
       const body = await readJson(response);
       if (!response.ok) {
-        throw providerError("Microsoft Graph", response.status, body);
+        throw graphError(response.status, body);
       }
 
       return body;
@@ -146,15 +95,11 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-function providerError(
-  provider: string,
-  status: number,
-  body: unknown,
-): Error {
-  return new NativeProviderSubmitError(provider, status, providerErrorCode(body));
+function graphError(status: number, body: unknown): Error {
+  return new GraphSubmitError(status, graphErrorCode(body));
 }
 
-function providerErrorCode(body: unknown): string {
+function graphErrorCode(body: unknown): string {
   const record = asRecord(body);
   const nested = asRecord(record.error);
   return (
@@ -164,14 +109,6 @@ function providerErrorCode(body: unknown): string {
     readString(record.error) ??
     "unknown_error"
   );
-}
-
-function asSendMessageResult(value: unknown): { id?: string; threadId?: string } {
-  const record = asRecord(value);
-  return {
-    ...(readString(record.id) ? { id: readString(record.id) } : {}),
-    ...(readString(record.threadId) ? { threadId: readString(record.threadId) } : {}),
-  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

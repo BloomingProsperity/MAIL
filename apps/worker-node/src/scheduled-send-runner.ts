@@ -1,4 +1,4 @@
-import type { NativeProvider } from "./mail-provider/contract.js";
+type PausedProvider = "gmail" | "graph" | "imap";
 
 export interface MailAddress {
   address: string;
@@ -6,7 +6,7 @@ export interface MailAddress {
 }
 
 export type ScheduledSendEngineProvider = "emailengine" | "native";
-export type ScheduledSendTransportKey = "emailengine" | NativeProvider;
+export type ScheduledSendTransportKey = "emailengine" | PausedProvider;
 export type MailThreadingAction = "reply" | "reply_all";
 
 export interface MailThreading {
@@ -34,7 +34,7 @@ export interface ScheduledSendJob {
   accountId: string;
   draftId: string;
   engineProvider: ScheduledSendEngineProvider;
-  nativeProvider?: NativeProvider;
+  nativeProvider?: PausedProvider;
   from?: MailAddress;
   to: MailAddress[];
   cc: MailAddress[];
@@ -121,7 +121,7 @@ export interface RunScheduledSendOnceInput {
   leaseSeconds: number;
   transport?: ScheduledSendTransport;
   transports?: Partial<Record<ScheduledSendTransportKey, ScheduledSendTransport>>;
-  nativeEngineEnabled?: boolean;
+  nonEmailEngineProvidersEnabled?: boolean;
   sendIdentityVerifier?: ScheduledSendIdentityVerifier;
   attachmentBlobStore?: ScheduledAttachmentBlobStore;
 }
@@ -282,9 +282,12 @@ function transportForJob(
   input: RunScheduledSendOnceInput,
   job: ScheduledSendJob,
 ): ScheduledSendTransport {
-  if (job.engineProvider === "native" && input.nativeEngineEnabled === false) {
+  if (
+    job.engineProvider === "native" &&
+    input.nonEmailEngineProvidersEnabled !== true
+  ) {
     throw new Error(
-      `Native Engine is paused for EmailEngine-first launch; cannot submit native scheduled send ${job.id}`,
+      `Non-EmailEngine account routing is disabled for launch; cannot submit scheduled send ${job.id}`,
     );
   }
 

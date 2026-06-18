@@ -16,6 +16,7 @@ import {
   Clock3,
   Download,
   FileText,
+  Globe2,
   Inbox,
   Italic,
   Link2,
@@ -47,6 +48,7 @@ import {
 } from "./features/compose/rich-text";
 import "./features/compose/ComposeSurface.css";
 import { ComposeReview } from "./features/compose/ComposeReview";
+import "./features/settings/SettingsAdmin.css";
 import { formatComposeWarnings } from "./features/compose/composeWarnings";
 import {
   HermesReaderTranslationControls,
@@ -117,7 +119,6 @@ import { SyncCenterAccountNextAction } from "./features/sync-center/SyncCenterAc
 import { SyncCenterLatestJobSummary } from "./features/sync-center/SyncCenterLatestJobSummary";
 import { ConnectionDiagnosticList } from "./features/sync-center/ConnectionDiagnosticList";
 import { DomainAliasSettingsPanel } from "./features/domain-alias/DomainAliasSettingsPanel";
-import { FollowUpTodoPanel } from "./features/follow-ups/FollowUpTodoPanel";
 import { ComposeAttachmentMaintenancePanel } from "./features/maintenance/ComposeAttachmentMaintenancePanel";
 import { SystemStatusSettingsPanel } from "./features/settings/SystemStatusSettingsPanel";
 import {
@@ -143,7 +144,6 @@ import type {
   HermesMessageOrganizationResult,
   HermesMemoryDto,
   HermesRuleCandidateDto,
-  HermesRuleDto,
   HermesRuleHistoryBackfillDto,
   HermesRuleSimulationDto,
   HermesSkillRequiredPermission,
@@ -180,8 +180,14 @@ import type {
   SyncCenterImapSmtpReauthorizationInput
 } from "./lib/emailHubApi";
 
-type ViewId = "mail" | "add-mail" | "sync" | "hermes" | "search" | "settings";
-type SettingsSectionId = "aliases" | "system" | "notifications";
+type ViewId =
+  | "mail"
+  | "add-mail"
+  | "search"
+  | "hermes"
+  | "domains"
+  | "settings"
+  | "sync";
 type MailDensity = "roomy" | "comfortable" | "compact";
 const MAX_COMPOSE_ATTACHMENTS = 20;
 const MAX_COMPOSE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -294,25 +300,15 @@ const PREVIEW_ACCOUNT_ID = "account_1";
 const navItems: Array<{ id: ViewId; label: string; icon: typeof Inbox; count?: number }> = [
   { id: "mail", label: "邮箱", icon: Inbox },
   { id: "add-mail", label: "添加邮箱", icon: MailPlus },
-  { id: "sync", label: "同步中心", icon: Clock3 },
+  { id: "search", label: "搜索", icon: Search },
   { id: "hermes", label: "Hermes", icon: Sparkles },
+  { id: "domains", label: "配置域名", icon: Globe2 },
   { id: "settings", label: "设置", icon: Settings }
-];
-
-const settingsSections: Array<{
-  id: SettingsSectionId;
-  label: string;
-  description: string;
-  icon: typeof Inbox;
-}> = [
-  { id: "aliases", label: "别名转发", description: "转发规则和目标邮箱", icon: Send },
-  { id: "system", label: "系统状态", description: "自托管服务诊断", icon: CheckCircle2 },
-  { id: "notifications", label: "数据维护", description: "清理、审计、隐私", icon: Settings }
 ];
 
 const folders: FolderItem[] = [
   { id: "inbox", label: "收件箱", count: 128 },
-  { id: "priority", label: "今日优先", count: 9 },
+  { id: "flagged", label: "已标记", count: 9 },
   { id: "starred", label: "星标", count: 36 },
   { id: "snoozed", label: "稍后提醒", count: 12 },
   { id: "drafts", label: "草稿", count: 18 },
@@ -530,6 +526,7 @@ const mailItems: MailItem[] = [
 export interface AppProps {
   api?: EmailHubApi;
   defaultAccountId?: string;
+  initialView?: ViewId;
   restrictToDefaultAccount?: boolean;
   oauthRedirect?: (url: string) => void;
 }
@@ -563,12 +560,6 @@ interface HermesNoticeState {
 
 type HermesNoticeAction = "open_runtime_settings";
 
-interface HermesSkillSettingsFocus {
-  skillId: string;
-  requiredPermission?: HermesSkillRequiredPermission;
-  requestId: number;
-}
-
 interface HermesDockReaderIntent {
   action: HermesReaderCommandAction;
   requestId: number;
@@ -587,7 +578,9 @@ export function App(props: AppProps = {}) {
     maxSize: 280,
     storageKey: "email-hub:layout:sidebar",
   });
-  const [activeView, setActiveView] = useState<ViewId>("mail");
+  const [activeView, setActiveView] = useState<ViewId>(
+    props.initialView ?? "mail",
+  );
   const [activeAddMailProviderGroup, setActiveAddMailProviderGroup] = useState<
     AddMailProviderGroupId | undefined
   >();
@@ -598,8 +591,6 @@ export function App(props: AppProps = {}) {
   const [hermesPrompt, setHermesPrompt] = useState("");
   const [hermesDockNoticeState, setHermesDockNoticeState] =
     useState<HermesNoticeState>();
-  const [hermesSkillSettingsFocus, setHermesSkillSettingsFocus] =
-    useState<HermesSkillSettingsFocus>();
   const [hermesDockResult, setHermesDockResult] = useState<
     HermesEmailSearchQaResult | undefined
   >();
@@ -654,25 +645,13 @@ export function App(props: AppProps = {}) {
 
   function setHermesDockNotice(
     notice: string | undefined,
-    skillId?: string,
-    requiredPermission?: HermesSkillRequiredPermission,
+    _skillId?: string,
+    _requiredPermission?: HermesSkillRequiredPermission,
     action?: HermesNoticeAction,
   ) {
     setHermesDockNoticeState(
-      notice ? { text: notice, skillId, requiredPermission, action } : undefined,
+      notice ? { text: notice, action } : undefined,
     );
-  }
-
-  function openHermesSkillSettings(
-    skillId: string,
-    requiredPermission?: HermesSkillRequiredPermission,
-  ) {
-    setHermesSkillSettingsFocus((current) => ({
-      skillId,
-      requiredPermission,
-      requestId: (current?.requestId ?? 0) + 1,
-    }));
-    setActiveView("hermes");
   }
 
   function openHermesRuntimeSettings() {
@@ -1103,23 +1082,6 @@ export function App(props: AppProps = {}) {
       if (isCurrentHermesDockRequest(requestId)) {
         setHermesDockBusy(false);
       }
-    }
-  }
-
-  async function handleSettingsHermesRuleApproved(rule: HermesRuleDto) {
-    const target = hermesRuleNavigationTarget(rule);
-    await refreshNavigationSummary();
-    await refreshLabels(rule.accountId);
-    await refreshHermesWorkspaceContext({
-      accountId: rule.accountId,
-      force: true,
-    });
-    if (target?.kind === "savedView") {
-      await loadSavedView(target.id);
-      setActiveView("mail");
-    } else if (target?.kind === "label") {
-      await loadLabel(target.id);
-      setActiveView("mail");
     }
   }
 
@@ -1791,7 +1753,7 @@ export function App(props: AppProps = {}) {
           <span className="online-dot" />
           <div>
             <strong>已连接 {connectedAccountCount} 个邮箱</strong>
-            <span>{connectedAccountCount > 0 ? "Hermes 服务可用" : "等待邮箱接入"}</span>
+            <span>{connectedAccountCount > 0 ? "Hermes 可用" : "等待邮箱接入"}</span>
           </div>
         </div>
       </aside>
@@ -1853,7 +1815,6 @@ export function App(props: AppProps = {}) {
               onLabelsChanged={(accountId) => void refreshLabels(accountId)}
               onTrackFollowUp={() => void trackSelectedFollowUp()}
               onConfirmHermesFollowUp={() => void confirmHermesFollowUp()}
-              onOpenHermesSkillSettings={openHermesSkillSettings}
               onOpenHermesRuntimeSettings={openHermesRuntimeSettings}
             />
           ) : (
@@ -1906,23 +1867,16 @@ export function App(props: AppProps = {}) {
             quickCategories={navigationQuickCategories}
             launch={searchLaunch}
             onOpenResult={openSearchResult}
-            onOpenHermesSkillSettings={openHermesSkillSettings}
             onOpenHermesRuntimeSettings={openHermesRuntimeSettings}
           />
         ) : null}
         {activeView === "hermes" ? (
           <HermesPage
             api={props.api}
-            accountId={props.api ? selectedAccountId : accountId}
-            focusedHermesSkillId={hermesSkillSettingsFocus?.skillId}
-            focusedHermesSkillPermission={
-              hermesSkillSettingsFocus?.requiredPermission
-            }
-            hermesSkillFocusRequestId={hermesSkillSettingsFocus?.requestId}
-            onHermesRuleApproved={(rule) =>
-              void handleSettingsHermesRuleApproved(rule)
-            }
           />
+        ) : null}
+        {activeView === "domains" ? (
+          <DomainSetupPage api={props.api} />
         ) : null}
         {activeView === "settings" ? (
           <SettingsPage
@@ -1944,8 +1898,6 @@ export function App(props: AppProps = {}) {
         workspaceContext={hermesWorkspaceContext}
         workspaceContextLoading={hermesWorkspaceContextLoading}
         busy={hermesDockBusy}
-        noticeActionSkillId={hermesDockNoticeState?.skillId}
-        noticeActionPermission={hermesDockNoticeState?.requiredPermission}
         noticeActionLabel={hermesNoticeActionLabel(hermesDockNoticeState?.action)}
         formatDate={formatMailDate}
         onPromptChange={updateHermesPrompt}
@@ -1958,7 +1910,6 @@ export function App(props: AppProps = {}) {
             : undefined
         }
         onOpenSearch={launchGlobalSearch}
-        onOpenHermesSkillSettings={openHermesSkillSettings}
       />
     </div>
   );
@@ -2216,10 +2167,6 @@ function MailWorkspace(props: {
   onLabelsChanged: (accountId: string) => void;
   onTrackFollowUp: () => void;
   onConfirmHermesFollowUp: () => void;
-  onOpenHermesSkillSettings: (
-    skillId: string,
-    requiredPermission?: HermesSkillRequiredPermission,
-  ) => void;
   onOpenHermesRuntimeSettings: () => void;
 }) {
   const directoryResize = useResizablePane({
@@ -2353,20 +2300,20 @@ function MailWorkspace(props: {
 
   function setComposeNotice(
     notice: string,
-    skillId?: string,
-    requiredPermission?: HermesSkillRequiredPermission,
+    _skillId?: string,
+    _requiredPermission?: HermesSkillRequiredPermission,
     action?: HermesNoticeAction,
   ) {
-    setComposeNoticeState({ text: notice, skillId, requiredPermission, action });
+    setComposeNoticeState({ text: notice, action });
   }
 
   function setReaderHermesNotice(
     notice: string,
-    skillId?: string,
-    requiredPermission?: HermesSkillRequiredPermission,
+    _skillId?: string,
+    _requiredPermission?: HermesSkillRequiredPermission,
     action?: HermesNoticeAction,
   ) {
-    setReaderHermesNoticeState({ text: notice, skillId, requiredPermission, action });
+    setReaderHermesNoticeState({ text: notice, action });
   }
 
   function openComposeSurface(surface: ComposeSurface, focus: "to" | "body") {
@@ -4196,8 +4143,6 @@ function MailWorkspace(props: {
           {composeNotice ? (
             <HermesNotice
               notice={composeNotice}
-              skillId={composeNoticeState.skillId}
-              requiredPermission={composeNoticeState.requiredPermission}
               actionLabel={hermesNoticeActionLabel(composeNoticeState.action)}
               onAction={
                 composeNoticeState.action === "open_runtime_settings"
@@ -4205,7 +4150,6 @@ function MailWorkspace(props: {
                   : undefined
               }
               compact
-              onOpenSkillSettings={props.onOpenHermesSkillSettings}
             />
           ) : null}
           <label className="compose-from-field">
@@ -5247,15 +5191,12 @@ function MailWorkspace(props: {
             {readerHermesNotice ? (
               <HermesNotice
                 notice={readerHermesNotice}
-                skillId={readerHermesNoticeState.skillId}
-                requiredPermission={readerHermesNoticeState.requiredPermission}
                 actionLabel={hermesNoticeActionLabel(readerHermesNoticeState.action)}
                 onAction={
                   readerHermesNoticeState.action === "open_runtime_settings"
                     ? props.onOpenHermesRuntimeSettings
                     : undefined
                 }
-                onOpenSkillSettings={props.onOpenHermesSkillSettings}
               />
             ) : null}
 
@@ -5364,12 +5305,6 @@ function MailWorkspace(props: {
           </div>
         </article>
       </div>
-
-      <FollowUpTodoPanel
-        api={props.api}
-        accountId={props.accountId}
-        embedded
-      />
     </section>
   );
 }
@@ -7662,10 +7597,6 @@ function SearchPage(props: {
   quickCategories: QuickCategory[];
   launch?: SearchLaunch;
   onOpenResult: (mail: MailItem) => void;
-  onOpenHermesSkillSettings: (
-    skillId: string,
-    requiredPermission?: HermesSkillRequiredPermission,
-  ) => void;
   onOpenHermesRuntimeSettings: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -8187,15 +8118,12 @@ function SearchPage(props: {
           ) : null}
           <HermesNotice
             notice={notice}
-            skillId={noticeState.skillId}
-            requiredPermission={noticeState.requiredPermission}
             actionLabel={hermesNoticeActionLabel(noticeState.action)}
             onAction={
               noticeState.action === "open_runtime_settings"
                 ? props.onOpenHermesRuntimeSettings
                 : undefined
             }
-            onOpenSkillSettings={props.onOpenHermesSkillSettings}
           />
         {results.length > 0
           ? results.map((mail) => (
@@ -8224,28 +8152,18 @@ function SearchPage(props: {
 
 function HermesPage(props: {
   api?: EmailHubApi;
-  accountId?: string;
-  focusedHermesSkillId?: string;
-  focusedHermesSkillPermission?: HermesSkillRequiredPermission;
-  hermesSkillFocusRequestId?: number;
-  onHermesRuleApproved?: (rule: HermesRuleDto) => void;
 }) {
   return (
     <section className="workspace-page page-scroll">
       <header className="topbar single">
         <div>
           <h1>Hermes</h1>
-          <p>AI 入口、服务接入、学习记录和规则集中管理。</p>
+          <p>选择 AI 服务商并连接 API Key。</p>
         </div>
       </header>
       <div className="settings-detail">
         <HermesRuntimeSettingsPanel
           api={props.api}
-          accountId={props.accountId}
-          focusedSkillId={props.focusedHermesSkillId}
-          focusedPermission={props.focusedHermesSkillPermission}
-          focusRequestId={props.hermesSkillFocusRequestId}
-          onHermesRuleApproved={props.onHermesRuleApproved}
         />
       </div>
     </section>
@@ -8255,48 +8173,41 @@ function HermesPage(props: {
 function SettingsPage(props: {
   api?: EmailHubApi;
 }) {
-  const [activeSection, setActiveSection] =
-    useState<SettingsSectionId>("notifications");
-
   return (
     <section className="workspace-page page-scroll">
       <header className="topbar single">
         <div>
           <h1>设置</h1>
-          <p>别名转发、系统状态、清理和隐私集中管理。</p>
+          <p>账户偏好和管理员工具。</p>
         </div>
       </header>
-      <div className="settings-layout">
-        <nav className="settings-nav" aria-label="设置目录">
-          {settingsSections.map((section) => {
-            const Icon = section.icon;
-            return (
-              <button
-                key={section.id}
-                className={activeSection === section.id ? "active" : ""}
-                type="button"
-                aria-label={section.label}
-                onClick={() => setActiveSection(section.id)}
-              >
-                <Icon size={18} />
-                <span>{section.label}</span>
-                <small>{section.description}</small>
-              </button>
-            );
-          })}
-        </nav>
+      <div className="settings-detail settings-admin-detail">
+        <details className="settings-drawer">
+          <summary>
+            <Settings size={18} />
+            <span>管理员工具</span>
+          </summary>
+          <SystemStatusSettingsPanel api={props.api} />
+          <ComposeAttachmentMaintenancePanel api={props.api} />
+        </details>
+      </div>
+    </section>
+  );
+}
 
-        <div className="settings-detail">
-          {activeSection === "aliases" ? (
-            <DomainAliasSettingsPanel api={props.api} mode="aliases" />
-          ) : null}
-          {activeSection === "system" ? (
-            <SystemStatusSettingsPanel api={props.api} />
-          ) : null}
-          {activeSection === "notifications" ? (
-            <ComposeAttachmentMaintenancePanel api={props.api} />
-          ) : null}
+function DomainSetupPage(props: {
+  api?: EmailHubApi;
+}) {
+  return (
+    <section className="workspace-page page-scroll">
+      <header className="topbar single">
+        <div>
+          <h1>配置域名</h1>
+          <p>设置收信域名、DNS 记录和 Cloudflare 辅助配置。</p>
         </div>
+      </header>
+      <div className="settings-detail">
+        <DomainAliasSettingsPanel api={props.api} mode="domains" />
       </div>
     </section>
   );

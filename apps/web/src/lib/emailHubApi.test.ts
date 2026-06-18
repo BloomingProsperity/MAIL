@@ -712,10 +712,10 @@ describe("emailHubApi", () => {
     const runtimeTestResult: HermesRuntimeTestResult = {
       ok: true,
       checkedAt: "2026-06-14T08:00:00.000Z",
-      providerKey: "ollama",
+      providerKey: "nvidia",
       requestProtocol: "openai_chat_completions",
-      endpointUrl: "http://localhost:11434/v1/chat/completions",
-      model: "hermes-2-pro",
+      endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+      model: "nvidia/llama-3.3-nemotron-super-49b-v1",
     };
     const fetchMock = vi
       .fn()
@@ -723,13 +723,14 @@ describe("emailHubApi", () => {
         jsonResponse({
           providers: [
             {
-              key: "novita",
-              label: "NovitaAI",
+              key: "nvidia",
+              label: "NVIDIA Build",
               category: "cloud",
               authType: "api_key",
               endpointEditable: true,
-              aliases: ["novita-ai"],
-              modelExamples: ["moonshotai/kimi-k2.5"],
+              aliases: ["nvidia-nim"],
+              modelExamples: ["nvidia/llama-3.3-nemotron-super-49b-v1"],
+              defaultEndpoint: "https://integrate.api.nvidia.com/v1/chat/completions",
               capabilities: ["chat", "email_skills"],
             },
           ],
@@ -739,40 +740,36 @@ describe("emailHubApi", () => {
         jsonResponse({
           enabled: true,
           mode: "external_hermes",
-          providerKey: "hermes",
-          endpointUrl: "http://hermes:4000/v1/chat/completions",
-          model: "hermes-email",
+          providerKey: "openai-api",
+          endpointUrl: "https://api.openai.com/v1/chat/completions",
+          model: "gpt-5.2",
           apiKeyConfigured: true,
           updatePolicy: "manual",
           updateChannel: "stable",
-          updateAvailable: false,
-          source: "database",
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
           enabled: true,
-          mode: "openai_compatible",
-          providerKey: "ollama",
-          endpointUrl: "http://localhost:11434/v1/chat/completions",
-          model: "hermes-2-pro",
+          mode: "external_hermes",
+          providerKey: "nvidia",
+          endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+          model: "nvidia/llama-3.3-nemotron-super-49b-v1",
           apiKeyConfigured: true,
           updatePolicy: "notify",
           updateChannel: "stable",
-          updateAvailable: false,
-          source: "database",
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
           ok: true,
           status: "ready",
-          providerKey: "ollama",
-          label: "Ollama 本地",
-          category: "local",
-          authType: "none",
-          endpointUrl: "http://localhost:11434/v1/chat/completions",
-          model: "hermes-2-pro",
+          providerKey: "nvidia",
+          label: "NVIDIA Build",
+          category: "cloud",
+          authType: "api_key",
+          endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+          model: "nvidia/llama-3.3-nemotron-super-49b-v1",
           missing: [],
           checkedAt: "2026-06-14T08:02:00.000Z",
         }),
@@ -780,15 +777,13 @@ describe("emailHubApi", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           enabled: true,
-          mode: "openai_compatible",
-          providerKey: "ollama",
-          endpointUrl: "http://localhost:11434/v1/chat/completions",
-          model: "hermes-2-pro",
+          mode: "external_hermes",
+          providerKey: "nvidia",
+          endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+          model: "nvidia/llama-3.3-nemotron-super-49b-v1",
           apiKeyConfigured: false,
           updatePolicy: "notify",
           updateChannel: "stable",
-          updateAvailable: false,
-          source: "database",
         }),
       )
       .mockResolvedValueOnce(
@@ -822,26 +817,28 @@ describe("emailHubApi", () => {
     await api.getHermesRuntimeSettings();
     await api.updateHermesRuntimeSettings({
       enabled: true,
-      mode: "openai_compatible",
-      providerKey: "ollama",
-      endpointUrl: "http://localhost:11434/v1/chat/completions",
-      model: "hermes-2-pro",
+      mode: "external_hermes",
+      assistantName: "Mail Copilot",
+      providerKey: "nvidia",
+      endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+      model: "nvidia/llama-3.3-nemotron-super-49b-v1",
       apiKey: "runtime-secret",
       updatePolicy: "notify",
       updateChannel: "stable",
     });
     await api.probeHermesProvider({
-      providerKey: "ollama",
-      endpointUrl: "http://localhost:11434/v1/chat/completions",
-      model: "hermes-2-pro",
+      providerKey: "nvidia",
+      endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+      model: "nvidia/llama-3.3-nemotron-super-49b-v1",
       apiKey: "runtime-secret",
     });
     await api.clearHermesRuntimeApiKey({
       enabled: true,
-      mode: "openai_compatible",
-      providerKey: "ollama",
-      endpointUrl: "http://localhost:11434/v1/chat/completions",
-      model: "hermes-2-pro",
+      mode: "external_hermes",
+      assistantName: "Mail Copilot",
+      providerKey: "nvidia",
+      endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+      model: "nvidia/llama-3.3-nemotron-super-49b-v1",
       updatePolicy: "notify",
       updateChannel: "stable",
     });
@@ -866,10 +863,11 @@ describe("emailHubApi", () => {
         method: "PUT",
         body: JSON.stringify({
           enabled: true,
-          mode: "openai_compatible",
-          providerKey: "ollama",
-          endpointUrl: "http://localhost:11434/v1/chat/completions",
-          model: "hermes-2-pro",
+          mode: "external_hermes",
+          assistantName: "Mail Copilot",
+          providerKey: "nvidia",
+          endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+          model: "nvidia/llama-3.3-nemotron-super-49b-v1",
           apiKey: "runtime-secret",
           updatePolicy: "notify",
           updateChannel: "stable",
@@ -878,12 +876,12 @@ describe("emailHubApi", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      "http://localhost:8080/api/hermes/providers/ollama/probe",
+      "http://localhost:8080/api/hermes/providers/nvidia/probe",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          endpointUrl: "http://localhost:11434/v1/chat/completions",
-          model: "hermes-2-pro",
+          endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+          model: "nvidia/llama-3.3-nemotron-super-49b-v1",
           apiKey: "runtime-secret",
         }),
       }),
@@ -895,10 +893,11 @@ describe("emailHubApi", () => {
     );
     expect(JSON.parse(String(clearKeyCall[1]?.body))).toEqual({
       enabled: true,
-      mode: "openai_compatible",
-      providerKey: "ollama",
-      endpointUrl: "http://localhost:11434/v1/chat/completions",
-      model: "hermes-2-pro",
+      mode: "external_hermes",
+      assistantName: "Mail Copilot",
+      providerKey: "nvidia",
+      endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+      model: "nvidia/llama-3.3-nemotron-super-49b-v1",
       clearApiKey: true,
       updatePolicy: "notify",
       updateChannel: "stable",

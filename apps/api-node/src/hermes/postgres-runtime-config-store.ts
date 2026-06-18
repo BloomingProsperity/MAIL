@@ -24,6 +24,7 @@ interface Queryable {
 interface HermesRuntimeSettingsRow extends Record<string, unknown> {
   enabled: boolean;
   mode: HermesRuntimeMode;
+  assistant_name: string;
   provider_key: string;
   endpoint_url: string | null;
   model: string;
@@ -51,6 +52,7 @@ export function createPostgresHermesRuntimeConfigStore(
           SELECT
             enabled,
             mode,
+            assistant_name,
             provider_key,
             endpoint_url,
             model,
@@ -78,6 +80,7 @@ export function createPostgresHermesRuntimeConfigStore(
           SELECT
             settings.enabled,
             settings.mode,
+            settings.assistant_name,
             settings.provider_key,
             settings.endpoint_url,
             settings.model,
@@ -142,6 +145,7 @@ export function createPostgresHermesRuntimeConfigStore(
             id,
             enabled,
             mode,
+            assistant_name,
             provider_key,
             endpoint_url,
             model,
@@ -157,33 +161,35 @@ export function createPostgresHermesRuntimeConfigStore(
             $4,
             $5,
             $6,
+            $7,
             CASE
-              WHEN $7::boolean THEN NULL
-              WHEN $8::boolean THEN $9
+              WHEN $8::boolean THEN NULL
+              WHEN $9::boolean THEN $10
               ELSE NULL
             END,
             CASE
-              WHEN $8::boolean THEN now()
+              WHEN $9::boolean THEN now()
               ELSE NULL
             END,
-            $10,
-            $11
+            $11,
+            $12
           )
           ON CONFLICT (id) DO UPDATE
           SET
             enabled = EXCLUDED.enabled,
             mode = EXCLUDED.mode,
+            assistant_name = EXCLUDED.assistant_name,
             provider_key = EXCLUDED.provider_key,
             endpoint_url = EXCLUDED.endpoint_url,
             model = EXCLUDED.model,
             api_key_secret_ref = CASE
-              WHEN $7::boolean THEN NULL
-              WHEN $8::boolean THEN $9
+              WHEN $8::boolean THEN NULL
+              WHEN $9::boolean THEN $10
               ELSE hermes_runtime_settings.api_key_secret_ref
             END,
             api_key_updated_at = CASE
-              WHEN $7::boolean THEN NULL
-              WHEN $8::boolean THEN now()
+              WHEN $8::boolean THEN NULL
+              WHEN $9::boolean THEN now()
               ELSE hermes_runtime_settings.api_key_updated_at
             END,
             update_policy = EXCLUDED.update_policy,
@@ -192,6 +198,7 @@ export function createPostgresHermesRuntimeConfigStore(
           RETURNING
             enabled,
             mode,
+            assistant_name,
             provider_key,
             endpoint_url,
             model,
@@ -208,6 +215,7 @@ export function createPostgresHermesRuntimeConfigStore(
           SETTINGS_ID,
           input.enabled,
           input.mode,
+          input.assistantName ?? "Hermes",
           input.providerKey ?? "custom",
           input.endpointUrl ?? null,
           input.model,
@@ -229,6 +237,7 @@ export function createPostgresHermesRuntimeConfigStore(
             id,
             enabled,
             mode,
+            assistant_name,
             provider_key,
             model,
             update_policy,
@@ -240,9 +249,10 @@ export function createPostgresHermesRuntimeConfigStore(
           VALUES (
             $1,
             FALSE,
-            'openai_compatible',
-            'custom',
-            'hermes-email',
+            'external_hermes',
+            'Hermes',
+            'openai-api',
+            'gpt-5.2',
             'manual',
             'stable',
             $2,
@@ -258,6 +268,7 @@ export function createPostgresHermesRuntimeConfigStore(
           RETURNING
             enabled,
             mode,
+            assistant_name,
             provider_key,
             endpoint_url,
             model,
@@ -289,6 +300,7 @@ function rowToPublicSettings(
   return {
     enabled: row.enabled,
     mode: row.mode,
+    assistantName: row.assistant_name,
     providerKey: row.provider_key,
     ...(row.endpoint_url ? { endpointUrl: row.endpoint_url } : {}),
     model: row.model,

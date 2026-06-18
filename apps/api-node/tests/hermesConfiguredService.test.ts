@@ -2,22 +2,32 @@ import { describe, expect, it } from "vitest";
 
 import { createConfiguredHermesTranslationService } from "../src/hermes/configured-service";
 
+function configuredRuntimeService(apiKey = "hermes-secret") {
+  return {
+    async getConnectionSettings() {
+      return {
+        enabled: true,
+        providerKey: "hermes",
+        endpointUrl: "http://hermes:4000/v1/chat/completions",
+        model: "hermes-email",
+        ...(apiKey ? { apiKey } : {}),
+      };
+    },
+  };
+}
+
 describe("configured Hermes translation service", () => {
-  it("returns undefined until a Hermes chat endpoint is configured", () => {
-    expect(createConfiguredHermesTranslationService({ env: {} })).toBeUndefined();
+  it("returns undefined until Hermes runtime settings are saved", () => {
+    expect(createConfiguredHermesTranslationService()).toBeUndefined();
   });
 
-  it("builds translation service from environment and optional run store", async () => {
+  it("builds translation service from saved runtime settings and optional run store", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const memoryQueries: unknown[] = [];
     const persisted: unknown[] = [];
     const ids = ["run_1", "audit_1"];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_API_KEY: "hermes-secret",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => ids.shift() ?? "unexpected",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
@@ -87,10 +97,7 @@ describe("configured Hermes translation service", () => {
   it("builds reply draft support from the same Hermes endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => "run_reply_1",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
@@ -120,10 +127,7 @@ describe("configured Hermes translation service", () => {
   it("builds quick reply support from the same Hermes endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => "run_quick_1",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
@@ -164,10 +168,7 @@ describe("configured Hermes translation service", () => {
   it("builds rewrite polish support from the same Hermes endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => "run_rewrite_1",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
@@ -210,10 +211,7 @@ describe("configured Hermes translation service", () => {
   it("builds thread summary support from the same Hermes endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => "run_summary_1",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
@@ -252,10 +250,7 @@ describe("configured Hermes translation service", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const mailSearchCalls: unknown[] = [];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => "run_search_1",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
@@ -349,10 +344,7 @@ describe("configured Hermes translation service", () => {
   it("builds action item extraction support from the same Hermes endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => "run_action_1",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
@@ -401,10 +393,7 @@ describe("configured Hermes translation service", () => {
   it("builds label suggestion support from the same Hermes endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => "run_label_1",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
@@ -444,10 +433,7 @@ describe("configured Hermes translation service", () => {
   it("builds priority triage support from the same Hermes endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => "run_priority_1",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
@@ -492,10 +478,7 @@ describe("configured Hermes translation service", () => {
   it("builds follow-up tracker support from the same Hermes endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
-      env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
-        HERMES_MODEL: "hermes-email",
-      },
+      runtimeConfigService: configuredRuntimeService(),
       createId: () => "run_followup_1",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });

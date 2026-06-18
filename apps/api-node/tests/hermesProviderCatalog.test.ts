@@ -38,13 +38,14 @@ describe("Hermes provider catalog", () => {
         "sglang",
         "localai",
         "azure-openai",
+        "nvidia",
         "bedrock",
         "custom",
       ]),
     );
     expect(providers.find((provider) => provider.key === "custom")).toMatchObject(
       {
-        label: "自定义 Hermes 网关",
+        label: "自定义兼容服务",
         category: "custom",
         endpointEditable: true,
         authType: "api_key_optional",
@@ -84,6 +85,10 @@ describe("Hermes provider catalog", () => {
     });
     expect(providers.find((provider) => provider.key === "ollama")).toMatchObject({
       requestProtocol: "openai_chat_completions",
+    });
+    expect(providers.find((provider) => provider.key === "nvidia")).toMatchObject({
+      requestProtocol: "openai_chat_completions",
+      defaultEndpoint: "https://integrate.api.nvidia.com/v1/chat/completions",
     });
   });
 
@@ -125,8 +130,8 @@ describe("Hermes provider catalog", () => {
       capabilities: expect.arrayContaining(["provider_routing", "fallback"]),
     });
     expect(providers.find((provider) => provider.key === "custom")).toMatchObject({
-      label: "自定义 Hermes 网关",
-      aliases: expect.arrayContaining(["hermes-gateway", "custom-endpoint"]),
+      label: "自定义兼容服务",
+      aliases: expect.arrayContaining(["openai-compatible", "custom-endpoint"]),
     });
 
     for (const provider of providers.filter((item) =>

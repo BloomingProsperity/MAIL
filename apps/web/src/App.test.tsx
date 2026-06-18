@@ -90,20 +90,6 @@ describe("Email Hub first UI baseline", () => {
     );
   }
 
-  function openHermesSection(sectionLabel: string) {
-    openHermesPage();
-    fireEvent.click(
-      screen.getByRole("button", { name: `打开 ${sectionLabel}` }),
-    );
-  }
-
-  function openHermesAuditLog() {
-    openHermesSection("学习记录");
-    fireEvent.click(
-      screen.getByRole("button", { name: "切换 Hermes 审计记录" }),
-    );
-  }
-
   it("keeps global functions in the left sidebar and mail folders in the second column", () => {
     const { container } = render(<App />);
 
@@ -113,10 +99,11 @@ describe("Email Hub first UI baseline", () => {
     const navLabels = within(globalNav).getAllByRole("button").map((button) => button.textContent ?? "");
     expect(navLabels).toContain("邮箱128");
     expect(navLabels).toContain("添加邮箱");
-    expect(navLabels).toContain("同步中心");
+    expect(navLabels).toContain("搜索");
     expect(navLabels).toContain("Hermes");
+    expect(navLabels).toContain("配置域名");
     expect(navLabels).toContain("设置");
-    expect(navLabels).not.toContain("搜索");
+    expect(navLabels).not.toContain("同步中心");
     expect(navLabels).not.toContain("待办9");
     expect(screen.getByRole("search", { name: "全局邮件搜索" })).toBeTruthy();
 
@@ -579,7 +566,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 执行计划能力已禁用，请到 Hermes 配置 > 能力选项启用“执行计划”。",
+        "Hermes 执行计划暂时不可用，请稍后再试。",
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 执行计划")).toBeNull();
@@ -610,7 +597,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 执行计划能力已禁用，请到 Hermes 配置 > 能力选项启用“执行计划”。",
+        "Hermes 执行计划暂时不可用，请稍后再试。",
       ),
     ).toBeTruthy();
     expect(within(plan).getByRole("button", { name: "确认计划" })).toBeTruthy();
@@ -716,7 +703,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 搜索问答能力已禁用，请到 Hermes 配置 > 能力选项启用“搜索问答”。",
+        "Hermes 搜索问答暂时不可用，请稍后再试。",
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
@@ -1581,19 +1568,12 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 邮件总结能力缺少正文读取权限，请到 Hermes 配置 > 能力选项打开“邮件总结”的“读取正文”开关。",
+        "Hermes 邮件总结暂时不可用，系统正在自动调整读取权限。",
       ),
     ).toBeTruthy();
     expect(screen.getByText("Live body from backend")).toBeTruthy();
     expect(screen.queryByText("需要确认发布时间，并在今天回复 Lina。")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "打开能力选项" }));
-    const bodyReadToggle = await screen.findByLabelText(
-      "Allow Hermes body reads 邮件总结",
-    );
-    await waitFor(() => {
-      expect(document.activeElement).toBe(bodyReadToggle);
-    });
+    expect(screen.queryByRole("button", { name: "打开能力选项" })).toBeNull();
   });
 
   it("ignores a stale Hermes reader summary after switching messages", async () => {
@@ -1790,27 +1770,30 @@ describe("Email Hub first UI baseline", () => {
     );
   });
 
-  it("keeps Settings focused and puts Todo in the mail workspace", () => {
+  it("keeps Settings, Domain setup, and Hermes focused on user-facing work", async () => {
     render(<App />);
 
     const globalNav = screen.getByRole("navigation");
     expect(within(globalNav).queryByRole("button", { name: "待办9" })).toBeNull();
+    expect(within(globalNav).queryByRole("button", { name: "同步中心" })).toBeNull();
     expect(within(globalNav).getByRole("button", { name: "Hermes" })).toBeTruthy();
+    expect(within(globalNav).getByRole("button", { name: "配置域名" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "邮箱待办" })).toBeNull();
 
-    const todoPanel = screen.getByRole("region", { name: "邮箱待办" });
-    expect(within(todoPanel).getByRole("heading", { name: "待办" })).toBeTruthy();
-    expect(within(todoPanel).getByText("今天 17:00 前确认 Q2 合作方案")).toBeTruthy();
+    fireEvent.click(within(globalNav).getByRole("button", { name: "配置域名" }));
+    expect(screen.getByRole("heading", { name: "配置域名" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "域名管理" })).toBeTruthy();
 
     fireEvent.click(within(globalNav).getByRole("button", { name: "设置" }));
 
-    const settingsNav = screen.getByLabelText("设置目录");
-    expect(within(settingsNav).queryByRole("button", { name: /Hermes/ })).toBeNull();
-    expect(within(settingsNav).queryByRole("button", { name: "待办" })).toBeNull();
-    expect(
-      within(settingsNav).queryByRole("button", { name: "新发件人处理" }),
-    ).toBeNull();
-    expect(within(settingsNav).queryByRole("button", { name: "域名管理" })).toBeNull();
-    expect(screen.getByRole("heading", { name: "数据维护" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
+    expect(screen.queryByLabelText("设置目录")).toBeNull();
+    expect(screen.queryByRole("button", { name: "待办" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "新发件人处理" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "域名管理" })).toBeNull();
+
+    fireEvent.click(screen.getByText("管理员工具"));
+    expect(await screen.findByLabelText("数据维护面板")).toBeTruthy();
   });
 
   it("loads, saves, and tests Hermes connection from its sidebar page", async () => {
@@ -1820,39 +1803,44 @@ describe("Email Hub first UI baseline", () => {
 
     openHermesPage();
 
-    expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    expect(
-      await screen.findByDisplayValue("http://hermes:4000/v1/chat/completions"),
-    ).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("服务地址"), {
-      target: { value: "http://localhost:11434/v1/chat/completions" },
+    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
+    expect((screen.getByLabelText("助手名称") as HTMLInputElement).value).toBe(
+      "Hermes",
+    );
+    expect(screen.getByLabelText("LLM 服务商")).toBeTruthy();
+    expect(screen.getByLabelText("API Key")).toBeTruthy();
+    expect(screen.queryByLabelText("服务地址")).toBeNull();
+    expect(screen.queryByLabelText("模型名称")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("助手名称"), {
+      target: { value: "Mail Copilot" },
     });
-    fireEvent.change(screen.getByLabelText("模型名称"), {
-      target: { value: "hermes-2-pro" },
+    fireEvent.change(screen.getByLabelText("LLM 服务商"), {
+      target: { value: "nvidia" },
     });
-    fireEvent.change(screen.getByLabelText("访问密钥"), {
+    fireEvent.change(screen.getByLabelText("API Key"), {
       target: { value: "runtime-secret" },
     });
 
     fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
     await waitFor(() => {
       expect(api.probeHermesProvider).toHaveBeenCalledWith({
-        providerKey: "hermes",
-        endpointUrl: "http://localhost:11434/v1/chat/completions",
-        model: "hermes-2-pro",
+        providerKey: "nvidia",
+        model: "nvidia/llama-3.3-nemotron-super-49b-v1",
         apiKey: "runtime-secret",
       });
     });
-    expect(await screen.findByText(/当前配置可用/)).toBeTruthy();
+    expect(await screen.findByText("连接成功。")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
     await waitFor(() => {
       expect(api.updateHermesRuntimeSettings).toHaveBeenCalledWith({
         enabled: true,
         mode: "external_hermes",
-        providerKey: "hermes",
-        endpointUrl: "http://localhost:11434/v1/chat/completions",
-        model: "hermes-2-pro",
+        assistantName: "Mail Copilot",
+        providerKey: "nvidia",
+        endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+        model: "nvidia/llama-3.3-nemotron-super-49b-v1",
         apiKey: "runtime-secret",
         updatePolicy: "manual",
         updateChannel: "stable",
@@ -1867,275 +1855,45 @@ describe("Email Hub first UI baseline", () => {
 
     openHermesPage();
 
-    expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
+    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
 
     await waitFor(() => {
       expect(api.testHermesRuntimeConnection).toHaveBeenCalledTimes(1);
     });
     expect(api.probeHermesProvider).not.toHaveBeenCalled();
-    expect(await screen.findByText(/当前配置可用：hermes-email/)).toBeTruthy();
+    expect(await screen.findByText("连接成功。")).toBeTruthy();
   });
 
-  it("lets users edit Hermes skill options from the Hermes page", async () => {
-    const api = createApiFixture();
-    const refreshedProfile = hermesResourceProfileFixture({
-      skills: {
-        total: 14,
-        enabled: 12,
-        bodyReadEnabled: 10,
-        memoryWriteEnabled: 4,
-        confirmationRequired: 5,
-        maxContextCharsPerRun: 12000,
-        maxMemoryItemsPerRun: 2,
-        enabledContextBudgetChars: 144000,
-        enabledMemoryBudgetItems: 24,
-      },
-      deployment: {
-        profile: "small",
-        recommendedMinimum: {
-          cpuCores: 2,
-          memoryGb: 4,
-          diskGb: 20,
-        },
-        localModelRecommendedMinimum: {
-          cpuCores: 4,
-          memoryGb: 16,
-          diskGb: 60,
-        },
-      },
-    });
-    vi.mocked(api.getHermesResourceProfile)
-      .mockResolvedValueOnce(hermesResourceProfileFixture())
-      .mockResolvedValueOnce(refreshedProfile);
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("能力选项");
-
-    const skillPanel = await screen.findByLabelText("Hermes skill settings");
-    expect(within(skillPanel).getByText("翻译邮件")).toBeTruthy();
-    await waitFor(() => {
-      expect(api.listHermesSkills).toHaveBeenCalled();
-    });
-
-    fireEvent.click(
-      within(skillPanel).getByLabelText("Enable Hermes skill 翻译邮件"),
-    );
-    fireEvent.click(
-      within(skillPanel).getByLabelText("Allow Hermes body reads 翻译邮件"),
-    );
-    fireEvent.click(
-      within(skillPanel).getByLabelText("Require Hermes confirmation 翻译邮件"),
-    );
-    fireEvent.click(
-      within(skillPanel).getByRole("button", {
-        name: "切换 Hermes 高级能力选项",
-      }),
-    );
-    fireEvent.change(
-      within(skillPanel).getByLabelText("设置 翻译邮件 上下文字符"),
-      { target: { value: "12000" } },
-    );
-    fireEvent.change(
-      within(skillPanel).getByLabelText("设置 翻译邮件 记忆条数"),
-      { target: { value: "2" } },
-    );
-    fireEvent.change(
-      within(skillPanel).getByLabelText(
-        "设置 翻译邮件 自定义指令",
-      ),
-      { target: { value: "Use formal Chinese for customer emails." } },
-    );
-    fireEvent.click(
-      within(skillPanel).getByRole("button", {
-        name: "Save Hermes skill settings 翻译邮件",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(api.updateHermesSkillSettings).toHaveBeenCalledWith({
-        skillId: "translate_text",
-        patch: {
-          enabled: false,
-          maxContextChars: 12000,
-          memoryLimit: 2,
-          allowBodyRead: false,
-          allowMemoryWrite: false,
-          requireConfirmation: true,
-          customInstructions: "Use formal Chinese for customer emails.",
-        },
-      });
-    });
-    expect(api.getHermesResourceProfile).toHaveBeenCalledTimes(2);
-    expect(
-      await screen.findByText("能力选项已保存：翻译邮件，资源画像已刷新。"),
-    ).toBeTruthy();
-    const profile = await screen.findByLabelText("Hermes resource profile");
-    await waitFor(() => {
-      expect(within(profile).getByText("12/14")).toBeTruthy();
-      expect(within(profile).getByText("12,000")).toBeTruthy();
-      expect(within(profile).getByText("轻量")).toBeTruthy();
-    });
-  });
-
-  it("lets users discard unsaved Hermes skill edits from the Hermes page", async () => {
+  it("does not expose Hermes ability, rule, memory, or audit controls to users", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesSection("能力选项");
+    openHermesPage();
 
-    const skillPanel = await screen.findByLabelText("Hermes skill settings");
-    await waitFor(() => {
-      expect(api.listHermesSkills).toHaveBeenCalled();
-    });
-
-    const translateCard = within(skillPanel)
-      .getByText("翻译邮件")
-      .closest("article") as HTMLElement;
-    fireEvent.click(
-      within(skillPanel).getByRole("button", {
-        name: "切换 Hermes 高级能力选项",
-      }),
-    );
-    const enableToggle = within(translateCard).getByLabelText(
-      "Enable Hermes skill 翻译邮件",
-    ) as HTMLInputElement;
-    const maxContextInput = within(translateCard).getByLabelText(
-      "设置 翻译邮件 上下文字符",
-    ) as HTMLInputElement;
-    const memoryLimitInput = within(translateCard).getByLabelText(
-      "设置 翻译邮件 记忆条数",
-    ) as HTMLInputElement;
-    const customInstructionsInput = within(translateCard).getByLabelText(
-      "设置 翻译邮件 自定义指令",
-    ) as HTMLTextAreaElement;
-    const resetButton = within(translateCard).getByRole("button", {
-      name: "Reset Hermes skill settings 翻译邮件",
-    }) as HTMLButtonElement;
-    const saveButton = within(translateCard).getByRole("button", {
-      name: "Save Hermes skill settings 翻译邮件",
-    }) as HTMLButtonElement;
-
-    expect(resetButton.disabled).toBe(true);
-    expect(saveButton.disabled).toBe(true);
-
-    fireEvent.click(enableToggle);
-    fireEvent.change(maxContextInput, { target: { value: "12000" } });
-    fireEvent.change(memoryLimitInput, { target: { value: "2" } });
-    fireEvent.change(customInstructionsInput, {
-      target: { value: "Prefer bilingual output for launch partners." },
-    });
-
-    expect(
-      within(translateCard).getByText(/未保存 · 12,000 字符 · 2 条记忆/),
-    ).toBeTruthy();
-    expect(resetButton.disabled).toBe(false);
-    expect(saveButton.disabled).toBe(false);
-
-    fireEvent.click(resetButton);
-
-    expect(enableToggle.checked).toBe(true);
-    expect(maxContextInput.value).toBe("24000");
-    expect(memoryLimitInput.value).toBe("6");
-    expect(customInstructionsInput.value).toBe("");
-    expect(
-      within(translateCard).getByText(/已同步 · 24,000 字符 · 6 条记忆/),
-    ).toBeTruthy();
-    expect(await screen.findByText("已撤回未保存更改：翻译邮件。")).toBeTruthy();
-    expect(api.updateHermesSkillSettings).not.toHaveBeenCalled();
+    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
+    expect(screen.queryByText("能力选项")).toBeNull();
+    expect(screen.queryByText("规则")).toBeNull();
+    expect(screen.queryByText("学习记录")).toBeNull();
+    expect(screen.queryByText("审计记录")).toBeNull();
+    expect(screen.queryByLabelText("Hermes skill settings")).toBeNull();
+    expect(screen.queryByLabelText("Hermes 规则管理")).toBeNull();
+    expect(screen.queryByLabelText("Hermes 学习记录")).toBeNull();
+    expect(screen.queryByLabelText("Hermes 审计日志")).toBeNull();
+    expect(api.listHermesSkills).not.toHaveBeenCalled();
+    expect(api.listHermesRules).not.toHaveBeenCalled();
+    expect(api.listHermesMemories).not.toHaveBeenCalled();
+    expect(api.listHermesAuditLog).not.toHaveBeenCalled();
   });
 
-  it("shows Hermes resource profile and self-hosted machine guidance", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.getHermesResourceProfile).mockResolvedValueOnce(
-      hermesResourceProfileFixture({
-        skills: {
-          total: 14,
-          enabled: 11,
-          bodyReadEnabled: 9,
-          memoryWriteEnabled: 4,
-          confirmationRequired: 5,
-          maxContextCharsPerRun: 48000,
-          maxMemoryItemsPerRun: 8,
-          enabledContextBudgetChars: 410000,
-          enabledMemoryBudgetItems: 64,
-        },
-        retention: {
-          retentionDays: 21,
-          cleanupIntervalMs: 1800000,
-          cleanupLimit: 300,
-          managedTables: ["hermes_skill_runs"],
-        },
-        deployment: {
-          profile: "medium",
-          recommendedMinimum: {
-            cpuCores: 4,
-            memoryGb: 8,
-            diskGb: 40,
-          },
-          localModelRecommendedMinimum: {
-            cpuCores: 8,
-            memoryGb: 32,
-            diskGb: 100,
-          },
-        },
-        guardrails: [
-          "Prompt context is capped per skill before provider calls and audit persistence.",
-          "Memory fan-out is capped per skill through memoryLimit.",
-          "Retention cleanup prunes expired Hermes caches, plans, feedback, audit events, and skill runs in bounded batches.",
-        ],
-      }),
-    );
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("能力选项");
-
-    const profile = await screen.findByLabelText("Hermes resource profile");
-    await waitFor(() => {
-      expect(api.getHermesResourceProfile).toHaveBeenCalled();
-    });
-    expect(within(profile).getByText("11/14")).toBeTruthy();
-    expect(within(profile).getByText("48,000")).toBeTruthy();
-    expect(within(profile).getByText("标准")).toBeTruthy();
-    expect(within(profile).getByText(/4C \/ 8GB RAM \/ 40GB disk/)).toBeTruthy();
-    expect(
-      await screen.findByText(/Hermes 保留 21 天数据，清理间隔 30 分钟/),
-    ).toBeTruthy();
-    expect(
-      await screen.findByText(/本地模型建议至少 8C \/ 32GB RAM \/ 100GB disk/),
-    ).toBeTruthy();
-    const guardrails = await screen.findByLabelText("Hermes resource guardrails");
-    expect(
-      within(guardrails).getByText(
-        "调用前按单项能力预算截断上下文，并按实际内容审计。",
-      ),
-    ).toBeTruthy();
-    expect(
-      within(guardrails).getByText(
-        "每项能力按记忆条数上限读取，避免记忆扇出失控。",
-      ),
-    ).toBeTruthy();
-    expect(
-      within(guardrails).getByText(
-        "保留清理会分批删除过期缓存、计划、反馈、审计和运行记录。",
-      ),
-    ).toBeTruthy();
-  });
-
-  it("opens data maintenance from Settings", async () => {
+  it("opens data maintenance from the collapsed Settings admin tools", async () => {
     render(<App />);
 
     fireEvent.click(
       within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
     );
-    fireEvent.click(
-      within(screen.getByLabelText("设置目录")).getByRole("button", {
-        name: "数据维护",
-      }),
-    );
+    fireEvent.click(screen.getByText("管理员工具"));
 
     expect(await screen.findByLabelText("数据维护面板")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "数据维护" })).toBeTruthy();
@@ -2148,919 +1906,43 @@ describe("Email Hub first UI baseline", () => {
 
     openHermesPage();
 
-    expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "清除访问密钥" }));
+    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "清除 API Key" }));
 
     await waitFor(() => {
       expect(api.clearHermesRuntimeApiKey).toHaveBeenCalledWith({
         enabled: true,
         mode: "external_hermes",
-        providerKey: "hermes",
-        endpointUrl: "http://hermes:4000/v1/chat/completions",
-        model: "hermes-email",
+        assistantName: "Hermes",
+        providerKey: "openai-api",
+        endpointUrl: "https://api.openai.com/v1/chat/completions",
+        model: "gpt-5.2",
         updatePolicy: "manual",
         updateChannel: "stable",
       });
     });
-    expect(await screen.findByText("访问密钥已清除。")).toBeTruthy();
+    expect(await screen.findByText("API Key 已清除。")).toBeTruthy();
   });
 
-  it("lets users pause and restore Hermes rules from the Hermes page", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    expect(within(rulePanel).getByText("启用验证码智能分组")).toBeTruthy();
-    expect(within(rulePanel).getByText(/内容标签/)).toBeTruthy();
-    expect(within(rulePanel).getByText(/应用标签 验证码/)).toBeTruthy();
-    await waitFor(() => {
-      expect(api.listHermesRules).toHaveBeenCalledWith({
-        accountId: "account_1",
-        limit: 50,
-      });
-    });
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "Disable Hermes rule 启用验证码智能分组",
-      }),
-    );
-    await waitFor(() => {
-      expect(api.updateHermesRule).toHaveBeenCalledWith({
-        accountId: "account_1",
-        ruleId: "rule_codes",
-        enabled: false,
-      });
-    });
-    expect(await screen.findByText("Hermes 规则已停用：启用验证码智能分组。")).toBeTruthy();
-    expect(
-      within(rulePanel).getByRole("button", {
-        name: "Enable Hermes rule 启用验证码智能分组",
-      }),
-    ).toBeTruthy();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "Enable Hermes rule 启用验证码智能分组",
-      }),
-    );
-    await waitFor(() => {
-      expect(api.updateHermesRule).toHaveBeenCalledWith({
-        accountId: "account_1",
-        ruleId: "rule_codes",
-        enabled: true,
-      });
-    });
-    expect(await screen.findByText("Hermes 规则已恢复：启用验证码智能分组。")).toBeTruthy();
-  });
-
-  it("lets users reorder Hermes rules from the Hermes page", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.listHermesRules).mockResolvedValueOnce({
-      items: [
-        {
-          id: "rule_codes",
-          accountId: "account_1",
-          candidateId: "candidate_codes",
-          title: "启用验证码智能分组",
-          ruleType: "content_label",
-          condition: { anyKeywords: ["验证码", "verification", "otp"] },
-          action: {
-            type: "apply_label",
-            labelId: "label_code",
-            labelName: "验证码",
-            labelColor: "blue",
-            applyToHistory: true,
-            providerWriteback: false,
-            requiresConfirmation: false,
-          },
-          confidence: 0.9,
-          enabled: true,
-          sortOrder: 1000,
-          createdAt: "2026-06-13T10:02:00.000Z",
-          approvedAt: "2026-06-13T10:02:00.000Z",
-        },
-        {
-          id: "rule_receipts",
-          accountId: "account_1",
-          candidateId: "candidate_receipts",
-          title: "启用发票/账单智能分组",
-          ruleType: "content_label",
-          condition: { anyKeywords: ["发票", "invoice", "receipt"] },
-          action: {
-            type: "apply_label",
-            labelId: "label_receipts",
-            labelName: "发票/账单",
-            labelColor: "green",
-            applyToHistory: true,
-            providerWriteback: false,
-            requiresConfirmation: false,
-          },
-          confidence: 0.82,
-          enabled: true,
-          sortOrder: 2000,
-          createdAt: "2026-06-13T10:15:00.000Z",
-          approvedAt: "2026-06-13T10:15:00.000Z",
-        },
-      ],
-    });
-    vi.mocked(api.updateHermesRule).mockImplementation(async (input) => ({
-      id: input.ruleId,
-      accountId: input.accountId,
-      candidateId:
-        input.ruleId === "rule_codes" ? "candidate_codes" : "candidate_receipts",
-      title:
-        input.ruleId === "rule_codes"
-          ? "启用验证码智能分组"
-          : "启用发票/账单智能分组",
-      ruleType: "content_label",
-      condition:
-        input.ruleId === "rule_codes"
-          ? { anyKeywords: ["验证码", "verification", "otp"] }
-          : { anyKeywords: ["发票", "invoice", "receipt"] },
-      action:
-        input.ruleId === "rule_codes"
-          ? {
-              type: "apply_label",
-              labelId: "label_code",
-              labelName: "验证码",
-              labelColor: "blue",
-              applyToHistory: true,
-              providerWriteback: false,
-              requiresConfirmation: false,
-            }
-          : {
-              type: "apply_label",
-              labelId: "label_receipts",
-              labelName: "发票/账单",
-              labelColor: "green",
-              applyToHistory: true,
-              providerWriteback: false,
-              requiresConfirmation: false,
-            },
-      confidence: input.ruleId === "rule_codes" ? 0.9 : 0.82,
-      enabled: input.enabled ?? true,
-      sortOrder: input.sortOrder ?? (input.ruleId === "rule_codes" ? 1000 : 2000),
-      createdAt:
-        input.ruleId === "rule_codes"
-          ? "2026-06-13T10:02:00.000Z"
-          : "2026-06-13T10:15:00.000Z",
-      approvedAt:
-        input.ruleId === "rule_codes"
-          ? "2026-06-13T10:02:00.000Z"
-          : "2026-06-13T10:15:00.000Z",
-    } satisfies HermesRuleDto));
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "Move Hermes rule down 启用验证码智能分组",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(api.updateHermesRule).toHaveBeenCalledWith({
-        accountId: "account_1",
-        ruleId: "rule_codes",
-        sortOrder: 2000,
-      });
-      expect(api.updateHermesRule).toHaveBeenCalledWith({
-        accountId: "account_1",
-        ruleId: "rule_receipts",
-        sortOrder: 1000,
-      });
-    });
-    expect(
-      await screen.findByText("Hermes 规则顺序已调整：启用验证码智能分组。"),
-    ).toBeTruthy();
-    expect(within(rulePanel).getByText(/启用发票\/账单智能分组/)).toBeTruthy();
-  });
-
-  it("lets users manually run an approved Hermes rule from the Hermes page", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "Run Hermes rule 启用验证码智能分组",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(api.runHermesRule).toHaveBeenCalledWith({
-        accountId: "account_1",
-        ruleId: "rule_codes",
-        limit: 5000,
-      });
-    });
-    expect(
-      await screen.findByText(
-        "Hermes 规则已运行：启用验证码智能分组，命中 7 封邮件，新增 3 个标签关联。",
-      ),
-    ).toBeTruthy();
-    expect(within(rulePanel).getByText(/最近运行：命中 7 封，新增 3 个标签关联/)).toBeTruthy();
-  });
-
-  it("loads recent Hermes rule execution history in Settings", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.listHermesRuleExecutions).mockResolvedValueOnce({
-      items: [
-        {
-          id: "run_active_recent",
-          accountId: "account_1",
-          ruleId: "rule_codes",
-          mode: "active",
-          matchedCount: 5,
-          appliedCount: 1,
-          sampleMessageIds: ["message_1"],
-          actionPreview: {
-            type: "apply_label",
-            labelId: "label_code",
-            labelName: "验证码",
-          },
-          createdAt: "2026-06-13T10:29:00.000Z",
-        },
-      ],
-    });
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    await waitFor(() => {
-      expect(api.listHermesRuleExecutions).toHaveBeenCalledWith({
-        accountId: "account_1",
-        limit: 100,
-      });
-    });
-    expect(within(rulePanel).getByText(/最近运行：命中 5 封，新增 1 个标签关联/)).toBeTruthy();
-  });
-
-  it("loads pending Hermes rule candidates in Settings", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.listHermesRuleCandidates).mockResolvedValueOnce({
-      items: [
-        {
-          id: "candidate_receipts",
-          accountId: "account_1",
-          title: "启用发票/账单智能分组",
-          ruleType: "content_label",
-          condition: { anyKeywords: ["发票", "invoice", "receipt"] },
-          action: {
-            type: "apply_label",
-            labelName: "发票/账单",
-            labelColor: "green",
-            providerWriteback: false,
-            requiresConfirmation: true,
-          },
-          confidence: 0.82,
-          status: "shadow",
-          evidenceMessageIds: [],
-          createdAt: "2026-06-13T10:15:00.000Z",
-        },
-      ],
-    });
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    await waitFor(() => {
-      expect(api.listHermesRuleCandidates).toHaveBeenCalledWith({
-        accountId: "account_1",
-        status: "shadow",
-        limit: 50,
-      });
-    });
-    expect(within(rulePanel).getByText("启用发票/账单智能分组")).toBeTruthy();
-    expect(within(rulePanel).getByText(/82% · 待启用/)).toBeTruthy();
-    expect(within(rulePanel).getByText(/启用前必须先预览影响/)).toBeTruthy();
-  });
-
-  it("lets users draft, simulate, and approve Hermes rules from the Hermes page", async () => {
-    const api = createApiFixture();
-    const command = "帮我创建一个验证码分组规则";
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.change(within(rulePanel).getByLabelText("描述要创建的 Hermes 规则"), {
-      target: { value: command },
-    });
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
-
-    await waitFor(() => {
-      expect(api.draftHermesRule).toHaveBeenCalledWith({
-        accountId: "account_1",
-        command,
-      });
-    });
-    expect(within(rulePanel).getByText(/关键词 验证码、verification、otp/)).toBeTruthy();
-    expect(within(rulePanel).getByText(/启用前必须先预览影响/)).toBeTruthy();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "预览 Hermes 规则影响 启用验证码智能分组",
-      }),
-    );
-    await waitFor(() => {
-      expect(api.simulateHermesRule).toHaveBeenCalledWith({
-        accountId: "account_1",
-        candidateId: "candidate_codes",
-        sampleLimit: 25,
-      });
-    });
-    expect(within(rulePanel).getByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "启用 Hermes 规则 启用验证码智能分组",
-      }),
-    );
-    await waitFor(() => {
-      expect(api.createHermesActionPlan).toHaveBeenCalledWith({
-        accountId: "account_1",
-        candidateId: "candidate_codes",
-        sampleLimit: 25,
-      });
-      expect(api.confirmHermesActionPlan).toHaveBeenCalledWith({
-        planId: "plan_1",
-        accountId: "account_1",
-        candidateId: "candidate_codes",
-      });
-    });
-    expect(api.getMailNavigationSummary).toHaveBeenCalled();
-    expect(api.listLabels).toHaveBeenCalledWith({ accountId: "account_1" });
-    await waitFor(() => {
-      expect(api.getHermesWorkspaceContext).toHaveBeenCalledWith({
-        accountId: "account_1",
-        ruleLimit: 10,
-        labelLimit: 20,
-      });
-      expect(api.listMessages).toHaveBeenLastCalledWith({
-        accountId: "account_1",
-        limit: 50,
-        sort: "smart",
-        savedView: "codes",
-      });
-    });
-  });
-
-  it("opens label-backed Hermes rules from the Hermes page when no saved view is returned", async () => {
-    const api = createApiFixture();
-    const command = "帮我创建一个验证码分组规则";
-    vi.mocked(api.confirmHermesActionPlan).mockResolvedValueOnce({
-      id: "confirmation_label_1",
-      auditEventId: "audit_confirm_label_1",
-      planId: "plan_1",
-      accountId: "account_1",
-      candidateId: "candidate_codes",
-      status: "completed",
-      confirmedAt: "2026-06-13T10:02:00.000Z",
-      rule: {
-        id: "rule_codes",
-        accountId: "account_1",
-        candidateId: "candidate_codes",
-        title: "启用验证码智能分组",
-        ruleType: "content_label",
-        condition: { anyKeywords: ["验证码", "verification", "otp"] },
-        action: {
-          type: "apply_label",
-          labelId: "label_code",
-          labelName: "验证码",
-          labelColor: "blue",
-          applyToHistory: true,
-          providerWriteback: false,
-          requiresConfirmation: false,
-        },
-        confidence: 0.9,
-        enabled: true,
-        sortOrder: 1000,
-        createdAt: "2026-06-13T10:02:00.000Z",
-        approvedAt: "2026-06-13T10:02:00.000Z",
-      },
-      historyBackfill: {
-        accountId: "account_1",
-        ruleId: "rule_codes",
-        matchedCount: 4,
-        appliedCount: 4,
-        sampleMessageIds: ["message_1", "message_2"],
-      },
-      safety: {
-        requiresUserConfirmation: false,
-        providerWriteback: false,
-        appliesToHistory: true,
-        destructive: false,
-      },
-      steps: [
-        {
-          id: "approve_rule_candidate",
-          title: "启用规则",
-          mode: "mutation",
-          status: "completed",
-          detail: "启用验证码智能分组",
-        },
-      ],
-    } satisfies HermesActionPlanConfirmationDto);
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.change(within(rulePanel).getByLabelText("描述要创建的 Hermes 规则"), {
-      target: { value: command },
-    });
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
-    expect(await within(rulePanel).findByText(/启用前必须先预览影响/)).toBeTruthy();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "预览 Hermes 规则影响 启用验证码智能分组",
-      }),
-    );
-    expect(await within(rulePanel).findByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "启用 Hermes 规则 启用验证码智能分组",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(api.listMessages).toHaveBeenLastCalledWith({
-        accountId: "account_1",
-        limit: 50,
-        sort: "smart",
-        labelIds: ["label_code"],
-        tagMode: "any",
-      });
-    });
-  });
-
-  it("explains when Hermes rule confirmation is disabled by action-plan skill settings", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.createHermesActionPlan).mockRejectedValueOnce(
-      new ApiRequestError(403, "hermes_skill_disabled", {
-        error: "hermes_skill_disabled",
-        skillId: "action_plan",
-      }),
-    );
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
-    expect(await within(rulePanel).findByText(/启用前必须先预览影响/)).toBeTruthy();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "预览 Hermes 规则影响 启用验证码智能分组",
-      }),
-    );
-    expect(await within(rulePanel).findByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "启用 Hermes 规则 启用验证码智能分组",
-      }),
-    );
-
-    expect(
-      await within(rulePanel).findByText(
-        "Hermes 执行计划能力已禁用，请到 Hermes 配置 > 能力选项启用“执行计划”。",
-      ),
-    ).toBeTruthy();
-    expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
-  });
-
-  it("requires a fresh simulation after editing a Hermes rule candidate", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
-    expect(await within(rulePanel).findByText(/启用前必须先预览影响/)).toBeTruthy();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "预览 Hermes 规则影响 启用验证码智能分组",
-      }),
-    );
-    expect(await within(rulePanel).findByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
-
-    fireEvent.change(
-      within(rulePanel).getByLabelText("设置 启用验证码智能分组 分组名称"),
-      {
-        target: { value: "票据" },
-      },
-    );
-    fireEvent.change(
-      within(rulePanel).getByLabelText("设置 启用验证码智能分组 关键词"),
-      {
-        target: { value: "receipt, invoice, 发票" },
-      },
-    );
-    fireEvent.click(
-      within(rulePanel).getByLabelText(
-        "将 启用验证码智能分组 应用到已有邮件",
-      ),
-    );
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "保存 Hermes 规则建议 启用验证码智能分组",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(api.updateHermesRuleCandidate).toHaveBeenCalledWith({
-        accountId: "account_1",
-        candidateId: "candidate_codes",
-        labelName: "票据",
-        keywords: ["receipt", "invoice", "发票"],
-        applyToHistory: true,
-      });
-    });
-    expect(
-      await screen.findByText("Hermes 规则建议已保存，请重新预览影响。"),
-    ).toBeTruthy();
-    expect(within(rulePanel).queryByText(/影响预览：命中 4 封邮件/)).toBeNull();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "启用 Hermes 规则 创建票据智能分组",
-      }),
-    );
-    expect(
-      await screen.findByText("请先预览影响，再启用规则。"),
-    ).toBeTruthy();
-    expect(api.createHermesActionPlan).not.toHaveBeenCalled();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "预览 Hermes 规则影响 创建票据智能分组",
-      }),
-    );
-    await waitFor(() => {
-      expect(api.simulateHermesRule).toHaveBeenLastCalledWith({
-        accountId: "account_1",
-        candidateId: "candidate_codes",
-        sampleLimit: 25,
-      });
-    });
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "启用 Hermes 规则 创建票据智能分组",
-      }),
-    );
-    await waitFor(() => {
-      expect(api.createHermesActionPlan).toHaveBeenCalledWith({
-        accountId: "account_1",
-        candidateId: "candidate_codes",
-        sampleLimit: 25,
-      });
-    });
-  });
-
-  it("requires rule simulation before approving a Hermes rule draft", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("规则");
-    const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
-    expect(await within(rulePanel).findByText(/启用前必须先预览影响/)).toBeTruthy();
-
-    fireEvent.click(
-      within(rulePanel).getByRole("button", {
-        name: "启用 Hermes 规则 启用验证码智能分组",
-      }),
-    );
-
-    expect(
-      await screen.findByText("请先预览影响，再启用规则。"),
-    ).toBeTruthy();
-    expect(api.createHermesActionPlan).not.toHaveBeenCalled();
-    expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
-  });
-
-  it("does not query account-scoped Hermes settings with the preview account when no backend account exists", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.listSyncCenterAccounts).mockResolvedValue({ items: [] });
-
-    render(<App api={api} />);
-
-    openHermesSection("规则");
-
-    expect(
-      await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 规则。"),
-    ).toBeTruthy();
-    expect(api.listHermesRules).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "打开 学习记录" }));
-    expect(
-      await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 学习记录。"),
-    ).toBeTruthy();
-    expect(api.listHermesMemories).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "切换 Hermes 审计记录" }));
-    expect(
-      await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 审计日志。"),
-    ).toBeTruthy();
-    expect(api.listHermesAuditLog).not.toHaveBeenCalled();
-  });
-
-  it("lets users review, edit, and delete Hermes memories from the Hermes page", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("学习记录");
-
-    expect(await screen.findByText("写作风格")).toBeTruthy();
-    expect(screen.getByDisplayValue(/Keep replies concise/)).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText("Hermes memory content memory_1"), {
-      target: {
-        value: JSON.stringify({ preference: "Use crisp executive summaries." }, null, 2),
-      },
-    });
-    fireEvent.change(screen.getByLabelText("Hermes memory confidence memory_1"), {
-      target: { value: "0.91" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存学习记录" }));
-
-    await waitFor(() => {
-      expect(api.updateHermesMemory).toHaveBeenCalledWith({
-        id: "memory_1",
-        accountId: "account_1",
-        content: { preference: "Use crisp executive summaries." },
-        confidence: 0.91,
-      });
-    });
-    expect(await screen.findByText("Hermes 学习记录已保存。")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "准备删除" }));
-    expect(await screen.findByText("再次点击确认删除 写作风格。")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
-
-    await waitFor(() => {
-      expect(api.deleteHermesMemory).toHaveBeenCalledWith({
-        id: "memory_1",
-        accountId: "account_1",
-      });
-    });
-    expect(await screen.findByText("Hermes 学习记录已删除。")).toBeTruthy();
-  });
-
-  it("links Hermes memory usage to filtered audit events", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("学习记录");
-
-    const memoryPanel = await screen.findByLabelText("Hermes 学习记录");
-    expect(screen.queryByLabelText("Hermes 审计日志")).toBeNull();
-    expect(within(memoryPanel).getByText("写作风格")).toBeTruthy();
-
-    fireEvent.click(
-      within(memoryPanel).getByRole("button", {
-        name: "Inspect Hermes memory usage memory_1",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(api.listHermesAuditLog).toHaveBeenLastCalledWith({
-        accountId: "account_1",
-        memoryId: "memory_1",
-        limit: 50,
-      });
-    });
-    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
-    expect(
-      within(auditPanel).getByText("正在查看记忆使用记录：写作风格 · global"),
-    ).toBeTruthy();
-    expect(
-      (within(auditPanel).getByLabelText("Hermes audit memory filter") as HTMLInputElement)
-        .value,
-    ).toBe("memory_1");
-
-    fireEvent.click(within(auditPanel).getByRole("button", { name: "清除记忆过滤" }));
-    await waitFor(() => {
-      expect(api.listHermesAuditLog).toHaveBeenLastCalledWith({
-        accountId: "account_1",
-        limit: 50,
-      });
-    });
-  });
-
-  it("filters Hermes memories without saving runtime settings", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("学习记录");
-    expect(await screen.findByText("写作风格")).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText("Hermes memory layer filter"), {
-      target: { value: " procedural_memory " },
-    });
-    fireEvent.change(screen.getByLabelText("Hermes memory scope filter"), {
-      target: { value: " sender:team@example.com " },
-    });
-    fireEvent.change(screen.getByLabelText("Hermes memory limit"), {
-      target: { value: "150" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "刷新学习记录" }));
-
-    await waitFor(() => {
-      expect(api.listHermesMemories).toHaveBeenLastCalledWith({
-        accountId: "account_1",
-        layer: "procedural_memory",
-        scope: "sender:team@example.com",
-        limit: 100,
-      });
-    });
-    expect(api.updateHermesRuntimeSettings).not.toHaveBeenCalled();
-  });
-
-  it("shows Hermes audit events from the Hermes page without exposing raw skill payloads", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesAuditLog();
-
-    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
-    expect(within(auditPanel).getByText("邮件翻译")).toBeTruthy();
-    expect(within(auditPanel).getByText(/运行邮件翻译/)).toBeTruthy();
-    expect(within(auditPanel).getByText(/读取 1 封邮件/)).toBeTruthy();
-    expect(within(auditPanel).getByText(/使用 1 条记忆/)).toBeTruthy();
-    expect(within(auditPanel).getByText(/目标语言 zh-CN/)).toBeTruthy();
-    await waitFor(() => {
-      expect(api.listHermesAuditLog).toHaveBeenCalledWith({
-        accountId: "account_1",
-        limit: 50,
-      });
-    });
-    expect(screen.queryByText(/Raw private body/)).toBeNull();
-    expect(screen.queryByText(/Sensitive translated body/)).toBeNull();
-  });
-
-  it("summarizes Hermes search audit actions with safe fields", async () => {
-    const api = createApiFixture();
-    vi.mocked(api.listHermesAuditLog).mockResolvedValue({
-      items: [
-        {
-          id: "audit_search_1",
-          eventType: "hermes.skill.email_search_qa",
-          skillRunId: "run_search_1",
-          skillId: "email_search_qa",
-          skillTitle: "Search mail with Hermes",
-          readMessageIds: ["message_1", "message_2"],
-          memoryIds: ["memory_1"],
-          action: {
-            skillId: "email_search_qa",
-            accountId: "account_1",
-            mailboxId: "mailbox_inbox",
-            searchQuery: "signed contract",
-            searchPlan: {
-              filters: [
-                { field: "hasAttachment", operator: "eq", value: true, label: "有附件" },
-                { field: "sender", operator: "contains", value: "Lina", label: "发件人包含 Lina" },
-              ],
-            },
-            language: "zh-CN",
-            limit: 5,
-          },
-          input: {
-            question: "Private user question that must stay hidden.",
-          },
-          output: {
-            answerText: "Private answer that must stay hidden.",
-          },
-          createdAt: "2026-06-15T09:30:00.000Z",
-        },
-      ],
-    });
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesAuditLog();
-
-    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
-    expect(within(auditPanel).getByText("Search mail with Hermes")).toBeTruthy();
-    expect(within(auditPanel).getByText(/搜索词 signed contract/)).toBeTruthy();
-    expect(within(auditPanel).getByText(/账号 account_1/)).toBeTruthy();
-    expect(within(auditPanel).getByText(/邮箱目录 mailbox_inbox/)).toBeTruthy();
-    expect(within(auditPanel).getByText(/搜索条件 有附件、发件人包含 Lina/)).toBeTruthy();
-    expect(within(auditPanel).getByText(/数量 5/)).toBeTruthy();
-    expect(screen.queryByText(/Private user question/)).toBeNull();
-    expect(screen.queryByText(/Private answer/)).toBeNull();
-  });
-
-  it("filters Hermes audit events without saving runtime settings", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesAuditLog();
-    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
-    expect(within(auditPanel).getByText("邮件翻译")).toBeTruthy();
-
-    fireEvent.change(within(auditPanel).getByLabelText("Hermes audit skill filter"), {
-      target: { value: "translate_text" },
-    });
-    fireEvent.change(within(auditPanel).getByLabelText("Hermes audit message filter"), {
-      target: { value: " message_1 " },
-    });
-    fireEvent.change(within(auditPanel).getByLabelText("Hermes audit memory filter"), {
-      target: { value: " memory_translation " },
-    });
-    fireEvent.change(within(auditPanel).getByLabelText("Hermes audit limit"), {
-      target: { value: "150" },
-    });
-    fireEvent.click(within(auditPanel).getByRole("button", { name: "刷新审计" }));
-
-    await waitFor(() => {
-      expect(api.listHermesAuditLog).toHaveBeenLastCalledWith({
-        accountId: "account_1",
-        skillId: "translate_text",
-        messageId: "message_1",
-        memoryId: "memory_translation",
-        limit: 100,
-      });
-    });
-    expect(api.updateHermesRuntimeSettings).not.toHaveBeenCalled();
-  });
-
-  it("validates Hermes memory JSON before saving", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesSection("学习记录");
-    expect(await screen.findByText("写作风格")).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText("Hermes memory content memory_1"), {
-      target: { value: "[]" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存学习记录" }));
-
-    expect(await screen.findByText("学习内容必须是 JSON 对象。")).toBeTruthy();
-    expect(api.updateHermesMemory).not.toHaveBeenCalled();
-  });
-
-  it("keeps Hermes settings scoped to backend-provided AI services", async () => {
+  it("keeps Hermes provider choices user-facing and hides operational providers", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
     openHermesPage();
 
-    expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    const providerSelect = screen.getByLabelText("AI 服务");
-    expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
-      .toBeTruthy();
+    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
+    const providerSelect = screen.getByLabelText("LLM 服务商");
+    expect(within(providerSelect).getByRole("option", { name: "OpenAI" })).toBeTruthy();
+    expect(within(providerSelect).getByRole("option", { name: "NVIDIA Build" })).toBeTruthy();
     expect(
-      within(providerSelect).getByRole("option", {
-        name: "自定义 AI 服务",
-      }),
+      within(providerSelect).getByRole("option", { name: "自定义兼容服务" }),
     ).toBeTruthy();
-    expect(within(providerSelect).queryByRole("option", { name: "NovitaAI" }))
-      .toBeNull();
+    expect(within(providerSelect).queryByRole("option", { name: "AWS Bedrock" })).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("AI 服务"), {
-      target: { value: "custom" },
-    });
-    fireEvent.change(screen.getByLabelText("服务地址"), {
-      target: { value: "http://hermes-gateway:8081/v1/chat/completions" },
-    });
-    fireEvent.change(screen.getByLabelText("模型名称"), {
-      target: { value: "hermes-email" },
+    fireEvent.change(providerSelect, { target: { value: "custom" } });
+    fireEvent.change(screen.getByLabelText("自定义服务地址"), {
+      target: { value: "https://llm.example.com/v1/chat/completions" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
 
@@ -3069,83 +1951,11 @@ describe("Email Hub first UI baseline", () => {
         expect.objectContaining({
           mode: "external_hermes",
           providerKey: "custom",
-          endpointUrl: "http://hermes-gateway:8081/v1/chat/completions",
-          model: "hermes-email",
+          endpointUrl: "https://llm.example.com/v1/chat/completions",
+          model: "custom-model",
         }),
       );
     });
-  });
-
-  it("applies Hermes service defaults when switching model interfaces", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesPage();
-
-    expect(
-      await screen.findByDisplayValue("http://hermes:4000/v1/chat/completions"),
-    ).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText("AI 服务"), {
-      target: { value: "custom" },
-    });
-
-    expect((screen.getByLabelText("服务地址") as HTMLInputElement).value).toBe(
-      "http://hermes-gateway:8081/v1/chat/completions",
-    );
-    expect((screen.getByLabelText("模型名称") as HTMLInputElement).value).toBe(
-      "hermes-email",
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
-
-    await waitFor(() => {
-      expect(api.updateHermesRuntimeSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          providerKey: "custom",
-          endpointUrl: "http://hermes-gateway:8081/v1/chat/completions",
-          model: "hermes-email",
-        }),
-      );
-    });
-  });
-
-  it("does not expose direct or externally managed providers in the Hermes page", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-
-    openHermesPage();
-
-    expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    const providerSelect = screen.getByLabelText("AI 服务");
-    expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
-      .toBeTruthy();
-    expect(within(providerSelect).queryByRole("option", { name: "AWS Bedrock" }))
-      .toBeNull();
-    expect(within(providerSelect).queryByRole("option", { name: "NovitaAI" }))
-      .toBeNull();
-  });
-
-  it("keeps Hermes fallback provider labels user-facing when the backend catalog is unavailable", () => {
-    const { container } = render(<App />);
-
-    openHermesPage();
-
-    expect(container.textContent).not.toMatch(/\bAPI\b|OpenAI-compatible/i);
-    const providerSelect = screen.getByLabelText("AI 服务");
-    expect(
-      within(providerSelect).queryByRole("option", {
-        name: /\bAPI\b|OpenAI-compatible/i,
-      }),
-    ).toBeNull();
-    expect(
-      within(providerSelect).queryByRole("option", { name: "OpenAI" }),
-    ).toBeNull();
-    expect(
-      within(providerSelect).getByRole("option", { name: "自定义 AI 服务" }),
-    ).toBeTruthy();
   });
 
   it("changes the reading pane when another message is selected", () => {
@@ -5098,6 +3908,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    await openComposeWindow();
     await screen.findByText(/Team Inbox <team@example\.com> · Outlook共享邮箱/);
 
     fireEvent.change(screen.getByLabelText("Compose from identity"), {
@@ -5155,8 +3966,7 @@ describe("Email Hub first UI baseline", () => {
   it("adds a Sync Center module backed by backend account status", async () => {
     const api = createApiFixture();
 
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
 
     expect(await screen.findByText("sync@example.com")).toBeTruthy();
     expect(await screen.findByText(/正在同步/)).toBeTruthy();
@@ -5178,8 +3988,7 @@ describe("Email Hub first UI baseline", () => {
   it("keeps operations diagnostics out of Sync Center and opens them from Settings", async () => {
     const api = createApiFixture();
 
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
 
     expect(await screen.findByText("sync@example.com")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "服务运行体检" })).toBeNull();
@@ -5191,12 +4000,7 @@ describe("Email Hub first UI baseline", () => {
     ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    fireEvent.click(
-      within(screen.getByRole("navigation", { name: "设置目录" })).getByRole(
-        "button",
-        { name: "系统状态" },
-      ),
-    );
+    fireEvent.click(screen.getByText("管理员工具"));
 
     expect(await screen.findByRole("region", { name: "服务运行体检" })).toBeTruthy();
     expect(
@@ -5212,10 +4016,10 @@ describe("Email Hub first UI baseline", () => {
       <App
         api={api}
         defaultAccountId="account_1"
+        initialView="sync"
         oauthRedirect={oauthRedirect}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
     expect(await screen.findByText("reauth@example.com")).toBeTruthy();
 
     fireEvent.click(
@@ -5256,8 +4060,7 @@ describe("Email Hub first UI baseline", () => {
       ],
     });
 
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
     expect(await screen.findByText("password-reauth@qq.com")).toBeTruthy();
 
     fireEvent.change(
@@ -5312,8 +4115,7 @@ describe("Email Hub first UI baseline", () => {
       }),
     );
 
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
     expect(await screen.findByText("password-reauth@qq.com")).toBeTruthy();
 
     fireEvent.change(
@@ -5360,8 +4162,7 @@ describe("Email Hub first UI baseline", () => {
       ],
     });
 
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
     expect(await screen.findByText("custom@example.com")).toBeTruthy();
 
     fireEvent.click(
@@ -5413,8 +4214,7 @@ describe("Email Hub first UI baseline", () => {
   it("wires Sync Center account controls to backend actions", async () => {
     const api = createApiFixture();
 
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
 
     expect(await screen.findByText("sync@example.com")).toBeTruthy();
 
@@ -5462,8 +4262,7 @@ describe("Email Hub first UI baseline", () => {
   it("opens Sync Center account diagnostics from backend operational events", async () => {
     const api = createApiFixture();
 
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
 
     expect(await screen.findByText("sync@example.com")).toBeTruthy();
 
@@ -5536,9 +4335,7 @@ describe("Email Hub first UI baseline", () => {
       ],
     }));
 
-    render(<App api={api} defaultAccountId="account_1" />);
-    await screen.findByRole("heading", { name: "Live subject" });
-    fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
+    render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
     expect(await screen.findByText("outlook@example.com")).toBeTruthy();
 
     fireEvent.click(
@@ -7314,23 +6111,15 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 邮件翻译能力已禁用，请到 Hermes 配置 > 能力选项启用“邮件翻译”。",
+        "Hermes 邮件翻译暂时不可用，请稍后再试。",
       ),
     ).toBeTruthy();
     expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
       "你好，请确认发布计划。",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "打开能力选项" }));
-
-    expect(await screen.findByRole("heading", { name: "Hermes" })).toBeTruthy();
-    const skillPanel = await screen.findByLabelText("Hermes skill settings");
-    const focusedCard = await within(skillPanel).findByLabelText(
-      "Focused Hermes skill 翻译邮件",
-    );
-    expect(
-      within(focusedCard).getByLabelText("Enable Hermes skill 翻译邮件"),
-    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "打开能力选项" })).toBeNull();
+    expect(screen.queryByLabelText("Hermes skill settings")).toBeNull();
   });
 
   it("adds uploaded files to the composed draft payload", async () => {
@@ -8240,6 +7029,7 @@ describe("Email Hub first UI baseline", () => {
     });
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await openComposeWindow();
     await screen.findByText("Saved subject");
     fireEvent.click(
       screen.getByRole("button", { name: "Edit saved draft draft_saved" }),
@@ -8987,9 +7777,10 @@ function createApiFixture(): EmailHubApi {
     getHermesRuntimeSettings: vi.fn(async () => ({
       enabled: true,
       mode: "external_hermes" as const,
-      providerKey: "hermes",
-      endpointUrl: "http://hermes:4000/v1/chat/completions",
-      model: "hermes-email",
+      assistantName: "Hermes",
+      providerKey: "openai-api",
+      endpointUrl: "https://api.openai.com/v1/chat/completions",
+      model: "gpt-5.2",
       apiKeyConfigured: true,
       updatePolicy: "manual" as const,
       updateChannel: "stable" as const,
@@ -9002,39 +7793,51 @@ function createApiFixture(): EmailHubApi {
     getHermesProviders: vi.fn(async () => ({
       providers: [
         {
-          key: "hermes",
-          label: "Hermes 服务",
-          category: "gateway" as const,
-          authType: "api_key_optional" as const,
-          requestProtocol: "openai_chat_completions" as const,
-          endpointEditable: true,
-          aliases: [],
-          modelExamples: ["hermes-email"],
-          capabilities: ["chat", "email_skills", "memory"],
-        },
-        {
-          key: "novita",
-          label: "NovitaAI",
+          key: "openai-api",
+          label: "OpenAI",
           category: "cloud" as const,
           authType: "api_key" as const,
           requestProtocol: "openai_chat_completions" as const,
           endpointEditable: true,
-          aliases: ["novita-ai"],
-          modelExamples: ["moonshotai/kimi-k2.5"],
-          defaultEndpoint: "https://api.novita.ai/v3/openai/chat/completions",
+          aliases: ["openai"],
+          modelExamples: ["gpt-5.2"],
+          defaultEndpoint: "https://api.openai.com/v1/chat/completions",
+          capabilities: ["chat", "email_skills"],
+        },
+        {
+          key: "deepseek",
+          label: "DeepSeek",
+          category: "cloud" as const,
+          authType: "api_key" as const,
+          requestProtocol: "openai_chat_completions" as const,
+          endpointEditable: true,
+          aliases: [],
+          modelExamples: ["deepseek-chat"],
+          defaultEndpoint: "https://api.deepseek.com/v1/chat/completions",
+          capabilities: ["chat", "email_skills"],
+        },
+        {
+          key: "nvidia",
+          label: "NVIDIA Build",
+          category: "cloud" as const,
+          authType: "api_key" as const,
+          requestProtocol: "openai_chat_completions" as const,
+          endpointEditable: true,
+          aliases: ["nvidia-nim"],
+          modelExamples: ["nvidia/llama-3.3-nemotron-super-49b-v1"],
+          defaultEndpoint: "https://integrate.api.nvidia.com/v1/chat/completions",
           capabilities: ["chat", "email_skills"],
         },
         {
           key: "custom",
-          label: "自定义 AI 服务",
+          label: "自定义兼容服务",
           category: "custom" as const,
           authType: "api_key_optional" as const,
           requestProtocol: "openai_chat_completions" as const,
           endpointEditable: true,
-          aliases: ["hermes-gateway"],
-          modelExamples: ["hermes-email"],
-          defaultEndpoint: "http://hermes-gateway:8081/v1/chat/completions",
-          capabilities: ["chat", "email_skills", "memory"],
+          aliases: ["openai-compatible"],
+          modelExamples: ["custom-model"],
+          capabilities: ["chat", "email_skills"],
         },
         {
           key: "aws-bedrock",
@@ -9052,6 +7855,7 @@ function createApiFixture(): EmailHubApi {
     updateHermesRuntimeSettings: vi.fn(async (input) => ({
       enabled: input.enabled,
       mode: input.mode,
+      assistantName: input.assistantName,
       providerKey: input.providerKey ?? "custom",
       endpointUrl: input.endpointUrl,
       model: input.model,
@@ -9067,6 +7871,7 @@ function createApiFixture(): EmailHubApi {
     clearHermesRuntimeApiKey: vi.fn(async (input) => ({
       enabled: input.enabled,
       mode: input.mode,
+      assistantName: input.assistantName,
       providerKey: input.providerKey ?? "custom",
       endpointUrl: input.endpointUrl,
       model: input.model,
@@ -9094,10 +7899,10 @@ function createApiFixture(): EmailHubApi {
     testHermesRuntimeConnection: vi.fn(async () => ({
       ok: true,
       checkedAt: "2026-06-14T08:00:00.000Z",
-      providerKey: "hermes",
+      providerKey: "openai-api",
       requestProtocol: "openai_chat_completions" as const,
-      endpointUrl: "http://hermes:4000/v1/chat/completions",
-      model: "hermes-email",
+      endpointUrl: "https://api.openai.com/v1/chat/completions",
+      model: "gpt-5.2",
     })),
     getHermesRuntimeVersion: vi.fn(async () => ({
       installedVersion: "0.1.0",

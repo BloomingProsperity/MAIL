@@ -8,7 +8,7 @@ import {
 import { createPostgresHermesRuntimeConfigStore } from "../src/hermes/postgres-runtime-config-store";
 
 describe("Hermes runtime config service", () => {
-  it("falls back to environment config until runtime settings are saved", async () => {
+  it("ignores env-level Hermes runtime config until settings are saved", async () => {
     const service = createHermesRuntimeConfigService({
       store: emptyStore(),
       env: {
@@ -20,20 +20,16 @@ describe("Hermes runtime config service", () => {
     });
 
     await expect(service.getSettings()).resolves.toMatchObject({
-      enabled: true,
+      enabled: false,
       mode: "external_hermes",
-      endpointUrl: "http://hermes:4000/v1/chat/completions",
-      model: "hermes-email",
-      apiKeyConfigured: true,
-      source: "environment",
-      providerKey: "custom",
+      assistantName: "Hermes",
+      endpointUrl: "https://api.openai.com/v1/chat/completions",
+      model: "gpt-5.2",
+      apiKeyConfigured: false,
+      source: "default",
+      providerKey: "openai-api",
     });
-    await expect(service.getConnectionSettings()).resolves.toMatchObject({
-      endpointUrl: "http://hermes:4000/v1/chat/completions",
-      model: "hermes-email",
-      apiKey: "env-secret",
-      providerKey: "custom",
-    });
+    await expect(service.getConnectionSettings()).resolves.toBeUndefined();
   });
 
   it("does not fall back to env when stored runtime settings are disabled", async () => {
@@ -134,6 +130,7 @@ describe("Hermes runtime config service", () => {
       {
         enabled: true,
         mode: "external_hermes",
+        assistantName: "Hermes",
         providerKey: "custom",
         endpointUrl: "https://gateway.example.test/v1/chat/completions",
         model: "hermes-2-pro",
@@ -279,7 +276,7 @@ describe("Hermes runtime config service", () => {
     ]);
   });
 
-  it("rejects direct model provider defaults when saving runtime settings", async () => {
+  it("saves direct API-key model providers from runtime settings", async () => {
     const calls: unknown[] = [];
     const service = createHermesRuntimeConfigService({
       store: {
@@ -310,33 +307,55 @@ describe("Hermes runtime config service", () => {
       },
     });
 
-    await expect(
-      service.updateSettings({
-        enabled: true,
-        mode: "external_hermes",
-        providerKey: "anthropic",
-        model: "claude-sonnet-4-6",
-        apiKey: "anthropic-secret",
-        updatePolicy: "manual",
-        updateChannel: "stable",
-      }),
-    ).rejects.toMatchObject({ code: "invalid_hermes_runtime_config_request" });
-    await expect(
-      service.updateSettings({
-        enabled: true,
-        mode: "external_hermes",
-        providerKey: "gemini",
-        model: "gemini-3-pro",
-        apiKey: "gemini-secret",
-        updatePolicy: "manual",
-        updateChannel: "stable",
-      }),
-    ).rejects.toMatchObject({ code: "invalid_hermes_runtime_config_request" });
+    await service.updateSettings({
+      enabled: true,
+      mode: "external_hermes",
+      assistantName: "Mail Copilot",
+      providerKey: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: "anthropic-secret",
+      updatePolicy: "manual",
+      updateChannel: "stable",
+    });
+    await service.updateSettings({
+      enabled: true,
+      mode: "external_hermes",
+      providerKey: "gemini",
+      model: "gemini-3-pro",
+      apiKey: "gemini-secret",
+      updatePolicy: "manual",
+      updateChannel: "stable",
+    });
+    await service.updateSettings({
+      enabled: true,
+      mode: "external_hermes",
+      providerKey: "nvidia",
+      model: "nvidia/llama-3.3-nemotron-super-49b-v1",
+      apiKey: "nvidia-secret",
+      updatePolicy: "manual",
+      updateChannel: "stable",
+    });
 
-    expect(calls).toEqual([]);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        assistantName: "Mail Copilot",
+        providerKey: "anthropic",
+        endpointUrl: "https://api.anthropic.com/v1/messages",
+      }),
+      expect.objectContaining({
+        assistantName: "Hermes",
+        providerKey: "gemini",
+        endpointUrl:
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro:generateContent",
+      }),
+      expect.objectContaining({
+        providerKey: "nvidia",
+        endpointUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+      }),
+    ]);
   });
 
-  it("rejects non-Hermes providers from environment settings", async () => {
+  it("ignores non-Hermes env providers because runtime config is UI-owned", async () => {
     const service = createHermesRuntimeConfigService({
       store: emptyStore(),
       env: {
@@ -347,12 +366,11 @@ describe("Hermes runtime config service", () => {
       },
     });
 
-    await expect(service.getSettings()).rejects.toMatchObject({
-      code: "invalid_hermes_runtime_config_request",
+    await expect(service.getSettings()).resolves.toMatchObject({
+      enabled: false,
+      source: "default",
     });
-    await expect(service.getConnectionSettings()).rejects.toMatchObject({
-      code: "invalid_hermes_runtime_config_request",
-    });
+    await expect(service.getConnectionSettings()).resolves.toBeUndefined();
   });
 
   it("tests the current runtime provider with a minimal prompt", async () => {
@@ -500,7 +518,7 @@ describe("Hermes runtime config service", () => {
     });
   });
 
-  it("rejects direct provider keys before Hermes skill model calls", async () => {
+  it("lets runtime skills call API-key providers but rejects OAuth-only providers", async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
       Response.json({
         content: [{ type: "text", text: "anthropic runtime ok" }],
@@ -526,8 +544,30 @@ describe("Hermes runtime config service", () => {
         systemPrompt: "You are Hermes.",
         userPrompt: "Draft a reply.",
       }),
+    ).resolves.toBe("anthropic runtime ok");
+    expect(fetchImpl).toHaveBeenCalledOnce();
+
+    const oauthProvider = createHermesRuntimeTextProvider({
+      runtimeConfigService: {
+        async getConnectionSettings() {
+          return {
+            enabled: true,
+            providerKey: "nous",
+            endpointUrl: "https://portal.example.test/v1/messages",
+            model: "auto",
+            apiKey: "oauth-secret",
+          };
+        },
+      },
+      fetchImpl: fetchImpl as any,
+    });
+
+    await expect(
+      oauthProvider.complete({
+        systemPrompt: "You are Hermes.",
+        userPrompt: "Draft a reply.",
+      }),
     ).rejects.toMatchObject({ code: "invalid_hermes_runtime_config_request" });
-    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 

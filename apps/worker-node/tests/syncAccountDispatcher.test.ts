@@ -30,6 +30,7 @@ describe("sync account dispatcher", () => {
       accountSettingsStore,
       emailEngineHandler,
       nativeSyncProcessor,
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher({
@@ -79,6 +80,7 @@ describe("sync account dispatcher", () => {
       accountSettingsStore,
       emailEngineHandler,
       nativeSyncProcessor,
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher({
@@ -133,6 +135,7 @@ describe("sync account dispatcher", () => {
       accountSettingsStore,
       emailEngineHandler,
       nativeSyncProcessor,
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher({
@@ -204,6 +207,7 @@ describe("sync account dispatcher", () => {
       accountSettingsStore,
       emailEngineHandler,
       nativeSyncProcessor,
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher({
@@ -219,7 +223,7 @@ describe("sync account dispatcher", () => {
     });
   });
 
-  it("blocks native sync when the Native Engine is paused", async () => {
+  it("blocks non-EmailEngine sync on the EmailEngine-first launch path", async () => {
     const accountSettingsStore = {
       getAccountSyncPlan: vi.fn().mockResolvedValue({
         accountId: "acc_1",
@@ -241,13 +245,12 @@ describe("sync account dispatcher", () => {
       accountSettingsStore,
       emailEngineHandler,
       nativeSyncProcessor,
-      nativeEngineEnabled: false,
     });
 
     const rejected = dispatcher(baseJob);
     await expect(rejected).rejects.toBeInstanceOf(NonRetryableQueueError);
     await expect(rejected).rejects.toThrow(
-      "Native Engine is paused for EmailEngine-first launch",
+      "Non-EmailEngine account routing is disabled for launch",
     );
     expect(emailEngineHandler).not.toHaveBeenCalled();
     expect(nativeSyncProcessor.syncAccount).not.toHaveBeenCalled();
@@ -279,6 +282,7 @@ describe("sync account dispatcher", () => {
       },
       emailEngineHandler: vi.fn(),
       nativeSyncProcessor,
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher({
@@ -354,6 +358,7 @@ describe("sync account dispatcher", () => {
       continuationQueue: { enqueueJob },
       createId: () => "job_next",
       now: () => new Date("2026-06-12T09:00:00.000Z"),
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher({
@@ -410,6 +415,7 @@ describe("sync account dispatcher", () => {
       accountSettingsStore,
       emailEngineHandler,
       nativeSyncProcessor,
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher({
@@ -450,6 +456,7 @@ describe("sync account dispatcher", () => {
       },
       emailEngineHandler: vi.fn(),
       nativeSyncProcessor,
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher({
@@ -528,6 +535,7 @@ describe("sync account dispatcher", () => {
       continuationQueue: { enqueueJob },
       createId: () => `folder_job_${++id}`,
       now: () => new Date("2026-06-12T09:00:00.000Z"),
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher({
@@ -588,6 +596,7 @@ describe("sync account dispatcher", () => {
       },
       emailEngineHandler: vi.fn(),
       nativeSyncProcessor: { syncAccount: vi.fn() },
+      nonEmailEngineProvidersEnabled: true,
     });
 
     const rejected = dispatcher(baseJob);
@@ -615,6 +624,7 @@ describe("sync account dispatcher", () => {
       },
       emailEngineHandler: vi.fn(),
       nativeSyncProcessor,
+      nonEmailEngineProvidersEnabled: true,
     });
 
     const rejected = dispatcher(baseJob);

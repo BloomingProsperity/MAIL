@@ -1,0 +1,38 @@
+.settings-detail,
+.settings-panel {
+  min-width: 0;
+}
+
+.settings-admin-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-drawer {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 18px rgba(31, 41, 51, 0.045);
+}
+
+.settings-drawer > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  cursor: pointer;
+  padding: 0 12px;
+  color: var(--text-main);
+  font-weight: 850;
+}
+
+.settings-drawer > summary::marker {
+  color: var(--text-secondary);
+}
+
+.settings-drawer > .settings-panel {
+  border: 0;
+  border-top: 1px solid var(--border-light);
+  border-radius: 0;
+  box-shadow: none;
+}

@@ -21,17 +21,17 @@ export function HermesAccountScopePanel(props: {
   return (
     <section
       className="backend-notice compact"
-      aria-label="Hermes account scope"
+      aria-label="Hermes 当前邮箱"
     >
-      <strong>Hermes 账号作用域</strong>
+      <strong>当前邮箱</strong>
       <span>
         {props.accountId
-          ? `规则、学习记录和审计日志当前绑定到 ${accountLabel}。`
-          : "请先选择或添加邮箱，规则、学习记录和审计日志不会请求后端。"}
+          ? `Hermes 会根据 ${accountLabel} 的邮件上下文工作。`
+          : "请选择或添加邮箱，Hermes 会在对应邮箱内工作。"}
       </span>
       {canSelectAccount ? (
         <select
-          aria-label="Select Hermes settings account"
+          aria-label="选择 Hermes 当前邮箱"
           value={props.accountId ?? ""}
           onChange={(event) => props.onAccountChange?.(event.target.value)}
         >

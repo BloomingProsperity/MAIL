@@ -213,6 +213,7 @@ export interface SenderScreeningBulkResult {
 export interface HermesRuntimeSettingsDto {
   enabled: boolean;
   mode: HermesRuntimeMode;
+  assistantName?: string;
   providerKey: string;
   endpointUrl?: string;
   model: string;
@@ -228,19 +229,9 @@ export interface HermesRuntimeSettingsDto {
   updatedAt?: string;
 }
 
-export type HermesProviderCategory =
-  | "gateway"
-  | "cloud"
-  | "local"
-  | "oauth"
-  | "custom";
+export type HermesProviderCategory = "gateway" | "cloud" | "local" | "oauth" | "custom";
 
-export type HermesProviderAuthType =
-  | "none"
-  | "api_key"
-  | "api_key_optional"
-  | "oauth"
-  | "aws_credentials";
+export type HermesProviderAuthType = "none" | "api_key" | "api_key_optional" | "oauth" | "aws_credentials";
 
 export type HermesProviderRequestProtocol =
   | "openai_chat_completions"
@@ -261,6 +252,7 @@ export interface HermesProviderCatalogItem {
   modelExamples: string[];
   capabilities: string[];
   defaultEndpoint?: string;
+  endpointTemplate?: string;
   envKeys?: string[];
   note?: string;
 }
@@ -272,6 +264,7 @@ export interface HermesProviderCatalogResponse {
 export interface HermesRuntimeUpdateInput {
   enabled: boolean;
   mode: HermesRuntimeMode;
+  assistantName?: string;
   providerKey?: string;
   endpointUrl?: string;
   model: string;

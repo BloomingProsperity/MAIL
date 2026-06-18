@@ -79,7 +79,7 @@ export function verifyEmailEngineProductionEnv(
   const requiredSecrets = checkRequiredProductionSecrets(options.env);
   const containerImage = checkEmailEngineImage(options.env);
   const webApiToken = checkWebApiTokenCompatibility(options.env);
-  const nativeEngine = checkNativeEnginePaused(options.env);
+  const nativeEngine = checkNativeEngineNotConfigured(options.env);
   const optionalIntegrations = checkOptionalIntegrations(options.env);
   const requiredFollowUps = [
     ...requiredSecrets.issues,
@@ -293,12 +293,10 @@ function checkWebApiTokenCompatibility(
   return { ok: true, issues: [] };
 }
 
-function checkNativeEnginePaused(
+function checkNativeEngineNotConfigured(
   env: Record<string, string | undefined>,
 ): PreflightCheck {
-  const nativeEngineEnabled =
-    env.EMAILHUB_NATIVE_ENGINE_ENABLED?.trim().toLowerCase() === "true";
-  if (!nativeEngineEnabled) {
+  if (env.EMAILHUB_NATIVE_ENGINE_ENABLED === undefined) {
     return { ok: true, issues: [] };
   }
 
@@ -310,7 +308,7 @@ function checkNativeEnginePaused(
         severity: "error",
         env: ["EMAILHUB_NATIVE_ENGINE_ENABLED"],
         detail:
-          "EMAILHUB_NATIVE_ENGINE_ENABLED must stay false for the EmailEngine-first production launch; the self-built Native Engine is paused.",
+          "EMAILHUB_NATIVE_ENGINE_ENABLED must not be configured for the EmailEngine-first production launch; self-developed Native/Core code is outside the launch path.",
       },
     ],
   };
@@ -320,16 +318,6 @@ function checkOptionalIntegrations(
   env: Record<string, string | undefined>,
 ): PreflightCheck {
   const issues: PreflightIssue[] = [];
-
-  if (!env.HERMES_CHAT_COMPLETIONS_URL?.trim()) {
-    issues.push({
-      code: "hermes_runtime_env_not_set",
-      severity: "warning",
-      env: ["HERMES_CHAT_COMPLETIONS_URL", "HERMES_MODEL", "HERMES_API_KEY"],
-      detail:
-        "Hermes runtime can be configured from the sidebar Hermes workspace, but no env-level Hermes endpoint is set.",
-    });
-  }
 
   if (
     !env.GOOGLE_OAUTH_CLIENT_ID?.trim() ||

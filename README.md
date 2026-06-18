@@ -132,7 +132,8 @@ PATCH /api/hermes/memories/:id
 DELETE /api/hermes/memories/:id
 ```
 
-Memories are app-owned records in Postgres. Users can review, edit, and delete learned preferences before Hermes uses them in skills.
+Memories are app-owned records in Postgres. They support Hermes' automatic
+learning path and are not exposed as ordinary user settings.
 Hermes skills can also load scoped memory context, for example `memoryScope: "global"` and `memoryLayers: ["writing_style_profile"]`. The backend injects a short memory section into the Hermes prompt and records the exact `memoryIds` used in `hermes_audit_events`.
 
 Hermes read/write skill execution is available at:
@@ -164,9 +165,9 @@ POST /api/hermes/action-plans/:planId/confirm
 
 `GET /api/hermes/resource-profile` summarizes the current enabled skill count,
 per-run context and memory limits, retention cleanup policy, and self-hosted
-machine guidance. Settings shows the same profile above the editable skill
-cards so operators can see the pressure created by Hermes before raising
-budgets. For live self-hosted maintenance, `GET /api/maintenance/hermes-retention`
+machine guidance for internal/admin diagnostics. Ordinary users do not edit
+Hermes skills, rules, memory, audit logs, or resource budgets. For live
+self-hosted maintenance, `GET /api/maintenance/hermes-retention`
 returns capped per-table expired-row estimates and
 `POST /api/maintenance/hermes-retention/cleanup` runs bounded cleanup batches
 for Hermes translation/summary caches, completed action plans, feedback, audit
@@ -331,16 +332,14 @@ npm run compose:up:hermes:detached
 npm run compose:up:prod:hermes:detached
 ```
 
-The Hermes overlay starts a Docker service named `hermes` from LiteLLM and wires
-the API to `http://hermes:4000/v1/chat/completions` with `HERMES_MODEL` fixed to
-the Email Hub route `hermes-email`. Set `HERMES_API_KEY` to the key Email Hub
-uses against the gateway, then set `HERMES_LITELLM_MODEL`,
-`HERMES_LITELLM_API_KEY`, and optionally `HERMES_LITELLM_API_BASE` for the
-upstream model provider inside the gateway. The web app still talks only to
-`/api/hermes/*`; model-provider keys are not browser configuration.
-After the stack is healthy, open Hermes from the left sidebar and use Test connection or
-`POST /api/hermes/runtime/test` to prove real AI connectivity; the EmailEngine
-env preflight is not a Hermes gateway connectivity check.
+The Hermes overlay starts a Docker service named `hermes` from LiteLLM. Set
+`HERMES_GATEWAY_API_KEY` as the gateway bearer key, then set
+`HERMES_LITELLM_MODEL`, `HERMES_LITELLM_API_KEY`, and optionally
+`HERMES_LITELLM_API_BASE` for the upstream model provider inside the gateway.
+The Email Hub API does not read model-provider keys from env; open Hermes from
+the left sidebar, choose a provider, enter the API Key, and use Test connection.
+The web app still talks only to `/api/hermes/*`; provider keys are never browser
+configuration.
 
 The `compose:*` npm scripts run Docker Compose with a stable project name so a
 second checkout does not accidentally reuse another checkout's `infra-*`
@@ -364,9 +363,9 @@ Suggested self-hosted sizing for EmailEngine-first deployments:
   stack plus a local OpenAI-compatible Hermes model. Larger models or higher
   context budgets need more RAM/GPU headroom.
 
-Use the sidebar Hermes skill options or `GET /api/hermes/resource-profile` to
-inspect the current profile. Lower per-skill `maxContextChars` and
-`memoryLimit` first when a self-hosted node is memory constrained.
+Hermes learning, rule, memory, and skill budgets are system-owned. Ordinary
+users only configure the Hermes display name, provider, API Key, and connection
+test from the sidebar Hermes page.
 
 For an EmailEngine-first launch, set these values in `.env` before onboarding
 real mailboxes:
@@ -395,8 +394,8 @@ real mailboxes:
 - `EMAILENGINE_WEBHOOK_SECRET`, `EMAILENGINE_AUTH_SERVER_SECRET`, and
   `EENGINE_SECRET`: rotate all three away from `dev-emailhub-secret` for
   production.
-- `HERMES_API_KEY`: bearer key used by Email Hub when the optional bundled
-  Hermes gateway overlay is enabled.
+- `HERMES_GATEWAY_API_KEY`: bearer key used by the optional bundled Hermes
+  LiteLLM gateway overlay.
 - `HERMES_LITELLM_MODEL`, `HERMES_LITELLM_API_KEY`, and
   `HERMES_LITELLM_API_BASE`: upstream model routing for the bundled Hermes
   gateway. Keep these provider credentials behind the gateway, not in the web
@@ -730,7 +729,7 @@ The API applies a 1 MiB default request body limit before route parsing. Oversiz
 
 ## Product Boundaries
 
-- The left sidebar is only for global features: Mail, Add Mailbox, Sync Center, Search, and Settings.
+- The left sidebar is only for global features: Mail, Add Mailbox, Search, Hermes, Domain Setup, and Settings.
 - The Mail top search and Search workspace both use Email Hub message search
   contracts; they do not call provider search APIs directly.
 - The compact Hermes dock is the AI entry for natural-language mail search and

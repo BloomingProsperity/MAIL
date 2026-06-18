@@ -9,7 +9,7 @@ import type {
   MailSendTransport,
   MailThreading,
 } from "../mail-compose/mail-compose.js";
-import type { Queryable } from "./oauth-access-token.js";
+import type { Queryable } from "../accounts/oauth-access-token.js";
 import {
   createImapSentAppender,
   type SmtpSentAppender,

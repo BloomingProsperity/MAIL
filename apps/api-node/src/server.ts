@@ -18,7 +18,6 @@ import { createReauthorizationRecoveryService } from "./accounts/reauthorization
 import {
   readApiConfig,
   readImapSmtpProviderPresetOverrides,
-  readNativeEngineEnabled,
   readPort,
 } from "./config.js";
 import { createConfiguredHermesTranslationService } from "./hermes/configured-service.js";
@@ -86,10 +85,7 @@ import {
 import { createPostgresMailComposeStore } from "./mail-compose/postgres-mail-compose-store.js";
 import { createPostgresSendIdentityStore } from "./mail-compose/postgres-send-identity-store.js";
 import { createPostgresMailThreadingStore } from "./mail-compose/postgres-threading-store.js";
-import {
-  createConfiguredGraphSendIdentityVerifier,
-  createConfiguredNativeSendTransport,
-} from "./native-send/native-send-transport.js";
+import { createConfiguredGraphSendIdentityVerifier } from "./mail-compose/graph-send-identity-verifier.js";
 import { createPostgresMailEngineIngestStore } from "./mail-engine/postgres-ingest-store.js";
 import { createPostgresSmartInboxFeedbackStore } from "./smart-inbox/postgres-feedback-store.js";
 import { createPostgresSyncControlStore } from "./sync-center/postgres-sync-control-store.js";
@@ -100,7 +96,6 @@ import { createRuntimeShutdownHandler } from "./runtime-shutdown.js";
 
 const port = readPort();
 const config = readApiConfig();
-const nativeEngineEnabled = readNativeEngineEnabled(process.env);
 const diagnosticsLogStore = createInMemoryDiagnosticsLogStore({
   capacity: readDiagnosticsLogCapacity(process.env.DIAGNOSTICS_LOG_CAPACITY),
 });
@@ -432,14 +427,6 @@ if (pool) {
             emailengine: createEmailEngineSubmitClient({
               baseUrl: config.emailEngineUrl,
               accessToken: emailEngineAccessToken!,
-            }),
-          }
-        : {}),
-      ...(nativeEngineEnabled
-        ? {
-            native: createConfiguredNativeSendTransport({
-              client: pool,
-              createId: randomUUID,
             }),
           }
         : {}),

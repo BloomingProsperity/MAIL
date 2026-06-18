@@ -10,7 +10,6 @@ describe("EmailEngine launch readiness report", () => {
   it("separates internal test readiness from production launch readiness", () => {
     const env = internalEnv({
       EMAILENGINE_AUTH_SERVER_SECRET: "",
-      HERMES_CHAT_COMPLETIONS_URL: "",
       GOOGLE_OAUTH_CLIENT_ID: "",
       GOOGLE_OAUTH_CLIENT_SECRET: "",
       MICROSOFT_OAUTH_CLIENT_ID: "",
@@ -243,7 +242,6 @@ function internalEnv(
     EMAILHUB_API_TOKEN: "internal-api-token",
     VITE_EMAILHUB_API_TOKEN: "internal-api-token",
     POSTGRES_PASSWORD: "internal-postgres-password",
-    HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
     GOOGLE_OAUTH_CLIENT_ID: "google-client",
     GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
     EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID: "ee-gmail-app",

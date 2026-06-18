@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createMicrosoftOAuthRefreshClient } from "../src/native-send/oauth-token-clients";
+import { createMicrosoftOAuthRefreshClient } from "../src/accounts/oauth-token-clients";
 
 describe("native OAuth refresh clients", () => {
   it("refreshes Microsoft tokens with Mail.Send.Shared for shared mailbox sends", async () => {

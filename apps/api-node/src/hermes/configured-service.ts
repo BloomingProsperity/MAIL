@@ -4,7 +4,6 @@ import {
   createHermesActionItemExtractService,
   type HermesActionItemExtractService,
 } from "./action-items.js";
-import { createHermesHttpTextProvider } from "./http-provider.js";
 import {
   createHermesFollowupTrackerService,
   type HermesFollowupTrackerService,
@@ -77,21 +76,12 @@ export function createConfiguredHermesTranslationService(
       HermesFollowupTrackerService &
       Partial<HermesEmailSearchQaService>)
   | undefined {
-  const env = options.env ?? process.env;
-  const endpointUrl = env.HERMES_CHAT_COMPLETIONS_URL;
   const textProvider = options.runtimeConfigService
     ? createHermesRuntimeTextProvider({
         runtimeConfigService: options.runtimeConfigService,
         fetchImpl: options.fetchImpl,
       })
-    : endpointUrl && endpointUrl.trim().length > 0
-      ? createHermesHttpTextProvider({
-          endpointUrl,
-          apiKey: env.HERMES_API_KEY,
-          model: env.HERMES_MODEL ?? "hermes-email",
-          fetchImpl: options.fetchImpl,
-        })
-      : undefined;
+    : undefined;
   if (!textProvider) {
     return undefined;
   }

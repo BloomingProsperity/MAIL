@@ -53,6 +53,7 @@ describe("engine command dispatcher", () => {
         deleteMessage: vi.fn(),
       },
       nativeCommandProcessor: { executeCommand: vi.fn() },
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher(baseCommand);
@@ -255,6 +256,7 @@ describe("engine command dispatcher", () => {
         deleteMessage: vi.fn(),
       },
       nativeCommandProcessor: { executeCommand: vi.fn() },
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await expect(dispatcher(baseCommand)).rejects.toBeInstanceOf(
@@ -282,6 +284,7 @@ describe("engine command dispatcher", () => {
         deleteMessage: vi.fn(),
       },
       nativeCommandProcessor: { executeCommand: vi.fn() },
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await expect(dispatcher(baseCommand)).rejects.toBeInstanceOf(
@@ -558,6 +561,7 @@ describe("engine command dispatcher", () => {
         deleteMessage: vi.fn(),
       },
       nativeCommandProcessor: { executeCommand },
+      nonEmailEngineProvidersEnabled: true,
     });
 
     await dispatcher(baseCommand);
@@ -568,7 +572,7 @@ describe("engine command dispatcher", () => {
     });
   });
 
-  it("blocks native engine commands when the Native Engine is paused", async () => {
+  it("blocks non-EmailEngine commands on the EmailEngine-first launch path", async () => {
     const executeCommand = vi.fn();
     const dispatcher = createEngineCommandDispatcher({
       accountSettingsStore: {
@@ -590,13 +594,12 @@ describe("engine command dispatcher", () => {
         deleteMessage: vi.fn(),
       },
       nativeCommandProcessor: { executeCommand },
-      nativeEngineEnabled: false,
     });
 
     const rejected = dispatcher(baseCommand);
     await expect(rejected).rejects.toBeInstanceOf(NonRetryableQueueError);
     await expect(rejected).rejects.toThrow(
-      "Native Engine is paused for EmailEngine-first launch",
+      "Non-EmailEngine account routing is disabled for launch",
     );
     expect(executeCommand).not.toHaveBeenCalled();
   });

@@ -31,7 +31,8 @@ export async function checkComposeEnvInvariants(input: {
           ? readEnvInvariantActual(commandResult.stdout, invariant)
           : undefined;
       const detail =
-        commandResult.exitCode !== 0
+        commandResult.exitCode !== 0 &&
+        !envInvariantExpectsAbsent(invariant.expected)
           ? "env_read_failed"
           : actual?.detail
             ? actual.detail
@@ -168,7 +169,8 @@ function isDockerComposeEnvInvariantExpected(
   return (
     typeof value === "string" ||
     typeof value === "boolean" ||
-    (Array.isArray(value) && value.every((item) => typeof item === "string"))
+    (Array.isArray(value) && value.every((item) => typeof item === "string")) ||
+    envInvariantExpectsAbsent(value)
   );
 }
 
@@ -176,6 +178,10 @@ function envInvariantValuesMatch(
   actual: DockerComposeEnvInvariantExpected | undefined,
   expected: DockerComposeEnvInvariantExpected,
 ): boolean {
+  if (envInvariantExpectsAbsent(expected)) {
+    return actual === undefined;
+  }
+
   if (Array.isArray(actual) || Array.isArray(expected)) {
     return (
       Array.isArray(actual) &&
@@ -186,6 +192,17 @@ function envInvariantValuesMatch(
   }
 
   return actual === expected;
+}
+
+function envInvariantExpectsAbsent(
+  value: unknown,
+): value is { kind: "absent" } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (value as { kind?: unknown }).kind === "absent"
+  );
 }
 
 function envInvariantKey(input: {

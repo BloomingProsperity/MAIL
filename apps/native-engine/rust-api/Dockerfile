@@ -2,10 +2,10 @@ FROM rust:1.95-bookworm AS build
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
-COPY apps/api/Cargo.toml apps/api/Cargo.toml
-COPY apps/worker/Cargo.toml apps/worker/Cargo.toml
-COPY apps/api apps/api
-COPY apps/worker apps/worker
+COPY apps/native-engine/rust-api/Cargo.toml apps/native-engine/rust-api/Cargo.toml
+COPY apps/native-engine/rust-worker/Cargo.toml apps/native-engine/rust-worker/Cargo.toml
+COPY apps/native-engine/rust-api apps/native-engine/rust-api
+COPY apps/native-engine/rust-worker apps/native-engine/rust-worker
 RUN cargo build --release -p email-hub-api
 
 FROM debian:bookworm-slim

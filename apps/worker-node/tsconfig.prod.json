@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "files": ["src/main.ts", "src/healthcheck.ts"],
+  "include": [],
+  "exclude": [
+    "src/google/**/*.ts",
+    "src/imap/imapflow-mutation-client.ts",
+    "src/mail-provider/graph-readonly-adapter.ts",
+    "src/mail-provider/gmail-readonly-adapter.ts",
+    "src/mail-provider/imap-sent-appender.ts",
+    "src/mail-provider/native-*.ts",
+    "src/mail-provider/send-identity-discovery.ts",
+    "src/mail-provider/smtp-send-transport.ts",
+    "src/microsoft/**/*.ts"
+  ]
+}

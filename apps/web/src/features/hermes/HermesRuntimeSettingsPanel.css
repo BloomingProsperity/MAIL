@@ -1,3 +1,21 @@
+.hermes-connect-panel {
+  max-width: 760px;
+}
+
+.hermes-connect-form {
+  gap: 12px;
+}
+
+.hermes-connect-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.hermes-connect-actions {
+  justify-content: flex-start;
+}
+
 .hermes-runtime-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -41,6 +59,7 @@
 }
 
 @media (max-width: 960px) {
+  .hermes-connect-card,
   .hermes-runtime-tabs {
     grid-template-columns: 1fr;
   }

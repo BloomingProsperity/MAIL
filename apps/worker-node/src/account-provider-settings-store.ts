@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import type { NativeProvider } from "./mail-provider/contract.js";
 import type { AccountRecoveryReason } from "./account-state-processor.js";
+
+type PausedProvider = "gmail" | "graph" | "imap";
 
 export interface QueryResult<Row extends Record<string, unknown>> {
   rows: Row[];
@@ -21,7 +22,7 @@ export interface AccountSyncPlan {
   authMethod: string;
   syncState?: "syncing" | "reauth_required" | "paused";
   engineProvider: "emailengine" | "native";
-  nativeProvider?: NativeProvider;
+  nativeProvider?: PausedProvider;
   capabilities: Record<string, unknown>;
   settings: Record<string, unknown>;
 }
@@ -212,7 +213,7 @@ function syncStateValue(value: string): AccountSyncPlan["syncState"] {
   return "syncing";
 }
 
-function nativeProviderValue(value: unknown): NativeProvider | undefined {
+function nativeProviderValue(value: unknown): PausedProvider | undefined {
   return value === "gmail" || value === "graph" || value === "imap"
     ? value
     : undefined;

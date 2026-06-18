@@ -4,7 +4,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -25,7 +24,7 @@ afterEach(() => {
 });
 
 describe("Hermes Search workspace skill notices", () => {
-  it("opens the focused search skill settings when natural-language search is disabled", async () => {
+  it("keeps internal search skill settings hidden when natural-language search is disabled", async () => {
     const api = createSearchSkillApiFixture();
     vi.mocked(api.searchMailWithHermes).mockRejectedValueOnce(
       new ApiRequestError(403, "hermes_skill_disabled", {
@@ -48,7 +47,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 搜索问答能力缺少正文读取权限，请到 Hermes 配置 > 能力选项打开“搜索问答”的“读取正文”开关。",
+        "Hermes 搜索问答暂时不可用，系统正在自动调整读取权限。",
       ),
     ).toBeTruthy();
     await waitFor(() => {
@@ -61,19 +60,8 @@ describe("Hermes Search workspace skill notices", () => {
       });
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "打开能力选项" }));
-
-    expect(await screen.findByRole("heading", { name: "Hermes" })).toBeTruthy();
-    const skillPanel = await screen.findByLabelText("Hermes skill settings");
-    const focusedCard = await within(skillPanel).findByLabelText(
-      "Focused Hermes skill 自然语言查邮件",
-    );
-    const bodyReadToggle = within(focusedCard).getByLabelText(
-      "Allow Hermes body reads 自然语言查邮件",
-    );
-    await waitFor(() => {
-      expect(document.activeElement).toBe(bodyReadToggle);
-    });
+    expect(screen.queryByRole("button", { name: "打开能力选项" })).toBeNull();
+    expect(screen.queryByLabelText("Hermes skill settings")).toBeNull();
   });
 
   it("opens Hermes runtime settings when the model gateway is not configured", async () => {
@@ -103,8 +91,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
 
-    expect(await screen.findByRole("heading", { name: "Hermes" })).toBeTruthy();
-    expect(await screen.findByRole("heading", { name: "Hermes 配置" })).toBeTruthy();
+    expect(await screen.findByLabelText("Hermes 配置")).toBeTruthy();
   });
 
   it("routes dock runtime repairs from Settings child sections to Hermes settings", async () => {
@@ -129,10 +116,10 @@ describe("Hermes Search workspace skill notices", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
 
-    expect(await screen.findByRole("heading", { name: "Hermes 配置" })).toBeTruthy();
+    expect(await screen.findByLabelText("Hermes 配置")).toBeTruthy();
   });
 
-  it("routes dock skill repairs from Settings child sections to Hermes skill settings", async () => {
+  it("keeps dock skill repairs internal from child sections", async () => {
     const api = createSearchSkillApiFixture();
     vi.mocked(api.searchMailWithHermes).mockRejectedValueOnce(
       new ApiRequestError(403, "hermes_skill_disabled", {
@@ -150,22 +137,11 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 搜索问答能力缺少正文读取权限，请到 Hermes 配置 > 能力选项打开“搜索问答”的“读取正文”开关。",
+        "Hermes 搜索问答暂时不可用，系统正在自动调整读取权限。",
       ),
     ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "打开能力选项" }));
-
-    const skillPanel = await screen.findByLabelText("Hermes skill settings");
-    const focusedCard = await within(skillPanel).findByLabelText(
-      "Focused Hermes skill 自然语言查邮件",
-    );
-    const bodyReadToggle = within(focusedCard).getByLabelText(
-      "Allow Hermes body reads 自然语言查邮件",
-    );
-    await waitFor(() => {
-      expect(document.activeElement).toBe(bodyReadToggle);
-    });
+    expect(screen.queryByRole("button", { name: "打开能力选项" })).toBeNull();
+    expect(screen.queryByLabelText("Hermes skill settings")).toBeNull();
   });
 });
 
@@ -225,24 +201,26 @@ function createSearchSkillApiFixture(): EmailHubApi {
     getHermesProviders: vi.fn(async () => ({
       providers: [
         {
-          key: "hermes",
-          label: "Hermes 服务",
-          category: "gateway",
-          authType: "api_key_optional",
+          key: "openai-api",
+          label: "OpenAI",
+          category: "cloud",
+          authType: "api_key",
           requestProtocol: "openai_chat_completions",
           endpointEditable: true,
-          aliases: [],
-          modelExamples: ["hermes-email"],
-          capabilities: ["chat", "email_skills", "memory"],
+          aliases: ["openai"],
+          modelExamples: ["gpt-5.2"],
+          defaultEndpoint: "https://api.openai.com/v1/chat/completions",
+          capabilities: ["chat", "email_skills"],
         },
       ],
     })),
     getHermesRuntimeSettings: vi.fn(async () => ({
       enabled: true,
       mode: "external_hermes",
-      providerKey: "hermes",
-      endpointUrl: "http://hermes:4000/v1/chat/completions",
-      model: "hermes-email",
+      assistantName: "Hermes",
+      providerKey: "openai-api",
+      endpointUrl: "https://api.openai.com/v1/chat/completions",
+      model: "gpt-5.2",
       apiKeyConfigured: true,
       updatePolicy: "manual",
       updateChannel: "stable",
@@ -293,14 +271,9 @@ function createSearchSkillApiFixture(): EmailHubApi {
 }
 
 async function openAliasSettingsSection() {
-  fireEvent.click(
-    within(screen.getByRole("navigation")).getByRole("button", {
-      name: "设置",
-    }),
-  );
-  const settingsNav = await screen.findByLabelText("设置目录");
-  fireEvent.click(within(settingsNav).getByRole("button", { name: "别名转发" }));
-  expect(await screen.findByRole("heading", { name: "别名转发" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "配置域名" }));
+  expect(await screen.findByRole("heading", { name: "配置域名" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "域名管理" })).toBeTruthy();
 }
 
 async function openSearchWorkspace() {

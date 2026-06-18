@@ -11,7 +11,6 @@ describe("EmailEngine production env verify CLI runner", () => {
     const stdout: string[] = [];
     const stderr: string[] = [];
     const env = productionEnv({
-      HERMES_CHAT_COMPLETIONS_URL: "",
       GOOGLE_OAUTH_CLIENT_ID: "",
       GOOGLE_OAUTH_CLIENT_SECRET: "",
       MICROSOFT_OAUTH_CLIENT_ID: "",
@@ -45,7 +44,7 @@ describe("EmailEngine production env verify CLI runner", () => {
         optionalIntegrations: { ok: true },
       },
     });
-    expect(parsed.checks.optionalIntegrations.issues).toHaveLength(3);
+    expect(parsed.checks.optionalIntegrations.issues).toHaveLength(2);
     const serialized = JSON.stringify(parsed);
     for (const secret of productionEnvSecretValues(env)) {
       if (secret) {
@@ -268,10 +267,10 @@ describe("EmailEngine production env verify CLI runner", () => {
     expect(digested.checks.containerImage).toEqual({ ok: true, issues: [] });
   });
 
-  it("fails the production launch gate when the paused native engine is enabled", () => {
+  it("fails the production launch gate when a Native/Core launch switch is configured", () => {
     const result = verifyEmailEngineProductionEnv({
       env: productionEnv({
-        EMAILHUB_NATIVE_ENGINE_ENABLED: "true",
+        EMAILHUB_NATIVE_ENGINE_ENABLED: "false",
       }),
       now: () => new Date("2026-06-17T12:00:00.000Z"),
     });
@@ -285,12 +284,12 @@ describe("EmailEngine production env verify CLI runner", () => {
           severity: "error",
           env: ["EMAILHUB_NATIVE_ENGINE_ENABLED"],
           detail:
-            "EMAILHUB_NATIVE_ENGINE_ENABLED must stay false for the EmailEngine-first production launch; the self-built Native Engine is paused.",
+            "EMAILHUB_NATIVE_ENGINE_ENABLED must not be configured for the EmailEngine-first production launch; self-developed Native/Core code is outside the launch path.",
         },
       ],
     });
     expect(result.requiredFollowUps).toContain(
-      "EMAILHUB_NATIVE_ENGINE_ENABLED must stay false for the EmailEngine-first production launch; the self-built Native Engine is paused.",
+      "EMAILHUB_NATIVE_ENGINE_ENABLED must not be configured for the EmailEngine-first production launch; self-developed Native/Core code is outside the launch path.",
     );
   });
 
@@ -389,7 +388,6 @@ function productionEnv(
     EMAILENGINE_AUTH_SERVER_SECRET: "prod-auth-secret",
     EENGINE_SECRET: "prod-service-secret",
     POSTGRES_PASSWORD: "prod-postgres-password",
-    HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
     GOOGLE_OAUTH_CLIENT_ID: "google-client",
     GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
     EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID: "ee-gmail-app",

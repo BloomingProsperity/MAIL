@@ -42,18 +42,14 @@ describe("server wiring", () => {
     );
   });
 
-  it("keeps native send transport behind an explicit paused-engine flag", async () => {
+  it("keeps self-developed Native/Core transports out of API launch wiring", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");
 
-    expect(source).toMatch(/readNativeEngineEnabled/);
-    expect(source).toMatch(
-      /const nativeEngineEnabled = readNativeEngineEnabled\(process\.env\)/,
-    );
-    expect(source).toMatch(/createConfiguredNativeSendTransport/);
-    expect(source).toMatch(
-      /\.\.\.\(nativeEngineEnabled\s*\?\s*\{\s*native:\s*createConfiguredNativeSendTransport/s,
-    );
+    expect(source).not.toMatch(/readNativeEngineEnabled/);
+    expect(source).not.toMatch(/createConfiguredNativeSendTransport/);
+    expect(source).not.toMatch(/nativeEngineEnabled/);
+    expect(source).toMatch(/createConfiguredGraphSendIdentityVerifier/);
     expect(source).toMatch(/client:\s*pool/);
     expect(source).toMatch(/createId:\s*randomUUID/);
   });

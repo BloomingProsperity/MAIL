@@ -93,7 +93,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         {
           service: "api",
           name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
-          expected: "false",
+          expected: { kind: "absent" },
         },
         {
           service: "worker",
@@ -103,7 +103,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         {
           service: "worker",
           name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
-          expected: "false",
+          expected: { kind: "absent" },
         },
         {
           service: "emailengine",
@@ -684,7 +684,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         {
           service: "api",
           name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
-          expected: "false",
+          expected: { kind: "absent" },
         },
         {
           service: "api",
@@ -714,7 +714,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         {
           service: "worker",
           name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
-          expected: "false",
+          expected: { kind: "absent" },
         },
         {
           service: "worker",

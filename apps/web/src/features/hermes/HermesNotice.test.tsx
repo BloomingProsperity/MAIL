@@ -18,28 +18,18 @@ describe("HermesNotice", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("opens the focused skill setting when the notice is actionable", () => {
-    const onOpenSkillSettings = vi.fn();
-
+  it("does not expose skill settings for internal Hermes notices", () => {
     render(
       <HermesNotice
-        notice="Hermes 搜索问答能力已禁用。"
-        skillId="email_search_qa"
-        requiredPermission="body_read"
+        notice="Hermes 搜索问答暂时不可用，请稍后再试。"
         compact
-        onOpenSkillSettings={onOpenSkillSettings}
       />,
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "打开能力选项" }));
 
     expect(screen.getByRole("status").className).toBe(
       "backend-notice compact hermes-actionable-notice",
     );
-    expect(onOpenSkillSettings).toHaveBeenCalledWith(
-      "email_search_qa",
-      "body_read",
-    );
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("renders a general recovery action when provided", () => {

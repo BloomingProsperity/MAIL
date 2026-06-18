@@ -1,4 +1,4 @@
-import type { Queryable } from "./oauth-access-token.js";
+import type { Queryable } from "../accounts/oauth-access-token.js";
 
 export interface NativeSendReauthorizationMarker {
   markRequired(input: {

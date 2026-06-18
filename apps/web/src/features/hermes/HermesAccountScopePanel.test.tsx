@@ -22,20 +22,20 @@ describe("HermesAccountScopePanel", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Hermes account scope").textContent).toContain(
-      "规则、学习记录和审计日志当前绑定到 Work Gmail。",
+    expect(screen.getByLabelText("Hermes 当前邮箱").textContent).toContain(
+      "Hermes 会根据 Work Gmail 的邮件上下文工作。",
     );
   });
 
   it("warns when Hermes settings have no account scope", () => {
     render(<HermesAccountScopePanel />);
 
-    expect(screen.getByLabelText("Hermes account scope").textContent).toContain(
-      "请先选择或添加邮箱",
+    expect(screen.getByLabelText("Hermes 当前邮箱").textContent).toContain(
+      "请选择或添加邮箱",
     );
     expect(
       screen.queryByRole("combobox", {
-        name: "Select Hermes settings account",
+        name: "选择 Hermes 当前邮箱",
       }),
     ).toBeNull();
   });
@@ -64,7 +64,7 @@ describe("HermesAccountScopePanel", () => {
 
     fireEvent.change(
       screen.getByRole("combobox", {
-        name: "Select Hermes settings account",
+        name: "选择 Hermes 当前邮箱",
       }),
       { target: { value: "account_2" } },
     );

@@ -54,7 +54,7 @@ export function createDatabaseAccessTokenProvider(input: {
         return token.accessToken;
       } catch (error) {
         throw new Error(
-          `native access token unavailable for account ${accountId}: ${redact(
+          `OAuth access token unavailable for account ${accountId}: ${redact(
             errorMessage(error),
             [refreshToken],
           )}`,

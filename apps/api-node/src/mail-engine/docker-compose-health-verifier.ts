@@ -80,7 +80,10 @@ export interface DockerComposeEnvInvariantInput {
 export type DockerComposeEnvInvariantExpected =
   | string
   | boolean
-  | string[];
+  | string[]
+  | {
+      kind: "absent";
+    };
 
 export interface DockerComposeImageInvariantInput {
   service: string;

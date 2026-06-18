@@ -16,7 +16,7 @@ Email Hub MVP uses a TypeScript/Node backend for the API and worker, with EmailE
 - `apps/api-node`: public API, health routes, EmailEngine webhook verification, normalized event boundary.
 - `apps/worker-node`: background job process for sync, mirror, Hermes, and import lanes.
 - `apps/web`: React/Vite frontend, unchanged by this backend decision.
-- `apps/api` and `apps/worker`: legacy Rust skeleton kept as reference until replaced or moved into a native sidecar spike.
+- `apps/native-engine/`: isolated self-developed Native/Core experiments. It is not part of the EmailEngine-first launch path or production Docker deployment.
 - `emailengine`: external provider in Docker for MVP mail protocol handling.
 - `postgres`: canonical app mirror for accounts, messages, states, classifications, Hermes, aliases, and domains.
 
@@ -827,7 +827,7 @@ POST /api/hermes/skills/followup_tracker/run
 POST /api/hermes/skills/newsletter_cleanup/run
 POST /api/hermes/skills/reply_draft/run
 -> create Hermes prompt
--> call HERMES_CHAT_COMPLETIONS_URL
+-> call the saved Hermes runtime provider
 -> write hermes_skill_runs
 -> write hermes_audit_events with account_id, skill_run_id, read_message_ids, memory_ids
 ```

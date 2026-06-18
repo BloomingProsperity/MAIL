@@ -123,6 +123,7 @@ const HERMES_PROVIDER_CATALOG: HermesProviderCatalogItem[] = [
     key: "deepseek",
     label: "DeepSeek",
     envKeys: ["DEEPSEEK_API_KEY"],
+    defaultEndpoint: "https://api.deepseek.com/v1/chat/completions",
     examples: ["deepseek-chat", "deepseek-reasoner"],
   }),
   cloudProvider({
@@ -156,6 +157,8 @@ const HERMES_PROVIDER_CATALOG: HermesProviderCatalogItem[] = [
     label: "Qwen / DashScope",
     aliases: ["qwen", "dashscope"],
     envKeys: ["DASHSCOPE_API_KEY"],
+    defaultEndpoint:
+      "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
     examples: ["qwen3.5-plus", "qwen3-coder-plus"],
   }),
   cloudProvider({
@@ -170,6 +173,7 @@ const HERMES_PROVIDER_CATALOG: HermesProviderCatalogItem[] = [
     label: "Kimi / Moonshot",
     aliases: ["kimi", "moonshot"],
     envKeys: ["KIMI_API_KEY"],
+    defaultEndpoint: "https://api.moonshot.ai/v1/chat/completions",
     examples: ["kimi-for-coding", "moonshot-v1-128k"],
   }),
   cloudProvider({
@@ -305,6 +309,7 @@ const HERMES_PROVIDER_CATALOG: HermesProviderCatalogItem[] = [
     label: "NVIDIA Build",
     aliases: ["nvidia-nim"],
     envKeys: ["NVIDIA_API_KEY"],
+    defaultEndpoint: "https://integrate.api.nvidia.com/v1/chat/completions",
     examples: ["nvidia/llama-3.3-nemotron-super-49b-v1"],
   }),
   oauthProvider({
@@ -386,15 +391,15 @@ const HERMES_PROVIDER_CATALOG: HermesProviderCatalogItem[] = [
   }),
   {
     key: "custom",
-    label: "自定义 Hermes 网关",
+    label: "自定义兼容服务",
     category: "custom",
     authType: "api_key_optional",
     requestProtocol: "openai_chat_completions",
     endpointEditable: true,
-    aliases: ["hermes-gateway", "custom-endpoint"],
-    modelExamples: ["hermes-email"],
+    aliases: ["hermes-gateway", "custom-endpoint", "openai-compatible"],
+    modelExamples: ["custom-model"],
     capabilities: [...baseCapabilities(), "skills", "memory"],
-    note: "仅用于接入自托管 Hermes 网关；Email Hub 不直连模型服务。",
+    note: "用于接入 OpenAI-compatible 自定义服务。",
   },
 ];
 

@@ -427,7 +427,7 @@ function formatHermesRetentionTableName(table: string): string {
     hermes_message_summaries: "邮件总结缓存",
     hermes_action_plans: "执行计划",
     hermes_feedback: "草稿反馈",
-    hermes_audit_events: "审计日志",
+    hermes_audit_events: "系统记录",
     hermes_skill_runs: "运行记录",
   };
 

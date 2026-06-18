@@ -3,7 +3,7 @@ services:
     image: ${HERMES_GATEWAY_IMAGE:-ghcr.io/berriai/litellm:v1.89.1}
     restart: unless-stopped
     environment:
-      LITELLM_MASTER_KEY: ${HERMES_API_KEY:?Set HERMES_API_KEY for the bundled Hermes gateway}
+      LITELLM_MASTER_KEY: ${HERMES_GATEWAY_API_KEY:?Set HERMES_GATEWAY_API_KEY for the bundled Hermes gateway}
       HERMES_LITELLM_MODEL: ${HERMES_LITELLM_MODEL:-openai/gpt-4o-mini}
       HERMES_LITELLM_API_KEY: ${HERMES_LITELLM_API_KEY:-}
       HERMES_LITELLM_API_BASE: ${HERMES_LITELLM_API_BASE:-https://api.openai.com/v1}
@@ -28,8 +28,3 @@ services:
     depends_on:
       hermes:
         condition: service_healthy
-    environment:
-      HERMES_PROVIDER: hermes
-      HERMES_CHAT_COMPLETIONS_URL: http://hermes:4000/v1/chat/completions
-      HERMES_API_KEY: ${HERMES_API_KEY:?Set HERMES_API_KEY for the bundled Hermes gateway}
-      HERMES_MODEL: hermes-email

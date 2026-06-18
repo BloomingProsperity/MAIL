@@ -80,7 +80,6 @@ function dockHandlers() {
     onSubmit: vi.fn(),
     onApproveRule: vi.fn(),
     onOpenSearch: vi.fn(),
-    onOpenHermesSkillSettings: vi.fn(),
   };
 }
 

@@ -6,17 +6,17 @@ const nativeEngineEnvInvariants = [
   {
     service: "api",
     name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
-    expected: "false",
+    expected: { kind: "absent" as const },
   },
   {
     service: "worker",
     name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
-    expected: "false",
+    expected: { kind: "absent" as const },
   },
 ];
 
 describe("Docker compose native engine launch gate", () => {
-  it("passes when API and worker keep Native Engine disabled at runtime", async () => {
+  it("passes when API and worker do not expose a Native/Core runtime switch", async () => {
     const result = await verifyDockerComposeHealth({
       projectRoot: "/repo",
       envFile: ".env",
@@ -28,8 +28,8 @@ describe("Docker compose native engine launch gate", () => {
         }
 
         return {
-          exitCode: 0,
-          stdout: "false\n",
+          exitCode: 1,
+          stdout: "",
           stderr: "",
         };
       },
@@ -50,7 +50,7 @@ describe("Docker compose native engine launch gate", () => {
     });
   });
 
-  it("fails when running API or worker containers enable Native Engine", async () => {
+  it("fails when running API or worker containers expose a Native/Core switch", async () => {
     const result = await verifyDockerComposeHealth({
       projectRoot: "/repo",
       envFile: ".env",
@@ -63,7 +63,7 @@ describe("Docker compose native engine launch gate", () => {
 
         return {
           exitCode: 0,
-          stdout: "true\n",
+          stdout: "false\n",
           stderr: "",
         };
       },
