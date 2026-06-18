@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../../App";
@@ -49,6 +56,63 @@ describe("Hermes search account scope", () => {
         hasAttachment: true,
       });
     });
+  });
+
+  it("ignores stale natural-language search results", async () => {
+    const api = createApiFixture();
+    let resolveOldSearch: (result: HermesEmailSearchQaResult) => void = () => {};
+    vi.mocked(api.searchMailWithHermes)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOldSearch = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(
+        searchResult("run_new", "new contract", "New answer."),
+      );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", {
+        name: "搜索",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
+      target: { value: "旧问题" },
+    });
+    fireEvent.submit(screen.getByRole("form", { name: "Hermes 自然语言搜索" }));
+    await waitFor(() => {
+      expect(api.searchMailWithHermes).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
+      target: { value: "新问题" },
+    });
+    fireEvent.submit(screen.getByRole("form", { name: "Hermes 自然语言搜索" }));
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith(
+        expect.objectContaining({ q: "new contract" }),
+      );
+    });
+
+    await act(async () => {
+      resolveOldSearch(searchResult("run_old", "old contract", "Old answer."));
+      await Promise.resolve();
+    });
+
+    expect((screen.getByLabelText("搜索邮件") as HTMLInputElement).value).toBe(
+      "new contract",
+    );
+    expect(screen.getByLabelText("Hermes 搜索回答").textContent).toContain(
+      "New answer.",
+    );
+    expect(screen.queryByText("Old answer.")).toBeNull();
+    expect(api.listMessages).not.toHaveBeenCalledWith(
+      expect.objectContaining({ q: "old contract" }),
+    );
   });
 });
 
@@ -126,11 +190,12 @@ function createApiFixture(): EmailHubApi {
 function searchResult(
   skillRunId: string,
   searchQuery: string,
+  answerText = "Found matching messages across accounts.",
 ): HermesEmailSearchQaResult {
   return {
     skillRunId,
     skillId: "email_search_qa",
-    answerText: "Found matching messages across accounts.",
+    answerText,
     searchQuery,
     searchPlan: {
       searchQuery,

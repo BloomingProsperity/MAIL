@@ -8102,6 +8102,7 @@ function SearchPage(props: {
   const [hermesSearchBusy, setHermesSearchBusy] = useState(false);
   const [hermesSearchResult, setHermesSearchResult] =
     useState<HermesEmailSearchQaResult>();
+  const hermesSearchRequestRef = useRef(0);
   const notice = noticeState.text;
 
   function setNotice(
@@ -8148,6 +8149,7 @@ function SearchPage(props: {
   async function executeSearch(
     rawQuery: string,
     launchOverride?: Omit<SearchLaunch, "query" | "requestId">,
+    isCurrentRequest: () => boolean = () => true,
   ) {
     const trimmedQuery = rawQuery.trim();
     if (!trimmedQuery) {
@@ -8228,6 +8230,9 @@ function SearchPage(props: {
           ? { labelIds: effectiveLabelIds, tagMode: effectiveTagMode }
           : {}),
       });
+      if (!isCurrentRequest()) {
+        return false;
+      }
       const mappedResults = page.items.map(mapMessageDtoToMailItem);
       setResults(mappedResults);
       setHasSearched(true);
@@ -8240,6 +8245,9 @@ function SearchPage(props: {
       );
       return true;
     } catch {
+      if (!isCurrentRequest()) {
+        return false;
+      }
       setResults([]);
       setHasSearched(true);
       setNotice("搜索暂时不可用，请稍后重试。");
@@ -8259,6 +8267,11 @@ function SearchPage(props: {
       setNotice("请输入自然语言问题。");
       return;
     }
+    const requestId = hermesSearchRequestRef.current + 1;
+    hermesSearchRequestRef.current = requestId;
+    const isCurrentHermesSearchRequest = () =>
+      hermesSearchRequestRef.current === requestId;
+
     if (!props.api) {
       setQuery(question);
       await executeSearch(question);
@@ -8286,6 +8299,9 @@ function SearchPage(props: {
         limit: 10,
         memoryScope: "global",
       });
+      if (!isCurrentHermesSearchRequest()) {
+        return;
+      }
       const searchOptions = searchLaunchFromHermesResult(
         result,
         hermesAccountId,
@@ -8306,7 +8322,14 @@ function SearchPage(props: {
       setLabelIds(searchOptions.labelIds ?? []);
       setTagMode(searchOptions.tagMode ?? "any");
       setSearchAllAccounts(hermesSearchAllAccounts);
-      const searched = await executeSearch(result.searchQuery, searchOptions);
+      const searched = await executeSearch(
+        result.searchQuery,
+        searchOptions,
+        isCurrentHermesSearchRequest,
+      );
+      if (!isCurrentHermesSearchRequest()) {
+        return;
+      }
       if (!searched) {
         return;
       }
@@ -8317,6 +8340,9 @@ function SearchPage(props: {
           : "Hermes 已同步搜索条件，但没有找到候选结果。",
       );
     } catch (error) {
+      if (!isCurrentHermesSearchRequest()) {
+        return;
+      }
       setHermesSearchResult(undefined);
       setNotice(
         hermesSkillErrorNotice(error, {
@@ -8328,7 +8354,9 @@ function SearchPage(props: {
         hermesNoticeActionFromError(error),
       );
     } finally {
-      setHermesSearchBusy(false);
+      if (isCurrentHermesSearchRequest()) {
+        setHermesSearchBusy(false);
+      }
     }
   }
 
