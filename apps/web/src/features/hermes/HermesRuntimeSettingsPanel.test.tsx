@@ -1,6 +1,15 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EmailHubApi } from "../../lib/emailHubApi";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  EmailHubApi,
+  HermesRuntimeSettingsDto,
+} from "../../lib/emailHubApi";
 import { HermesRuntimeSettingsPanel } from "./HermesRuntimeSettingsPanel";
 
 const childPanelCalls = vi.hoisted(() => ({
@@ -47,6 +56,10 @@ vi.mock("./HermesSkillSettingsPanel", () => ({
 }));
 
 describe("HermesRuntimeSettingsPanel", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     childPanelCalls.audit.mockClear();
     childPanelCalls.memory.mockClear();
@@ -93,22 +106,96 @@ describe("HermesRuntimeSettingsPanel", () => {
     );
     expect(api.listSyncCenterAccounts).toHaveBeenCalledTimes(1);
   });
+
+  it("locks runtime actions and fields while settings are saving", async () => {
+    const api = createRuntimeApiFixture();
+    const pendingSave = deferred<HermesRuntimeSettingsDto>();
+    vi.mocked(api.updateHermesRuntimeSettings).mockReturnValueOnce(
+      pendingSave.promise,
+    );
+
+    render(<HermesRuntimeSettingsPanel api={api} accountId="account_1" />);
+
+    await screen.findByText("Hermes 已连接访问密钥。");
+    const saveButton = screen.getByRole("button", {
+      name: "保存配置",
+    }) as HTMLButtonElement;
+    const testButton = screen.getByRole("button", {
+      name: "测试连接",
+    }) as HTMLButtonElement;
+    const clearButton = screen.getByRole("button", {
+      name: "清除访问密钥",
+    }) as HTMLButtonElement;
+    const updateButton = screen.getByRole("button", {
+      name: "检查更新",
+    }) as HTMLButtonElement;
+
+    fireEvent.click(saveButton);
+
+    expect(await screen.findByText("正在保存 Hermes 配置...")).toBeTruthy();
+    await waitFor(() => {
+      expect(saveButton.disabled).toBe(true);
+      expect(testButton.disabled).toBe(true);
+      expect(clearButton.disabled).toBe(true);
+      expect(updateButton.disabled).toBe(true);
+    });
+    expect(
+      (
+        screen.getByDisplayValue(
+          "http://hermes.local/v1/chat/completions",
+        ) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+
+    fireEvent.click(saveButton);
+    fireEvent.click(testButton);
+    fireEvent.click(clearButton);
+    fireEvent.click(updateButton);
+
+    expect(api.updateHermesRuntimeSettings).toHaveBeenCalledTimes(1);
+    expect(api.testHermesRuntimeConnection).not.toHaveBeenCalled();
+    expect(api.clearHermesRuntimeApiKey).not.toHaveBeenCalled();
+    expect(api.checkHermesRuntimeUpdate).not.toHaveBeenCalled();
+
+    pendingSave.resolve(
+      runtimeSettingsFixture({
+        model: "hermes-email-saved",
+      }),
+    );
+
+    expect(await screen.findByText("Hermes 配置已保存。")).toBeTruthy();
+    await waitFor(() => {
+      expect(saveButton.disabled).toBe(false);
+      expect(testButton.disabled).toBe(false);
+      expect(clearButton.disabled).toBe(false);
+      expect(updateButton.disabled).toBe(false);
+    });
+  });
 });
 
 function createRuntimeApiFixture(): EmailHubApi {
   return {
     getHermesProviders: vi.fn(async () => ({ providers: [] })),
-    getHermesRuntimeSettings: vi.fn(async () => ({
-      enabled: true,
-      mode: "external_hermes",
+    getHermesRuntimeSettings: vi.fn(async () => runtimeSettingsFixture()),
+    updateHermesRuntimeSettings: vi.fn(async () => runtimeSettingsFixture()),
+    testHermesRuntimeConnection: vi.fn(async () => ({
+      ok: true,
+      checkedAt: "2026-06-14T08:00:00.000Z",
       providerKey: "hermes",
+      requestProtocol: "openai_chat_completions",
       endpointUrl: "http://hermes.local/v1/chat/completions",
       model: "hermes-email",
-      apiKeyConfigured: true,
+    })),
+    clearHermesRuntimeApiKey: vi.fn(async () =>
+      runtimeSettingsFixture({ apiKeyConfigured: false }),
+    ),
+    checkHermesRuntimeUpdate: vi.fn(async () => ({
+      installedVersion: "0.1.0",
+      latestVersion: "0.1.0",
+      updateAvailable: false,
       updatePolicy: "manual",
       updateChannel: "stable",
-      updateAvailable: false,
-      source: "database",
+      lastCheckedAt: "2026-06-14T08:05:00.000Z",
     })),
     listSyncCenterAccounts: vi.fn(async () => ({
       items: [
@@ -129,4 +216,39 @@ function createRuntimeApiFixture(): EmailHubApi {
       ],
     })),
   } as unknown as EmailHubApi;
+}
+
+function runtimeSettingsFixture(
+  overrides: Partial<HermesRuntimeSettingsDto> = {},
+): HermesRuntimeSettingsDto {
+  return {
+    enabled: true,
+    mode: "external_hermes",
+    providerKey: "hermes",
+    endpointUrl: "http://hermes.local/v1/chat/completions",
+    model: "hermes-email",
+    apiKeyConfigured: true,
+    updatePolicy: "manual",
+    updateChannel: "stable",
+    installedVersion: "0.1.0",
+    latestVersion: "0.1.0",
+    updateAvailable: false,
+    source: "database",
+    updatedAt: "2026-06-14T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error?: unknown) => void;
+} {
+  let resolve: (value: T) => void = () => {};
+  let reject: (error?: unknown) => void = () => {};
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
 }

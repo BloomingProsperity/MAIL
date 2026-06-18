@@ -25,6 +25,8 @@ import {
 import { HermesRuleManagerPanel } from "./HermesRuleManagerPanel";
 import { HermesSkillSettingsPanel } from "./HermesSkillSettingsPanel";
 
+type HermesRuntimeBusyAction = "save" | "test" | "clear-key" | "check-update";
+
 const fallbackHermesProviders: HermesProviderCatalogItem[] = [
   {
     key: "hermes",
@@ -124,6 +126,7 @@ export function HermesRuntimeSettingsPanel(props: {
     { memoryId: string; label: string } | undefined
   >();
   const [notice, setNotice] = useState("正在读取 Hermes 配置...");
+  const [busyAction, setBusyAction] = useState<HermesRuntimeBusyAction>();
   const providerOptions = useMemo<HermesProviderCatalogItem[]>(() => {
     const runtimeProviders = hermesProviders.filter(isHermesRuntimeGatewayProvider);
     if (runtimeProviders.some((provider) => provider.key === providerKey)) {
@@ -151,6 +154,7 @@ export function HermesRuntimeSettingsPanel(props: {
   );
   const accountOptions = props.accountOptions ?? scopedAccountOptions;
   const effectiveAccountId = scopedAccountId || undefined;
+  const isRuntimeBusy = busyAction !== undefined;
 
   function applyProviderSelection(nextProviderKey: string) {
     const provider = providerOptions.find((item) => item.key === nextProviderKey);
@@ -301,6 +305,9 @@ export function HermesRuntimeSettingsPanel(props: {
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busyAction) {
+      return;
+    }
 
     if (!props.api) {
       setApiKeyConfigured(Boolean(apiKey.trim()));
@@ -308,6 +315,7 @@ export function HermesRuntimeSettingsPanel(props: {
       return;
     }
 
+    setBusyAction("save");
     setNotice("正在保存 Hermes 配置...");
     try {
       const saved = await props.api.updateHermesRuntimeSettings({
@@ -338,15 +346,21 @@ export function HermesRuntimeSettingsPanel(props: {
       setNotice("Hermes 配置已保存。");
     } catch {
       setNotice("保存失败，请检查服务地址和模型名称。");
+    } finally {
+      setBusyAction(undefined);
     }
   }
 
   async function testConnection() {
+    if (busyAction) {
+      return;
+    }
     if (!props.api) {
       setNotice("预览模式不会发起连接测试。");
       return;
     }
 
+    setBusyAction("test");
     setNotice("正在测试 Hermes 连接...");
     try {
       const typedApiKey = apiKey.trim();
@@ -374,10 +388,15 @@ export function HermesRuntimeSettingsPanel(props: {
       setNotice("连接失败，请检查服务地址、模型和访问密钥。");
     } catch {
       setNotice("连接失败，请检查服务地址、模型和访问密钥。");
+    } finally {
+      setBusyAction(undefined);
     }
   }
 
   async function clearApiKey() {
+    if (busyAction) {
+      return;
+    }
     if (!props.api) {
       setApiKey("");
       setApiKeyConfigured(false);
@@ -385,6 +404,7 @@ export function HermesRuntimeSettingsPanel(props: {
       return;
     }
 
+    setBusyAction("clear-key");
     setNotice("正在清除访问密钥...");
     try {
       const saved = await props.api.clearHermesRuntimeApiKey(
@@ -402,15 +422,21 @@ export function HermesRuntimeSettingsPanel(props: {
       setNotice("访问密钥已清除。");
     } catch {
       setNotice("清除失败，请稍后再试。");
+    } finally {
+      setBusyAction(undefined);
     }
   }
 
   async function checkUpdate() {
+    if (busyAction) {
+      return;
+    }
     if (!props.api) {
       setNotice("预览模式不会检查更新。");
       return;
     }
 
+    setBusyAction("check-update");
     setNotice("正在检查 Hermes 版本...");
     try {
       const result = await props.api.checkHermesRuntimeUpdate();
@@ -418,6 +444,8 @@ export function HermesRuntimeSettingsPanel(props: {
       setNotice(result.updateAvailable ? "发现可用更新。" : "当前版本已是最新。");
     } catch {
       setNotice("暂时无法检查更新。");
+    } finally {
+      setBusyAction(undefined);
     }
   }
 
@@ -428,7 +456,12 @@ export function HermesRuntimeSettingsPanel(props: {
           <h2>Hermes 配置</h2>
           <p>助手、写作习惯、版本和访问密钥集中管理；收件箱只保留底部快捷入口。</p>
         </div>
-        <button className="ghost-button" type="button" onClick={checkUpdate}>
+        <button
+          className="ghost-button"
+          type="button"
+          disabled={isRuntimeBusy}
+          onClick={checkUpdate}
+        >
           检查更新
         </button>
       </header>
@@ -440,6 +473,7 @@ export function HermesRuntimeSettingsPanel(props: {
               <input
                 type="checkbox"
                 checked={enabled}
+                disabled={isRuntimeBusy}
                 onChange={(event) => setEnabled(event.target.checked)}
               />
               <span>启用 Hermes</span>
@@ -448,6 +482,7 @@ export function HermesRuntimeSettingsPanel(props: {
               <span>连接方式</span>
               <select
                 value="external_hermes"
+                disabled={isRuntimeBusy}
                 onChange={() => setMode("external_hermes")}
               >
                 <option value="external_hermes">Hermes 服务</option>
@@ -457,6 +492,7 @@ export function HermesRuntimeSettingsPanel(props: {
               <span>模型接口</span>
               <select
                 value={providerKey}
+                disabled={isRuntimeBusy}
                 onChange={(event) => applyProviderSelection(event.target.value)}
               >
                 {providerOptions.map((provider) => (
@@ -475,7 +511,9 @@ export function HermesRuntimeSettingsPanel(props: {
               <input
                 value={endpointUrl}
                 onChange={(event) => setEndpointUrl(event.target.value)}
-                disabled={selectedProvider?.endpointEditable === false}
+                disabled={
+                  isRuntimeBusy || selectedProvider?.endpointEditable === false
+                }
                 placeholder="http://localhost:11434/v1/chat/completions"
               />
             </label>
@@ -486,6 +524,7 @@ export function HermesRuntimeSettingsPanel(props: {
               <span>模型名称</span>
               <input
                 value={model}
+                disabled={isRuntimeBusy}
                 onChange={(event) => setModel(event.target.value)}
                 placeholder="hermes-email"
               />
@@ -494,18 +533,24 @@ export function HermesRuntimeSettingsPanel(props: {
               <span>访问密钥</span>
               <input
                 value={apiKey}
+                disabled={isRuntimeBusy}
                 onChange={(event) => setApiKey(event.target.value)}
                 placeholder={apiKeyConfigured ? "已保存，留空则不修改" : "可留空"}
                 type="password"
               />
             </label>
             <div className="inline-actions">
-              <button className="primary-button" type="submit">
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={isRuntimeBusy}
+              >
                 保存配置
               </button>
               <button
                 className="ghost-button"
                 type="button"
+                disabled={isRuntimeBusy}
                 onClick={testConnection}
               >
                 测试连接
@@ -514,6 +559,7 @@ export function HermesRuntimeSettingsPanel(props: {
                 <button
                   className="ghost-button"
                   type="button"
+                  disabled={isRuntimeBusy}
                   onClick={() => void clearApiKey()}
                 >
                   清除访问密钥
@@ -530,6 +576,7 @@ export function HermesRuntimeSettingsPanel(props: {
               <span>提醒方式</span>
               <select
                 value={updatePolicy}
+                disabled={isRuntimeBusy}
                 onChange={(event) =>
                   setUpdatePolicy(
                     event.target.value as HermesRuntimeUpdatePolicy,
@@ -545,6 +592,7 @@ export function HermesRuntimeSettingsPanel(props: {
               <span>更新通道</span>
               <select
                 value={updateChannel}
+                disabled={isRuntimeBusy}
                 onChange={(event) =>
                   setUpdateChannel(
                     event.target.value as HermesRuntimeUpdateChannel,
