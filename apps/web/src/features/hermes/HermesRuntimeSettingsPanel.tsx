@@ -24,8 +24,21 @@ import {
 } from "./HermesLearningPanels";
 import { HermesRuleManagerPanel } from "./HermesRuleManagerPanel";
 import { HermesSkillSettingsPanel } from "./HermesSkillSettingsPanel";
+import "./HermesRuntimeSettingsPanel.css";
 
 type HermesRuntimeBusyAction = "save" | "test" | "clear-key" | "check-update";
+type HermesRuntimeSectionId = "service" | "skills" | "rules" | "learning";
+
+const hermesRuntimeSections: Array<{
+  id: HermesRuntimeSectionId;
+  label: string;
+  description: string;
+}> = [
+  { id: "service", label: "服务配置", description: "连接和密钥" },
+  { id: "skills", label: "能力选项", description: "总结、翻译、写回复" },
+  { id: "rules", label: "规则", description: "确认后执行" },
+  { id: "learning", label: "学习记录", description: "记忆和审计" },
+];
 
 const fallbackHermesProviders: HermesProviderCatalogItem[] = [
   {
@@ -126,6 +139,9 @@ export function HermesRuntimeSettingsPanel(props: {
   const [auditMemoryFocus, setAuditMemoryFocus] = useState<
     { memoryId: string; label: string } | undefined
   >();
+  const [activeSection, setActiveSection] =
+    useState<HermesRuntimeSectionId>("service");
+  const [showAuditLog, setShowAuditLog] = useState(false);
   const [notice, setNotice] = useState("正在读取 Hermes 配置...");
   const [busyAction, setBusyAction] = useState<HermesRuntimeBusyAction>();
   const providerOptions = useMemo<HermesProviderCatalogItem[]>(() => {
@@ -276,6 +292,12 @@ export function HermesRuntimeSettingsPanel(props: {
     setScopedAccountId(props.accountId ?? "");
     setAuditMemoryFocus(undefined);
   }, [props.accountId]);
+
+  useEffect(() => {
+    if (props.focusRequestId || props.focusedSkillId || props.focusedPermission) {
+      setActiveSection("skills");
+    }
+  }, [props.focusRequestId, props.focusedPermission, props.focusedSkillId]);
 
   useEffect(() => {
     let alive = true;
@@ -472,185 +494,238 @@ export function HermesRuntimeSettingsPanel(props: {
         </button>
       </header>
 
-      <form className="settings-form" onSubmit={saveSettings}>
-        <div className="settings-card-grid">
-          <article className="settings-module">
-            <h3>Hermes AI</h3>
-            <label className="field-toggle">
-              <input
-                type="checkbox"
-                checked={enabled}
-                disabled={isRuntimeBusy}
-                onChange={(event) => setEnabled(event.target.checked)}
-              />
-              <span>启用 Hermes</span>
-            </label>
-            <p>
-              状态：{connectionStatus}
-              {version?.installedVersion ? ` · 当前 ${version.installedVersion}` : ""}
-              {version?.latestVersion ? ` · 最新 ${version.latestVersion}` : ""}
-            </p>
-            <div className="inline-actions">
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={isRuntimeBusy}
-              >
-                保存配置
-              </button>
-              <button
-                className="ghost-button"
-                type="button"
-                disabled={isRuntimeBusy}
-                onClick={testConnection}
-              >
-                测试连接
-              </button>
-            </div>
-          </article>
-
-          <article className="settings-module">
-            <h3>AI 服务</h3>
-            <label>
-              <span>AI 服务</span>
-              <select
-                value={providerKey}
-                disabled={isRuntimeBusy}
-                onChange={(event) => applyProviderSelection(event.target.value)}
-              >
-                {providerOptions.map((provider) => (
-                  <option
-                    key={provider.key}
-                    value={provider.key}
-                    disabled={!isHermesProviderRuntimeSelectable(provider)}
-                  >
-                    {provider.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>服务地址</span>
-              <input
-                value={endpointUrl}
-                onChange={(event) => setEndpointUrl(event.target.value)}
-                disabled={
-                  isRuntimeBusy || selectedProvider?.endpointEditable === false
-                }
-                placeholder="http://hermes:4000/v1/chat/completions"
-              />
-            </label>
-          </article>
-
-          <article className="settings-module">
-            <h3>模型与密钥</h3>
-            <label>
-              <span>模型名称</span>
-              <input
-                value={model}
-                disabled={isRuntimeBusy}
-                onChange={(event) => setModel(event.target.value)}
-                placeholder="hermes-email"
-              />
-            </label>
-            <label>
-              <span>访问密钥</span>
-              <input
-                value={apiKey}
-                disabled={isRuntimeBusy}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={apiKeyConfigured ? "已保存，留空则不修改" : "可留空"}
-                type="password"
-              />
-            </label>
-            {apiKeyConfigured ? (
-              <div className="inline-actions">
-                <button
-                  className="ghost-button"
-                  type="button"
-                  disabled={isRuntimeBusy}
-                  onClick={() => void clearApiKey()}
-                >
-                  清除访问密钥
-                </button>
-              </div>
-            ) : null}
-          </article>
-
-          <article className="settings-module">
-            <h3>学习边界</h3>
-            <p>写回复、归档、星标、移动标签和你的修改会进入可查看的学习记录。</p>
-            <p>写操作默认先预览，不会直接发送邮件。</p>
-            <label>
-              <span>提醒方式</span>
-              <select
-                value={updatePolicy}
-                disabled={isRuntimeBusy}
-                onChange={(event) =>
-                  setUpdatePolicy(event.target.value as HermesRuntimeUpdatePolicy)
-                }
-              >
-                <option value="manual">手动确认</option>
-                <option value="notify">有更新时提醒</option>
-                <option value="auto_patch">仅小版本自动</option>
-              </select>
-            </label>
-            <label>
-              <span>更新通道</span>
-              <select
-                value={updateChannel}
-                disabled={isRuntimeBusy}
-                onChange={(event) =>
-                  setUpdateChannel(event.target.value as HermesRuntimeUpdateChannel)
-                }
-              >
-                <option value="stable">稳定</option>
-                <option value="preview">预览</option>
-              </select>
-            </label>
-          </article>
-        </div>
-      </form>
-
-      <div className="backend-notice" role="status">
-        {notice}
+      <div className="hermes-runtime-tabs" aria-label="Hermes 页面分区">
+        {hermesRuntimeSections.map((section) => (
+          <button
+            key={section.id}
+            className={activeSection === section.id ? "active" : ""}
+            type="button"
+            aria-label={`打开 ${section.label}`}
+            aria-pressed={activeSection === section.id}
+            onClick={() => setActiveSection(section.id)}
+          >
+            <span>{section.label}</span>
+            <small>{section.description}</small>
+          </button>
+        ))}
       </div>
 
-      <HermesAccountScopePanel
-        accountId={effectiveAccountId}
-        accounts={accountOptions}
-        onAccountChange={updateAccountScope}
-      />
+      {activeSection === "service" ? (
+        <>
+          <form className="settings-form" onSubmit={saveSettings}>
+            <div className="settings-card-grid">
+              <article className="settings-module">
+                <h3>Hermes AI</h3>
+                <label className="field-toggle">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) => setEnabled(event.target.checked)}
+                  />
+                  <span>启用 Hermes</span>
+                </label>
+                <p>
+                  状态：{connectionStatus}
+                  {version?.installedVersion ? ` · 当前 ${version.installedVersion}` : ""}
+                  {version?.latestVersion ? ` · 最新 ${version.latestVersion}` : ""}
+                </p>
+                <div className="inline-actions">
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={isRuntimeBusy}
+                  >
+                    保存配置
+                  </button>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    disabled={isRuntimeBusy}
+                    onClick={testConnection}
+                  >
+                    测试连接
+                  </button>
+                </div>
+              </article>
 
-      <HermesSkillSettingsPanel
-        api={props.api}
-        focusedSkillId={props.focusedSkillId}
-        focusedPermission={props.focusedPermission}
-        focusRequestId={props.focusRequestId}
-      />
+              <article className="settings-module">
+                <h3>AI 服务</h3>
+                <label>
+                  <span>AI 服务</span>
+                  <select
+                    value={providerKey}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) => applyProviderSelection(event.target.value)}
+                  >
+                    {providerOptions.map((provider) => (
+                      <option
+                        key={provider.key}
+                        value={provider.key}
+                        disabled={!isHermesProviderRuntimeSelectable(provider)}
+                      >
+                        {provider.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>服务地址</span>
+                  <input
+                    value={endpointUrl}
+                    onChange={(event) => setEndpointUrl(event.target.value)}
+                    disabled={
+                      isRuntimeBusy || selectedProvider?.endpointEditable === false
+                    }
+                    placeholder="http://hermes:4000/v1/chat/completions"
+                  />
+                </label>
+              </article>
 
-      <HermesRuleManagerPanel
-        api={props.api}
-        accountId={effectiveAccountId}
-        onRuleApproved={props.onHermesRuleApproved}
-      />
-      <HermesMemoryManagerPanel
-        api={props.api}
-        accountId={effectiveAccountId}
-        onInspectMemoryUsage={(memory) =>
-          setAuditMemoryFocus({
-            memoryId: memory.id,
-            label: `${formatHermesMemoryLayer(memory.layer)} · ${memory.scope}`,
-          })
-        }
-      />
-      <HermesAuditLogPanel
-        api={props.api}
-        accountId={effectiveAccountId}
-        focusedMemoryId={auditMemoryFocus?.memoryId}
-        focusedMemoryLabel={auditMemoryFocus?.label}
-        onClearFocusedMemory={() => setAuditMemoryFocus(undefined)}
-      />
+              <article className="settings-module">
+                <h3>模型与密钥</h3>
+                <label>
+                  <span>模型名称</span>
+                  <input
+                    value={model}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) => setModel(event.target.value)}
+                    placeholder="hermes-email"
+                  />
+                </label>
+                <label>
+                  <span>访问密钥</span>
+                  <input
+                    value={apiKey}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) => setApiKey(event.target.value)}
+                    placeholder={apiKeyConfigured ? "已保存，留空则不修改" : "可留空"}
+                    type="password"
+                  />
+                </label>
+                {apiKeyConfigured ? (
+                  <div className="inline-actions">
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      disabled={isRuntimeBusy}
+                      onClick={() => void clearApiKey()}
+                    >
+                      清除访问密钥
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+
+              <article className="settings-module">
+                <h3>学习边界</h3>
+                <p>写回复、归档、星标、移动标签和你的修改会进入可查看的学习记录。</p>
+                <p>写操作默认先预览，不会直接发送邮件。</p>
+                <label>
+                  <span>提醒方式</span>
+                  <select
+                    value={updatePolicy}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) =>
+                      setUpdatePolicy(
+                        event.target.value as HermesRuntimeUpdatePolicy,
+                      )
+                    }
+                  >
+                    <option value="manual">手动确认</option>
+                    <option value="notify">有更新时提醒</option>
+                    <option value="auto_patch">仅小版本自动</option>
+                  </select>
+                </label>
+                <label>
+                  <span>更新通道</span>
+                  <select
+                    value={updateChannel}
+                    disabled={isRuntimeBusy}
+                    onChange={(event) =>
+                      setUpdateChannel(
+                        event.target.value as HermesRuntimeUpdateChannel,
+                      )
+                    }
+                  >
+                    <option value="stable">稳定</option>
+                    <option value="preview">预览</option>
+                  </select>
+                </label>
+              </article>
+            </div>
+          </form>
+
+          <div className="backend-notice" role="status">
+            {notice}
+          </div>
+        </>
+      ) : null}
+
+      {activeSection === "skills" ? (
+        <HermesSkillSettingsPanel
+          api={props.api}
+          focusedSkillId={props.focusedSkillId}
+          focusedPermission={props.focusedPermission}
+          focusRequestId={props.focusRequestId}
+        />
+      ) : null}
+
+      {activeSection === "rules" ? (
+        <>
+          <HermesAccountScopePanel
+            accountId={effectiveAccountId}
+            accounts={accountOptions}
+            onAccountChange={updateAccountScope}
+          />
+          <HermesRuleManagerPanel
+            api={props.api}
+            accountId={effectiveAccountId}
+            onRuleApproved={props.onHermesRuleApproved}
+          />
+        </>
+      ) : null}
+
+      {activeSection === "learning" ? (
+        <>
+          <HermesAccountScopePanel
+            accountId={effectiveAccountId}
+            accounts={accountOptions}
+            onAccountChange={updateAccountScope}
+          />
+          <HermesMemoryManagerPanel
+            api={props.api}
+            accountId={effectiveAccountId}
+            onInspectMemoryUsage={(memory) => {
+              setAuditMemoryFocus({
+                memoryId: memory.id,
+                label: `${formatHermesMemoryLayer(memory.layer)} · ${memory.scope}`,
+              });
+              setShowAuditLog(true);
+            }}
+          />
+          <div className="inline-actions">
+            <button
+              className={showAuditLog ? "ghost-button is-active" : "ghost-button"}
+              type="button"
+              aria-label="切换 Hermes 审计记录"
+              aria-pressed={showAuditLog}
+              onClick={() => setShowAuditLog((current) => !current)}
+            >
+              {showAuditLog ? "隐藏审计记录" : "查看审计记录"}
+            </button>
+          </div>
+          {showAuditLog ? (
+            <HermesAuditLogPanel
+              api={props.api}
+              accountId={effectiveAccountId}
+              focusedMemoryId={auditMemoryFocus?.memoryId}
+              focusedMemoryLabel={auditMemoryFocus?.label}
+              onClearFocusedMemory={() => setAuditMemoryFocus(undefined)}
+            />
+          ) : null}
+        </>
+      ) : null}
     </section>
   );
 }

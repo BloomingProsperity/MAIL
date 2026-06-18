@@ -90,6 +90,10 @@ describe("HermesRuntimeSettingsPanel", () => {
     expect(screen.queryByText("Hermes 网关")).toBeNull();
     expect(screen.queryByText("路由或模型")).toBeNull();
     expect(screen.queryByText("模型接口")).toBeNull();
+    expect(screen.queryByLabelText("mock Hermes skill settings")).toBeNull();
+    expect(screen.queryByLabelText("mock Hermes rules panel")).toBeNull();
+    expect(screen.queryByLabelText("mock Hermes memory panel")).toBeNull();
+    expect(screen.queryByLabelText("mock Hermes audit panel")).toBeNull();
   });
 
   it("routes the selected account scope to rules, memories, and audit logs", async () => {
@@ -97,6 +101,7 @@ describe("HermesRuntimeSettingsPanel", () => {
 
     render(<HermesRuntimeSettingsPanel api={api} accountId="account_1" />);
 
+    fireEvent.click(screen.getByRole("button", { name: "打开 规则" }));
     const scopeSelect = await screen.findByRole("combobox", {
       name: "Select Hermes settings account",
     });
@@ -104,12 +109,6 @@ describe("HermesRuntimeSettingsPanel", () => {
 
     await waitFor(() => {
       expect(childPanelCalls.rules).toHaveBeenLastCalledWith(
-        expect.objectContaining({ accountId: "account_1" }),
-      );
-      expect(childPanelCalls.memory).toHaveBeenLastCalledWith(
-        expect.objectContaining({ accountId: "account_1" }),
-      );
-      expect(childPanelCalls.audit).toHaveBeenLastCalledWith(
         expect.objectContaining({ accountId: "account_1" }),
       );
     });
@@ -120,17 +119,48 @@ describe("HermesRuntimeSettingsPanel", () => {
       expect(childPanelCalls.rules).toHaveBeenLastCalledWith(
         expect.objectContaining({ accountId: "account_2" }),
       );
-      expect(childPanelCalls.memory).toHaveBeenLastCalledWith(
-        expect.objectContaining({ accountId: "account_2" }),
-      );
-      expect(childPanelCalls.audit).toHaveBeenLastCalledWith(
-        expect.objectContaining({ accountId: "account_2" }),
-      );
     });
     expect(screen.getByLabelText("mock Hermes rules panel").textContent).toBe(
       "rules:account_2",
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 学习记录" }));
+    await waitFor(() => {
+      expect(childPanelCalls.memory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ accountId: "account_2" }),
+      );
+    });
+    expect(screen.getByLabelText("mock Hermes memory panel").textContent).toBe(
+      "memory:account_2",
+    );
+    expect(screen.queryByLabelText("mock Hermes audit panel")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "切换 Hermes 审计记录" }));
+    await waitFor(() => {
+      expect(childPanelCalls.audit).toHaveBeenLastCalledWith(
+        expect.objectContaining({ accountId: "account_2" }),
+      );
+    });
+    expect(screen.getByLabelText("mock Hermes audit panel").textContent).toBe(
+      "audit:account_2",
+    );
     expect(api.listSyncCenterAccounts).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens skill settings directly when a skill focus request arrives", async () => {
+    const api = createRuntimeApiFixture();
+
+    render(
+      <HermesRuntimeSettingsPanel
+        api={api}
+        accountId="account_1"
+        focusedSkillId="translate_text"
+        focusRequestId={1}
+      />,
+    );
+
+    expect(await screen.findByLabelText("mock Hermes skill settings")).toBeTruthy();
+    expect(screen.queryByLabelText("mock Hermes rules panel")).toBeNull();
   });
 
   it("locks runtime actions and fields while settings are saving", async () => {

@@ -1,0 +1,47 @@
+.hermes-runtime-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.hermes-runtime-tabs button {
+  display: grid;
+  gap: 3px;
+  min-height: 46px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  text-align: left;
+}
+
+.hermes-runtime-tabs button:hover,
+.hermes-runtime-tabs button.active {
+  border-color: var(--primary-border);
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+}
+
+.hermes-runtime-tabs span,
+.hermes-runtime-tabs small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hermes-runtime-tabs span {
+  font-weight: 850;
+}
+
+.hermes-runtime-tabs small {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+@media (max-width: 960px) {
+  .hermes-runtime-tabs {
+    grid-template-columns: 1fr;
+  }
+}

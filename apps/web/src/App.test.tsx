@@ -90,6 +90,20 @@ describe("Email Hub first UI baseline", () => {
     );
   }
 
+  function openHermesSection(sectionLabel: string) {
+    openHermesPage();
+    fireEvent.click(
+      screen.getByRole("button", { name: `打开 ${sectionLabel}` }),
+    );
+  }
+
+  function openHermesAuditLog() {
+    openHermesSection("学习记录");
+    fireEvent.click(
+      screen.getByRole("button", { name: "切换 Hermes 审计记录" }),
+    );
+  }
+
   it("keeps global functions in the left sidebar and mail folders in the second column", () => {
     const { container } = render(<App />);
 
@@ -1897,7 +1911,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("能力选项");
 
     const skillPanel = await screen.findByLabelText("Hermes skill settings");
     expect(within(skillPanel).getByText("翻译邮件")).toBeTruthy();
@@ -1970,7 +1984,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("能力选项");
 
     const skillPanel = await screen.findByLabelText("Hermes skill settings");
     await waitFor(() => {
@@ -2077,7 +2091,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("能力选项");
 
     const profile = await screen.findByLabelText("Hermes resource profile");
     await waitFor(() => {
@@ -2156,7 +2170,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     expect(within(rulePanel).getByText("启用验证码智能分组")).toBeTruthy();
@@ -2302,7 +2316,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(
@@ -2334,7 +2348,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(
@@ -2382,7 +2396,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     await waitFor(() => {
@@ -2421,7 +2435,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     await waitFor(() => {
@@ -2442,7 +2456,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.change(within(rulePanel).getByLabelText("Hermes rule command"), {
@@ -2566,7 +2580,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.change(within(rulePanel).getByLabelText("Hermes rule command"), {
@@ -2610,7 +2624,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
@@ -2642,7 +2656,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
@@ -2734,7 +2748,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("规则");
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
     expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
@@ -2758,19 +2772,23 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} />);
 
-    openHermesPage();
+    openHermesSection("规则");
 
     expect(
       await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 规则。"),
     ).toBeTruthy();
-    expect(
-      await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 审计日志。"),
-    ).toBeTruthy();
+    expect(api.listHermesRules).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 学习记录" }));
     expect(
       await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 学习记录。"),
     ).toBeTruthy();
-    expect(api.listHermesRules).not.toHaveBeenCalled();
     expect(api.listHermesMemories).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "切换 Hermes 审计记录" }));
+    expect(
+      await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 审计日志。"),
+    ).toBeTruthy();
     expect(api.listHermesAuditLog).not.toHaveBeenCalled();
   });
 
@@ -2779,7 +2797,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("学习记录");
 
     expect(await screen.findByText("写作风格")).toBeTruthy();
     expect(screen.getByDisplayValue(/Keep replies concise/)).toBeTruthy();
@@ -2822,10 +2840,10 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("学习记录");
 
     const memoryPanel = await screen.findByLabelText("Hermes 学习记录");
-    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
+    expect(screen.queryByLabelText("Hermes 审计日志")).toBeNull();
     expect(within(memoryPanel).getByText("写作风格")).toBeTruthy();
 
     fireEvent.click(
@@ -2841,6 +2859,7 @@ describe("Email Hub first UI baseline", () => {
         limit: 50,
       });
     });
+    const auditPanel = await screen.findByLabelText("Hermes 审计日志");
     expect(
       within(auditPanel).getByText("正在查看记忆使用记录：写作风格 · global"),
     ).toBeTruthy();
@@ -2863,7 +2882,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("学习记录");
     expect(await screen.findByText("写作风格")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Hermes memory layer filter"), {
@@ -2893,7 +2912,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesAuditLog();
 
     const auditPanel = await screen.findByLabelText("Hermes 审计日志");
     expect(within(auditPanel).getByText("邮件翻译")).toBeTruthy();
@@ -2950,7 +2969,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesAuditLog();
 
     const auditPanel = await screen.findByLabelText("Hermes 审计日志");
     expect(within(auditPanel).getByText("Search mail with Hermes")).toBeTruthy();
@@ -2968,7 +2987,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesAuditLog();
     const auditPanel = await screen.findByLabelText("Hermes 审计日志");
     expect(within(auditPanel).getByText("邮件翻译")).toBeTruthy();
 
@@ -3003,7 +3022,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    openHermesPage();
+    openHermesSection("学习记录");
     expect(await screen.findByText("写作风格")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Hermes memory content memory_1"), {
@@ -4881,9 +4900,12 @@ describe("Email Hub first UI baseline", () => {
       });
     });
 
-    expect(
-      (screen.getByLabelText("Compose body") as HTMLTextAreaElement).value,
-    ).not.toContain("This stale reply should not enter compose.");
+    const composeBody = screen.queryByLabelText(
+      "Compose body",
+    ) as HTMLTextAreaElement | null;
+    expect(composeBody?.value ?? "").not.toContain(
+      "This stale reply should not enter compose.",
+    );
     expect(screen.queryByText(/run_stale_reply/)).toBeNull();
   });
 
