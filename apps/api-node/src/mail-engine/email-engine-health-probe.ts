@@ -9,6 +9,7 @@ export type EmailEngineHealthProbeError =
   | "request_failed"
   | "emailengine_health_not_ok"
   | "emailengine_auth_not_ok"
+  | "emailengine_api_internal_error"
   | "emailengine_token_rejected"
   | "probe_failed";
 
@@ -99,7 +100,10 @@ export function createEmailEngineHealthProbe(
         return {
           auth: "unavailable" as const,
           authStatusCode: response.status,
-          authError: "emailengine_auth_not_ok" as const,
+          authError:
+            response.status >= 500
+              ? "emailengine_api_internal_error"
+              : "emailengine_auth_not_ok",
         };
       });
 

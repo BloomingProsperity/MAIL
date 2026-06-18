@@ -327,6 +327,17 @@ if (pool) {
       const urlConfigured = config.emailEngineUrl.trim().length > 0;
       const accessTokenConfigured =
         config.emailEngineAccessTokenConfigured === true;
+      const apiAuthInternalError =
+        "authError" in http &&
+        http.authError === "emailengine_api_internal_error";
+      const apiAuthRejected =
+        accessTokenConfigured &&
+        "auth" in http &&
+        http.auth === "unauthorized";
+      const apiAuthUnavailable =
+        accessTokenConfigured &&
+        "auth" in http &&
+        http.auth === "unavailable";
       const webhookSecretConfigured =
         config.emailEngineWebhookSecret.trim().length > 0;
       const webhookSecretDefault =
@@ -356,10 +367,13 @@ if (pool) {
           ...(webhookSecretConfigured && webhookSecretDefault
             ? ["EMAILENGINE_WEBHOOK_SECRET_DEFAULT"]
             : []),
-          ...(accessTokenConfigured && "auth" in http && http.auth === "unauthorized"
+          ...(apiAuthRejected
             ? ["EMAILENGINE_ACCESS_TOKEN_REJECTED"]
             : []),
-          ...(accessTokenConfigured && "auth" in http && http.auth === "unavailable"
+          ...(apiAuthUnavailable && apiAuthInternalError
+            ? ["EMAILENGINE_API_INTERNAL_ERROR"]
+            : []),
+          ...(apiAuthUnavailable && !apiAuthInternalError
             ? ["EMAILENGINE_API_AUTH_UNAVAILABLE"]
             : []),
           ...((accessTokenConfigured &&

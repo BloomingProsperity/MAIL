@@ -121,7 +121,7 @@ describe("EmailEngine health probe", () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(new Response("ok", { status: 200 }))
-      .mockResolvedValueOnce(new Response("bad gateway", { status: 502 }));
+      .mockResolvedValueOnce(new Response("rate limited", { status: 429 }));
     const probe = createEmailEngineHealthProbe({
       baseUrl: "http://emailengine:3000",
       accessToken: "secret-token",
@@ -132,8 +132,33 @@ describe("EmailEngine health probe", () => {
       http: "ok",
       statusCode: 200,
       auth: "unavailable",
-      authStatusCode: 502,
+      authStatusCode: 429,
       authError: "emailengine_auth_not_ok",
+    });
+  });
+
+  it("classifies EmailEngine account API 5xx as an internal state error", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: "Internal Server Error" }),
+          { status: 500 },
+        ),
+      );
+    const probe = createEmailEngineHealthProbe({
+      baseUrl: "http://emailengine:3000",
+      accessToken: "secret-token",
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    await expect(probe.check()).resolves.toEqual({
+      http: "ok",
+      statusCode: 200,
+      auth: "unavailable",
+      authStatusCode: 500,
+      authError: "emailengine_api_internal_error",
     });
   });
 

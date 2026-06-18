@@ -9512,6 +9512,9 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
   const apiAuth = accessTokenConfigured && "auth" in probeResult
     ? probeResult.auth
     : "skipped";
+  const apiAuthInternalError =
+    "authError" in probeResult &&
+    probeResult.authError === "emailengine_api_internal_error";
   const apiAuthAvailable = apiAuth === "ok" || apiAuth === "skipped";
   const tokenBackedServicesAvailable =
     accessTokenConfigured && apiAuthAvailable;
@@ -9533,7 +9536,10 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
     ...(apiAuth === "unauthorized"
       ? ["EMAILENGINE_ACCESS_TOKEN_REJECTED"]
       : []),
-    ...(apiAuth === "unavailable"
+    ...(apiAuth === "unavailable" && apiAuthInternalError
+      ? ["EMAILENGINE_API_INTERNAL_ERROR"]
+      : []),
+    ...(apiAuth === "unavailable" && !apiAuthInternalError
       ? ["EMAILENGINE_API_AUTH_UNAVAILABLE"]
       : []),
     ...(webhookSecretConfigured && webhookSecretUsesDefault
@@ -9589,7 +9595,22 @@ async function buildMailEngineHealth(config: ApiConfig): Promise<{
           },
         ]
       : []),
-    ...(accessTokenConfigured && apiAuth === "unavailable"
+    ...(accessTokenConfigured && apiAuth === "unavailable" && apiAuthInternalError
+      ? [
+          {
+            code: "recover_emailengine_api_state",
+            label: "修复 EmailEngine API 状态",
+            env: [
+              "EENGINE_SECRET",
+              "EENGINE_PREPARED_TOKEN",
+              "EMAILENGINE_ACCESS_TOKEN",
+            ],
+            effect:
+              "EmailEngine /health 正常但账号 API 返回 5xx，通常是旧 Redis volume 中的加密状态与当前密钥或令牌不匹配；请固定密钥或使用全新 volume 后重启。",
+          },
+        ]
+      : []),
+    ...(accessTokenConfigured && apiAuth === "unavailable" && !apiAuthInternalError
       ? [
           {
             code: "check_emailengine_api_auth",
