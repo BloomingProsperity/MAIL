@@ -475,7 +475,7 @@ describe("Email Hub first UI baseline", () => {
     const plan = await screen.findByLabelText("Hermes 执行计划");
     expect(within(plan).getByText("启用验证码智能分组")).toBeTruthy();
     expect(within(plan).queryByText(/audit_plan_1/)).toBeNull();
-    expect(within(plan).getByText(/试运行：命中 4 封邮件/)).toBeTruthy();
+    expect(within(plan).getByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
     expect(within(plan).getByText(/不写回服务商 · 会处理历史/)).toBeTruthy();
 
     fireEvent.click(within(plan).getByRole("button", { name: "确认计划" }));
@@ -2446,8 +2446,8 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(within(rulePanel).getByText("启用发票/账单智能分组")).toBeTruthy();
-    expect(within(rulePanel).getByText(/82% · 草案/)).toBeTruthy();
-    expect(within(rulePanel).getByText(/确认前必须先试运行/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/82% · 待启用/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/启用前必须先预览影响/)).toBeTruthy();
   });
 
   it("lets users draft, simulate, and approve Hermes rules from the Hermes page", async () => {
@@ -2459,10 +2459,10 @@ describe("Email Hub first UI baseline", () => {
     openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.change(within(rulePanel).getByLabelText("Hermes rule command"), {
+    fireEvent.change(within(rulePanel).getByLabelText("描述要创建的 Hermes 规则"), {
       target: { value: command },
     });
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
 
     await waitFor(() => {
       expect(api.draftHermesRule).toHaveBeenCalledWith({
@@ -2471,11 +2471,11 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(within(rulePanel).getByText(/关键词 验证码、verification、otp/)).toBeTruthy();
-    expect(within(rulePanel).getByText(/确认前必须先试运行/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/启用前必须先预览影响/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Simulate Hermes rule 启用验证码智能分组",
+        name: "预览 Hermes 规则影响 启用验证码智能分组",
       }),
     );
     await waitFor(() => {
@@ -2485,11 +2485,11 @@ describe("Email Hub first UI baseline", () => {
         sampleLimit: 25,
       });
     });
-    expect(within(rulePanel).getByText(/试运行：命中 4 封邮件/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Confirm Hermes action plan 启用验证码智能分组",
+        name: "启用 Hermes 规则 启用验证码智能分组",
       }),
     );
     await waitFor(() => {
@@ -2583,22 +2583,22 @@ describe("Email Hub first UI baseline", () => {
     openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.change(within(rulePanel).getByLabelText("Hermes rule command"), {
+    fireEvent.change(within(rulePanel).getByLabelText("描述要创建的 Hermes 规则"), {
       target: { value: command },
     });
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
+    expect(await within(rulePanel).findByText(/启用前必须先预览影响/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Simulate Hermes rule 启用验证码智能分组",
+        name: "预览 Hermes 规则影响 启用验证码智能分组",
       }),
     );
-    expect(await within(rulePanel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Confirm Hermes action plan 启用验证码智能分组",
+        name: "启用 Hermes 规则 启用验证码智能分组",
       }),
     );
 
@@ -2627,19 +2627,19 @@ describe("Email Hub first UI baseline", () => {
     openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
+    expect(await within(rulePanel).findByText(/启用前必须先预览影响/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Simulate Hermes rule 启用验证码智能分组",
+        name: "预览 Hermes 规则影响 启用验证码智能分组",
       }),
     );
-    expect(await within(rulePanel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Confirm Hermes action plan 启用验证码智能分组",
+        name: "启用 Hermes 规则 启用验证码智能分组",
       }),
     );
 
@@ -2659,36 +2659,36 @@ describe("Email Hub first UI baseline", () => {
     openHermesSection("规则");
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
+    expect(await within(rulePanel).findByText(/启用前必须先预览影响/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Simulate Hermes rule 启用验证码智能分组",
+        name: "预览 Hermes 规则影响 启用验证码智能分组",
       }),
     );
-    expect(await within(rulePanel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.change(
-      within(rulePanel).getByLabelText("Hermes rule label 启用验证码智能分组"),
+      within(rulePanel).getByLabelText("设置 启用验证码智能分组 分组名称"),
       {
         target: { value: "票据" },
       },
     );
     fireEvent.change(
-      within(rulePanel).getByLabelText("Hermes rule keywords 启用验证码智能分组"),
+      within(rulePanel).getByLabelText("设置 启用验证码智能分组 关键词"),
       {
         target: { value: "receipt, invoice, 发票" },
       },
     );
     fireEvent.click(
       within(rulePanel).getByLabelText(
-        "Apply Hermes rule to history 启用验证码智能分组",
+        "将 启用验证码智能分组 应用到已有邮件",
       ),
     );
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Save Hermes rule candidate 启用验证码智能分组",
+        name: "保存 Hermes 规则建议 启用验证码智能分组",
       }),
     );
 
@@ -2702,23 +2702,23 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(
-      await screen.findByText("Hermes 规则草案已保存，请重新试运行。"),
+      await screen.findByText("Hermes 规则建议已保存，请重新预览影响。"),
     ).toBeTruthy();
-    expect(within(rulePanel).queryByText(/试运行：命中 4 封邮件/)).toBeNull();
+    expect(within(rulePanel).queryByText(/影响预览：命中 4 封邮件/)).toBeNull();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Confirm Hermes action plan 创建票据智能分组",
+        name: "启用 Hermes 规则 创建票据智能分组",
       }),
     );
     expect(
-      await screen.findByText("请先试运行，再确认启用规则。"),
+      await screen.findByText("请先预览影响，再启用规则。"),
     ).toBeTruthy();
     expect(api.createHermesActionPlan).not.toHaveBeenCalled();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Simulate Hermes rule 创建票据智能分组",
+        name: "预览 Hermes 规则影响 创建票据智能分组",
       }),
     );
     await waitFor(() => {
@@ -2731,7 +2731,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Confirm Hermes action plan 创建票据智能分组",
+        name: "启用 Hermes 规则 创建票据智能分组",
       }),
     );
     await waitFor(() => {
@@ -2750,17 +2750,17 @@ describe("Email Hub first UI baseline", () => {
 
     openHermesSection("规则");
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
+    fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则建议" }));
+    expect(await within(rulePanel).findByText(/启用前必须先预览影响/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
-        name: "Confirm Hermes action plan 启用验证码智能分组",
+        name: "启用 Hermes 规则 启用验证码智能分组",
       }),
     );
 
     expect(
-      await screen.findByText("请先试运行，再确认启用规则。"),
+      await screen.findByText("请先预览影响，再启用规则。"),
     ).toBeTruthy();
     expect(api.createHermesActionPlan).not.toHaveBeenCalled();
     expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
@@ -9948,7 +9948,7 @@ function createApiFixture(): EmailHubApi {
           id: "rule_suggest",
           title: "规则建议",
           mode: "learn",
-          description: "从重复行为生成候选规则",
+          description: "从重复行为生成规则建议",
           settings: {
             requireConfirmation: true,
           },
@@ -10063,7 +10063,7 @@ function createApiFixture(): EmailHubApi {
         },
         {
           id: "draft_rule_candidate",
-          title: "生成规则草案",
+          title: "生成规则建议",
           mode: "draft",
           status: "completed",
           detail: "启用验证码智能分组",

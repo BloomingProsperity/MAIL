@@ -30,7 +30,7 @@ describe("HermesDock", () => {
 
     const dock = screen.getByLabelText("Hermes 底部输入");
     expect(within(dock).getByText("邮件同步服务正常")).toBeTruthy();
-    expect(within(dock).getByText(/试运行：命中 4 封邮件/)).toBeTruthy();
+    expect(within(dock).getByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
     expect(within(dock).queryByText(/audit_plan_1|EmailEngine ready/)).toBeNull();
   });
 

@@ -118,7 +118,7 @@ describe("HermesRuleManagerPanel", () => {
       <HermesRuleManagerPanel api={api} accountId="account_1" />,
     );
     const panel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则建议" }));
     await waitFor(() => {
       expect(api.draftHermesRule).toHaveBeenCalledWith({
         accountId: "account_1",
@@ -136,14 +136,14 @@ describe("HermesRuleManagerPanel", () => {
           candidateFixture({
             id: "candidate_account_1",
             accountId: "account_1",
-            title: "旧账号规则草案",
+            title: "旧账号规则建议",
           }),
         ],
       });
     });
 
     await waitFor(() => {
-      expect(within(panel).queryByText("旧账号规则草案")).toBeNull();
+      expect(within(panel).queryByText("旧账号规则建议")).toBeNull();
     });
     expect(within(panel).getByText("启用合同智能分组")).toBeTruthy();
   });
@@ -172,7 +172,7 @@ describe("HermesRuleManagerPanel", () => {
     const panel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "从最近行为生成候选规则",
+        name: "从最近行为学习规则",
       }),
     );
 
@@ -185,24 +185,24 @@ describe("HermesRuleManagerPanel", () => {
     });
     expect(await within(panel).findByText("启用客户优先级")).toBeTruthy();
     expect(
-      within(panel).queryByLabelText("Hermes rule label 启用客户优先级"),
+      within(panel).queryByLabelText("设置 启用客户优先级 分组名称"),
     ).toBeNull();
     expect(
-      within(panel).queryByLabelText("Hermes rule keywords 启用客户优先级"),
+      within(panel).queryByLabelText("设置 启用客户优先级 关键词"),
     ).toBeNull();
     expect(
       within(panel).queryByRole("button", {
-        name: "Save Hermes rule candidate 启用客户优先级",
+        name: "保存 Hermes 规则建议 启用客户优先级",
       }),
     ).toBeNull();
     expect(
       within(panel).getByRole("button", {
-        name: "Simulate Hermes rule 启用客户优先级",
+        name: "预览 Hermes 规则影响 启用客户优先级",
       }),
     ).toBeTruthy();
     expect(
       within(panel).getByText(
-        "Hermes 已生成 1 条行为候选规则，请先模拟再确认。",
+        "Hermes 已生成 1 条行为规则建议，请先预览影响再启用。",
       ),
     ).toBeTruthy();
   });
@@ -276,10 +276,10 @@ describe("HermesRuleManagerPanel", () => {
     );
 
     const panel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.change(within(panel).getByLabelText("Hermes rule command"), {
+    fireEvent.change(within(panel).getByLabelText("描述要创建的 Hermes 规则"), {
       target: { value: "帮我创建一个验证码分组规则" },
     });
-    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则建议" }));
 
     await waitFor(() => {
       expect(api.draftHermesRule).toHaveBeenCalledWith({
@@ -291,7 +291,7 @@ describe("HermesRuleManagerPanel", () => {
 
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Simulate Hermes rule 启用验证码智能分组",
+        name: "预览 Hermes 规则影响 启用验证码智能分组",
       }),
     );
     await waitFor(() => {
@@ -304,7 +304,7 @@ describe("HermesRuleManagerPanel", () => {
 
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Confirm Hermes action plan 启用验证码智能分组",
+        name: "启用 Hermes 规则 启用验证码智能分组",
       }),
     );
     await waitFor(() => {
@@ -325,17 +325,17 @@ describe("HermesRuleManagerPanel", () => {
     await waitFor(() => {
       expect(
         within(panel).queryByRole("button", {
-          name: "Confirm Hermes action plan 启用验证码智能分组",
+          name: "启用 Hermes 规则 启用验证码智能分组",
         }),
       ).toBeNull();
     });
     expect(
       within(panel).queryByRole("button", {
-        name: "Dismiss Hermes rule candidate 启用验证码智能分组",
+        name: "放弃 Hermes 规则建议 启用验证码智能分组",
       }),
     ).toBeNull();
     expect(
-      within(panel).queryByLabelText("Hermes rule label 启用验证码智能分组"),
+      within(panel).queryByLabelText("设置 启用验证码智能分组 分组名称"),
     ).toBeNull();
   });
 
@@ -361,17 +361,17 @@ describe("HermesRuleManagerPanel", () => {
       />,
     );
     const panel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(panel).findByText(/确认前必须先试运行/)).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则建议" }));
+    expect(await within(panel).findByText(/启用前必须先预览影响/)).toBeTruthy();
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Simulate Hermes rule 启用验证码智能分组",
+        name: "预览 Hermes 规则影响 启用验证码智能分组",
       }),
     );
-    expect(await within(panel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(panel).findByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Confirm Hermes action plan 启用验证码智能分组",
+        name: "启用 Hermes 规则 启用验证码智能分组",
       }),
     );
     await waitFor(() => {
@@ -402,36 +402,36 @@ describe("HermesRuleManagerPanel", () => {
     render(<HermesRuleManagerPanel api={api} accountId="account_1" />);
 
     const panel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(panel).findByText(/确认前必须先试运行/)).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则建议" }));
+    expect(await within(panel).findByText(/启用前必须先预览影响/)).toBeTruthy();
 
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Simulate Hermes rule 启用验证码智能分组",
+        name: "预览 Hermes 规则影响 启用验证码智能分组",
       }),
     );
-    expect(await within(panel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(panel).findByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.change(
-      within(panel).getByLabelText("Hermes rule label 启用验证码智能分组"),
+      within(panel).getByLabelText("设置 启用验证码智能分组 分组名称"),
       {
         target: { value: "票据" },
       },
     );
     fireEvent.change(
-      within(panel).getByLabelText("Hermes rule keywords 启用验证码智能分组"),
+      within(panel).getByLabelText("设置 启用验证码智能分组 关键词"),
       {
         target: { value: "receipt, invoice, 发票" },
       },
     );
     fireEvent.click(
       within(panel).getByLabelText(
-        "Apply Hermes rule to history 启用验证码智能分组",
+        "将 启用验证码智能分组 应用到已有邮件",
       ),
     );
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Save Hermes rule candidate 启用验证码智能分组",
+        name: "保存 Hermes 规则建议 启用验证码智能分组",
       }),
     );
 
@@ -447,17 +447,17 @@ describe("HermesRuleManagerPanel", () => {
 
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Confirm Hermes action plan 创建票据智能分组",
+        name: "启用 Hermes 规则 创建票据智能分组",
       }),
     );
     expect(
-      await within(panel).findByText("请先试运行，再确认启用规则。"),
+      await within(panel).findByText("请先预览影响，再启用规则。"),
     ).toBeTruthy();
     expect(api.createHermesActionPlan).not.toHaveBeenCalled();
 
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Simulate Hermes rule 创建票据智能分组",
+        name: "预览 Hermes 规则影响 创建票据智能分组",
       }),
     );
     await waitFor(() => {
@@ -470,7 +470,7 @@ describe("HermesRuleManagerPanel", () => {
 
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Confirm Hermes action plan 创建票据智能分组",
+        name: "启用 Hermes 规则 创建票据智能分组",
       }),
     );
     await waitFor(() => {
@@ -488,31 +488,31 @@ describe("HermesRuleManagerPanel", () => {
     render(<HermesRuleManagerPanel api={api} accountId="account_1" />);
 
     const panel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(panel).findByText(/确认前必须先试运行/)).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则建议" }));
+    expect(await within(panel).findByText(/启用前必须先预览影响/)).toBeTruthy();
 
     const simulateButton = within(panel).getByRole("button", {
-      name: "Simulate Hermes rule 启用验证码智能分组",
+      name: "预览 Hermes 规则影响 启用验证码智能分组",
     }) as HTMLButtonElement;
     const confirmButton = within(panel).getByRole("button", {
-      name: "Confirm Hermes action plan 启用验证码智能分组",
+      name: "启用 Hermes 规则 启用验证码智能分组",
     }) as HTMLButtonElement;
     const saveButton = within(panel).getByRole("button", {
-      name: "Save Hermes rule candidate 启用验证码智能分组",
+      name: "保存 Hermes 规则建议 启用验证码智能分组",
     }) as HTMLButtonElement;
     expect(saveButton.disabled).toBe(true);
     expect(simulateButton.disabled).toBe(false);
     expect(confirmButton.disabled).toBe(false);
 
     fireEvent.change(
-      within(panel).getByLabelText("Hermes rule label 启用验证码智能分组"),
+      within(panel).getByLabelText("设置 启用验证码智能分组 分组名称"),
       {
         target: { value: "票据" },
       },
     );
 
     expect(
-      await within(panel).findByText("草案有未保存修改，请先保存后再模拟/确认。"),
+      await within(panel).findByText("规则建议有未保存修改，请先保存后再预览/启用。"),
     ).toBeTruthy();
     expect(saveButton.disabled).toBe(false);
     expect(simulateButton.disabled).toBe(true);
@@ -532,18 +532,18 @@ describe("HermesRuleManagerPanel", () => {
     });
 
     expect(
-      within(panel).queryByText("草案有未保存修改，请先保存后再模拟/确认。"),
+      within(panel).queryByText("规则建议有未保存修改，请先保存后再预览/启用。"),
     ).toBeNull();
     expect(
       (
         within(panel).getByRole("button", {
-          name: "Save Hermes rule candidate 创建票据智能分组",
+          name: "保存 Hermes 规则建议 创建票据智能分组",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
     fireEvent.click(
       within(panel).getByRole("button", {
-        name: "Simulate Hermes rule 创建票据智能分组",
+        name: "预览 Hermes 规则影响 创建票据智能分组",
       }),
     );
     await waitFor(() => {
@@ -561,9 +561,9 @@ describe("HermesRuleManagerPanel", () => {
     render(<HermesRuleManagerPanel api={api} accountId="account_1" />);
 
     const panel = await screen.findByLabelText("Hermes 规则管理");
-    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则建议" }));
     const dismissButton = await within(panel).findByRole("button", {
-      name: "Dismiss Hermes rule candidate 启用验证码智能分组",
+      name: "放弃 Hermes 规则建议 启用验证码智能分组",
     });
 
     fireEvent.click(dismissButton);
@@ -576,12 +576,12 @@ describe("HermesRuleManagerPanel", () => {
     });
     expect(
       await within(panel).findByText(
-        "Hermes 规则草案已驳回：启用验证码智能分组。",
+        "Hermes 规则建议已放弃：启用验证码智能分组。",
       ),
     ).toBeTruthy();
     expect(
       within(panel).queryByRole("button", {
-        name: "Dismiss Hermes rule candidate 启用验证码智能分组",
+        name: "放弃 Hermes 规则建议 启用验证码智能分组",
       }),
     ).toBeNull();
   });

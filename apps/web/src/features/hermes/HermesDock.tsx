@@ -227,7 +227,7 @@ export function HermesDock(props: {
               ) : null}
               {props.ruleSimulation ? (
                 <p>
-                  试运行：命中 {props.ruleSimulation.matchedCount} 封邮件
+                  影响预览：命中 {props.ruleSimulation.matchedCount} 封邮件
                 </p>
               ) : null}
               {props.historyBackfill ? (

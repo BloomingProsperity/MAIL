@@ -135,8 +135,8 @@ export function HermesRuleManagerPanel(props: HermesRuleManagerPanelProps) {
         page.items.length === 0
           ? candidatesPage.items.length === 0
             ? "当前账号还没有 Hermes 规则。"
-            : `已读取 ${candidatesPage.items.length} 条待确认 Hermes 规则草案。`
-          : `已读取 ${page.items.length} 条 Hermes 规则，${candidatesPage.items.length} 条待确认草案。`,
+            : `已读取 ${candidatesPage.items.length} 条待启用 Hermes 规则建议。`
+          : `已读取 ${page.items.length} 条 Hermes 规则，${candidatesPage.items.length} 条待启用建议。`,
       );
     } catch {
       if (loadRulesRequestRef.current !== requestId) {

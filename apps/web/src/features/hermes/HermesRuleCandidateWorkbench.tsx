@@ -76,7 +76,7 @@ export function HermesRuleCandidateWorkbench(
         hermesRuleCandidateEditMap(props.previewCandidates),
       );
       props.setCandidateSimulations({});
-      props.setRuleNotice("预览规则草案已生成，连接后会先试运行再确认启用。");
+      props.setRuleNotice("预览规则建议已生成，连接后会先预览影响再启用。");
       return;
     }
 
@@ -88,7 +88,7 @@ export function HermesRuleCandidateWorkbench(
     const requestId = beginRuleDraftRequest();
     const accountId = props.accountId;
     props.setRuleDraftBusy("draft");
-    props.setRuleNotice("Hermes 正在生成规则草案...");
+    props.setRuleNotice("Hermes 正在生成规则建议...");
     try {
       const result = await props.api.draftHermesRule({
         accountId,
@@ -102,15 +102,15 @@ export function HermesRuleCandidateWorkbench(
       props.setCandidateSimulations({});
       props.setRuleNotice(
         result.candidates.length === 0
-          ? "Hermes 没有生成可用规则草案。"
-          : `Hermes 已生成 ${result.candidates.length} 条规则草案，请先模拟再确认。`,
+          ? "Hermes 没有生成可用规则建议。"
+          : `Hermes 已生成 ${result.candidates.length} 条规则建议，请先预览影响再启用。`,
       );
     } catch {
       if (!isCurrentRuleDraftRequest(requestId)) {
         return;
       }
       props.setCandidateDrafts([]);
-      props.setRuleNotice("Hermes 规则草案生成失败。");
+      props.setRuleNotice("Hermes 规则建议生成失败。");
     } finally {
       if (isCurrentRuleDraftRequest(requestId)) {
         props.setRuleDraftBusy("");
@@ -126,7 +126,7 @@ export function HermesRuleCandidateWorkbench(
       );
       props.setCandidateSimulations({});
       props.setRuleNotice(
-        "预览行为候选已生成，连接后会从最近行为学习并先试运行。",
+        "预览规则建议已生成，连接后会从最近行为学习并先预览影响。",
       );
       return;
     }
@@ -155,7 +155,7 @@ export function HermesRuleCandidateWorkbench(
       props.setRuleNotice(
         result.candidates.length === 0
           ? "Hermes 暂时没有从最近行为发现稳定规则。"
-          : `Hermes 已生成 ${result.candidates.length} 条行为候选规则，请先模拟再确认。`,
+          : `Hermes 已生成 ${result.candidates.length} 条行为规则建议，请先预览影响再启用。`,
       );
     } catch {
       if (!isCurrentRuleDraftRequest(requestId)) {
@@ -188,7 +188,7 @@ export function HermesRuleCandidateWorkbench(
       props.candidateEdits[candidate.id] ??
       hermesRuleCandidateEditFromCandidate(candidate);
     if (!isHermesRuleCandidateEditDirty(candidate, edit)) {
-      props.setRuleNotice("草案没有需要保存的修改。");
+      props.setRuleNotice("规则建议没有需要保存的修改。");
       return;
     }
 
@@ -217,19 +217,19 @@ export function HermesRuleCandidateWorkbench(
         delete next[candidate.id];
         return next;
       });
-      props.setRuleNotice("预览规则草案已保存，请重新模拟后再确认。");
+      props.setRuleNotice("预览规则建议已保存，请重新预览影响后再启用。");
       return;
     }
 
     if (!props.accountId) {
-      props.setRuleNotice("请先添加邮箱并完成同步，再保存 Hermes 规则草案。");
+      props.setRuleNotice("请先添加邮箱并完成同步，再保存 Hermes 规则建议。");
       return;
     }
 
     const requestId = beginRuleDraftRequest();
     const accountId = props.accountId;
     props.setRuleDraftBusy(`save:${candidate.id}`);
-    props.setRuleNotice("正在保存 Hermes 规则草案...");
+    props.setRuleNotice("正在保存 Hermes 规则建议...");
     try {
       const updated = await props.api.updateHermesRuleCandidate({
         accountId,
@@ -253,12 +253,12 @@ export function HermesRuleCandidateWorkbench(
         delete next[updated.id];
         return next;
       });
-      props.setRuleNotice("Hermes 规则草案已保存，请重新试运行。");
+      props.setRuleNotice("Hermes 规则建议已保存，请重新预览影响。");
     } catch {
       if (!isCurrentRuleDraftRequest(requestId)) {
         return;
       }
-      props.setRuleNotice("Hermes 规则草案保存失败。");
+      props.setRuleNotice("Hermes 规则建议保存失败。");
     } finally {
       if (isCurrentRuleDraftRequest(requestId)) {
         props.setRuleDraftBusy("");
@@ -273,7 +273,7 @@ export function HermesRuleCandidateWorkbench(
         props.candidateEdits[candidate.id],
       )
     ) {
-      props.setRuleNotice("请先保存草案修改，再试运行。");
+      props.setRuleNotice("请先保存规则建议的修改，再预览影响。");
       return;
     }
 
@@ -291,19 +291,19 @@ export function HermesRuleCandidateWorkbench(
           createdAt: new Date().toISOString(),
         },
       }));
-      props.setRuleNotice("预览试运行已完成：命中 4 封邮件。");
+      props.setRuleNotice("影响预览已完成：命中 4 封邮件。");
       return;
     }
 
     if (!props.accountId) {
-      props.setRuleNotice("请先添加邮箱并完成同步，再模拟 Hermes 规则。");
+      props.setRuleNotice("请先添加邮箱并完成同步，再预览 Hermes 规则影响。");
       return;
     }
 
     const requestId = beginRuleDraftRequest();
     const accountId = props.accountId;
     props.setRuleDraftBusy(`simulate:${candidate.id}`);
-    props.setRuleNotice("Hermes 正在试运行规则...");
+    props.setRuleNotice("Hermes 正在预览规则影响...");
     try {
       const simulation = await props.api.simulateHermesRule({
         accountId,
@@ -318,13 +318,13 @@ export function HermesRuleCandidateWorkbench(
         [candidate.id]: simulation,
       }));
       props.setRuleNotice(
-        `试运行已完成：命中 ${simulation.matchedCount} 封邮件。`,
+        `影响预览已完成：命中 ${simulation.matchedCount} 封邮件。`,
       );
     } catch {
       if (!isCurrentRuleDraftRequest(requestId)) {
         return;
       }
-      props.setRuleNotice("Hermes 规则试运行失败。");
+      props.setRuleNotice("Hermes 规则影响预览失败。");
     } finally {
       if (isCurrentRuleDraftRequest(requestId)) {
         props.setRuleDraftBusy("");
@@ -339,12 +339,12 @@ export function HermesRuleCandidateWorkbench(
         props.candidateEdits[candidate.id],
       )
     ) {
-      props.setRuleNotice("请先保存草案修改并重新模拟，再确认启用规则。");
+      props.setRuleNotice("请先保存规则建议并重新预览影响，再启用规则。");
       return;
     }
 
     if (!props.candidateSimulations[candidate.id]) {
-      props.setRuleNotice("请先试运行，再确认启用规则。");
+      props.setRuleNotice("请先预览影响，再启用规则。");
       return;
     }
 
@@ -379,7 +379,7 @@ export function HermesRuleCandidateWorkbench(
     const requestId = beginRuleDraftRequest();
     const accountId = props.accountId;
     props.setRuleDraftBusy(`approve:${candidate.id}`);
-    props.setRuleNotice("正在生成并确认 Hermes 执行计划...");
+    props.setRuleNotice("正在启用 Hermes 规则...");
     let actionPlanStage: "create" | "confirm" = "create";
     try {
       const plan = await props.api.createHermesActionPlan({
@@ -412,8 +412,8 @@ export function HermesRuleCandidateWorkbench(
         : undefined;
       props.setRuleNotice(
         confirmation.historyBackfill
-          ? `Hermes 执行计划已完成：${approvedRule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。${target ? `已打开${target.label}。` : ""}`
-          : `Hermes 执行计划已完成：${approvedRule.title}${target ? `，已打开${target.label}` : ""}。`,
+          ? `Hermes 规则已启用：${approvedRule.title}，已整理 ${confirmation.historyBackfill.appliedCount} 封历史邮件。${target ? `已打开${target.label}。` : ""}`
+          : `Hermes 规则已启用：${approvedRule.title}${target ? `，已打开${target.label}` : ""}。`,
       );
       props.onRuleApproved?.(approvedRule);
     } catch (error) {
@@ -431,19 +431,19 @@ export function HermesRuleCandidateWorkbench(
   async function dismissRuleCandidate(candidate: HermesRuleCandidateDto) {
     if (!props.api) {
       removeRuleCandidateDraft(candidate.id);
-      props.setRuleNotice(`预览规则草案已驳回：${candidate.title}。`);
+      props.setRuleNotice(`预览规则建议已放弃：${candidate.title}。`);
       return;
     }
 
     if (!props.accountId) {
-      props.setRuleNotice("请先添加邮箱并完成同步，再驳回 Hermes 规则草案。");
+      props.setRuleNotice("请先添加邮箱并完成同步，再放弃 Hermes 规则建议。");
       return;
     }
 
     const requestId = beginRuleDraftRequest();
     const accountId = props.accountId;
     props.setRuleDraftBusy(`dismiss:${candidate.id}`);
-    props.setRuleNotice("正在驳回 Hermes 规则草案...");
+    props.setRuleNotice("正在放弃 Hermes 规则建议...");
     try {
       await props.api.dismissHermesRuleCandidate({
         accountId,
@@ -453,12 +453,12 @@ export function HermesRuleCandidateWorkbench(
         return;
       }
       removeRuleCandidateDraft(candidate.id);
-      props.setRuleNotice(`Hermes 规则草案已驳回：${candidate.title}。`);
+      props.setRuleNotice(`Hermes 规则建议已放弃：${candidate.title}。`);
     } catch {
       if (!isCurrentRuleDraftRequest(requestId)) {
         return;
       }
-      props.setRuleNotice("Hermes 规则草案驳回失败。");
+      props.setRuleNotice("Hermes 规则建议放弃失败。");
     } finally {
       if (isCurrentRuleDraftRequest(requestId)) {
         props.setRuleDraftBusy("");
@@ -483,11 +483,11 @@ export function HermesRuleCandidateWorkbench(
   }
 
   return (
-    <div className="rule-draft-workbench" aria-label="Hermes 规则草案工作台">
+    <div className="rule-draft-workbench" aria-label="Hermes 规则建议工作台">
       <label>
         <span>自然语言规则</span>
         <textarea
-          aria-label="Hermes rule command"
+          aria-label="描述要创建的 Hermes 规则"
           value={draftCommand}
           onChange={(event) => setDraftCommand(event.target.value)}
         />
@@ -499,7 +499,7 @@ export function HermesRuleCandidateWorkbench(
           disabled={Boolean(props.ruleDraftBusy)}
           onClick={() => void draftRuleFromCommand()}
         >
-          生成规则草案
+          生成规则建议
         </button>
         <button
           className="ghost-button"
@@ -509,7 +509,7 @@ export function HermesRuleCandidateWorkbench(
         >
           {props.ruleDraftBusy === "suggest"
             ? "学习中"
-            : "从最近行为生成候选规则"}
+            : "从最近行为学习规则"}
         </button>
       </div>
       {props.candidateDrafts.length > 0 ? (
@@ -542,27 +542,27 @@ export function HermesRuleCandidateWorkbench(
                       {formatHermesRuleAction(candidate.action)} ·{" "}
                       {formatHermesRuleCondition(candidate.condition)} ·{" "}
                       {Math.round(candidate.confidence * 100)}% ·{" "}
-                      {candidate.status === "approved" ? "已启用" : "草案"}
+                      {candidate.status === "approved" ? "已启用" : "待启用"}
                     </span>
                   </div>
                   <span>{formatHermesRuleDate(candidate.createdAt)}</span>
                 </div>
                 {simulation ? (
                   <p>
-                    试运行：命中 {simulation.matchedCount} 封邮件
+                    影响预览：命中 {simulation.matchedCount} 封邮件
                     {simulation.sampleMessageIds.length > 0
                       ? `，样本 ${simulation.sampleMessageIds.slice(0, 3).join("、")}`
                       : ""}
                   </p>
                 ) : (
-                  <p>确认前必须先试运行，不会直接修改邮箱。</p>
+                  <p>启用前必须先预览影响，不会直接修改邮箱。</p>
                 )}
                 {isCandidateEditable ? (
                   <div className="rule-candidate-editor">
                     <label>
                       <span>分组名称</span>
                       <input
-                        aria-label={`Hermes rule label ${candidate.title}`}
+                        aria-label={`设置 ${candidate.title} 分组名称`}
                         value={edit.labelName}
                         disabled={
                           Boolean(props.ruleDraftBusy) || isCandidateLocked
@@ -577,7 +577,7 @@ export function HermesRuleCandidateWorkbench(
                     <label>
                       <span>关键词</span>
                       <input
-                        aria-label={`Hermes rule keywords ${candidate.title}`}
+                        aria-label={`设置 ${candidate.title} 关键词`}
                         value={edit.keywordsText}
                         disabled={
                           Boolean(props.ruleDraftBusy) || isCandidateLocked
@@ -592,7 +592,7 @@ export function HermesRuleCandidateWorkbench(
                     <label className="rule-candidate-toggle">
                       <input
                         type="checkbox"
-                        aria-label={`Apply Hermes rule to history ${candidate.title}`}
+                        aria-label={`将 ${candidate.title} 应用到已有邮件`}
                         checked={edit.applyToHistory}
                         disabled={
                           Boolean(props.ruleDraftBusy) || isCandidateLocked
@@ -613,16 +613,16 @@ export function HermesRuleCandidateWorkbench(
                         isCandidateLocked ||
                         !hasUnsavedCandidateEdits
                       }
-                      aria-label={`Save Hermes rule candidate ${candidate.title}`}
+                      aria-label={`保存 Hermes 规则建议 ${candidate.title}`}
                       onClick={() => void saveRuleCandidateEdit(candidate)}
                     >
-                      {isSaving ? "保存中" : "保存草案"}
+                      {isSaving ? "保存中" : "保存修改"}
                     </button>
                   </div>
                 ) : null}
                 {hasUnsavedCandidateEdits ? (
                   <p className="backend-notice compact">
-                    草案有未保存修改，请先保存后再模拟/确认。
+                    规则建议有未保存修改，请先保存后再预览/启用。
                   </p>
                 ) : null}
                 <div className="inline-actions">
@@ -632,10 +632,10 @@ export function HermesRuleCandidateWorkbench(
                     disabled={
                       Boolean(props.ruleDraftBusy) || hasUnsavedCandidateEdits
                     }
-                    aria-label={`Simulate Hermes rule ${candidate.title}`}
+                    aria-label={`预览 Hermes 规则影响 ${candidate.title}`}
                     onClick={() => void simulateRuleCandidate(candidate)}
                   >
-                    {isSimulating ? "模拟中" : "模拟规则"}
+                    {isSimulating ? "预览中" : "预览影响"}
                   </button>
                   <button
                     className="primary-button"
@@ -645,23 +645,23 @@ export function HermesRuleCandidateWorkbench(
                       hasUnsavedCandidateEdits ||
                       candidate.status === "approved"
                     }
-                    aria-label={`Confirm Hermes action plan ${candidate.title}`}
+                    aria-label={`启用 Hermes 规则 ${candidate.title}`}
                     onClick={() => void approveRuleCandidate(candidate)}
                   >
                     {isApproving
-                      ? "确认中"
+                      ? "启用中"
                       : candidate.status === "approved"
                         ? "已启用"
-                        : "确认启用"}
+                        : "启用规则"}
                   </button>
                   <button
                     className="ghost-button danger"
                     type="button"
                     disabled={Boolean(props.ruleDraftBusy) || isCandidateLocked}
-                    aria-label={`Dismiss Hermes rule candidate ${candidate.title}`}
+                    aria-label={`放弃 Hermes 规则建议 ${candidate.title}`}
                     onClick={() => void dismissRuleCandidate(candidate)}
                   >
-                    {isDismissing ? "驳回中" : "驳回草案"}
+                    {isDismissing ? "放弃中" : "放弃建议"}
                   </button>
                 </div>
               </article>

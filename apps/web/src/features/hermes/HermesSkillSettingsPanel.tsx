@@ -47,7 +47,7 @@ const fallbackHermesSkills: HermesSkillDto[] = [
     allowMemoryWrite: true,
     requireConfirmation: true,
   }),
-  fallbackHermesSkill("rule_suggest", "规则建议", "learn", "从重复行为生成候选规则", {
+  fallbackHermesSkill("rule_suggest", "规则建议", "learn", "从重复行为生成规则建议", {
     requireConfirmation: true,
   }),
   fallbackHermesSkill("memory_review", "记忆管理", "learn", "查看、修改、删除偏好", {
