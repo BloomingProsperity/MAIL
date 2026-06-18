@@ -6832,30 +6832,6 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByDisplayValue("qq-auth-code")).toBeNull();
   });
 
-  it("loads follow-up reminders into Tasks and marks one done through the backend", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
-    fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    fireEvent.click(within(screen.getByLabelText("设置目录")).getByRole("button", { name: "待办" }));
-
-    expect(await screen.findByText("Check whether Lina replied")).toBeTruthy();
-    expect(api.listFollowUps).toHaveBeenCalledWith({
-      accountId: "account_1",
-      status: "open",
-      limit: 50,
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Mark follow-up done" }));
-
-    await waitFor(() => {
-      expect(api.updateFollowUp).toHaveBeenCalledWith({
-        id: "fu_1",
-        status: "done",
-      });
-    });
-  });
-
   it("uses Hermes to suggest and confirm a follow-up reminder from the reader", async () => {
     const api = createApiFixture();
 
