@@ -72,6 +72,10 @@ export async function runEmailEngineDockerHealthVerifyCli(
       bind: runtimeEnv.WEB_BIND,
       fallback: "http://127.0.0.1:5173",
     });
+    const authServerSecret = requireDockerHealthEnvValue(
+      runtimeEnv,
+      "EMAILENGINE_AUTH_SERVER_SECRET",
+    );
     const result = await verifyHealth({
       projectRoot,
       envFile,
@@ -96,6 +100,12 @@ export async function runEmailEngineDockerHealthVerifyCli(
           url: `${apiBaseUrl}/api/mail-engine/health`,
           expect: "mail_engine_ready",
           ...(apiHeaders ? { headers: apiHeaders } : {}),
+        },
+        {
+          name: "mail_engine_auth_server",
+          url: `${apiBaseUrl}/api/mail-engine/auth-server?account=__emailhub_launch_probe__&proto=health_probe`,
+          expect: "emailengine_auth_server_basic",
+          headers: basicAuthHeaders("emailengine", authServerSecret),
         },
         {
           name: "web_home",
@@ -382,6 +392,17 @@ export function bearerTokenHeaders(
 ): Record<string, string> | undefined {
   const trimmed = token?.trim();
   return trimmed ? { authorization: `Bearer ${trimmed}` } : undefined;
+}
+
+export function basicAuthHeaders(
+  username: string,
+  password: string,
+): Record<string, string> {
+  return {
+    authorization: `Basic ${Buffer.from(`${username}:${password}`).toString(
+      "base64",
+    )}`,
+  };
 }
 
 function assertProductionApiTokenConfigured(env: CliEnv): void {

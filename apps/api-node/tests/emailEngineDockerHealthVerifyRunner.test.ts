@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_EMAILENGINE_IMAGE,
+  basicAuthHeaders,
   bearerTokenHeaders,
   dockerHealthEnvInvariants,
   dockerHealthImageInvariants,
@@ -176,6 +177,12 @@ describe("EmailEngine Docker health verify CLI runner", () => {
           headers: { authorization: "Bearer api-token" },
         },
         {
+          name: "mail_engine_auth_server",
+          url: "http://127.0.0.1:9090/api/mail-engine/auth-server?account=__emailhub_launch_probe__&proto=health_probe",
+          expect: "emailengine_auth_server_basic",
+          headers: basicAuthHeaders("emailengine", "auth-secret"),
+        },
+        {
           name: "web_home",
           url: "http://127.0.0.1:3000/",
           expect: "http_ok",
@@ -262,6 +269,12 @@ describe("EmailEngine Docker health verify CLI runner", () => {
           url: "http://127.0.0.1:9191/api/mail-engine/health",
           expect: "mail_engine_ready",
           headers: { authorization: "Bearer file-token" },
+        },
+        {
+          name: "mail_engine_auth_server",
+          url: "http://127.0.0.1:9191/api/mail-engine/auth-server?account=__emailhub_launch_probe__&proto=health_probe",
+          expect: "emailengine_auth_server_basic",
+          headers: basicAuthHeaders("emailengine", "file-auth-secret"),
         },
         {
           name: "web_home",
@@ -411,6 +424,10 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         headers: { authorization: "Bearer process-token" },
       });
       expect(input.hostChecks?.[2]).toMatchObject({
+        url: "http://127.0.0.1:8088/api/mail-engine/auth-server?account=__emailhub_launch_probe__&proto=health_probe",
+        headers: basicAuthHeaders("emailengine", "process-auth-secret"),
+      });
+      expect(input.hostChecks?.[3]).toMatchObject({
         url: "http://127.0.0.1:4242/",
       });
       return result;
@@ -514,6 +531,9 @@ describe("EmailEngine Docker health verify CLI runner", () => {
       authorization: "Bearer token",
     });
     expect(bearerTokenHeaders(" ")).toBeUndefined();
+    expect(basicAuthHeaders("emailengine", "auth-secret")).toEqual({
+      authorization: "Basic ZW1haWxlbmdpbmU6YXV0aC1zZWNyZXQ=",
+    });
   });
 
   it("builds Docker env drift invariants from selected runtime env", () => {
@@ -672,6 +692,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         [
           "EMAILENGINE_ACCESS_TOKEN=engine-token",
           "EENGINE_SECRET=service-secret",
+          "EMAILENGINE_AUTH_SERVER_SECRET=auth-secret",
         ].join("\n"),
       verifyHealth,
       writeStdout: (message) => stdout.push(message),

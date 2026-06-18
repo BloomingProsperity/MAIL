@@ -53,7 +53,7 @@ export interface DockerComposeServiceCheck {
 export interface DockerComposeHostHttpCheckInput {
   name: string;
   url: string;
-  expect: "http_ok" | "mail_engine_ready";
+  expect: "emailengine_auth_server_basic" | "http_ok" | "mail_engine_ready";
   headers?: Record<string, string>;
 }
 
@@ -656,6 +656,22 @@ async function checkHostHttpEndpoint(
       timeoutMs: input.timeoutMs,
       ...(check.headers ? { headers: check.headers } : {}),
     });
+    if (check.expect === "emailengine_auth_server_basic") {
+      const body = asRecord(parseJson(response.body));
+      const ready =
+        response.status === 400 &&
+        body.error === "invalid_emailengine_auth_server_request";
+      return {
+        ok: ready,
+        name: check.name,
+        url: reportUrl,
+        status: response.status,
+        ...(ready
+          ? {}
+          : { detail: "emailengine_auth_server_unexpected" }),
+      };
+    }
+
     if (check.expect === "http_ok") {
       return {
         ok: response.status >= 200 && response.status < 300,

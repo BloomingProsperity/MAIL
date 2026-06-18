@@ -647,6 +647,10 @@ describe("EmailEngine Docker configuration", () => {
     );
     expect(dockerHealthScript).toContain('name: "api_health"');
     expect(dockerHealthScript).toContain('name: "mail_engine_readiness"');
+    expect(dockerHealthScript).toContain('name: "mail_engine_auth_server"');
+    expect(dockerHealthScript).toContain(
+      'expect: "emailengine_auth_server_basic"',
+    );
     expect(dockerHealthScript).toContain('name: "web_home"');
     expect(rootPackage.scripts["verify:emailengine-launch:live"]).toBe(
       "npm run verify:emailengine-launch:env && npm run verify:emailengine-live && npm run verify:emailengine-launch:docker-health && npm run smoke:emailengine-webhook",
