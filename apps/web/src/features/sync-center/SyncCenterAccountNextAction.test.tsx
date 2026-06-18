@@ -94,6 +94,16 @@ describe("SyncCenterAccountNextAction", () => {
     ).toBe("检查自定义收发信服务并重新授权");
   });
 
+  it("shows Tencent Exmail recovery without protocol wording", () => {
+    expect(
+      syncCenterNextActionLabel({
+        provider: "tencent_exmail",
+        syncState: "reauth_required",
+        nextAction: "reauthorize",
+      }),
+    ).toBe("开启企业邮箱客户端服务并重新授权");
+  });
+
   it("keeps unknown backend actions actionable without leaking raw codes", () => {
     expect(
       syncCenterNextActionLabel({

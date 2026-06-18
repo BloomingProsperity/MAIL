@@ -9,6 +9,7 @@ import type {
 } from "./imap-smtp-onboarding.js";
 import {
   buildImapSmtpConnectionDiagnostics,
+  normalizeImapSmtpProvider,
   resolveImapSmtpSettings,
 } from "./imap-smtp-onboarding.js";
 import type {
@@ -294,9 +295,11 @@ export function createReauthorizationRecoveryService(
           smtp: settings.smtp,
         });
       } catch (error) {
+        const provider =
+          settings?.provider ?? normalizeImapSmtpProvider(task.provider);
         const message = sanitizedError(error, input.secret);
         const diagnostics = diagnosticsForRegistrationFailure(
-          task.provider,
+          provider,
           error,
         );
         await options.accountStore.failTask({
@@ -304,7 +307,7 @@ export function createReauthorizationRecoveryService(
           errorMessage: message,
         });
         throw new ReauthorizationFailedError({
-          provider: task.provider,
+          provider,
           message,
           diagnostics,
         });

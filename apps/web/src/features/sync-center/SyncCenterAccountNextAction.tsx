@@ -15,6 +15,7 @@ const providerRecoveryCopy: Record<string, string> = {
   qq: "使用 QQ 邮箱授权码重新授权",
   "163": "使用 163 邮箱授权码重新授权",
   icloud: "使用 Apple 专用密码重新授权",
+  tencent_exmail: "开启企业邮箱客户端服务并重新授权",
   custom: "检查自定义收发信服务并重新授权",
   custom_domain: "检查自定义收发信服务并重新授权",
 };

@@ -445,6 +445,18 @@ function authenticationDiagnostic(
     };
   }
 
+  if (provider === "tencent_exmail") {
+    return {
+      code: "tencent_exmail_client_access_required",
+      provider,
+      severity: "action_required",
+      affected: "account",
+      message:
+        "Ask the enterprise mail administrator to enable third-party client access, then enable it in this mailbox and retry with the generated authorization code.",
+      recoveryAction: "enable_tencent_exmail_client_access",
+    };
+  }
+
   return undefined;
 }
 
@@ -599,6 +611,17 @@ export function normalizeImapSmtpProvider(provider: string): string {
   if (normalized === "netease" || normalized === "163mail") {
     return "163";
   }
+  if (
+    normalized === "exmail" ||
+    normalized === "qqexmail" ||
+    normalized === "wecom" ||
+    compact === "tencentmail" ||
+    compact === "tencentexmail" ||
+    compact === "tencententerpriseemail" ||
+    compact === "wechatworkmail"
+  ) {
+    return "tencent_exmail";
+  }
 
   return normalized;
 }
@@ -695,6 +718,10 @@ const IMAP_SMTP_PROVIDER_PRESETS: Record<string, ImapSmtpProviderPreset> = {
   qq: {
     imap: { host: "imap.qq.com", port: 993, secure: true },
     smtp: { host: "smtp.qq.com", port: 465, secure: true },
+  },
+  tencent_exmail: {
+    imap: { host: "imap.exmail.qq.com", port: 993, secure: true },
+    smtp: { host: "smtp.exmail.qq.com", port: 465, secure: true },
   },
   icloud: {
     imap: { host: "imap.mail.me.com", port: 993, secure: true },
