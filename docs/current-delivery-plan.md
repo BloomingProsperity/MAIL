@@ -345,23 +345,23 @@ backend contracts, and verify the stack with more than smoke-level tests.
   editable body with translated text, and the compose payload carries the
   originating skill run id and translated draft text into the same feedback
   trail used by Hermes-polished drafts.
-- Current memory-management status: Settings now exposes the app-owned Hermes
+- Current memory-management status: The sidebar Hermes workspace now exposes the app-owned Hermes
   learning records. The frontend lists records through
   `/api/hermes/memories`, supports layer/scope/limit filtering, validates JSON
   object content and `0..1` confidence before saving, updates records through
   `PATCH /api/hermes/memories/:id`, and requires a second click before
   permanent deletion through `DELETE /api/hermes/memories/:id`. The learning
-  record and audit-log Settings panels now live under `features/hermes` instead
+  record and audit-log panels now live under `features/hermes` instead
   of the legacy `App.tsx` shell, with focused tests for low-confidence memory
   review and audit events that used memory.
-- Current skill-governance status: Settings now exposes backend-owned Hermes
+- Current skill-governance status: The sidebar Hermes workspace now exposes backend-owned Hermes
   skill options for each built-in skill. Users can edit enabled state,
   body-read permission, memory-write permission, confirmation requirement,
   context character budget, and memory limit through the API instead of
   changing code or environment variables. `GET /api/hermes/resource-profile`
   now summarizes enabled skill count, max per-run context budget, memory
   fan-out, retention cleanup policy, managed Hermes tables, and self-hosted
-  machine guidance; Settings displays the same profile before the editable
+  machine guidance; the Hermes workspace displays the same profile before the editable
   skill cards so operators can lower budgets before a node is under pressure.
   Saving a skill refreshes the profile immediately, and the UI surfaces the
   returned guardrails plus CPU/RAM/disk guidance for external-Hermes and local
@@ -556,7 +556,7 @@ backend contracts, and verify the stack with more than smoke-level tests.
   `POST /api/maintenance/compose-attachments/cleanup`, so self-hosted admins can
   inspect stale uploads, protected draft references, invalid metadata, scan
   limits, and manually prune unreferenced or broken local files without shell
-  access. The same Settings maintenance panel now shows Hermes retention status
+  access. The sidebar Hermes workspace now shows Hermes retention status
   across translation/summary caches, completed action plans, feedback, audit
   events, and skill runs, and can run bounded
   `POST /api/maintenance/hermes-retention/cleanup` batches without shell access.

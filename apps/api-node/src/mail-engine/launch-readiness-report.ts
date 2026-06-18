@@ -235,7 +235,7 @@ function checkOptionalIntegrations(
       severity: "warning",
       env: ["HERMES_CHAT_COMPLETIONS_URL", "HERMES_MODEL", "HERMES_API_KEY"],
       detail:
-        "Hermes can still be configured from Settings, but real Hermes AI skills are not env-ready yet.",
+        "Hermes can still be configured from the sidebar Hermes workspace, but real Hermes AI skills are not env-ready yet.",
     });
   }
   if (
@@ -336,11 +336,11 @@ function readinessSuites(input: {
     },
     {
       name: "hermes_real_ai",
-      command: "Configure Hermes in Settings, then exercise search, translate, summary, and compose skills.",
+      command: "Configure Hermes from the sidebar Hermes workspace, then exercise search, translate, summary, and compose skills.",
       status: input.hermesReady ? "ready" : "optional",
       detail: input.hermesReady
         ? "Hermes env runtime is configured."
-        : "Hermes runtime can be set from Settings; env-level Hermes is not configured.",
+        : "Hermes runtime can be set from the sidebar Hermes workspace; env-level Hermes is not configured.",
     },
     {
       name: "gmail_oauth",

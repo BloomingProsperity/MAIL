@@ -327,7 +327,7 @@ function checkOptionalIntegrations(
       severity: "warning",
       env: ["HERMES_CHAT_COMPLETIONS_URL", "HERMES_MODEL", "HERMES_API_KEY"],
       detail:
-        "Hermes runtime can be configured from Settings, but no env-level Hermes endpoint is set.",
+        "Hermes runtime can be configured from the sidebar Hermes workspace, but no env-level Hermes endpoint is set.",
     });
   }
 

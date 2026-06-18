@@ -338,7 +338,7 @@ uses against the gateway, then set `HERMES_LITELLM_MODEL`,
 `HERMES_LITELLM_API_KEY`, and optionally `HERMES_LITELLM_API_BASE` for the
 upstream model provider inside the gateway. The web app still talks only to
 `/api/hermes/*`; model-provider keys are not browser configuration.
-After the stack is healthy, use Settings -> Hermes -> Test connection or
+After the stack is healthy, open Hermes from the left sidebar and use Test connection or
 `POST /api/hermes/runtime/test` to prove real AI connectivity; the EmailEngine
 env preflight is not a Hermes gateway connectivity check.
 
@@ -364,7 +364,7 @@ Suggested self-hosted sizing for EmailEngine-first deployments:
   stack plus a local OpenAI-compatible Hermes model. Larger models or higher
   context budgets need more RAM/GPU headroom.
 
-Use Settings -> Hermes skill options or `GET /api/hermes/resource-profile` to
+Use the sidebar Hermes skill options or `GET /api/hermes/resource-profile` to
 inspect the current profile. Lower per-skill `maxContextChars` and
 `memoryLimit` first when a self-hosted node is memory constrained.
 
@@ -736,7 +736,7 @@ The API applies a 1 MiB default request body limit before route parsing. Oversiz
 - The compact Hermes dock is the AI entry for natural-language mail search and
   explains app-owned search results with citations before handing queries to
   deterministic Search filters.
-- Tasks and Hermes configuration live inside Settings; the compact Hermes input remains a global bottom dock.
+- Tasks live in the mail workflow; Hermes configuration has its own left-sidebar workspace, and the compact Hermes input remains a global bottom dock.
 - Mail folders live only in the second column.
 - The frontend and business code must use Email Hub contracts, not raw EmailEngine payloads.
 - Smart Inbox sorts by buckets and scores, then shows reason chips.
