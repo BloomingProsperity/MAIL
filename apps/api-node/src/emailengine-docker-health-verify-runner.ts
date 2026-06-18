@@ -248,9 +248,19 @@ export function dockerHealthEnvInvariants(
       expected: "true",
     },
     {
+      service: "api",
+      name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
+      expected: "false",
+    },
+    {
       service: "worker",
       name: "WORKER_HEALTH_REQUIRE_EMAILENGINE_TOKEN",
       expected: "true",
+    },
+    {
+      service: "worker",
+      name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
+      expected: "false",
     },
     {
       service: "emailengine",
