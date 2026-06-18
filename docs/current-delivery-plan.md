@@ -127,8 +127,8 @@ backend contracts, and verify the stack with more than smoke-level tests.
   token/password fragments, PAT-shaped strings, URL credentials, query strings,
   and private hosts. The default
   `verify:emailengine-launch` now runs the core gate, strict DB gate, and
-  GreenMail checks, while `verify:emailengine-launch:core` remains available for
-  faster iteration before final sign-off.
+  production-overlaid GreenMail checks, while `verify:emailengine-launch:core`
+  remains available for faster iteration before final sign-off.
 
 ### 2. Native Engine Track
 
@@ -256,6 +256,20 @@ backend contracts, and verify the stack with more than smoke-level tests.
   management routes require the admin API token. Non-account operational
   surfaces, including maintenance cleanup/status, EmailEngine health/readiness,
   and provider capability catalogs, also require the admin token.
+- Current runtime configuration status: Email Hub already persists Hermes
+  runtime settings through `/api/hermes/runtime`, stores the API key in
+  `stored_secrets`, and lets the Settings UI test the configured gateway before
+  mail skills use it. Database settings take precedence over env settings;
+  `HERMES_CHAT_COMPLETIONS_URL`, `HERMES_PROVIDER`, `HERMES_MODEL`, and
+  `HERMES_API_KEY` remain the Docker/env fallback when no database setting has
+  been saved. Once a database setting exists it is explicit, including
+  disabled settings; the API does not silently fall back to env in that case.
+  The default product path is still Hermes-first: the UI exposes a Hermes
+  gateway and route/model, not direct model-provider setup. The current compose
+  stack does not yet bundle a runnable `hermes` service container, so internal
+  tests that exercise real AI must either provide a reachable Hermes gateway
+  through env/settings or add the dedicated Hermes runtime service as a separate
+  Docker boundary before this item can count as production-ready.
 - Current data-boundary status: `hermes_memories`, `hermes_skill_runs`, and
   `hermes_audit_events` now have structure-level `account_id` columns for new
   data. Account-bound skill runs write that scope into both run and audit rows,

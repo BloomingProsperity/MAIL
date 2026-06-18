@@ -38,6 +38,7 @@ const fallbackHermesProviders: HermesProviderCatalogItem[] = [
     aliases: [],
     modelExamples: ["hermes-email"],
     capabilities: ["chat", "email_skills", "memory"],
+    defaultEndpoint: "http://hermes:8081/v1/chat/completions",
   },
   {
     key: "custom",
@@ -72,8 +73,8 @@ function isHermesRuntimeGatewayProvider(
 
 function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string {
   const labels: Record<HermesProviderProbeMissing, string> = {
-    endpoint_url: "服务地址",
-    model: "模型名称",
+    endpoint_url: "网关地址",
+    model: "路由或模型",
     api_key: "访问密钥",
     oauth_session: "外部登录",
     aws_credentials: "云服务凭证",
@@ -105,7 +106,7 @@ export function HermesRuntimeSettingsPanel(props: {
   const [mode, setMode] = useState<HermesRuntimeMode>("external_hermes");
   const [providerKey, setProviderKey] = useState("hermes");
   const [endpointUrl, setEndpointUrl] = useState(
-    "http://localhost:11434/v1/chat/completions",
+    "http://hermes:8081/v1/chat/completions",
   );
   const [model, setModel] = useState("hermes-email");
   const [apiKey, setApiKey] = useState("");
@@ -160,7 +161,7 @@ export function HermesRuntimeSettingsPanel(props: {
     const provider = providerOptions.find((item) => item.key === nextProviderKey);
 
     if (provider && !isHermesProviderRuntimeSelectable(provider)) {
-      setNotice("这个模型接口需要先完成外部配置，暂时不能直接选择。");
+      setNotice("这个网关需要先完成外部配置，暂时不能直接选择。");
       return;
     }
 
@@ -221,7 +222,7 @@ export function HermesRuntimeSettingsPanel(props: {
       })
       .catch(() => {
         if (!alive) return;
-        setNotice("暂时无法读取 Hermes 模型接口目录，已使用本地兜底。");
+        setNotice("暂时无法读取 Hermes 网关目录，已使用本地兜底。");
       });
 
     void props.api
@@ -253,7 +254,7 @@ export function HermesRuntimeSettingsPanel(props: {
             ? "Hermes 是唯一 AI 入口，已切回 Hermes 服务。"
             : settings.apiKeyConfigured
               ? "Hermes 已连接访问密钥。"
-              : "Hermes 尚未填写访问密钥。",
+              : "Hermes 访问密钥未配置。",
         );
       })
       .catch(() => {
@@ -345,7 +346,7 @@ export function HermesRuntimeSettingsPanel(props: {
       });
       setNotice("Hermes 配置已保存。");
     } catch {
-      setNotice("保存失败，请检查服务地址和模型名称。");
+      setNotice("保存失败，请检查网关地址和路由或模型。");
     } finally {
       setBusyAction(undefined);
     }
@@ -378,16 +379,16 @@ export function HermesRuntimeSettingsPanel(props: {
         return;
       }
       if ("status" in result && result.status === "external_auth_required") {
-        setNotice("这个模型接口需要先完成外部配置。");
+        setNotice("这个网关需要先完成外部配置。");
         return;
       }
       if ("status" in result && result.status === "missing_configuration") {
         setNotice(`请补全：${formatHermesMissingFields(result.missing)}`);
         return;
       }
-      setNotice("连接失败，请检查服务地址、模型和访问密钥。");
+      setNotice("连接失败，请检查网关地址、路由或模型和访问密钥。");
     } catch {
-      setNotice("连接失败，请检查服务地址、模型和访问密钥。");
+      setNotice("连接失败，请检查网关地址、路由或模型和访问密钥。");
     } finally {
       setBusyAction(undefined);
     }
@@ -454,7 +455,7 @@ export function HermesRuntimeSettingsPanel(props: {
       <header className="settings-panel-head">
         <div>
           <h2>Hermes 配置</h2>
-          <p>助手、写作习惯、版本和访问密钥集中管理；收件箱只保留底部快捷入口。</p>
+          <p>AI 入口、访问密钥、学习记录和规则集中管理。</p>
         </div>
         <button
           className="ghost-button"
@@ -489,7 +490,7 @@ export function HermesRuntimeSettingsPanel(props: {
               </select>
             </label>
             <label>
-              <span>模型接口</span>
+              <span>Hermes 网关</span>
               <select
                 value={providerKey}
                 disabled={isRuntimeBusy}
@@ -507,21 +508,21 @@ export function HermesRuntimeSettingsPanel(props: {
               </select>
             </label>
             <label>
-              <span>服务地址</span>
+              <span>网关地址</span>
               <input
                 value={endpointUrl}
                 onChange={(event) => setEndpointUrl(event.target.value)}
                 disabled={
                   isRuntimeBusy || selectedProvider?.endpointEditable === false
                 }
-                placeholder="http://localhost:11434/v1/chat/completions"
+                placeholder="http://hermes:8081/v1/chat/completions"
               />
             </label>
           </article>
 
           <article className="settings-module">
             <label>
-              <span>模型名称</span>
+              <span>路由或模型</span>
               <input
                 value={model}
                 disabled={isRuntimeBusy}

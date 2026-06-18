@@ -820,7 +820,7 @@ describe("EmailEngine Docker configuration", () => {
       "npm run stress:sync-queue:postgres:strict",
     );
     expect(rootPackage.scripts["verify:emailengine-launch"]).toBe(
-      "npm run verify:emailengine-launch:core && npm run verify:emailengine-launch:strict-db && npm run verify:emailengine-launch:greenmail",
+      "npm run verify:emailengine-launch:core && npm run verify:emailengine-launch:strict-db && npm run verify:emailengine-launch:greenmail-prod",
     );
     expect(readme).toContain("npm run verify:emailengine-launch:offline");
     expect(readme).toContain("npm run verify:emailengine-launch:env");

@@ -35,6 +35,7 @@ interface RequiredSecret {
   name: string;
   defaultValue?: string;
   detail: string;
+  requireComposeSafe?: boolean;
 }
 
 const REQUIRED_PRODUCTION_SECRETS: RequiredSecret[] = [
@@ -55,16 +56,19 @@ const REQUIRED_PRODUCTION_SECRETS: RequiredSecret[] = [
     name: "EMAILENGINE_WEBHOOK_SECRET",
     defaultValue: "dev-emailhub-secret",
     detail: "Verifies EmailEngine webhook signatures.",
+    requireComposeSafe: true,
   },
   {
     name: "EMAILENGINE_AUTH_SERVER_SECRET",
     defaultValue: "dev-emailhub-secret",
     detail: "Protects the EmailEngine OAuth auth-server callback.",
+    requireComposeSafe: true,
   },
   {
     name: "EENGINE_SECRET",
     defaultValue: "dev-emailhub-secret",
     detail: "Protects EmailEngine service settings.",
+    requireComposeSafe: true,
   },
 ];
 
@@ -146,7 +150,22 @@ function productionSecretIssues(
     ];
   }
 
+  if (secret.requireComposeSafe && !isComposeSafeSharedSecret(value)) {
+    return [
+      {
+        code: `${secret.name.toLowerCase()}_unsafe_characters`,
+        severity: "error",
+        env: [secret.name],
+        detail: `${secret.name} must use at least 16 URL-safe characters before the EmailEngine production launch gate. Use letters, numbers, underscore, or dash so Docker Compose can embed it safely in EmailEngine JSON and auth-server URLs.`,
+      },
+    ];
+  }
+
   return [];
+}
+
+function isComposeSafeSharedSecret(value: string): boolean {
+  return value.length >= 16 && /^[A-Za-z0-9_-]+$/.test(value);
 }
 
 function checkEmailEngineImage(

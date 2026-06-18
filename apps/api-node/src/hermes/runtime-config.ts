@@ -126,6 +126,16 @@ export function createHermesRuntimeConfigService(options: {
 }): HermesRuntimeConfigService {
   const env = options.env ?? process.env;
   const now = options.now ?? (() => new Date());
+  async function readEffectiveConnectionSettings() {
+    const storedSettings = await options.store.getSettings();
+    if (storedSettings) {
+      return normalizeConnectionSettings(
+        await options.store.getConnectionSettings(),
+      );
+    }
+
+    return envToConnectionSettings(env);
+  }
 
   return {
     async getSettings() {
@@ -142,16 +152,11 @@ export function createHermesRuntimeConfigService(options: {
     },
 
     async getConnectionSettings() {
-      const stored = normalizeConnectionSettings(
-        await options.store.getConnectionSettings(),
-      );
-      return stored ?? envToConnectionSettings(env);
+      return readEffectiveConnectionSettings();
     },
 
     async testConnection() {
-      const settings =
-        normalizeConnectionSettings(await options.store.getConnectionSettings()) ??
-        envToConnectionSettings(env);
+      const settings = await readEffectiveConnectionSettings();
       if (!settings?.enabled || !settings.endpointUrl.trim()) {
         throw new InvalidHermesRuntimeConfigRequestError(
           "Hermes runtime is not configured",

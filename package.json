@@ -38,7 +38,7 @@
     "verify:emailengine-launch:greenmail-prod": "npm run verify:emailengine-launch:env && npm run verify:emailengine-launch:docker-health:greenmail-prod && npm run verify:emailengine-launch:greenmail",
     "verify:emailengine-launch:strict-db": "npm run stress:sync-queue:postgres:strict",
     "verify:emailengine-launch:core": "npm run verify:emailengine-launch:offline && npm run verify:emailengine-launch:live",
-    "verify:emailengine-launch": "npm run verify:emailengine-launch:core && npm run verify:emailengine-launch:strict-db && npm run verify:emailengine-launch:greenmail",
+    "verify:emailengine-launch": "npm run verify:emailengine-launch:core && npm run verify:emailengine-launch:strict-db && npm run verify:emailengine-launch:greenmail-prod",
     "stress:sync-queue": "npm run build:worker && npm run stress:sync-queue -w apps/worker-node --",
     "stress:sync-queue:heavy": "npm run build:worker && npm run stress:sync-queue -w apps/worker-node -- --accounts=64 --jobs-per-account=200 --workers=128 --work-delay-ms=1",
     "stress:sync-queue:postgres": "npm run test:worker:postgres",

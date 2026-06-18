@@ -36,6 +36,47 @@ describe("Hermes runtime config service", () => {
     });
   });
 
+  it("does not fall back to env when stored runtime settings are disabled", async () => {
+    const service = createHermesRuntimeConfigService({
+      store: {
+        async getSettings() {
+          return {
+            enabled: false,
+            mode: "external_hermes",
+            providerKey: "hermes",
+            model: "hermes-email",
+            apiKeyConfigured: false,
+            updatePolicy: "manual",
+            updateChannel: "stable",
+            updateAvailable: false,
+            source: "database" as const,
+          };
+        },
+        async getConnectionSettings() {
+          return undefined;
+        },
+        async saveSettings() {
+          throw new Error("not used");
+        },
+        async saveVersionStatus() {
+          throw new Error("not used");
+        },
+      },
+      env: {
+        HERMES_CHAT_COMPLETIONS_URL:
+          "http://hermes:8081/v1/chat/completions",
+        HERMES_MODEL: "hermes-email",
+        HERMES_API_KEY: "env-secret",
+      },
+    });
+
+    await expect(service.getSettings()).resolves.toMatchObject({
+      enabled: false,
+      source: "database",
+    });
+    await expect(service.getConnectionSettings()).resolves.toBeUndefined();
+  });
+
   it("validates and saves runtime settings without exposing the API key", async () => {
     const calls: unknown[] = [];
     const service = createHermesRuntimeConfigService({

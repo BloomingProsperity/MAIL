@@ -171,6 +171,42 @@ describe("EmailEngine production env verify CLI runner", () => {
     expect(JSON.stringify(rawPrepared)).not.toContain(rawToken);
   });
 
+  it("rejects EmailEngine shared secrets that would break compose JSON or URLs", () => {
+    const result = verifyEmailEngineProductionEnv({
+      env: productionEnv({
+        EMAILENGINE_WEBHOOK_SECRET: "unsafe/webhook+secret=",
+        EMAILENGINE_AUTH_SERVER_SECRET: "unsafe@auth:secret",
+        EENGINE_SECRET: 'unsafe"service\\secret',
+      }),
+      now: () => new Date("2026-06-17T12:00:00.000Z"),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.checks.requiredSecrets.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "emailengine_webhook_secret_unsafe_characters",
+          env: ["EMAILENGINE_WEBHOOK_SECRET"],
+          severity: "error",
+        }),
+        expect.objectContaining({
+          code: "emailengine_auth_server_secret_unsafe_characters",
+          env: ["EMAILENGINE_AUTH_SERVER_SECRET"],
+          severity: "error",
+        }),
+        expect.objectContaining({
+          code: "eengine_secret_unsafe_characters",
+          env: ["EENGINE_SECRET"],
+          severity: "error",
+        }),
+      ]),
+    );
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("unsafe/webhook+secret=");
+    expect(serialized).not.toContain("unsafe@auth:secret");
+    expect(serialized).not.toContain('unsafe"service\\secret');
+  });
+
   it("rejects mutable or unpinned EmailEngine image overrides", () => {
     const latest = verifyEmailEngineProductionEnv({
       env: productionEnv({
