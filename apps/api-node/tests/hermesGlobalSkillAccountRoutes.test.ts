@@ -42,6 +42,48 @@ afterEach(async () => {
 });
 
 describe("Hermes global skill account routes", () => {
+  it("allows unscoped tokens to run email_search_qa across all accounts", async () => {
+    const calls: unknown[] = [];
+    const hermesService = {
+      async searchMail(input: unknown) {
+        calls.push(input);
+        return {
+          skillRunId: "run_search_global",
+          skillId: "email_search_qa",
+          answerText: "Found messages across accounts.",
+          searchQuery: "contract",
+          citations: [],
+          matches: [],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/email_search_qa/run`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              question: "所有邮箱里谁发过合同？",
+              limit: 5,
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(calls).toEqual([
+          {
+            question: "所有邮箱里谁发过合同？",
+            limit: 5,
+          },
+        ]);
+      },
+      { hermesService },
+    );
+  });
+
   it("allows account-scoped tokens to run translate_text with a query account scope", async () => {
     const calls: unknown[] = [];
     const hermesService = {

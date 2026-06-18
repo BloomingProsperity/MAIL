@@ -341,7 +341,7 @@ export interface HermesService {
     memoryLayers?: string[];
   }): Promise<unknown>;
   searchMail?(input: {
-    accountId: string;
+    accountId?: string;
     mailboxId?: string;
     question: string;
     searchQuery?: string;
@@ -2702,17 +2702,12 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
           rejectAccountScopedAdminRoute(response, config, requestId, requestPath);
           return;
         }
-        if (!input.accountId) {
-          writeJson(response, 400, { error: "invalid_email_search_qa_request" });
-          return;
-        }
-        if (!ensureRouteAccountAccess(input.accountId)) {
+        if (input.accountId && !ensureRouteAccountAccess(input.accountId)) {
           return;
         }
 
-        const scopedInput = { ...input, accountId: input.accountId };
         const result = await config.hermesService.searchMail(
-          withHermesSkillContextBudget(scopedInput, skill),
+          withHermesSkillContextBudget(input, skill),
         );
         writeJson(response, 202, result);
         return;

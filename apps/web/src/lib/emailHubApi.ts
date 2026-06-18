@@ -381,7 +381,7 @@ export interface HermesAuditLogListInput {
 }
 
 export interface HermesEmailSearchQaInput {
-  accountId: string;
+  accountId?: string;
   mailboxId?: string;
   question: string;
   searchQuery?: string;

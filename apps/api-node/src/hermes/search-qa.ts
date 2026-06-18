@@ -19,7 +19,7 @@ import { limitHermesContextText } from "./message-content.js";
 import type { HermesRunStore, HermesTextProvider } from "./translation.js";
 
 export interface HermesEmailSearchQaInput {
-  accountId: string;
+  accountId?: string;
   mailboxId?: string;
   question: string;
   searchQuery?: string;
@@ -106,9 +106,6 @@ export function createHermesEmailSearchQaService(
 ): HermesEmailSearchQaService {
   return {
     async searchMail(input) {
-      if (!input.accountId || input.accountId.trim().length === 0) {
-        throw new Error("account id is required");
-      }
       if (!input.question || input.question.trim().length === 0) {
         throw new Error("question is required");
       }
@@ -126,7 +123,7 @@ export function createHermesEmailSearchQaService(
         defaultLayers: DEFAULT_EMAIL_SEARCH_QA_MEMORY_LAYERS,
       });
       const page = await options.mailReadStore.listMessages({
-        accountId: input.accountId,
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         ...(input.mailboxId ? { mailboxId: input.mailboxId } : {}),
         ...searchPlan.listMessagesInput,
         limit,
@@ -161,7 +158,7 @@ export function createHermesEmailSearchQaService(
 
       const auditEventId = options.createId();
       await options.runStore.recordCompletedSkillRun({
-        accountId: input.accountId,
+        ...(input.accountId ? { accountId: input.accountId } : {}),
         run: {
           id: skillRunId,
           skillId: "email_search_qa",

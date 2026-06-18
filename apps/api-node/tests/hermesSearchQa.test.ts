@@ -397,6 +397,116 @@ describe("Hermes email search QA service", () => {
     );
   });
 
+  it("searches all accounts when no account scope is provided", async () => {
+    const mailSearchCalls: unknown[] = [];
+    const memoryQueries: unknown[] = [];
+    const persisted: unknown[] = [];
+    const ids = ["run_global", "audit_global"];
+    const service = createHermesEmailSearchQaService({
+      createId: () => ids.shift() ?? "unexpected",
+      textProvider: {
+        async complete() {
+          return "Found contract messages in Work and Personal.";
+        },
+      },
+      mailReadStore: {
+        async listMessages(input) {
+          mailSearchCalls.push(input);
+          return {
+            items: [
+              {
+                id: "00000000-0000-0000-0000-000000000301",
+                accountId: "00000000-0000-0000-0000-000000000001",
+                subject: "Work contract",
+                from: { email: "alice@example.com", name: "Alice" },
+                receivedAt: "2026-06-17T09:00:00.000Z",
+                snippet: "Work contract attached.",
+                unread: false,
+                starred: false,
+                mailboxIds: [],
+                attachmentCount: 1,
+                classification: {
+                  bucket: "P2 Important",
+                  priorityScore: 75,
+                  reasons: ["Matched contract"],
+                },
+              },
+              {
+                id: "00000000-0000-0000-0000-000000000302",
+                accountId: "00000000-0000-0000-0000-000000000002",
+                subject: "Personal contract",
+                from: { email: "bob@example.com", name: "Bob" },
+                receivedAt: "2026-06-17T10:00:00.000Z",
+                snippet: "Personal contract attached.",
+                unread: true,
+                starred: false,
+                mailboxIds: [],
+                attachmentCount: 1,
+                classification: {
+                  bucket: "P3 Normal",
+                  priorityScore: 50,
+                  reasons: ["Matched contract"],
+                },
+              },
+            ],
+          };
+        },
+      },
+      memoryStore: {
+        async listMemories(input) {
+          memoryQueries.push(input);
+          return { items: [] };
+        },
+      },
+      runStore: {
+        async recordCompletedSkillRun(input) {
+          persisted.push(input);
+        },
+      },
+    });
+
+    const result = await service.searchMail({
+      question: "所有邮箱里谁发过合同？",
+      searchQuery: "contract",
+      limit: 2,
+      memoryScope: "global",
+      memoryLayers: ["contact_memory"],
+    });
+
+    expect(mailSearchCalls).toEqual([
+      {
+        q: "contract",
+        qScopes: ["sender", "recipients", "subject", "body"],
+        limit: 2,
+        sort: "smart",
+      },
+    ]);
+    expect(memoryQueries).toEqual([
+      {
+        layer: "contact_memory",
+        scope: "global",
+        limit: 6,
+      },
+    ]);
+    expect(result.matches.map((match) => match.accountId)).toEqual([
+      "00000000-0000-0000-0000-000000000001",
+      "00000000-0000-0000-0000-000000000002",
+    ]);
+    expect(persisted).toEqual([
+      expect.objectContaining({
+        run: expect.objectContaining({
+          input: expect.not.objectContaining({ accountId: expect.any(String) }),
+        }),
+        auditEvent: expect.objectContaining({
+          readMessageIds: [
+            "00000000-0000-0000-0000-000000000301",
+            "00000000-0000-0000-0000-000000000302",
+          ],
+        }),
+      }),
+    ]);
+  });
+
   it("caps the Hermes answer prompt by the editable skill context budget", async () => {
     const providerCalls: Array<{ userPrompt: string }> = [];
     const service = createHermesEmailSearchQaService({

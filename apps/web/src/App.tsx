@@ -8227,17 +8227,23 @@ function SearchPage(props: {
       await executeSearch(question);
       return;
     }
-    if (!props.accountId) {
+    const hermesSearchAllAccounts = !props.restrictToAccount && searchAllAccounts;
+    const hermesAccountId = hermesSearchAllAccounts ? undefined : props.accountId;
+    if (!hermesSearchAllAccounts && !hermesAccountId) {
       setNotice("请先选择一个邮箱，再让 Hermes 搜索。");
       return;
     }
 
     setHermesSearchBusy(true);
     setHermesSearchResult(undefined);
-    setNotice("Hermes 正在理解问题并搜索当前邮箱...");
+    setNotice(
+      hermesSearchAllAccounts
+        ? "Hermes 正在理解问题并搜索所有邮箱..."
+        : "Hermes 正在理解问题并搜索当前邮箱...",
+    );
     try {
       const result = await props.api.searchMailWithHermes({
-        accountId: props.accountId,
+        ...(hermesAccountId ? { accountId: hermesAccountId } : {}),
         question,
         language: "zh-CN",
         limit: 10,
@@ -8245,7 +8251,7 @@ function SearchPage(props: {
       });
       const searchOptions = searchLaunchFromHermesResult(
         result,
-        props.accountId,
+        hermesAccountId,
       );
       setQuery(result.searchQuery);
       setQuickFilters(searchOptions.quickFilters ?? []);
@@ -8262,7 +8268,7 @@ function SearchPage(props: {
       setHasAttachment(searchOptions.hasAttachment);
       setLabelIds(searchOptions.labelIds ?? []);
       setTagMode(searchOptions.tagMode ?? "any");
-      setSearchAllAccounts(false);
+      setSearchAllAccounts(hermesSearchAllAccounts);
       const searched = await executeSearch(result.searchQuery, searchOptions);
       if (!searched) {
         return;
