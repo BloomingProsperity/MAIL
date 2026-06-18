@@ -1241,6 +1241,51 @@ describe("emailHubApi", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("suggests Hermes rules from recent behavior through backend routes", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        candidates: [
+          {
+            id: "candidate 1",
+            accountId: "account 1",
+            title: "启用客户优先级",
+            ruleType: "sender_priority",
+            condition: { senderEmail: "client@example.com" },
+            action: { type: "classify_sender", bucket: "P2 Important" },
+            confidence: 0.84,
+            status: "shadow",
+            evidenceMessageIds: ["message_1", "message_2"],
+            createdAt: "2026-06-15T09:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    const api = createEmailHubApi({ fetchImpl: fetchMock as any });
+
+    const result = await api.suggestHermesRules({
+      accountId: "account 1",
+      behaviorWindowDays: 30,
+      minEvidenceCount: 2,
+    });
+
+    expect(result.candidates[0]).toMatchObject({
+      id: "candidate 1",
+      ruleType: "sender_priority",
+      status: "shadow",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/hermes/rules/suggest",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          accountId: "account 1",
+          behaviorWindowDays: 30,
+          minEvidenceCount: 2,
+        }),
+      }),
+    );
+  });
+
   it("lists Hermes rule candidates through backend routes", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

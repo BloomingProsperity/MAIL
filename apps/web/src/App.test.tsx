@@ -10591,6 +10591,31 @@ function createApiFixture(): EmailHubApi {
         },
       ],
     } satisfies { candidates: HermesRuleCandidateDto[] })),
+    suggestHermesRules: vi.fn(async () => ({
+      candidates: [
+        {
+          id: "candidate_codes",
+          accountId: "account_1",
+          title: "启用验证码智能分组",
+          ruleType: "content_label",
+          condition: {
+            anyKeywords: ["验证码", "verification", "otp"],
+          },
+          action: {
+            type: "apply_label",
+            labelName: "验证码",
+            labelColor: "blue",
+            providerWriteback: false,
+            applyToHistory: false,
+            requiresConfirmation: true,
+          },
+          confidence: 0.9,
+          status: "shadow",
+          evidenceMessageIds: [],
+          createdAt: "2026-06-13T10:00:00.000Z",
+        },
+      ],
+    } satisfies { candidates: HermesRuleCandidateDto[] })),
     simulateHermesRule: vi.fn(async (input) => ({
       id: "run_rule_1",
       accountId: input.accountId,

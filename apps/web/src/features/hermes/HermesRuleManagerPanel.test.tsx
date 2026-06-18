@@ -148,6 +148,48 @@ describe("HermesRuleManagerPanel", () => {
     expect(within(panel).getByText("启用合同智能分组")).toBeTruthy();
   });
 
+  it("suggests Hermes rule candidates from recent behavior", async () => {
+    const api = createRuleApiFixture({
+      suggestHermesRules: vi.fn(async () => ({
+        candidates: [
+          candidateFixture({
+            id: "candidate_client_priority",
+            title: "启用客户优先级",
+            condition: { senderEmail: "client@example.com" },
+            action: {
+              type: "classify_sender",
+              bucket: "P2 Important",
+            },
+            evidenceMessageIds: ["message_1", "message_2"],
+          }),
+        ],
+      })),
+    });
+
+    render(<HermesRuleManagerPanel api={api} accountId="account_1" />);
+
+    const panel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "从最近行为生成候选规则",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.suggestHermesRules).toHaveBeenCalledWith({
+        accountId: "account_1",
+        behaviorWindowDays: 30,
+        minEvidenceCount: 2,
+      });
+    });
+    expect(await within(panel).findByText("启用客户优先级")).toBeTruthy();
+    expect(
+      within(panel).getByText(
+        "Hermes 已生成 1 条行为候选规则，请先模拟再确认。",
+      ),
+    ).toBeTruthy();
+  });
+
   it("runs and reorders approved Hermes rules", async () => {
     const api = createRuleApiFixture({
       listHermesRules: vi.fn(async () => ({
@@ -463,6 +505,7 @@ function createRuleApiFixture(
     updateHermesRule: ReturnType<typeof vi.fn>;
     runHermesRule: ReturnType<typeof vi.fn>;
     draftHermesRule: ReturnType<typeof vi.fn>;
+    suggestHermesRules: ReturnType<typeof vi.fn>;
     simulateHermesRule: ReturnType<typeof vi.fn>;
     updateHermesRuleCandidate: ReturnType<typeof vi.fn>;
     dismissHermesRuleCandidate: ReturnType<typeof vi.fn>;
@@ -489,6 +532,9 @@ function createRuleApiFixture(
       }),
     ),
     draftHermesRule: vi.fn(async () => ({
+      candidates: [candidateFixture()],
+    })),
+    suggestHermesRules: vi.fn(async () => ({
       candidates: [candidateFixture()],
     })),
     simulateHermesRule: vi.fn(async (input) =>

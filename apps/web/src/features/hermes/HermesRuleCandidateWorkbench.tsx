@@ -118,6 +118,57 @@ export function HermesRuleCandidateWorkbench(
     }
   }
 
+  async function suggestRulesFromRecentBehavior() {
+    if (!props.api) {
+      props.setCandidateDrafts(props.previewCandidates);
+      props.setCandidateEdits(
+        hermesRuleCandidateEditMap(props.previewCandidates),
+      );
+      props.setCandidateSimulations({});
+      props.setRuleNotice(
+        "预览行为候选已生成，连接后会从最近行为学习并先影子模拟。",
+      );
+      return;
+    }
+
+    if (!props.accountId) {
+      props.setRuleNotice("请先添加邮箱并完成同步，再让 Hermes 学习规则。");
+      return;
+    }
+
+    const requestId = beginRuleDraftRequest();
+    const accountId = props.accountId;
+    props.setRuleDraftBusy("suggest");
+    props.setRuleNotice("Hermes 正在从最近行为学习规则...");
+    try {
+      const result = await props.api.suggestHermesRules({
+        accountId,
+        behaviorWindowDays: 30,
+        minEvidenceCount: 2,
+      });
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
+      props.setCandidateDrafts(result.candidates);
+      props.setCandidateEdits(hermesRuleCandidateEditMap(result.candidates));
+      props.setCandidateSimulations({});
+      props.setRuleNotice(
+        result.candidates.length === 0
+          ? "Hermes 暂时没有从最近行为发现稳定规则。"
+          : `Hermes 已生成 ${result.candidates.length} 条行为候选规则，请先模拟再确认。`,
+      );
+    } catch {
+      if (!isCurrentRuleDraftRequest(requestId)) {
+        return;
+      }
+      props.setRuleNotice("Hermes 行为规则学习失败。");
+    } finally {
+      if (isCurrentRuleDraftRequest(requestId)) {
+        props.setRuleDraftBusy("");
+      }
+    }
+  }
+
   function updateRuleCandidateEdit(
     candidate: HermesRuleCandidateDto,
     patch: Partial<HermesRuleCandidateEditState>,
@@ -424,6 +475,16 @@ export function HermesRuleCandidateWorkbench(
           onClick={() => void draftRuleFromCommand()}
         >
           生成规则草案
+        </button>
+        <button
+          className="ghost-button"
+          type="button"
+          disabled={Boolean(props.ruleDraftBusy)}
+          onClick={() => void suggestRulesFromRecentBehavior()}
+        >
+          {props.ruleDraftBusy === "suggest"
+            ? "学习中"
+            : "从最近行为生成候选规则"}
         </button>
       </div>
       {props.candidateDrafts.length > 0 ? (

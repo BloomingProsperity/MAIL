@@ -1982,6 +1982,11 @@ export interface EmailHubApi {
     accountId: string;
     command: string;
   }): Promise<{ candidates: HermesRuleCandidateDto[] }>;
+  suggestHermesRules(input: {
+    accountId: string;
+    behaviorWindowDays?: number;
+    minEvidenceCount?: number;
+  }): Promise<{ candidates: HermesRuleCandidateDto[] }>;
   simulateHermesRule(input: {
     accountId: string;
     candidateId: string;
@@ -2929,6 +2934,13 @@ export function createEmailHubApi(
 
     draftHermesRule(input) {
       return request(fetchImpl, baseUrl, "/api/hermes/rules/draft", {
+        method: "POST",
+        body: JSON.stringify(cleanObject(input)),
+      });
+    },
+
+    suggestHermesRules(input) {
+      return request(fetchImpl, baseUrl, "/api/hermes/rules/suggest", {
         method: "POST",
         body: JSON.stringify(cleanObject(input)),
       });
