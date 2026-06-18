@@ -7,6 +7,8 @@ describe("vite development proxy", () => {
   it("forwards API routes to the local backend during development", async () => {
     const source = await readFile(join(process.cwd(), "vite.config.ts"), "utf8");
 
+    expect(source).toContain("envDir: repoRoot");
+    expect(source).toContain('new URL("../..", import.meta.url)');
     expect(source).toContain('"/api"');
     expect(source).toContain('"/health"');
     expect(source).toContain('"http://127.0.0.1:8080"');
