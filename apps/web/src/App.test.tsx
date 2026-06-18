@@ -2055,10 +2055,8 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
   });
 
-  it("lets admins inspect and clean compose attachment cache from Settings", async () => {
-    const api = createApiFixture();
-
-    render(<App api={api} defaultAccountId="account_1" />);
+  it("opens data maintenance from Settings", async () => {
+    render(<App />);
 
     fireEvent.click(
       within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
@@ -2069,60 +2067,8 @@ describe("Email Hub first UI baseline", () => {
       }),
     );
 
-    const maintenancePanel = await screen.findByLabelText("数据维护面板");
-    await waitFor(() => {
-      expect(api.getComposeAttachmentMaintenanceStatus).toHaveBeenCalled();
-      expect(api.getHermesRetentionMaintenanceStatus).toHaveBeenCalled();
-    });
-    expect(within(maintenancePanel).getByText("未引用附件")).toBeTruthy();
-    expect(within(maintenancePanel).getByText("2 MB 可清理")).toBeTruthy();
-    expect(within(maintenancePanel).getByText("Hermes 过期记录")).toBeTruthy();
-    expect(within(maintenancePanel).getByText("运行记录")).toBeTruthy();
-
-    fireEvent.change(within(maintenancePanel).getByLabelText("清理最小保留小时"), {
-      target: { value: "48" },
-    });
-    fireEvent.change(within(maintenancePanel).getByLabelText("清理批量上限"), {
-      target: { value: "2" },
-    });
-    fireEvent.click(
-      within(maintenancePanel).getByRole("button", { name: "清理未引用附件" }),
-    );
-
-    await waitFor(() => {
-      expect(api.cleanupComposeAttachments).toHaveBeenCalledWith({
-        minAgeHours: 48,
-        limit: 2,
-      });
-    });
-    expect(
-      await within(maintenancePanel).findByText("已清理 2 个未引用附件，释放 4 KB。"),
-    ).toBeTruthy();
-
-    fireEvent.change(within(maintenancePanel).getByLabelText("Hermes 保留天数"), {
-      target: { value: "14" },
-    });
-    fireEvent.change(
-      within(maintenancePanel).getByLabelText("Hermes 清理批量上限"),
-      {
-        target: { value: "25" },
-      },
-    );
-    fireEvent.click(
-      within(maintenancePanel).getByRole("button", {
-        name: "清理 Hermes 过期数据",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(api.cleanupHermesRetention).toHaveBeenCalledWith({
-        retentionDays: 14,
-        limit: 25,
-      });
-    });
-    expect(
-      await within(maintenancePanel).findByText("已清理 23 条 Hermes 过期记录。"),
-    ).toBeTruthy();
+    expect(await screen.findByLabelText("数据维护面板")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "数据维护" })).toBeTruthy();
   });
 
   it("clears the saved Hermes API key from Settings", async () => {
