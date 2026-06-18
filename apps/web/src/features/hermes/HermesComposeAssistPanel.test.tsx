@@ -97,6 +97,59 @@ describe("Hermes compose assistant panel", () => {
     ).toBe(true);
   });
 
+  it("prevents no-op compose translations when source and target languages match", () => {
+    const onTranslate = vi.fn();
+    const onPolish = vi.fn();
+    const onPreview = vi.fn();
+
+    const { rerender } = render(
+      <HermesComposeDraftTools
+        sourceLanguage="French"
+        targetLanguage="French"
+        busy={false}
+        onSourceLanguageChange={vi.fn()}
+        onTargetLanguageChange={vi.fn()}
+        onTranslate={onTranslate}
+        onPolish={onPolish}
+        onPreview={onPreview}
+      />,
+    );
+
+    const translateButton = screen.getByRole("button", {
+      name: "Translate composed draft with Hermes",
+    }) as HTMLButtonElement;
+    expect(translateButton.disabled).toBe(true);
+    expect(translateButton.title).toBe("源语言和目标语言相同，无需翻译");
+    fireEvent.click(translateButton);
+    expect(onTranslate).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Polish composed draft with Hermes",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+    expect(onPolish).toHaveBeenCalledTimes(1);
+    expect(onPreview).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <HermesComposeDraftTools
+        sourceLanguage="auto"
+        targetLanguage="French"
+        busy={false}
+        onSourceLanguageChange={vi.fn()}
+        onTargetLanguageChange={vi.fn()}
+        onTranslate={onTranslate}
+        onPolish={onPolish}
+        onPreview={onPreview}
+      />,
+    );
+
+    expect(translateButton.disabled).toBe(false);
+    fireEvent.click(translateButton);
+    expect(onTranslate).toHaveBeenCalledTimes(1);
+  });
+
   it("routes draft reply and quick reply selections", () => {
     const onDraftReply = vi.fn();
     const onQuickReply = vi.fn();

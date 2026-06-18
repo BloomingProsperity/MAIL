@@ -4,6 +4,7 @@ import {
   HERMES_SOURCE_LANGUAGES,
   HERMES_TRANSLATION_LANGUAGES,
   hermesTranslationLanguageLabel,
+  isHermesNoopTranslation,
 } from "./hermesTranslation";
 
 export function HermesReaderTranslationControls(props: {
@@ -14,6 +15,11 @@ export function HermesReaderTranslationControls(props: {
   onTargetLanguageChange: (value: string) => void;
   onTranslate: () => void;
 }) {
+  const sameExplicitLanguage = isHermesNoopTranslation(
+    props.sourceLanguage,
+    props.targetLanguage,
+  );
+
   return (
     <div className="reader-translation-control">
       <select
@@ -44,7 +50,10 @@ export function HermesReaderTranslationControls(props: {
         className="toolbar-button"
         type="button"
         aria-label="Ask Hermes to translate selected message"
-        disabled={props.busy}
+        disabled={props.busy || sameExplicitLanguage}
+        title={
+          sameExplicitLanguage ? "源语言和目标语言相同，无需翻译" : undefined
+        }
         onClick={props.onTranslate}
       >
         翻译
@@ -83,17 +92,15 @@ export function HermesReaderTranslationResult(props: {
       </small>
       <p>{props.translation.translatedText}</p>
       <div className="hermes-apply-actions">
-        {props.translation.cached ? (
-          <button
-            className="tiny-button"
-            type="button"
-            aria-label="Refresh Hermes translation"
-            disabled={props.refreshBusy}
-            onClick={props.onRefresh}
-          >
-            {props.refreshBusy ? "重新翻译中" : "重新翻译"}
-          </button>
-        ) : null}
+        <button
+          className="tiny-button"
+          type="button"
+          aria-label="Refresh Hermes translation"
+          disabled={props.refreshBusy}
+          onClick={props.onRefresh}
+        >
+          {props.refreshBusy ? "重新翻译中" : "重新翻译"}
+        </button>
         <button
           className="tiny-button"
           type="button"

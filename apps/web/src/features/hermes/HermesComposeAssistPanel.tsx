@@ -3,6 +3,7 @@ import type { HermesQuickReplyScenario } from "../../lib/emailHubApi";
 import {
   HERMES_SOURCE_LANGUAGES,
   HERMES_TRANSLATION_LANGUAGES,
+  isHermesNoopTranslation,
 } from "./hermesTranslation";
 
 export type HermesQuickReplyAction = {
@@ -44,6 +45,11 @@ export function HermesComposeDraftTools(props: {
   onPolish: () => void;
   onPreview: () => void;
 }) {
+  const sameExplicitLanguage = isHermesNoopTranslation(
+    props.sourceLanguage,
+    props.targetLanguage,
+  );
+
   return (
     <div className="composer-tool-row">
       <div className="compose-translate-controls" aria-label="Compose translation controls">
@@ -75,7 +81,10 @@ export function HermesComposeDraftTools(props: {
           className="tiny-button"
           type="button"
           aria-label="Translate composed draft with Hermes"
-          disabled={props.busy}
+          disabled={props.busy || sameExplicitLanguage}
+          title={
+            sameExplicitLanguage ? "源语言和目标语言相同，无需翻译" : undefined
+          }
           onClick={props.onTranslate}
         >
           <Sparkles size={14} />

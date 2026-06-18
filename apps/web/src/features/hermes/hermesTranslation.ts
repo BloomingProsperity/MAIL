@@ -18,3 +18,10 @@ export function hermesTranslationLanguageLabel(value: string): string {
       ?.label ?? value
   );
 }
+
+export function isHermesNoopTranslation(
+  sourceLanguage: string,
+  targetLanguage: string,
+): boolean {
+  return sourceLanguage !== "auto" && sourceLanguage === targetLanguage;
+}

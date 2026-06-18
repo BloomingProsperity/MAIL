@@ -88,6 +88,44 @@ describe("Hermes reader translation panel", () => {
     ).toBe(true);
   });
 
+  it("prevents no-op reader translations when source and target languages match", () => {
+    const onTranslate = vi.fn();
+
+    const { rerender } = render(
+      <HermesReaderTranslationControls
+        sourceLanguage="English"
+        targetLanguage="English"
+        busy={false}
+        onSourceLanguageChange={vi.fn()}
+        onTargetLanguageChange={vi.fn()}
+        onTranslate={onTranslate}
+      />,
+    );
+
+    const translateButton = screen.getByRole("button", {
+      name: "Ask Hermes to translate selected message",
+    }) as HTMLButtonElement;
+    expect(translateButton.disabled).toBe(true);
+    expect(translateButton.title).toBe("源语言和目标语言相同，无需翻译");
+    fireEvent.click(translateButton);
+    expect(onTranslate).not.toHaveBeenCalled();
+
+    rerender(
+      <HermesReaderTranslationControls
+        sourceLanguage="auto"
+        targetLanguage="English"
+        busy={false}
+        onSourceLanguageChange={vi.fn()}
+        onTargetLanguageChange={vi.fn()}
+        onTranslate={onTranslate}
+      />,
+    );
+
+    expect(translateButton.disabled).toBe(false);
+    fireEvent.click(translateButton);
+    expect(onTranslate).toHaveBeenCalledTimes(1);
+  });
+
   it("renders translation metadata and remembers preferences", () => {
     const onRememberPreference = vi.fn();
     const onRefresh = vi.fn();
@@ -151,7 +189,8 @@ describe("Hermes reader translation panel", () => {
     expect(onRememberPreference).not.toHaveBeenCalled();
   });
 
-  it("only offers refresh for cached reader translations", () => {
+  it("refreshes both fresh and cached reader translations", () => {
+    const onRefresh = vi.fn();
     const { rerender } = render(
       <HermesReaderTranslationResult
         translation={translationFixture({ cached: false })}
@@ -159,15 +198,16 @@ describe("Hermes reader translation panel", () => {
         refreshBusy={false}
         canRememberPreference
         onRememberPreference={vi.fn()}
-        onRefresh={vi.fn()}
+        onRefresh={onRefresh}
       />,
     );
 
-    expect(
-      screen.queryByRole("button", {
-        name: "Refresh Hermes translation",
-      }),
-    ).toBeNull();
+    const refreshButton = screen.getByRole("button", {
+      name: "Refresh Hermes translation",
+    }) as HTMLButtonElement;
+    expect(refreshButton.disabled).toBe(false);
+    fireEvent.click(refreshButton);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
 
     rerender(
       <HermesReaderTranslationResult
@@ -180,11 +220,11 @@ describe("Hermes reader translation panel", () => {
       />,
     );
 
-    const refreshButton = screen.getByRole("button", {
+    const busyRefreshButton = screen.getByRole("button", {
       name: "Refresh Hermes translation",
     }) as HTMLButtonElement;
-    expect(refreshButton.disabled).toBe(true);
-    expect(refreshButton.textContent).toBe("重新翻译中");
+    expect(busyRefreshButton.disabled).toBe(true);
+    expect(busyRefreshButton.textContent).toBe("重新翻译中");
   });
 
   it("keeps unknown translation language labels visible", () => {
