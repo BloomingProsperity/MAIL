@@ -42,7 +42,7 @@ const fallbackHermesProviders: HermesProviderCatalogItem[] = [
   },
   {
     key: "custom",
-    label: "自定义 Hermes 网关",
+    label: "自定义 AI 服务",
     category: "custom",
     authType: "api_key_optional",
     requestProtocol: "openai_chat_completions",
@@ -73,8 +73,8 @@ function isHermesRuntimeGatewayProvider(
 
 function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string {
   const labels: Record<HermesProviderProbeMissing, string> = {
-    endpoint_url: "网关地址",
-    model: "路由或模型",
+    endpoint_url: "服务地址",
+    model: "模型名称",
     api_key: "访问密钥",
     oauth_session: "外部登录",
     aws_credentials: "云服务凭证",
@@ -166,7 +166,7 @@ export function HermesRuntimeSettingsPanel(props: {
     const provider = providerOptions.find((item) => item.key === nextProviderKey);
 
     if (provider && !isHermesProviderRuntimeSelectable(provider)) {
-      setNotice("这个网关需要先完成外部配置，暂时不能直接选择。");
+      setNotice("这个 AI 服务需要先完成外部配置，暂时不能直接选择。");
       return;
     }
 
@@ -227,7 +227,7 @@ export function HermesRuntimeSettingsPanel(props: {
       })
       .catch(() => {
         if (!alive) return;
-        setNotice("暂时无法读取 Hermes 网关目录，已使用本地兜底。");
+        setNotice("暂时无法读取 AI 服务列表，已使用本地兜底。");
       });
 
     void props.api
@@ -351,7 +351,7 @@ export function HermesRuntimeSettingsPanel(props: {
       });
       setNotice("Hermes 配置已保存。");
     } catch {
-      setNotice("保存失败，请检查网关地址和路由或模型。");
+      setNotice("保存失败，请检查服务地址和模型名称。");
     } finally {
       setBusyAction(undefined);
     }
@@ -384,16 +384,16 @@ export function HermesRuntimeSettingsPanel(props: {
         return;
       }
       if ("status" in result && result.status === "external_auth_required") {
-        setNotice("这个网关需要先完成外部配置。");
+        setNotice("这个 AI 服务需要先完成外部配置。");
         return;
       }
       if ("status" in result && result.status === "missing_configuration") {
         setNotice(`请补全：${formatHermesMissingFields(result.missing)}`);
         return;
       }
-      setNotice("连接失败，请检查网关地址、路由或模型和访问密钥。");
+      setNotice("连接失败，请检查服务地址、模型名称和访问密钥。");
     } catch {
-      setNotice("连接失败，请检查网关地址、路由或模型和访问密钥。");
+      setNotice("连接失败，请检查服务地址、模型名称和访问密钥。");
     } finally {
       setBusyAction(undefined);
     }
@@ -510,19 +510,9 @@ export function HermesRuntimeSettingsPanel(props: {
           </article>
 
           <article className="settings-module">
-            <h3>服务接入</h3>
+            <h3>AI 服务</h3>
             <label>
-              <span>连接方式</span>
-              <select
-                value="external_hermes"
-                disabled={isRuntimeBusy}
-                onChange={() => setMode("external_hermes")}
-              >
-                <option value="external_hermes">Hermes 服务</option>
-              </select>
-            </label>
-            <label>
-              <span>Hermes 网关</span>
+              <span>AI 服务</span>
               <select
                 value={providerKey}
                 disabled={isRuntimeBusy}
@@ -540,7 +530,7 @@ export function HermesRuntimeSettingsPanel(props: {
               </select>
             </label>
             <label>
-              <span>网关地址</span>
+              <span>服务地址</span>
               <input
                 value={endpointUrl}
                 onChange={(event) => setEndpointUrl(event.target.value)}
@@ -553,9 +543,9 @@ export function HermesRuntimeSettingsPanel(props: {
           </article>
 
           <article className="settings-module">
-            <h3>路由与密钥</h3>
+            <h3>模型与密钥</h3>
             <label>
-              <span>路由或模型</span>
+              <span>模型名称</span>
               <input
                 value={model}
                 disabled={isRuntimeBusy}

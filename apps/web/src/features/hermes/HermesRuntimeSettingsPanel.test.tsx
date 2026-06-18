@@ -79,16 +79,17 @@ describe("HermesRuntimeSettingsPanel", () => {
 
     await screen.findByText("Hermes 访问密钥未配置。");
     expect(screen.getByText(/状态：待配置/)).toBeTruthy();
-    expect(screen.getByLabelText("Hermes 网关")).toBeTruthy();
-    expect((screen.getByLabelText("网关地址") as HTMLInputElement).value).toBe(
+    expect(screen.getByLabelText("AI 服务")).toBeTruthy();
+    expect((screen.getByLabelText("服务地址") as HTMLInputElement).value).toBe(
       "http://hermes:4000/v1/chat/completions",
     );
-    expect((screen.getByLabelText("路由或模型") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("模型名称") as HTMLInputElement).value).toBe(
       "hermes-email",
     );
+    expect(screen.queryByText("连接方式")).toBeNull();
+    expect(screen.queryByText("Hermes 网关")).toBeNull();
+    expect(screen.queryByText("路由或模型")).toBeNull();
     expect(screen.queryByText("模型接口")).toBeNull();
-    expect(screen.queryByText("服务地址")).toBeNull();
-    expect(screen.queryByText("模型名称")).toBeNull();
   });
 
   it("routes the selected account scope to rules, memories, and audit logs", async () => {

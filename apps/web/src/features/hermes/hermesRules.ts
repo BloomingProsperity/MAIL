@@ -116,7 +116,7 @@ export function hermesActionPlanErrorNotice(
       return "Hermes 执行计划存储暂时不可用，请联系管理员检查服务配置。";
     }
     if (error.code === "hermes_runtime_not_configured") {
-      return "Hermes 尚未配置模型接口，请到 Hermes 配置填写服务地址、模型和访问密钥。";
+      return "Hermes AI 服务还没配置，请到 Hermes 配置填写服务地址、模型和访问密钥。";
     }
   }
 

@@ -676,7 +676,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。",
+        "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。",
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
@@ -1531,7 +1531,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。",
+        "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。",
       ),
     ).toBeTruthy();
     expect(screen.getByText("Live body from backend")).toBeTruthy();
@@ -1810,10 +1810,10 @@ describe("Email Hub first UI baseline", () => {
     expect(
       await screen.findByDisplayValue("http://hermes:4000/v1/chat/completions"),
     ).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("网关地址"), {
+    fireEvent.change(screen.getByLabelText("服务地址"), {
       target: { value: "http://localhost:11434/v1/chat/completions" },
     });
-    fireEvent.change(screen.getByLabelText("路由或模型"), {
+    fireEvent.change(screen.getByLabelText("模型名称"), {
       target: { value: "hermes-2-pro" },
     });
     fireEvent.change(screen.getByLabelText("访问密钥"), {
@@ -3005,7 +3005,7 @@ describe("Email Hub first UI baseline", () => {
     expect(api.updateHermesMemory).not.toHaveBeenCalled();
   });
 
-  it("keeps Hermes settings scoped to backend-provided gateway interfaces", async () => {
+  it("keeps Hermes settings scoped to backend-provided AI services", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
@@ -3013,24 +3013,24 @@ describe("Email Hub first UI baseline", () => {
     openHermesPage();
 
     expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    const providerSelect = screen.getByLabelText("Hermes 网关");
+    const providerSelect = screen.getByLabelText("AI 服务");
     expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
       .toBeTruthy();
     expect(
       within(providerSelect).getByRole("option", {
-        name: "自定义 Hermes 网关",
+        name: "自定义 AI 服务",
       }),
     ).toBeTruthy();
     expect(within(providerSelect).queryByRole("option", { name: "NovitaAI" }))
       .toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Hermes 网关"), {
+    fireEvent.change(screen.getByLabelText("AI 服务"), {
       target: { value: "custom" },
     });
-    fireEvent.change(screen.getByLabelText("网关地址"), {
+    fireEvent.change(screen.getByLabelText("服务地址"), {
       target: { value: "http://hermes-gateway:8081/v1/chat/completions" },
     });
-    fireEvent.change(screen.getByLabelText("路由或模型"), {
+    fireEvent.change(screen.getByLabelText("模型名称"), {
       target: { value: "hermes-email" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
@@ -3047,7 +3047,7 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("applies Hermes gateway defaults when switching model interfaces", async () => {
+  it("applies Hermes service defaults when switching model interfaces", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
@@ -3058,14 +3058,14 @@ describe("Email Hub first UI baseline", () => {
       await screen.findByDisplayValue("http://hermes:4000/v1/chat/completions"),
     ).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("Hermes 网关"), {
+    fireEvent.change(screen.getByLabelText("AI 服务"), {
       target: { value: "custom" },
     });
 
-    expect((screen.getByLabelText("网关地址") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("服务地址") as HTMLInputElement).value).toBe(
       "http://hermes-gateway:8081/v1/chat/completions",
     );
-    expect((screen.getByLabelText("路由或模型") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("模型名称") as HTMLInputElement).value).toBe(
       "hermes-email",
     );
 
@@ -3090,7 +3090,7 @@ describe("Email Hub first UI baseline", () => {
     openHermesPage();
 
     expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    const providerSelect = screen.getByLabelText("Hermes 网关");
+    const providerSelect = screen.getByLabelText("AI 服务");
     expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
       .toBeTruthy();
     expect(within(providerSelect).queryByRole("option", { name: "AWS Bedrock" }))
@@ -3105,7 +3105,7 @@ describe("Email Hub first UI baseline", () => {
     openHermesPage();
 
     expect(container.textContent).not.toMatch(/\bAPI\b|OpenAI-compatible/i);
-    const providerSelect = screen.getByLabelText("Hermes 网关");
+    const providerSelect = screen.getByLabelText("AI 服务");
     expect(
       within(providerSelect).queryByRole("option", {
         name: /\bAPI\b|OpenAI-compatible/i,
@@ -3115,7 +3115,7 @@ describe("Email Hub first UI baseline", () => {
       within(providerSelect).queryByRole("option", { name: "OpenAI" }),
     ).toBeNull();
     expect(
-      within(providerSelect).getByRole("option", { name: "自定义 Hermes 网关" }),
+      within(providerSelect).getByRole("option", { name: "自定义 AI 服务" }),
     ).toBeTruthy();
   });
 
@@ -8935,7 +8935,7 @@ function createApiFixture(): EmailHubApi {
         },
         {
           key: "custom",
-          label: "自定义 Hermes 网关",
+          label: "自定义 AI 服务",
           category: "custom" as const,
           authType: "api_key_optional" as const,
           requestProtocol: "openai_chat_completions" as const,

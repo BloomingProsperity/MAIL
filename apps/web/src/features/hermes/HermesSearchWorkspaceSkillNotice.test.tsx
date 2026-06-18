@@ -97,7 +97,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。",
+        "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。",
       ),
     ).toBeTruthy();
 
@@ -123,7 +123,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。",
+        "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。",
       ),
     ).toBeTruthy();
 
@@ -260,6 +260,33 @@ function createSearchSkillApiFixture(): EmailHubApi {
     listHermesMemories: vi.fn(async () => ({ items: [] })),
     listHermesAuditLog: vi.fn(async () => ({ items: [] })),
     listFollowUps: vi.fn(async () => ({ items: [] })),
+    getComposeAttachmentMaintenanceStatus: vi.fn(async () => ({
+      generatedAt: "2026-06-16T00:00:00.000Z",
+      storage: "local",
+      retentionMs: 7 * 24 * 60 * 60 * 1000,
+      cleanupLimit: 100,
+      protectedStorageKeyCount: 0,
+      scanned: 0,
+      scanLimit: 5000,
+      scanLimited: false,
+      uploads: 0,
+      totalBytes: 0,
+      protected: 0,
+      fresh: 0,
+      staleUnreferenced: 0,
+      staleUnreferencedBytes: 0,
+      invalid: 0,
+    })),
+    getHermesRetentionMaintenanceStatus: vi.fn(async () => ({
+      generatedAt: "2026-06-17T12:00:00.000Z",
+      retentionMs: 30 * 24 * 60 * 60 * 1000,
+      retentionDays: 30,
+      cleanupLimit: 500,
+      cutoff: "2026-05-18T12:00:00.000Z",
+      tables: [],
+      expiredRows: 0,
+      scanLimited: false,
+    })),
   };
 
   return api as unknown as EmailHubApi;

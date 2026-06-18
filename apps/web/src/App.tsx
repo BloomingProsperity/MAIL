@@ -8502,7 +8502,7 @@ function hermesSkillErrorNotice(
       );
     }
     if (error.code === "hermes_runtime_not_configured") {
-      return "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。";
+      return "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。";
     }
     const unavailableNotice = input.unavailable?.[error.code];
     if (unavailableNotice) {

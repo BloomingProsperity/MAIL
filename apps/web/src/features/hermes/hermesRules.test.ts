@@ -53,7 +53,7 @@ describe("hermesRules helpers", () => {
         "create",
       ),
     ).toBe(
-      "Hermes 尚未配置模型接口，请到 Hermes 配置填写服务地址、模型和访问密钥。",
+      "Hermes AI 服务还没配置，请到 Hermes 配置填写服务地址、模型和访问密钥。",
     );
   });
 
