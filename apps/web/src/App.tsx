@@ -54,7 +54,8 @@ import {
   formatHermesActionItemNote,
   hermesActionItemApplyId,
 } from "./features/hermes/HermesReaderOrganizationPanels";
-import { HermesDock, HermesNotice } from "./features/hermes/HermesDock";
+import { HermesDock } from "./features/hermes/HermesDock";
+import { HermesNotice } from "./features/hermes/HermesNotice";
 import { HermesNaturalLanguageSearchPanel } from "./features/hermes/HermesNaturalLanguageSearchPanel";
 import type { HermesQuickReplyAction } from "./features/hermes/HermesComposeAssistPanel";
 import type { HermesOrganizationApplyAction } from "./features/hermes/HermesReaderOrganizationPanels";

@@ -16,6 +16,7 @@ import {
   searchLaunchFromHermesResult,
   type HermesSearchLaunchOptions,
 } from "./hermesSearchLaunch";
+import { HermesNotice } from "./HermesNotice";
 
 export function HermesDock(props: {
   prompt: string;
@@ -302,43 +303,6 @@ function HermesWorkspaceContextBar(props: {
       <span>{context.rules.length} 条规则</span>
       <span>{statusLabel}</span>
       {confirmationBoundary ? <span>规则需确认</span> : null}
-    </div>
-  );
-}
-
-export function HermesNotice(props: {
-  notice: string;
-  skillId?: string;
-  requiredPermission?: HermesSkillRequiredPermission;
-  compact?: boolean;
-  className?: string;
-  onOpenSkillSettings?: (
-    skillId: string,
-    requiredPermission?: HermesSkillRequiredPermission,
-  ) => void;
-}) {
-  const className = props.className
-    ? `${props.className} hermes-actionable-notice`
-    : props.compact
-      ? "backend-notice compact hermes-actionable-notice"
-      : "backend-notice hermes-actionable-notice";
-  const canOpenSkillSettings = Boolean(props.skillId && props.onOpenSkillSettings);
-
-  function openSkillSettings() {
-    if (!props.skillId) {
-      return;
-    }
-    props.onOpenSkillSettings?.(props.skillId, props.requiredPermission);
-  }
-
-  return (
-    <div className={className} role="status">
-      <span>{props.notice}</span>
-      {canOpenSkillSettings ? (
-        <button type="button" onClick={openSkillSettings}>
-          打开能力选项
-        </button>
-      ) : null}
     </div>
   );
 }
