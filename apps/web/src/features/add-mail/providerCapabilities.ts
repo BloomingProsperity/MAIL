@@ -65,7 +65,7 @@ export const fallbackAddMailProviderOptions: AddMailProviderOption[] = [
     title: "个人域名邮箱",
     subtitle: "连接企业或个人域名邮箱",
     mark: "@",
-    provider: "custom",
+    provider: "custom_domain",
     action: "manual",
     badges: ["自定义服务器"],
   }),

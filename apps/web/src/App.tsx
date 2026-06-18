@@ -3991,7 +3991,7 @@ function MailWorkspace(props: {
       <header className="topbar">
         <div>
           <h1>邮箱</h1>
-          <p>邮箱目录放在第二栏，左侧只保留全局功能。</p>
+          <p>统一查看所有邮箱和重点邮件。</p>
         </div>
         <form
           className="top-search"

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { MailProviderCapabilityDto } from "../../lib/emailHubApi";
-import { providerCapabilityToOption } from "./providerCapabilities";
+import {
+  fallbackAddMailProviderOptions,
+  providerCapabilityToOption,
+} from "./providerCapabilities";
 
 describe("providerCapabilityToOption", () => {
   it("maps domestic authorization-code providers into user-facing badges", () => {
@@ -89,6 +92,17 @@ describe("providerCapabilityToOption", () => {
       "共享发件",
     ]);
     expect(JSON.stringify(option)).not.toMatch(/send_on_behalf|large_attachment/);
+  });
+
+  it("keeps fallback custom-domain provider ids aligned with backend capabilities", () => {
+    expect(
+      fallbackAddMailProviderOptions.find(
+        (provider) => provider.title === "个人域名邮箱",
+      ),
+    ).toMatchObject({
+      action: "manual",
+      provider: "custom_domain",
+    });
   });
 });
 
