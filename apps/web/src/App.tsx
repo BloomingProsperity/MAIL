@@ -55,6 +55,7 @@ import {
   hermesActionItemApplyId,
 } from "./features/hermes/HermesReaderOrganizationPanels";
 import { HermesDock, HermesNotice } from "./features/hermes/HermesDock";
+import { HermesNaturalLanguageSearchPanel } from "./features/hermes/HermesNaturalLanguageSearchPanel";
 import type { HermesQuickReplyAction } from "./features/hermes/HermesComposeAssistPanel";
 import type { HermesOrganizationApplyAction } from "./features/hermes/HermesReaderOrganizationPanels";
 import { HermesRuntimeSettingsPanel } from "./features/hermes/HermesRuntimeSettingsPanel";
@@ -8303,8 +8304,7 @@ function SearchPage(props: {
     await executeSearch(query);
   }
 
-  async function runHermesNaturalLanguageSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function runHermesNaturalLanguageSearch() {
     const question = naturalLanguageQuery.trim();
     if (!question) {
       setNotice("请输入自然语言问题。");
@@ -8433,28 +8433,12 @@ function SearchPage(props: {
               执行搜索
             </button>
           </form>
-          <form
-            className="search-form hermes-search-form"
-            aria-label="Hermes 自然语言搜索"
-            onSubmit={runHermesNaturalLanguageSearch}
-          >
-            <label className="large-search">
-              <Sparkles size={21} />
-              <input
-                aria-label="Hermes 搜索问题"
-                placeholder="问 Hermes：上次客户提到的合同在哪里？"
-                value={naturalLanguageQuery}
-                onChange={(event) => setNaturalLanguageQuery(event.target.value)}
-              />
-            </label>
-            <button
-              className="primary-button"
-              type="submit"
-              disabled={hermesSearchBusy}
-            >
-              {hermesSearchBusy ? "Hermes 搜索中" : "让 Hermes 搜索"}
-            </button>
-          </form>
+          <HermesNaturalLanguageSearchPanel
+            query={naturalLanguageQuery}
+            busy={hermesSearchBusy}
+            onQueryChange={setNaturalLanguageQuery}
+            onSubmit={() => void runHermesNaturalLanguageSearch()}
+          />
           <div className="filter-row">
             <button
               className={searchAllAccounts ? "active" : ""}
