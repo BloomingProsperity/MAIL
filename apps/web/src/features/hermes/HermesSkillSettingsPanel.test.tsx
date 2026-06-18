@@ -226,6 +226,118 @@ describe("HermesSkillSettingsPanel", () => {
     });
   });
 
+  it("saves memory-write permission changes for a single skill", async () => {
+    const api = createSkillApiFixture();
+
+    render(<HermesSkillSettingsPanel api={api} />);
+
+    const panel = await screen.findByLabelText("Hermes skill settings");
+    const translateCard = within(panel)
+      .getByText("翻译邮件")
+      .closest("article") as HTMLElement;
+
+    fireEvent.click(
+      within(translateCard).getByLabelText(
+        "Allow Hermes memory writes 翻译邮件",
+      ),
+    );
+    fireEvent.click(
+      within(translateCard).getByRole("button", {
+        name: "Save Hermes skill settings 翻译邮件",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.updateHermesSkillSettings).toHaveBeenCalledWith({
+        skillId: "translate_text",
+        patch: expect.objectContaining({ allowMemoryWrite: true }),
+      });
+    });
+  });
+
+  it("keeps failed skills unsaved when a bulk save partially fails", async () => {
+    const api = createSkillApiFixture();
+    vi.mocked(api.updateHermesSkillSettings).mockImplementation(async (input) => {
+      if (input.skillId === "reply_draft") {
+        throw new Error("save failed");
+      }
+      return skillFixture({
+        id: "translate_text",
+        title: "翻译邮件",
+        mode: "read",
+        description: "翻译邮件正文",
+        settings: {
+          ...skillSettingsFixture(),
+          ...input.patch,
+        },
+      });
+    });
+
+    render(<HermesSkillSettingsPanel api={api} />);
+
+    const panel = await screen.findByLabelText("Hermes skill settings");
+    const translateCard = within(panel)
+      .getByText("翻译邮件")
+      .closest("article") as HTMLElement;
+    const replyCard = within(panel)
+      .getByText("生成回复草稿")
+      .closest("article") as HTMLElement;
+
+    fireEvent.click(
+      within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
+    );
+    fireEvent.change(
+      within(replyCard).getByLabelText("Hermes skill memory limit 生成回复草稿"),
+      { target: { value: "0" } },
+    );
+    fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "Save all changed Hermes skill settings",
+      }),
+    );
+
+    expect(
+      await within(panel).findByText(
+        "已保存 1 个能力选项，1 个保存失败，资源画像已刷新。",
+      ),
+    ).toBeTruthy();
+    expect(within(translateCard).getByText(/已同步/)).toBeTruthy();
+    expect(within(replyCard).getByText(/未保存/)).toBeTruthy();
+  });
+
+  it("keeps a single failed skill save unsaved", async () => {
+    const api = createSkillApiFixture();
+    vi.mocked(api.updateHermesSkillSettings).mockRejectedValueOnce(
+      new Error("save failed"),
+    );
+
+    render(<HermesSkillSettingsPanel api={api} />);
+
+    const panel = await screen.findByLabelText("Hermes skill settings");
+    const translateCard = within(panel)
+      .getByText("翻译邮件")
+      .closest("article") as HTMLElement;
+
+    fireEvent.click(
+      within(translateCard).getByLabelText("Enable Hermes skill 翻译邮件"),
+    );
+    fireEvent.click(
+      within(translateCard).getByRole("button", {
+        name: "Save Hermes skill settings 翻译邮件",
+      }),
+    );
+
+    expect(await within(panel).findByText("保存失败：翻译邮件。")).toBeTruthy();
+    expect(within(translateCard).getByText(/未保存/)).toBeTruthy();
+    expect(
+      (
+        within(translateCard).getByRole("button", {
+          name: "Save Hermes skill settings 翻译邮件",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
   it("locks skill inputs while a backend save is in flight", async () => {
     const api = createSkillApiFixture();
     const pendingUpdate = deferred<HermesSkillDto>();
