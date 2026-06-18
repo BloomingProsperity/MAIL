@@ -482,6 +482,79 @@ describe("HermesRuleManagerPanel", () => {
     });
   });
 
+  it("requires saving rule candidate edits before simulation", async () => {
+    const api = createRuleApiFixture();
+
+    render(<HermesRuleManagerPanel api={api} accountId="account_1" />);
+
+    const panel = await screen.findByLabelText("Hermes 规则管理");
+    fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
+    expect(await within(panel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+
+    const simulateButton = within(panel).getByRole("button", {
+      name: "Simulate Hermes rule 启用验证码智能分组",
+    }) as HTMLButtonElement;
+    const confirmButton = within(panel).getByRole("button", {
+      name: "Confirm Hermes action plan 启用验证码智能分组",
+    }) as HTMLButtonElement;
+    const saveButton = within(panel).getByRole("button", {
+      name: "Save Hermes rule candidate 启用验证码智能分组",
+    }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+    expect(simulateButton.disabled).toBe(false);
+    expect(confirmButton.disabled).toBe(false);
+
+    fireEvent.change(
+      within(panel).getByLabelText("Hermes rule label 启用验证码智能分组"),
+      {
+        target: { value: "票据" },
+      },
+    );
+
+    expect(
+      await within(panel).findByText("草案有未保存修改，请先保存后再模拟/确认。"),
+    ).toBeTruthy();
+    expect(saveButton.disabled).toBe(false);
+    expect(simulateButton.disabled).toBe(true);
+    expect(confirmButton.disabled).toBe(true);
+    fireEvent.click(simulateButton);
+    expect(api.simulateHermesRule).not.toHaveBeenCalled();
+
+    fireEvent.click(saveButton);
+    await waitFor(() => {
+      expect(api.updateHermesRuleCandidate).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        labelName: "票据",
+        keywords: ["验证码", "verification", "otp"],
+        applyToHistory: false,
+      });
+    });
+
+    expect(
+      within(panel).queryByText("草案有未保存修改，请先保存后再模拟/确认。"),
+    ).toBeNull();
+    expect(
+      (
+        within(panel).getByRole("button", {
+          name: "Save Hermes rule candidate 创建票据智能分组",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(
+      within(panel).getByRole("button", {
+        name: "Simulate Hermes rule 创建票据智能分组",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.simulateHermesRule).toHaveBeenCalledWith({
+        accountId: "account_1",
+        candidateId: "candidate_codes",
+        sampleLimit: 25,
+      });
+    });
+  });
+
   it("dismisses a shadow Hermes rule candidate from the workbench", async () => {
     const api = createRuleApiFixture();
 

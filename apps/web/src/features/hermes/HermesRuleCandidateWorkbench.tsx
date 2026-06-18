@@ -187,6 +187,11 @@ export function HermesRuleCandidateWorkbench(
     const edit =
       props.candidateEdits[candidate.id] ??
       hermesRuleCandidateEditFromCandidate(candidate);
+    if (!isHermesRuleCandidateEditDirty(candidate, edit)) {
+      props.setRuleNotice("草案没有需要保存的修改。");
+      return;
+    }
+
     const labelName = edit.labelName.trim();
     const keywords = parseHermesRuleCandidateKeywords(edit.keywordsText);
     if (!labelName || keywords.length === 0) {
@@ -262,6 +267,16 @@ export function HermesRuleCandidateWorkbench(
   }
 
   async function simulateRuleCandidate(candidate: HermesRuleCandidateDto) {
+    if (
+      isHermesRuleCandidateEditDirty(
+        candidate,
+        props.candidateEdits[candidate.id],
+      )
+    ) {
+      props.setRuleNotice("请先保存草案修改，再运行 shadow simulation。");
+      return;
+    }
+
     if (!props.api) {
       props.setCandidateSimulations((current) => ({
         ...current,
@@ -318,6 +333,16 @@ export function HermesRuleCandidateWorkbench(
   }
 
   async function approveRuleCandidate(candidate: HermesRuleCandidateDto) {
+    if (
+      isHermesRuleCandidateEditDirty(
+        candidate,
+        props.candidateEdits[candidate.id],
+      )
+    ) {
+      props.setRuleNotice("请先保存草案修改并重新模拟，再确认启用规则。");
+      return;
+    }
+
     if (!props.candidateSimulations[candidate.id]) {
       props.setRuleNotice("请先运行 shadow simulation，再确认启用规则。");
       return;
@@ -504,6 +529,9 @@ export function HermesRuleCandidateWorkbench(
             const isCandidateLocked = candidate.status === "approved";
             const isCandidateEditable =
               canEditHermesRuleCandidate(candidate);
+            const hasUnsavedCandidateEdits =
+              isCandidateEditable &&
+              isHermesRuleCandidateEditDirty(candidate, edit);
             return (
               <article className="rule-candidate-card" key={candidate.id}>
                 <div className="hermes-memory-meta">
@@ -580,7 +608,11 @@ export function HermesRuleCandidateWorkbench(
                     <button
                       className="ghost-button"
                       type="button"
-                      disabled={Boolean(props.ruleDraftBusy) || isCandidateLocked}
+                      disabled={
+                        Boolean(props.ruleDraftBusy) ||
+                        isCandidateLocked ||
+                        !hasUnsavedCandidateEdits
+                      }
                       aria-label={`Save Hermes rule candidate ${candidate.title}`}
                       onClick={() => void saveRuleCandidateEdit(candidate)}
                     >
@@ -588,11 +620,18 @@ export function HermesRuleCandidateWorkbench(
                     </button>
                   </div>
                 ) : null}
+                {hasUnsavedCandidateEdits ? (
+                  <p className="backend-notice compact">
+                    草案有未保存修改，请先保存后再模拟/确认。
+                  </p>
+                ) : null}
                 <div className="inline-actions">
                   <button
                     className="ghost-button"
                     type="button"
-                    disabled={Boolean(props.ruleDraftBusy)}
+                    disabled={
+                      Boolean(props.ruleDraftBusy) || hasUnsavedCandidateEdits
+                    }
                     aria-label={`Simulate Hermes rule ${candidate.title}`}
                     onClick={() => void simulateRuleCandidate(candidate)}
                   >
@@ -603,6 +642,7 @@ export function HermesRuleCandidateWorkbench(
                     type="button"
                     disabled={
                       Boolean(props.ruleDraftBusy) ||
+                      hasUnsavedCandidateEdits ||
                       candidate.status === "approved"
                     }
                     aria-label={`Confirm Hermes action plan ${candidate.title}`}
@@ -661,6 +701,24 @@ export function hermesRuleCandidateEditMap(
   );
 }
 
+function isHermesRuleCandidateEditDirty(
+  candidate: HermesRuleCandidateDto,
+  edit: HermesRuleCandidateEditState | undefined,
+): boolean {
+  if (!canEditHermesRuleCandidate(candidate) || !edit) {
+    return false;
+  }
+
+  return (
+    edit.labelName.trim() !== hermesRuleCandidateLabelName(candidate) ||
+    !sameHermesRuleKeywords(
+      parseHermesRuleCandidateKeywords(edit.keywordsText),
+      hermesRuleCandidateKeywords(candidate),
+    ) ||
+    edit.applyToHistory !== (candidate.action.applyToHistory === true)
+  );
+}
+
 function hermesRuleCandidateLabelName(candidate: HermesRuleCandidateDto): string {
   return typeof candidate.action.labelName === "string" &&
     candidate.action.labelName.trim()
@@ -677,6 +735,13 @@ function hermesRuleCandidateKeywords(candidate: HermesRuleCandidateDto): string[
   return keywords
     .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
     .map((item) => item.trim());
+}
+
+function sameHermesRuleKeywords(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((item, index) => item === right[index])
+  );
 }
 
 function parseHermesRuleCandidateKeywords(value: string): string[] {
