@@ -84,6 +84,12 @@ describe("Email Hub first UI baseline", () => {
     );
   }
 
+  function openHermesPage() {
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "Hermes" }),
+    );
+  }
+
   it("keeps global functions in the left sidebar and mail folders in the second column", () => {
     const { container } = render(<App />);
 
@@ -94,10 +100,10 @@ describe("Email Hub first UI baseline", () => {
     expect(navLabels).toContain("邮箱128");
     expect(navLabels).toContain("添加邮箱");
     expect(navLabels).toContain("同步中心");
+    expect(navLabels).toContain("Hermes");
     expect(navLabels).toContain("设置");
     expect(navLabels).not.toContain("搜索");
     expect(navLabels).not.toContain("待办9");
-    expect(navLabels).not.toContain("Hermes");
     expect(screen.getByRole("search", { name: "全局邮件搜索" })).toBeTruthy();
 
     const directory = screen.getByLabelText("邮箱目录栏");
@@ -559,7 +565,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 执行计划能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“执行计划”。",
+        "Hermes 执行计划能力已禁用，请到 Hermes 配置 > 能力选项启用“执行计划”。",
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 执行计划")).toBeNull();
@@ -590,7 +596,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 执行计划能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“执行计划”。",
+        "Hermes 执行计划能力已禁用，请到 Hermes 配置 > 能力选项启用“执行计划”。",
       ),
     ).toBeTruthy();
     expect(within(plan).getByRole("button", { name: "确认计划" })).toBeTruthy();
@@ -670,7 +676,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到设置 > Hermes 配置检查网关连接。",
+        "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。",
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
@@ -696,7 +702,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 搜索问答能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“搜索问答”。",
+        "Hermes 搜索问答能力已禁用，请到 Hermes 配置 > 能力选项启用“搜索问答”。",
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
@@ -1525,7 +1531,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到设置 > Hermes 配置检查网关连接。",
+        "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。",
       ),
     ).toBeTruthy();
     expect(screen.getByText("Live body from backend")).toBeTruthy();
@@ -1561,7 +1567,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 邮件总结能力缺少正文读取权限，请到设置 > Hermes 配置 > 能力选项打开“邮件总结”的“读取正文”开关。",
+        "Hermes 邮件总结能力缺少正文读取权限，请到 Hermes 配置 > 能力选项打开“邮件总结”的“读取正文”开关。",
       ),
     ).toBeTruthy();
     expect(screen.getByText("Live body from backend")).toBeTruthy();
@@ -1775,7 +1781,7 @@ describe("Email Hub first UI baseline", () => {
 
     const globalNav = screen.getByRole("navigation");
     expect(within(globalNav).queryByRole("button", { name: "待办9" })).toBeNull();
-    expect(within(globalNav).queryByRole("button", { name: "Hermes" })).toBeNull();
+    expect(within(globalNav).getByRole("button", { name: "Hermes" })).toBeTruthy();
 
     const todoPanel = screen.getByRole("region", { name: "邮箱待办" });
     expect(within(todoPanel).getByRole("heading", { name: "待办" })).toBeTruthy();
@@ -1784,27 +1790,23 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(within(globalNav).getByRole("button", { name: "设置" }));
 
     const settingsNav = screen.getByLabelText("设置目录");
-    expect(within(settingsNav).getByRole("button", { name: /Hermes/ })).toBeTruthy();
+    expect(within(settingsNav).queryByRole("button", { name: /Hermes/ })).toBeNull();
     expect(within(settingsNav).queryByRole("button", { name: "待办" })).toBeNull();
     expect(
       within(settingsNav).queryByRole("button", { name: "新发件人处理" }),
     ).toBeNull();
     expect(within(settingsNav).queryByRole("button", { name: "域名管理" })).toBeNull();
-    expect(screen.getByRole("heading", { name: /Hermes/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "数据维护" })).toBeTruthy();
   });
 
-  it("loads, saves, and tests Hermes connection from Settings", async () => {
+  it("loads, saves, and tests Hermes connection from its sidebar page", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    expect(screen.queryByRole("textbox", { name: "网关地址" })).toBeNull();
-    fireEvent.click(screen.getByText("管理员高级配置"));
     expect(
       await screen.findByDisplayValue("http://hermes:4000/v1/chat/completions"),
     ).toBeTruthy();
@@ -1849,9 +1851,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
@@ -1863,7 +1863,7 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText(/当前配置可用：hermes-email/)).toBeTruthy();
   });
 
-  it("lets users edit Hermes skill options from Settings", async () => {
+  it("lets users edit Hermes skill options from the Hermes page", async () => {
     const api = createApiFixture();
     const refreshedProfile = hermesResourceProfileFixture({
       skills: {
@@ -1897,9 +1897,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const skillPanel = await screen.findByLabelText("Hermes skill settings");
     expect(within(skillPanel).getByText("翻译邮件")).toBeTruthy();
@@ -1962,14 +1960,12 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("lets users discard unsaved Hermes skill edits from Settings", async () => {
+  it("lets users discard unsaved Hermes skill edits from the Hermes page", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const skillPanel = await screen.findByLabelText("Hermes skill settings");
     await waitFor(() => {
@@ -2071,9 +2067,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const profile = await screen.findByLabelText("Hermes resource profile");
     await waitFor(() => {
@@ -2123,17 +2117,14 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.getByRole("heading", { name: "数据维护" })).toBeTruthy();
   });
 
-  it("clears the saved Hermes API key from Settings", async () => {
+  it("clears the saved Hermes API key from the Hermes page", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    fireEvent.click(screen.getByText("管理员高级配置"));
     fireEvent.click(screen.getByRole("button", { name: "清除访问密钥" }));
 
     await waitFor(() => {
@@ -2150,14 +2141,12 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("访问密钥已清除。")).toBeTruthy();
   });
 
-  it("lets users pause and restore Hermes rules from Settings", async () => {
+  it("lets users pause and restore Hermes rules from the Hermes page", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     expect(within(rulePanel).getByText("启用验证码智能分组")).toBeTruthy();
@@ -2204,7 +2193,7 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("Hermes 规则已恢复：启用验证码智能分组。")).toBeTruthy();
   });
 
-  it("lets users reorder Hermes rules from Settings", async () => {
+  it("lets users reorder Hermes rules from the Hermes page", async () => {
     const api = createApiFixture();
     vi.mocked(api.listHermesRules).mockResolvedValueOnce({
       items: [
@@ -2303,9 +2292,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(
@@ -2332,14 +2319,12 @@ describe("Email Hub first UI baseline", () => {
     expect(within(rulePanel).getByText(/启用发票\/账单智能分组/)).toBeTruthy();
   });
 
-  it("lets users manually run an approved Hermes rule from Settings", async () => {
+  it("lets users manually run an approved Hermes rule from the Hermes page", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(
@@ -2387,9 +2372,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     await waitFor(() => {
@@ -2428,9 +2411,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     await waitFor(() => {
@@ -2445,15 +2426,13 @@ describe("Email Hub first UI baseline", () => {
     expect(within(rulePanel).getByText(/确认前必须先试运行/)).toBeTruthy();
   });
 
-  it("lets users draft, simulate, and approve Hermes rules from Settings", async () => {
+  it("lets users draft, simulate, and approve Hermes rules from the Hermes page", async () => {
     const api = createApiFixture();
     const command = "帮我创建一个验证码分组规则";
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.change(within(rulePanel).getByLabelText("Hermes rule command"), {
@@ -2518,7 +2497,7 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("opens label-backed Hermes rules from Settings when no saved view is returned", async () => {
+  it("opens label-backed Hermes rules from the Hermes page when no saved view is returned", async () => {
     const api = createApiFixture();
     const command = "帮我创建一个验证码分组规则";
     vi.mocked(api.confirmHermesActionPlan).mockResolvedValueOnce({
@@ -2577,9 +2556,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.change(within(rulePanel).getByLabelText("Hermes rule command"), {
@@ -2612,7 +2589,7 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("explains when Settings Hermes rule confirmation is disabled by action-plan skill settings", async () => {
+  it("explains when Hermes rule confirmation is disabled by action-plan skill settings", async () => {
     const api = createApiFixture();
     vi.mocked(api.createHermesActionPlan).mockRejectedValueOnce(
       new ApiRequestError(403, "hermes_skill_disabled", {
@@ -2623,9 +2600,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
@@ -2646,7 +2621,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await within(rulePanel).findByText(
-        "Hermes 执行计划能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“执行计划”。",
+        "Hermes 执行计划能力已禁用，请到 Hermes 配置 > 能力选项启用“执行计划”。",
       ),
     ).toBeTruthy();
     expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
@@ -2657,9 +2632,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
@@ -2751,9 +2724,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
     expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
@@ -2777,9 +2748,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     expect(
       await screen.findByText("请先添加邮箱并完成同步，再查看 Hermes 规则。"),
@@ -2795,14 +2764,12 @@ describe("Email Hub first UI baseline", () => {
     expect(api.listHermesAuditLog).not.toHaveBeenCalled();
   });
 
-  it("lets users review, edit, and delete Hermes memories from Settings", async () => {
+  it("lets users review, edit, and delete Hermes memories from the Hermes page", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     expect(await screen.findByText("写作风格")).toBeTruthy();
     expect(screen.getByDisplayValue(/Keep replies concise/)).toBeTruthy();
@@ -2845,9 +2812,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const memoryPanel = await screen.findByLabelText("Hermes 学习记录");
     const auditPanel = await screen.findByLabelText("Hermes 审计日志");
@@ -2888,9 +2853,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
     expect(await screen.findByText("写作风格")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Hermes memory layer filter"), {
@@ -2915,14 +2878,12 @@ describe("Email Hub first UI baseline", () => {
     expect(api.updateHermesRuntimeSettings).not.toHaveBeenCalled();
   });
 
-  it("shows Hermes audit events from Settings without exposing raw skill payloads", async () => {
+  it("shows Hermes audit events from the Hermes page without exposing raw skill payloads", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const auditPanel = await screen.findByLabelText("Hermes 审计日志");
     expect(within(auditPanel).getByText("邮件翻译")).toBeTruthy();
@@ -2979,9 +2940,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     const auditPanel = await screen.findByLabelText("Hermes 审计日志");
     expect(within(auditPanel).getByText("Search mail with Hermes")).toBeTruthy();
@@ -2999,9 +2958,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
     const auditPanel = await screen.findByLabelText("Hermes 审计日志");
     expect(within(auditPanel).getByText("邮件翻译")).toBeTruthy();
 
@@ -3036,9 +2993,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
     expect(await screen.findByText("写作风格")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Hermes memory content memory_1"), {
@@ -3055,13 +3010,9 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: "Hermes 网关" })).toBeNull();
-    fireEvent.click(screen.getByText("管理员高级配置"));
     const providerSelect = screen.getByLabelText("Hermes 网关");
     expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
       .toBeTruthy();
@@ -3101,11 +3052,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
-    fireEvent.click(await screen.findByText("管理员高级配置"));
     expect(
       await screen.findByDisplayValue("http://hermes:4000/v1/chat/completions"),
     ).toBeTruthy();
@@ -3134,18 +3082,14 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("does not expose direct or externally managed providers in Settings", async () => {
+  it("does not expose direct or externally managed providers in the Hermes page", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    openHermesPage();
 
     expect(await screen.findByText(/Hermes 已连接访问密钥/)).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: "Hermes 网关" })).toBeNull();
-    fireEvent.click(screen.getByText("管理员高级配置"));
     const providerSelect = screen.getByLabelText("Hermes 网关");
     expect(await within(providerSelect).findByRole("option", { name: "Hermes 服务" }))
       .toBeTruthy();
@@ -3158,10 +3102,9 @@ describe("Email Hub first UI baseline", () => {
   it("keeps Hermes fallback provider labels user-facing when the backend catalog is unavailable", () => {
     const { container } = render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    openHermesPage();
 
     expect(container.textContent).not.toMatch(/\bAPI\b|OpenAI-compatible/i);
-    fireEvent.click(screen.getByText("管理员高级配置"));
     const providerSelect = screen.getByLabelText("Hermes 网关");
     expect(
       within(providerSelect).queryByRole("option", {
@@ -7330,7 +7273,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 邮件翻译能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“邮件翻译”。",
+        "Hermes 邮件翻译能力已禁用，请到 Hermes 配置 > 能力选项启用“邮件翻译”。",
       ),
     ).toBeTruthy();
     expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
@@ -7339,7 +7282,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开能力选项" }));
 
-    expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Hermes" })).toBeTruthy();
     const skillPanel = await screen.findByLabelText("Hermes skill settings");
     const focusedCard = await within(skillPanel).findByLabelText(
       "Focused Hermes skill 翻译邮件",

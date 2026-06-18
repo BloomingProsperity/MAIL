@@ -116,7 +116,7 @@ export function hermesActionPlanErrorNotice(
       return "Hermes 执行计划存储暂时不可用，请联系管理员检查服务配置。";
     }
     if (error.code === "hermes_runtime_not_configured") {
-      return "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。";
+      return "Hermes 尚未配置模型接口，请到 Hermes 配置填写服务地址、模型和访问密钥。";
     }
   }
 
@@ -145,13 +145,13 @@ export function hermesSkillDisabledNotice(
 ): string {
   const skillLabel = formatHermesAuditSkillId(skillId);
   if (requiredPermission === "body_read") {
-    return `Hermes ${skillLabel}能力缺少正文读取权限，请到设置 > Hermes 配置 > 能力选项打开“${skillLabel}”的“读取正文”开关。`;
+    return `Hermes ${skillLabel}能力缺少正文读取权限，请到 Hermes 配置 > 能力选项打开“${skillLabel}”的“读取正文”开关。`;
   }
   if (requiredPermission === "memory_write") {
-    return `Hermes ${skillLabel}能力缺少记忆写入权限，请到设置 > Hermes 配置 > 能力选项打开“${skillLabel}”的“写入记忆”开关。`;
+    return `Hermes ${skillLabel}能力缺少记忆写入权限，请到 Hermes 配置 > 能力选项打开“${skillLabel}”的“写入记忆”开关。`;
   }
 
-  return `Hermes ${skillLabel}能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“${skillLabel}”。`;
+  return `Hermes ${skillLabel}能力已禁用，请到 Hermes 配置 > 能力选项启用“${skillLabel}”。`;
 }
 
 export function hermesRulePreview(

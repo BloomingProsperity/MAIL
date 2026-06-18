@@ -123,7 +123,7 @@ describe("Hermes learning panels", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 记忆管理能力缺少记忆写入权限，请到设置 > Hermes 配置 > 能力选项打开“记忆管理”的“写入记忆”开关。",
+        "Hermes 记忆管理能力缺少记忆写入权限，请到 Hermes 配置 > 能力选项打开“记忆管理”的“写入记忆”开关。",
       ),
     ).toBeTruthy();
 
@@ -138,7 +138,7 @@ describe("Hermes learning panels", () => {
     });
     expect(
       screen.getByText(
-        "Hermes 记忆管理能力缺少记忆写入权限，请到设置 > Hermes 配置 > 能力选项打开“记忆管理”的“写入记忆”开关。",
+        "Hermes 记忆管理能力缺少记忆写入权限，请到 Hermes 配置 > 能力选项打开“记忆管理”的“写入记忆”开关。",
       ),
     ).toBeTruthy();
   });

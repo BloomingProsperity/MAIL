@@ -178,12 +178,8 @@ import type {
   SyncCenterImapSmtpReauthorizationInput
 } from "./lib/emailHubApi";
 
-type ViewId = "mail" | "add-mail" | "sync" | "search" | "settings";
-type SettingsSectionId =
-  | "hermes"
-  | "aliases"
-  | "system"
-  | "notifications";
+type ViewId = "mail" | "add-mail" | "sync" | "hermes" | "search" | "settings";
+type SettingsSectionId = "aliases" | "system" | "notifications";
 type MailDensity = "roomy" | "comfortable" | "compact";
 const MAX_COMPOSE_ATTACHMENTS = 20;
 const MAX_COMPOSE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -303,6 +299,7 @@ const navItems: Array<{ id: ViewId; label: string; icon: typeof Inbox; count?: n
   { id: "mail", label: "邮箱", icon: Inbox },
   { id: "add-mail", label: "添加邮箱", icon: MailPlus },
   { id: "sync", label: "同步中心", icon: Clock3 },
+  { id: "hermes", label: "Hermes", icon: Sparkles },
   { id: "settings", label: "设置", icon: Settings }
 ];
 
@@ -312,7 +309,6 @@ const settingsSections: Array<{
   description: string;
   icon: typeof Inbox;
 }> = [
-  { id: "hermes", label: "Hermes 配置", description: "助手与学习偏好", icon: Sparkles },
   { id: "aliases", label: "别名转发", description: "转发规则和目标邮箱", icon: Send },
   { id: "system", label: "系统状态", description: "自托管服务诊断", icon: CheckCircle2 },
   { id: "notifications", label: "数据维护", description: "清理、审计、隐私", icon: Settings }
@@ -658,19 +654,7 @@ export function App(props: AppProps = {}) {
       return storedAccountId;
     },
   );
-  const [settingsSectionRequest, setSettingsSectionRequest] = useState<{
-    sectionId: SettingsSectionId;
-    requestId: number;
-  }>();
-
   const hermesDockNotice = hermesDockNoticeState?.text;
-
-  function requestSettingsSection(sectionId: SettingsSectionId) {
-    setSettingsSectionRequest((current) => ({
-      sectionId,
-      requestId: (current?.requestId ?? 0) + 1,
-    }));
-  }
 
   function setHermesDockNotice(
     notice: string | undefined,
@@ -687,18 +671,16 @@ export function App(props: AppProps = {}) {
     skillId: string,
     requiredPermission?: HermesSkillRequiredPermission,
   ) {
-    requestSettingsSection("hermes");
     setHermesSkillSettingsFocus((current) => ({
       skillId,
       requiredPermission,
       requestId: (current?.requestId ?? 0) + 1,
     }));
-    setActiveView("settings");
+    setActiveView("hermes");
   }
 
   function openHermesRuntimeSettings() {
-    requestSettingsSection("hermes");
-    setActiveView("settings");
+    setActiveView("hermes");
   }
   const [accountDiscoveryReady, setAccountDiscoveryReady] = useState(
     () => !props.api || Boolean(props.defaultAccountId),
@@ -1932,8 +1914,8 @@ export function App(props: AppProps = {}) {
             onOpenHermesRuntimeSettings={openHermesRuntimeSettings}
           />
         ) : null}
-        {activeView === "settings" ? (
-          <SettingsPage
+        {activeView === "hermes" ? (
+          <HermesPage
             api={props.api}
             accountId={props.api ? selectedAccountId : accountId}
             focusedHermesSkillId={hermesSkillSettingsFocus?.skillId}
@@ -1941,11 +1923,14 @@ export function App(props: AppProps = {}) {
               hermesSkillSettingsFocus?.requiredPermission
             }
             hermesSkillFocusRequestId={hermesSkillSettingsFocus?.requestId}
-            requestedSectionId={settingsSectionRequest?.sectionId}
-            settingsSectionRequestId={settingsSectionRequest?.requestId}
             onHermesRuleApproved={(rule) =>
               void handleSettingsHermesRuleApproved(rule)
             }
+          />
+        ) : null}
+        {activeView === "settings" ? (
+          <SettingsPage
+            api={props.api}
           />
         ) : null}
       </main>
@@ -8272,30 +8257,48 @@ function SearchPage(props: {
   );
 }
 
-function SettingsPage(props: {
+function HermesPage(props: {
   api?: EmailHubApi;
   accountId?: string;
   focusedHermesSkillId?: string;
   focusedHermesSkillPermission?: HermesSkillRequiredPermission;
   hermesSkillFocusRequestId?: number;
-  requestedSectionId?: SettingsSectionId;
-  settingsSectionRequestId?: number;
   onHermesRuleApproved?: (rule: HermesRuleDto) => void;
 }) {
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>("hermes");
+  return (
+    <section className="workspace-page page-scroll">
+      <header className="topbar single">
+        <div>
+          <h1>Hermes</h1>
+          <p>AI 入口、服务接入、学习记录和规则集中管理。</p>
+        </div>
+      </header>
+      <div className="settings-detail">
+        <HermesRuntimeSettingsPanel
+          api={props.api}
+          accountId={props.accountId}
+          focusedSkillId={props.focusedHermesSkillId}
+          focusedPermission={props.focusedHermesSkillPermission}
+          focusRequestId={props.hermesSkillFocusRequestId}
+          onHermesRuleApproved={props.onHermesRuleApproved}
+        />
+      </div>
+    </section>
+  );
+}
 
-  useEffect(() => {
-    if (props.requestedSectionId) {
-      setActiveSection(props.requestedSectionId);
-    }
-  }, [props.requestedSectionId, props.settingsSectionRequestId]);
+function SettingsPage(props: {
+  api?: EmailHubApi;
+}) {
+  const [activeSection, setActiveSection] =
+    useState<SettingsSectionId>("notifications");
 
   return (
     <section className="workspace-page page-scroll">
       <header className="topbar single">
         <div>
           <h1>设置</h1>
-          <p>Hermes 配置、别名转发、系统状态、清理和隐私集中管理。</p>
+          <p>别名转发、系统状态、清理和隐私集中管理。</p>
         </div>
       </header>
       <div className="settings-layout">
@@ -8319,16 +8322,6 @@ function SettingsPage(props: {
         </nav>
 
         <div className="settings-detail">
-          {activeSection === "hermes" ? (
-            <HermesRuntimeSettingsPanel
-              api={props.api}
-              accountId={props.accountId}
-              focusedSkillId={props.focusedHermesSkillId}
-              focusedPermission={props.focusedHermesSkillPermission}
-              focusRequestId={props.hermesSkillFocusRequestId}
-              onHermesRuleApproved={props.onHermesRuleApproved}
-            />
-          ) : null}
           {activeSection === "aliases" ? (
             <DomainAliasSettingsPanel api={props.api} mode="aliases" />
           ) : null}
@@ -8536,7 +8529,7 @@ function hermesSkillErrorNotice(
       );
     }
     if (error.code === "hermes_runtime_not_configured") {
-      return "Hermes 暂时不可用，请到设置 > Hermes 配置检查网关连接。";
+      return "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。";
     }
     const unavailableNotice = input.unavailable?.[error.code];
     if (unavailableNotice) {

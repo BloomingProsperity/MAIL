@@ -20,7 +20,7 @@ describe("hermesRules helpers", () => {
         "create",
       ),
     ).toBe(
-      "Hermes 执行计划能力缺少记忆写入权限，请到设置 > Hermes 配置 > 能力选项打开“执行计划”的“写入记忆”开关。",
+      "Hermes 执行计划能力缺少记忆写入权限，请到 Hermes 配置 > 能力选项打开“执行计划”的“写入记忆”开关。",
     );
 
     expect(
@@ -33,7 +33,7 @@ describe("hermesRules helpers", () => {
         "create",
       ),
     ).toBe(
-      "Hermes 执行计划能力缺少正文读取权限，请到设置 > Hermes 配置 > 能力选项打开“执行计划”的“读取正文”开关。",
+      "Hermes 执行计划能力缺少正文读取权限，请到 Hermes 配置 > 能力选项打开“执行计划”的“读取正文”开关。",
     );
 
     expect(
@@ -53,7 +53,7 @@ describe("hermesRules helpers", () => {
         "create",
       ),
     ).toBe(
-      "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。",
+      "Hermes 尚未配置模型接口，请到 Hermes 配置填写服务地址、模型和访问密钥。",
     );
   });
 

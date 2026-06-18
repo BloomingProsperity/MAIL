@@ -48,7 +48,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 搜索问答能力缺少正文读取权限，请到设置 > Hermes 配置 > 能力选项打开“搜索问答”的“读取正文”开关。",
+        "Hermes 搜索问答能力缺少正文读取权限，请到 Hermes 配置 > 能力选项打开“搜索问答”的“读取正文”开关。",
       ),
     ).toBeTruthy();
     await waitFor(() => {
@@ -63,7 +63,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开能力选项" }));
 
-    expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Hermes" })).toBeTruthy();
     const skillPanel = await screen.findByLabelText("Hermes skill settings");
     const focusedCard = await within(skillPanel).findByLabelText(
       "Focused Hermes skill 自然语言查邮件",
@@ -97,13 +97,13 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到设置 > Hermes 配置检查网关连接。",
+        "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。",
       ),
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
 
-    expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Hermes" })).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "Hermes 配置" })).toBeTruthy();
   });
 
@@ -123,7 +123,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到设置 > Hermes 配置检查网关连接。",
+        "Hermes 暂时不可用，请到 Hermes 配置检查网关连接。",
       ),
     ).toBeTruthy();
 
@@ -150,7 +150,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 搜索问答能力缺少正文读取权限，请到设置 > Hermes 配置 > 能力选项打开“搜索问答”的“读取正文”开关。",
+        "Hermes 搜索问答能力缺少正文读取权限，请到 Hermes 配置 > 能力选项打开“搜索问答”的“读取正文”开关。",
       ),
     ).toBeTruthy();
 

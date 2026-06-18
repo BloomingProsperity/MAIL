@@ -66,7 +66,7 @@ describe("HermesRuntimeSettingsPanel", () => {
     childPanelCalls.rules.mockClear();
   });
 
-  it("keeps Hermes deployment fields in admin details by default", async () => {
+  it("shows Hermes service connection fields on the Hermes page", async () => {
     const api = createRuntimeApiFixture();
     vi.mocked(api.getHermesRuntimeSettings).mockResolvedValueOnce(
       runtimeSettingsFixture({
@@ -79,12 +79,6 @@ describe("HermesRuntimeSettingsPanel", () => {
 
     await screen.findByText("Hermes 访问密钥未配置。");
     expect(screen.getByText(/状态：待配置/)).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: "Hermes 网关" })).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "网关地址" })).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "路由或模型" })).toBeNull();
-
-    fireEvent.click(screen.getByText("管理员高级配置"));
-
     expect(screen.getByLabelText("Hermes 网关")).toBeTruthy();
     expect((screen.getByLabelText("网关地址") as HTMLInputElement).value).toBe(
       "http://hermes:4000/v1/chat/completions",
@@ -148,7 +142,6 @@ describe("HermesRuntimeSettingsPanel", () => {
     render(<HermesRuntimeSettingsPanel api={api} accountId="account_1" />);
 
     await screen.findByText("Hermes 已连接访问密钥。");
-    fireEvent.click(screen.getByText("管理员高级配置"));
     const saveButton = screen.getByRole("button", {
       name: "保存配置",
     }) as HTMLButtonElement;
