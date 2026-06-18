@@ -3556,6 +3556,7 @@ function MailWorkspace(props: {
         setComposeNotice(`邮件已进入发送队列：${result.draft.id}`);
         clearComposeForm();
         await refreshMailDrafts();
+        await refreshOutbox();
         return;
       }
 

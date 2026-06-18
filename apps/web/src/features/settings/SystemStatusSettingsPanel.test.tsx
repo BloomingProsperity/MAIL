@@ -10,15 +10,18 @@ describe("SystemStatusSettingsPanel", () => {
     render(<SystemStatusSettingsPanel api={api} />);
 
     const apiPanel = await screen.findByRole("region", {
-      name: "API 运行体检",
+      name: "服务运行体检",
     });
     expect(within(apiPanel).getByText("服务运行正常")).toBeTruthy();
     expect(within(apiPanel).getByText("数据库")).toBeTruthy();
 
     const mailEnginePanel = await screen.findByRole("region", {
-      name: "EmailEngine 上线体检",
+      name: "邮箱接入体检",
     });
-    expect(within(mailEnginePanel).getByText("EmailEngine 上线还差配置")).toBeTruthy();
+    expect(within(mailEnginePanel).getByText("邮箱接入还差配置")).toBeTruthy();
+    expect(
+      within(mailEnginePanel).getByText("邮箱接入服务配置未完全就绪，部分接入能力会降级。"),
+    ).toBeTruthy();
     expect(within(mailEnginePanel).getByText("认证探测")).toBeTruthy();
     expect(within(mailEnginePanel).getByText("被拒绝")).toBeTruthy();
     expect(
@@ -30,10 +33,10 @@ describe("SystemStatusSettingsPanel", () => {
 
     fireEvent.click(within(mailEnginePanel).getByText("管理员配置明细"));
     expect(within(mailEnginePanel).getAllByText(/EMAILENGINE_ACCESS_TOKEN/).length).toBeGreaterThan(0);
-    expect(within(mailEnginePanel).getByText("更新 EmailEngine 访问令牌")).toBeTruthy();
+    expect(within(mailEnginePanel).getByText("更新邮箱接入访问令牌")).toBeTruthy();
 
     const eventsPanel = await screen.findByRole("region", {
-      name: "EmailEngine 运行事件体检",
+      name: "邮箱同步运行记录",
     });
     expect(await within(eventsPanel).findByText("同步任务已处理")).toBeTruthy();
     expect(within(eventsPanel).getByText("邮箱服务状态已更新")).toBeTruthy();
@@ -61,7 +64,7 @@ describe("SystemStatusSettingsPanel", () => {
     render(<SystemStatusSettingsPanel api={api} />);
 
     expect(await screen.findByText("服务运行需要检查")).toBeTruthy();
-    expect(await screen.findByText("EmailEngine 体检暂时不可用")).toBeTruthy();
+    expect(await screen.findByText("邮箱接入体检暂时不可用")).toBeTruthy();
     expect(await screen.findByText("最近运行事件暂时不可用。")).toBeTruthy();
   });
 });

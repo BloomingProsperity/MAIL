@@ -5206,12 +5206,12 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByRole("button", { name: "同步中心" }));
 
     expect(await screen.findByText("sync@example.com")).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "API 运行体检" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "服务运行体检" })).toBeNull();
     expect(
-      screen.queryByRole("region", { name: "EmailEngine 上线体检" }),
+      screen.queryByRole("region", { name: "邮箱接入体检" }),
     ).toBeNull();
     expect(
-      screen.queryByRole("region", { name: "EmailEngine 运行事件体检" }),
+      screen.queryByRole("region", { name: "邮箱同步运行记录" }),
     ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
@@ -5222,9 +5222,9 @@ describe("Email Hub first UI baseline", () => {
       ),
     );
 
-    expect(await screen.findByRole("region", { name: "API 运行体检" })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "服务运行体检" })).toBeTruthy();
     expect(
-      await screen.findByRole("region", { name: "EmailEngine 上线体检" }),
+      await screen.findByRole("region", { name: "邮箱接入体检" }),
     ).toBeTruthy();
   });
 
@@ -6056,7 +6056,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(await screen.findByText("邮箱接入服务还没准备好，请稍后再试。")).toBeTruthy();
     expect(
-      screen.queryByRole("region", { name: "EmailEngine 上线体检" }),
+      screen.queryByRole("region", { name: "邮箱接入体检" }),
     ).toBeNull();
     expect(document.body.textContent ?? "").not.toContain("EMAILENGINE_ACCESS_TOKEN");
     expect(document.body.textContent ?? "").not.toContain(
@@ -7857,6 +7857,48 @@ describe("Email Hub first UI baseline", () => {
         draftId: "draft_1",
       });
     });
+  });
+
+  it("refreshes the outbox after immediate sends enter the background queue", async () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await waitFor(() => {
+      expect(api.listOutbox).toHaveBeenCalledWith({
+        accountId: "account_1",
+        limit: 20,
+      });
+    });
+    vi.mocked(api.listOutbox).mockClear();
+
+    fireEvent.change(screen.getByLabelText("Compose recipients"), {
+      target: { value: "lina@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose subject"), {
+      target: { value: "Launch plan" },
+    });
+    fireEvent.change(screen.getByLabelText("Compose body"), {
+      target: { value: "Send this through the background queue." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
+
+    await waitFor(() => {
+      expect(api.sendMailDraft).toHaveBeenCalledWith({
+        accountId: "account_1",
+        draftId: "draft_1",
+      });
+    });
+    await waitFor(() => {
+      expect(api.listOutbox).toHaveBeenCalledWith({
+        accountId: "account_1",
+        limit: 20,
+      });
+    });
+    expect(
+      vi.mocked(api.sendMailDraft).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(api.listOutbox).mock.invocationCallOrder[0]);
+    expect(await screen.findByText(/邮件已进入发送队列：draft_1/)).toBeTruthy();
   });
 
   it("schedules composed drafts and refreshes the outbox", async () => {

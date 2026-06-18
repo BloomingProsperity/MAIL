@@ -29,6 +29,39 @@ Every new backend feature must answer these questions before code:
 6. What is the undo, retry, partial failure, and empty-state behavior?
 7. Which tests fail before implementation and pass after implementation?
 
+## Internal-Test Acceptance Boundaries
+
+Thunderbird is the boundary reference for account, identity, folder, search,
+filter, and privacy semantics. Foxmail and Spark remain experience references
+for low-friction account setup, practical recovery, fast compose, and Smart
+Inbox speed. Before an internal-test module is treated as ready, it must keep
+these invariants true:
+
+1. Unified Inbox and Smart Inbox are views over local rows, not merged accounts.
+   Message list, reader, compose reply, search result, and diagnostics must
+   preserve local `accountId`, mailbox/view source, and provider group.
+2. Saved views are virtual live views. Creating, editing, hiding, or deleting a
+   saved view must not copy, move, archive, delete, or otherwise mutate source
+   messages.
+3. Top search is cross-account deterministic search; list filters are scoped to
+   the current mailbox or saved view. Hermes may explain, draft, translate,
+   summarize, and generate search parameters, but deterministic search remains
+   the backend source of truth.
+4. Compose always routes through explicit user action: choose From identity,
+   save draft, preview warnings, send now, or schedule. Hermes may write or
+   polish draft text, but it cannot send, schedule, delete, forward, or mutate
+   mail without the user confirming the normal app action.
+5. Provider capabilities drive UI visibility. Gmail, Outlook, 163, QQ, iCloud,
+   Proton Bridge, and personal-domain flows must hide unsupported actions and
+   avoid normal-user copy such as OAuth, IMAP, SMTP, Graph, backend API, or raw
+   provider payload names.
+6. Privacy defaults are conservative. Remote content, diagnostic output, and
+   Hermes context/audit surfaces must be explicit, redacted where needed, and
+   account-scoped when the operation reads account mail.
+7. Docker self-hosting evidence must include persisted local state: synced mail
+   remains readable/searchable when a provider is unavailable, drafts/outbox
+   survive process restarts, and launch diagnostics do not leak secrets.
+
 ## Spark-Level Mailbox Loops
 
 ### Inbox Modes And Smart Cards
