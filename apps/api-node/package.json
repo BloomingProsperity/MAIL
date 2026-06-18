@@ -15,6 +15,7 @@
     "smoke:imap-smtp-onboarding": "tsx src/imap-smtp-onboarding-smoke.ts",
     "smoke:imap-smtp-onboarding:auth": "tsx src/imap-smtp-auth-onboarding-smoke.ts",
     "verify:emailengine-prod-env": "tsx src/emailengine-prod-env-verify.ts",
+    "verify:emailengine-readiness-report": "tsx src/emailengine-launch-readiness-report.ts",
     "verify:emailengine-live": "tsx src/emailengine-launch-verify.ts",
     "verify:emailengine-docker-health": "tsx src/emailengine-docker-health-verify.ts",
     "test": "vitest run"

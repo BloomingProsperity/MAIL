@@ -391,6 +391,18 @@ compose overlay. It uses `.env` by default for compose interpolation and falls
 back to `.env.example`; set `EMAILHUB_ENV_FILE=/path/to/env` when validating a
 specific deployment file.
 
+For an internal-test decision without starting Docker or rerunning the broad
+test suites, generate a readiness report:
+
+```powershell
+npm run verify:emailengine-launch:readiness-report
+```
+
+The report separates `internalTestReady` from `productionReady`, lists which
+smoke suites are ready, optional suites such as strict Postgres stress or real
+Hermes AI, and the production-only follow-ups still required before public
+launch. It never prints token or password values.
+
 You can also run the env preflight gate by itself against the same env file:
 
 ```powershell

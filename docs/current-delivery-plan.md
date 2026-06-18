@@ -37,6 +37,12 @@ backend contracts, and verify the stack with more than smoke-level tests.
   `compose:up:prod:detached`; both scripts run the production env preflight with
   the same `EMAILHUB_ENV_FILE` before Docker starts, then boot with the strict
   EmailEngine readiness overlay active from boot.
+  `verify:emailengine-launch:readiness-report` is the lightweight internal-test
+  decision gate. It does not start Docker or rerun broad suites; it reads the
+  selected env file, reports `internalTestReady` separately from
+  `productionReady`, lists runnable smoke suites, and calls out optional or
+  blocked coverage such as strict Postgres stress, real Hermes runtime, Gmail
+  OAuth, Outlook OAuth, and production-only secrets.
   `verify:emailengine-launch:env` is a read-only production env preflight that
   fails before Docker/HTTP checks if required launch secrets are missing,
   development defaults are still in use, or the bundled web token conflicts with
