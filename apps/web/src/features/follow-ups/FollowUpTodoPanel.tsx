@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import type { EmailHubApi, FollowUpDto } from "../../lib/emailHubApi";
+import "./FollowUpTodoPanel.css";
 
 export function FollowUpTodoPanel(props: {
   api?: EmailHubApi;
@@ -11,7 +12,7 @@ export function FollowUpTodoPanel(props: {
   const [notice, setNotice] = useState("正在加载待办...");
 
   useEffect(() => {
-    if (!props.api) {
+    if (!props.api?.listFollowUps) {
       setItems([
         {
           id: "preview_followup",
@@ -27,7 +28,7 @@ export function FollowUpTodoPanel(props: {
           updatedAt: "2026-06-13T09:00:00.000Z",
         },
       ]);
-      setNotice("正在显示本地预览，连接服务后会同步真实待办。");
+      setNotice("连接服务后会显示同步后的待办。");
       return;
     }
 
@@ -56,7 +57,7 @@ export function FollowUpTodoPanel(props: {
   }, [props.accountId, props.api]);
 
   async function markDone(item: FollowUpDto) {
-    if (!props.api) {
+    if (!props.api?.updateFollowUp) {
       setItems((current) =>
         current.filter((candidate) => candidate.id !== item.id),
       );
@@ -76,12 +77,17 @@ export function FollowUpTodoPanel(props: {
   return (
     <section
       className={
-        props.embedded ? "settings-panel" : "workspace-page page-scroll narrow"
+        props.embedded
+          ? "page-panel follow-up-mail-panel"
+          : "workspace-page page-scroll narrow"
       }
+      aria-label={props.embedded ? "邮箱待办" : undefined}
     >
-      <header className="topbar single">
+      <header
+        className={props.embedded ? "follow-up-panel-head" : "topbar single"}
+      >
         <div>
-          <h1>待办</h1>
+          {props.embedded ? <h2>待办</h2> : <h1>待办</h1>}
           <p>待回复、稍后提醒和跟进事项集中处理。</p>
         </div>
       </header>
@@ -90,7 +96,7 @@ export function FollowUpTodoPanel(props: {
           {notice}
         </div>
       ) : null}
-      <section className="page-panel">
+      <section className={props.embedded ? "follow-up-list" : "page-panel"}>
         {items.map((item) => (
           <div className="task-row" key={item.id}>
             <CheckCircle2 size={19} />

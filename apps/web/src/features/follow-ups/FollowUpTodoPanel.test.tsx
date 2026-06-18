@@ -73,7 +73,7 @@ describe("FollowUpTodoPanel", () => {
 
     expect(await screen.findByText("今天 17:00 前确认 Q2 合作方案")).toBeTruthy();
     expect(
-      screen.getByText("正在显示本地预览，连接服务后会同步真实待办。"),
+      screen.getByText("连接服务后会显示同步后的待办。"),
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Mark follow-up done" }));

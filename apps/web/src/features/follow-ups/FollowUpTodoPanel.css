@@ -1,0 +1,31 @@
+.follow-up-mail-panel {
+  display: grid;
+  order: 3;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+}
+
+.follow-up-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.follow-up-panel-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.follow-up-panel-head p {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.follow-up-list {
+  display: grid;
+  min-width: 0;
+}

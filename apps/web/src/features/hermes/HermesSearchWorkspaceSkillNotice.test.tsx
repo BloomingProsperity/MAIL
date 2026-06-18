@@ -38,11 +38,7 @@ describe("Hermes Search workspace skill notices", () => {
     render(<App api={api} defaultAccountId="account_1" />);
 
     await screen.findByRole("heading", { name: "Live subject" });
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", {
-        name: "搜索",
-      }),
-    );
+    await openSearchWorkspace();
     fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
       target: { value: "客户上次提到的合同在哪里" },
     });
@@ -91,11 +87,7 @@ describe("Hermes Search workspace skill notices", () => {
     render(<App api={api} defaultAccountId="account_1" />);
 
     await screen.findByRole("heading", { name: "Live subject" });
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", {
-        name: "搜索",
-      }),
-    );
+    await openSearchWorkspace();
     fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
       target: { value: "客户上次提到的合同在哪里" },
     });
@@ -126,7 +118,7 @@ describe("Hermes Search workspace skill notices", () => {
     render(<App api={api} defaultAccountId="account_1" />);
 
     await screen.findByRole("heading", { name: "Live subject" });
-    await openTodoSettingsSection();
+    await openAliasSettingsSection();
     submitDockPrompt("客户上次提到的合同在哪里");
 
     expect(
@@ -153,7 +145,7 @@ describe("Hermes Search workspace skill notices", () => {
     render(<App api={api} defaultAccountId="account_1" />);
 
     await screen.findByRole("heading", { name: "Live subject" });
-    await openTodoSettingsSection();
+    await openAliasSettingsSection();
     submitDockPrompt("客户上次提到的合同在哪里");
 
     expect(
@@ -228,6 +220,7 @@ function createSearchSkillApiFixture(): EmailHubApi {
         },
       ],
     })),
+    listDomains: vi.fn(async () => ({ items: [] })),
     searchMailWithHermes: vi.fn(),
     getHermesProviders: vi.fn(async () => ({
       providers: [
@@ -272,15 +265,20 @@ function createSearchSkillApiFixture(): EmailHubApi {
   return api as unknown as EmailHubApi;
 }
 
-async function openTodoSettingsSection() {
+async function openAliasSettingsSection() {
   fireEvent.click(
     within(screen.getByRole("navigation")).getByRole("button", {
       name: "设置",
     }),
   );
   const settingsNav = await screen.findByLabelText("设置目录");
-  fireEvent.click(within(settingsNav).getByRole("button", { name: "待办" }));
-  expect(await screen.findByRole("heading", { name: "待办" })).toBeTruthy();
+  fireEvent.click(within(settingsNav).getByRole("button", { name: "别名转发" }));
+  expect(await screen.findByRole("heading", { name: "别名转发" })).toBeTruthy();
+}
+
+async function openSearchWorkspace() {
+  fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
+  expect(await screen.findByRole("heading", { name: "搜索" })).toBeTruthy();
 }
 
 function submitDockPrompt(prompt: string) {

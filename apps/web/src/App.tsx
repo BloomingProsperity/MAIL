@@ -106,7 +106,6 @@ import { SyncCenterLatestJobSummary } from "./features/sync-center/SyncCenterLat
 import { ConnectionDiagnosticList } from "./features/sync-center/ConnectionDiagnosticList";
 import { DomainAliasSettingsPanel } from "./features/domain-alias/DomainAliasSettingsPanel";
 import { FollowUpTodoPanel } from "./features/follow-ups/FollowUpTodoPanel";
-import { GatekeeperSettingsPanel } from "./features/gatekeeper/GatekeeperSettingsPanel";
 import { ComposeAttachmentMaintenancePanel } from "./features/maintenance/ComposeAttachmentMaintenancePanel";
 import { SystemStatusSettingsPanel } from "./features/settings/SystemStatusSettingsPanel";
 import {
@@ -172,10 +171,7 @@ import type {
 type ViewId = "mail" | "add-mail" | "sync" | "search" | "settings";
 type SettingsSectionId =
   | "hermes"
-  | "todo"
-  | "gatekeeper"
   | "aliases"
-  | "domains"
   | "system"
   | "notifications";
 type MailDensity = "roomy" | "comfortable" | "compact";
@@ -306,10 +302,7 @@ const settingsSections: Array<{
   icon: typeof Inbox;
 }> = [
   { id: "hermes", label: "Hermes 配置", description: "助手与学习偏好", icon: Sparkles },
-  { id: "todo", label: "待办", description: "待回复、稍后、跟进", icon: CheckCircle2 },
-  { id: "gatekeeper", label: "新发件人处理", description: "陌生来信进入哪里", icon: ShieldCheck },
   { id: "aliases", label: "别名转发", description: "转发规则和目标邮箱", icon: Send },
-  { id: "domains", label: "域名管理", description: "域名验证与收信设置", icon: ShieldCheck },
   { id: "system", label: "系统状态", description: "自托管服务诊断", icon: CheckCircle2 },
   { id: "notifications", label: "数据维护", description: "清理、审计、隐私", icon: Settings }
 ];
@@ -587,7 +580,7 @@ export function App(props: AppProps = {}) {
   );
   const sidebarResize = useResizablePane({
     initialSize: 168,
-    minSize: 76,
+    minSize: 132,
     maxSize: 280,
     storageKey: "email-hub:layout:sidebar",
   });
@@ -5311,6 +5304,12 @@ function MailWorkspace(props: {
           </div>
         </article>
       </div>
+
+      <FollowUpTodoPanel
+        api={props.api}
+        accountId={props.accountId}
+        embedded
+      />
     </section>
   );
 }
@@ -8197,7 +8196,6 @@ function SettingsPage(props: {
   onHermesRuleApproved?: (rule: HermesRuleDto) => void;
 }) {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("hermes");
-  const settingsAccountId = props.accountId ?? PREVIEW_ACCOUNT_ID;
 
   useEffect(() => {
     if (props.requestedSectionId) {
@@ -8210,7 +8208,7 @@ function SettingsPage(props: {
       <header className="topbar single">
         <div>
           <h1>设置</h1>
-          <p>Hermes 配置、待办、别名转发、域名管理、清理和隐私集中管理。</p>
+          <p>Hermes 配置、别名转发、系统状态、清理和隐私集中管理。</p>
         </div>
       </header>
       <div className="settings-layout">
@@ -8244,17 +8242,8 @@ function SettingsPage(props: {
               onHermesRuleApproved={props.onHermesRuleApproved}
             />
           ) : null}
-          {activeSection === "todo" ? (
-            <FollowUpTodoPanel api={props.api} accountId={settingsAccountId} embedded />
-          ) : null}
-          {activeSection === "gatekeeper" ? (
-            <GatekeeperSettingsPanel api={props.api} accountId={settingsAccountId} />
-          ) : null}
           {activeSection === "aliases" ? (
             <DomainAliasSettingsPanel api={props.api} mode="aliases" />
-          ) : null}
-          {activeSection === "domains" ? (
-            <DomainAliasSettingsPanel api={props.api} mode="domains" />
           ) : null}
           {activeSection === "system" ? (
             <SystemStatusSettingsPanel api={props.api} />

@@ -1770,24 +1770,27 @@ describe("Email Hub first UI baseline", () => {
     );
   });
 
-  it("keeps Todo and Hermes configuration inside Settings instead of the global sidebar", () => {
+  it("keeps Settings focused and puts Todo in the mail workspace", () => {
     render(<App />);
 
     const globalNav = screen.getByRole("navigation");
     expect(within(globalNav).queryByRole("button", { name: "待办9" })).toBeNull();
     expect(within(globalNav).queryByRole("button", { name: "Hermes" })).toBeNull();
 
+    const todoPanel = screen.getByRole("region", { name: "邮箱待办" });
+    expect(within(todoPanel).getByRole("heading", { name: "待办" })).toBeTruthy();
+    expect(within(todoPanel).getByText("今天 17:00 前确认 Q2 合作方案")).toBeTruthy();
+
     fireEvent.click(within(globalNav).getByRole("button", { name: "设置" }));
 
     const settingsNav = screen.getByLabelText("设置目录");
     expect(within(settingsNav).getByRole("button", { name: /Hermes/ })).toBeTruthy();
-    expect(within(settingsNav).getByRole("button", { name: "待办" })).toBeTruthy();
+    expect(within(settingsNav).queryByRole("button", { name: "待办" })).toBeNull();
+    expect(
+      within(settingsNav).queryByRole("button", { name: "新发件人处理" }),
+    ).toBeNull();
+    expect(within(settingsNav).queryByRole("button", { name: "域名管理" })).toBeNull();
     expect(screen.getByRole("heading", { name: /Hermes/ })).toBeTruthy();
-
-    fireEvent.click(within(settingsNav).getByRole("button", { name: "待办" }));
-
-    expect(screen.getByRole("heading", { name: "待办" })).toBeTruthy();
-    expect(screen.getByText("今天 17:00 前确认 Q2 合作方案")).toBeTruthy();
   });
 
   it("loads, saves, and tests Hermes connection from Settings", async () => {
@@ -6617,7 +6620,10 @@ describe("Email Hub first UI baseline", () => {
       screen.getByRole("button", { name: "Ask Hermes to track follow-up" }),
     );
 
-    expect(await screen.findByText("Check whether Lina replied")).toBeTruthy();
+    const suggestionTitle = await screen.findByText("Hermes 跟进建议");
+    expect(suggestionTitle.closest(".reason-box")?.textContent).toContain(
+      "Check whether Lina replied",
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "Confirm Hermes follow-up" }),
     );
@@ -6627,7 +6633,9 @@ describe("Email Hub first UI baseline", () => {
         "Hermes 跟进保存服务暂时不可用，请联系管理员检查服务配置。",
       ),
     ).toBeTruthy();
-    expect(screen.getByText("Check whether Lina replied")).toBeTruthy();
+    expect(
+      screen.getByText("Hermes 跟进建议").closest(".reason-box")?.textContent,
+    ).toContain("Check whether Lina replied");
   });
 
   it("creates and sends a new composed message through backend compose routes", async () => {
