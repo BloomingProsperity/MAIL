@@ -1,5 +1,13 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, FormEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   Archive,
   Bold,
@@ -24,7 +32,8 @@ import {
   Sparkles,
   Star,
   Trash2,
-  Undo2
+  Undo2,
+  X,
 } from "lucide-react";
 import { ApiRequestError } from "./lib/emailHubApi";
 import {
@@ -36,6 +45,7 @@ import {
   composeBodyHtmlForPayload,
   formatComposeSelection,
 } from "./features/compose/rich-text";
+import "./features/compose/ComposeSurface.css";
 import { ComposeReview } from "./features/compose/ComposeReview";
 import { formatComposeWarnings } from "./features/compose/composeWarnings";
 import {
@@ -213,6 +223,7 @@ const COMPOSE_TEMPLATES = [
 ] as const;
 
 type ComposeAutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
+type ComposeSurface = "closed" | "floating" | "reader";
 type ReaderHermesBusy = "summary" | "translation" | "organize";
 type SmartInboxBusyAction = "" | "bulk_done" | SmartInboxFeedbackAction;
 type ReaderActionResult = boolean | Promise<boolean>;
@@ -2301,6 +2312,8 @@ function MailWorkspace(props: {
   );
   const [composeNoticeState, setComposeNoticeState] =
     useState<HermesNoticeState>({ text: "" });
+  const [composeSurface, setComposeSurface] =
+    useState<ComposeSurface>("closed");
   const [composeBusy, setComposeBusy] = useState(false);
   const [composeAutosaveStatus, setComposeAutosaveStatus] =
     useState<ComposeAutosaveStatus>("idle");
@@ -2318,6 +2331,11 @@ function MailWorkspace(props: {
     useState<HermesNoticeState>({ text: "" });
   const [readerHermesBusy, setReaderHermesBusy] =
     useState<ReaderHermesBusy | undefined>();
+  const [composeSlotElement, setComposeSlotElement] =
+    useState<HTMLDivElement | null>(null);
+  const attachComposeSlot = useCallback((element: HTMLDivElement | null) => {
+    setComposeSlotElement(element);
+  }, []);
   const readerTranslationPreferences =
     useReaderTranslationPreferences("Chinese");
   const readerTranslationSource = readerTranslationPreferences.sourceLanguage;
@@ -2368,6 +2386,21 @@ function MailWorkspace(props: {
     action?: HermesNoticeAction,
   ) {
     setReaderHermesNoticeState({ text: notice, skillId, requiredPermission, action });
+  }
+
+  function openComposeSurface(surface: ComposeSurface, focus: "to" | "body") {
+    setComposeSurface(surface);
+    window.setTimeout(() => focusComposeTarget(focus), 0);
+  }
+
+  function openNewComposeSurface() {
+    clearComposeForm();
+    setComposeNotice("");
+    openComposeSurface("floating", "to");
+  }
+
+  function closeComposeSurface() {
+    setComposeSurface("closed");
   }
 
   function selectReaderTranslationSource(sourceLanguage: string) {
@@ -3000,7 +3033,10 @@ function MailWorkspace(props: {
         return;
       }
       applySeedToCompose(seed);
-      focusComposeTarget(seed.warnings.includes("missing_recipient") ? "to" : "body");
+      openComposeSurface(
+        "reader",
+        seed.warnings.includes("missing_recipient") ? "to" : "body",
+      );
     } catch {
       if (!isCurrentComposeMessageRequest(requestId)) {
         return;
@@ -3424,7 +3460,7 @@ function MailWorkspace(props: {
         hermesDraftText: result.draftText,
         notice: "Hermes 已生成回复草稿。",
       });
-      focusComposeTarget("body");
+      openComposeSurface("reader", "body");
     } catch (error) {
       if (!isCurrentComposeMessageRequest(requestId)) {
         return;
@@ -3485,7 +3521,7 @@ function MailWorkspace(props: {
         hermesDraftText: result.draftText,
         notice: "Hermes 已生成快速回复。",
       });
-      focusComposeTarget("body");
+      openComposeSurface("reader", "body");
     } catch (error) {
       if (!isCurrentComposeMessageRequest(requestId)) {
         return;
@@ -3881,7 +3917,7 @@ function MailWorkspace(props: {
   function editMailDraft(draft: MailDraftDto) {
     applyDraftToCompose(draft);
     setDraftsNotice(`已载入草稿：${draft.id}`);
-    focusComposeTarget("body");
+    openComposeSurface("floating", "body");
   }
 
   async function editOutboxItem(item: ScheduledSendDto) {
@@ -3897,7 +3933,7 @@ function MailWorkspace(props: {
       });
       applyDraftToCompose(detail.draft, detail.scheduledSend);
       setOutboxNotice(`已载入待发草稿：${item.id}`);
-      focusComposeTarget("body");
+      openComposeSurface("floating", "body");
     } catch {
       setOutboxNotice("加载待发草稿失败，请稍后再试。");
     } finally {
@@ -4050,6 +4086,20 @@ function MailWorkspace(props: {
     "--mail-directory-width": `${directoryResize.size}px`,
     "--message-list-width": `${messageListResize.size}px`,
   } as CSSProperties;
+  const composeContextClass = composeReplyToMessageId
+    ? "compose-context-reply"
+    : "compose-context-new";
+  const composeSurfaceClass = [
+    "compose-outbox-band",
+    `compose-surface-${composeSurface}`,
+    composeContextClass,
+  ].join(" ");
+  const composeTitle =
+    composeSource === "forward"
+      ? "转发邮件"
+      : composeReplyToMessageId
+        ? "回复邮件"
+        : "写邮件";
 
   useEffect(() => {
     setSelectedMailKeys((current) => {
@@ -4112,7 +4162,7 @@ function MailWorkspace(props: {
           <button
             className="primary-button"
             type="button"
-            onClick={() => document.getElementById("compose-recipients")?.focus()}
+            onClick={openNewComposeSurface}
           >
             <PenLine size={17} />
             写邮件
@@ -4128,11 +4178,17 @@ function MailWorkspace(props: {
         <UndoDoneNotice onUndoDone={props.onUndoDone} />
       ) : null}
 
-      <section className="compose-outbox-band" aria-label="写信和待发队列">
+      {composeSurface !== "closed" && composeSlotElement
+        ? createPortal(
+          <section
+            className={composeSurfaceClass}
+            aria-label={`${composeTitle}窗口`}
+            role="region"
+          >
         <div className="compose-panel" aria-label="写邮件面板">
           <div className="compose-panel-head">
             <div>
-              <strong>写邮件</strong>
+              <strong>{composeTitle}</strong>
               <span>
                 当前账号：{props.accountId}
                 {composeDraftId ? ` · 草稿：${composeDraftId}` : ""}
@@ -4142,7 +4198,17 @@ function MailWorkspace(props: {
                   : ""}
               </span>
             </div>
-            <Send size={18} />
+            <div className="compose-window-actions">
+              <Send size={18} />
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="关闭写信窗口"
+                onClick={closeComposeSurface}
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
           {composeNotice ? (
             <HermesNotice
@@ -4713,7 +4779,10 @@ function MailWorkspace(props: {
             </div>
           )}
         </div>
-      </section>
+          </section>,
+          composeSlotElement,
+        )
+        : null}
 
       <div
         className={`mail-grid outlook-layout layout-${props.density}`}
@@ -4726,7 +4795,7 @@ function MailWorkspace(props: {
               className="icon-button"
               type="button"
               aria-label="写邮件"
-              onClick={() => document.getElementById("compose-recipients")?.focus()}
+              onClick={openNewComposeSurface}
             >
               <PenLine size={18} />
             </button>
@@ -5122,6 +5191,15 @@ function MailWorkspace(props: {
             </button>
           </div>
 
+          {composeSurface === "floating" ? (
+            <div className="reader-content reader-compose-content">
+              <div
+                ref={attachComposeSlot}
+                className="reader-compose-slot"
+                aria-label="阅读窗写信区"
+              />
+            </div>
+          ) : (
           <div className="reader-content">
             <div className="reader-heading">
               <h2>{props.selectedMail.subject}</h2>
@@ -5302,7 +5380,15 @@ function MailWorkspace(props: {
               onDraftReply={() => void askHermesForReplyDraft()}
               onQuickReply={(action) => void askHermesForQuickReply(action)}
             />
+            {composeSurface === "reader" ? (
+              <div
+                ref={attachComposeSlot}
+                className="reader-compose-slot reader-inline-compose"
+                aria-label="阅读窗回复区"
+              />
+            ) : null}
           </div>
+          )}
         </article>
       </div>
 

@@ -5083,6 +5083,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    await openComposeWindow();
     await screen.findByText(/support@demo\.site/);
 
     fireEvent.change(screen.getByLabelText("Compose from identity"), {
@@ -7494,6 +7495,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    await openComposeWindow();
     await screen.findByText(/support@demo\.site/);
 
     fireEvent.change(screen.getByLabelText("Compose from identity"), {
@@ -8045,6 +8047,8 @@ describe("Email Hub first UI baseline", () => {
     });
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await openComposeWindow();
     await screen.findByText("Saved subject");
     vi.useFakeTimers();
     fireEvent.click(
@@ -8163,6 +8167,8 @@ describe("Email Hub first UI baseline", () => {
     });
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    await openComposeWindow();
     await screen.findByText("Saved subject");
 
     fireEvent.click(
@@ -10721,6 +10727,11 @@ function createApiFixture(): EmailHubApi {
       }),
     ),
   };
+}
+
+async function openComposeWindow() {
+  fireEvent.click(screen.getAllByRole("button", { name: "写邮件" })[0]);
+  await screen.findByLabelText("Compose body");
 }
 
 function restoreUrlDownloadMethod(

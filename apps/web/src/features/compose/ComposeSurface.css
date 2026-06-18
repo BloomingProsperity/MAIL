@@ -1,0 +1,46 @@
+.compose-surface-closed {
+  display: none;
+}
+
+.compose-surface-floating,
+.compose-surface-reader {
+  width: 100%;
+}
+
+.reader-compose-content {
+  align-content: start;
+}
+
+.reader-compose-slot {
+  display: grid;
+  min-width: 0;
+}
+
+.reader-compose-slot .compose-outbox-band {
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 0;
+  order: initial;
+  flex: initial;
+}
+
+.reader-inline-compose {
+  margin-top: 10px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 10px;
+}
+
+.compose-context-reply {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.compose-context-reply .drafts-panel,
+.compose-context-reply .outbox-panel {
+  display: none;
+}
+
+.compose-window-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
