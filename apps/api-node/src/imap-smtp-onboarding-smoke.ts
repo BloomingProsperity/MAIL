@@ -3,11 +3,15 @@ import {
   runImapSmtpOnboardingSmoke,
 } from "./accounts/imap-smtp-onboarding-smoke.js";
 import { writeSmokeFailureReport } from "./cli/smoke-report.js";
+import { resolveSmokeMailboxEmail } from "./mail-engine/smoke-defaults.js";
 
 const apiBaseUrl =
   process.env.EMAILHUB_API_BASE_URL ?? "http://127.0.0.1:8080";
-const email =
-  process.env.EMAILHUB_SMOKE_MAIL_EMAIL ?? "support@example.com";
+const email = resolveSmokeMailboxEmail({
+  env: process.env,
+  envKey: "EMAILHUB_SMOKE_MAIL_EMAIL",
+  prefix: "emailhub-smoke",
+});
 const provider = process.env.EMAILHUB_SMOKE_MAIL_PROVIDER ?? "custom_domain";
 const displayName = process.env.EMAILHUB_SMOKE_MAIL_DISPLAY_NAME ?? "Smoke Mailbox";
 const username = process.env.EMAILHUB_SMOKE_MAIL_USERNAME ?? email;

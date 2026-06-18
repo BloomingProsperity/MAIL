@@ -12,6 +12,7 @@ import {
   type SendSmtpSmokeMessageInput,
   type SmtpSmokeDeliveryResult,
 } from "./greenmail-smtp-smoke.js";
+import { waitForInitialSyncReady } from "./initial-sync-wait.js";
 import { safeSmokeBodySummary } from "./smoke-error.js";
 
 export interface RunEmailEngineRealWebhookSmokeInput {
@@ -104,6 +105,7 @@ export async function runEmailEngineRealWebhookSmoke(
     attempts: input.initialSyncReadyAttempts ?? 0,
     pollMs: input.initialSyncReadyPollMs ?? input.pollMs ?? 2000,
     delayMs: input.delayMs ?? defaultDelay,
+    errorPrefix: "EmailEngine real webhook smoke",
   });
 
   const deliveryStartedAt = now().toISOString();
@@ -166,38 +168,6 @@ interface DeliveredMessageObservation {
   readModelMessage: MessageListEntry;
 }
 
-async function waitForInitialSyncReady(input: {
-  apiBaseUrl: string;
-  fetchImpl: typeof fetch;
-  accountId: string;
-  syncJobId: string;
-  attempts: number;
-  pollMs: number;
-  delayMs: (ms: number) => Promise<void>;
-}): Promise<void> {
-  const attempts = Math.max(0, input.attempts);
-  if (attempts === 0) {
-    return;
-  }
-
-  let latestStatus = "missing";
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const status = await readInitialSyncJobStatus(input);
-    latestStatus = status ?? "missing";
-    if (status === "done") {
-      return;
-    }
-
-    if (attempt < attempts) {
-      await input.delayMs(input.pollMs);
-    }
-  }
-
-  throw new Error(
-    `EmailEngine real webhook smoke initial sync job ${input.syncJobId} for ${input.accountId} did not reach done after ${attempts} polls; latest status ${latestStatus}`,
-  );
-}
-
 async function readReusableExistingAccount(input: {
   apiBaseUrl: string;
   fetchImpl: typeof fetch;
@@ -244,35 +214,6 @@ async function readReusableExistingAccount(input: {
     syncJobId,
     syncJobStatus,
   };
-}
-
-async function readInitialSyncJobStatus(input: {
-  apiBaseUrl: string;
-  fetchImpl: typeof fetch;
-  accountId: string;
-  syncJobId: string;
-}): Promise<string | undefined> {
-  const response = await input.fetchImpl(
-    `${input.apiBaseUrl}/api/sync-center/accounts`,
-  );
-  const body = (await response.json()) as unknown;
-  if (!response.ok) {
-    throw new Error(
-      `EmailEngine real webhook smoke sync center returned ${response.status}: ${safeSmokeBodySummary(
-        body,
-      )}`,
-    );
-  }
-
-  const account = readArray(asRecord(body).items)
-    .map(asRecord)
-    .find((item) => readString(item.accountId) === input.accountId);
-  const latestSyncJob = asRecord(account?.latestSyncJob);
-  if (readString(latestSyncJob.id) !== input.syncJobId) {
-    return undefined;
-  }
-
-  return readString(latestSyncJob.status);
 }
 
 async function waitForDeliveredMessageObservation(input: {

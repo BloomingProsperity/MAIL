@@ -458,6 +458,12 @@ describe("EmailEngine Docker configuration", () => {
       await readProjectFile("apps", "api-node", "package.json"),
     );
     const testCompose = await readProjectFile("infra", "docker-compose.test.yml");
+    const onboardingSmoke = await readProjectFile(
+      "apps",
+      "api-node",
+      "src",
+      "imap-smtp-onboarding-smoke.ts",
+    );
     const greenmail = serviceSection(testCompose, "greenmail-test");
     const greenmailAuth = serviceSection(testCompose, "greenmail-auth-test");
 
@@ -473,6 +479,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(apiPackage.scripts["smoke:imap-smtp-onboarding:auth"]).toBe(
       "tsx src/imap-smtp-auth-onboarding-smoke.ts",
     );
+    expect(onboardingSmoke).toContain("resolveSmokeMailboxEmail");
+    expect(onboardingSmoke).toContain('prefix: "emailhub-smoke"');
+    expect(onboardingSmoke).not.toContain('?? "support@example.com"');
     expect(greenmail).toContain("image: greenmail/standalone:");
     expect(greenmail).toContain("-Dgreenmail.setup.test.all");
     expect(greenmail).toContain("-Dgreenmail.auth.disabled");
@@ -548,8 +557,12 @@ describe("EmailEngine Docker configuration", () => {
       "EMAILHUB_REAL_WEBHOOK_SMOKE_REUSE_EXISTING_ACCOUNT=false",
     );
     expect(envExample).toContain(
-      "# EMAILHUB_SMOKE_MAIL_EMAIL=support@example.com",
+      "Leave the mailbox email unset for fresh-state launch smokes",
     );
+    expect(envExample).toContain(
+      "# EMAILHUB_SMOKE_MAIL_EMAIL=fixed-smoke@example.com",
+    );
+    expect(envExample).not.toMatch(/^EMAILHUB_SMOKE_MAIL_EMAIL=/m);
     expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_ATTEMPTS=60");
     expect(envExample).toContain("EMAILHUB_REAL_WEBHOOK_SMOKE_POLL_MS=2000");
     expect(envExample).toContain(
@@ -608,6 +621,10 @@ describe("EmailEngine Docker configuration", () => {
       "src",
       "emailengine-docker-health-verify-runner.ts",
     );
+    const composeScript = await readProjectFile(
+      "scripts",
+      "emailhub-compose.mjs",
+    );
 
     expect(apiPackage.scripts["verify:emailengine-live"]).toBe(
       "tsx src/emailengine-launch-verify.ts",
@@ -618,44 +635,47 @@ describe("EmailEngine Docker configuration", () => {
     expect(apiPackage.scripts["verify:emailengine-docker-health"]).toBe(
       "tsx src/emailengine-docker-health-verify.ts",
     );
-    expect(rootPackage.scripts["compose:up"]).toContain("--env-file \"$ENV_FILE\"");
-    expect(rootPackage.scripts["compose:up"]).toContain("EMAILHUB_ENV_FILE");
-    expect(rootPackage.scripts["compose:up"]).toContain("infra/docker-compose.yml up --build");
+    expect(rootPackage.scripts["compose:up"]).toBe(
+      "node scripts/emailhub-compose.mjs up --build",
+    );
     expect(rootPackage.scripts["compose:up"]).not.toContain(
       "verify:emailengine-launch:env",
     );
-    expect(rootPackage.scripts["compose:up:detached"]).toContain(
-      "--env-file \"$ENV_FILE\"",
+    expect(rootPackage.scripts["compose:up:detached"]).toBe(
+      "node scripts/emailhub-compose.mjs up -d --build",
     );
-    expect(rootPackage.scripts["compose:up:detached"]).toContain(
-      "infra/docker-compose.yml up -d --build",
+    expect(rootPackage.scripts["compose:up:test"]).toBe(
+      "node scripts/emailhub-compose.mjs --test up --build",
+    );
+    expect(rootPackage.scripts["compose:up:test:detached"]).toBe(
+      "node scripts/emailhub-compose.mjs --test up -d --build",
+    );
+    expect(rootPackage.scripts["compose:up:postgres-test"]).toBe(
+      "node scripts/emailhub-compose.mjs --test up -d postgres-test",
     );
     expect(rootPackage.scripts["compose:up:detached"]).not.toContain(
       "verify:emailengine-launch:env",
     );
-    expect(rootPackage.scripts["compose:up:prod"]).toContain(
-      'EMAILHUB_ENV_FILE="$ENV_FILE" npm run verify:emailengine-launch:env',
+    expect(rootPackage.scripts["compose:up:prod"]).toBe(
+      "npm run verify:emailengine-launch:env && node scripts/emailhub-compose.mjs --prod up --build",
     );
-    expect(rootPackage.scripts["compose:up:prod"]).toContain(
-      'npm run verify:emailengine-launch:env && docker compose --env-file "$ENV_FILE"',
+    expect(rootPackage.scripts["compose:up:prod:detached"]).toBe(
+      "npm run verify:emailengine-launch:env && node scripts/emailhub-compose.mjs --prod up -d --build",
     );
-    expect(rootPackage.scripts["compose:up:prod"]).toContain(
-      "infra/docker-compose.yml -f infra/docker-compose.prod.yml up --build",
+    expect(rootPackage.scripts["compose:config:prod"]).toBe(
+      "node scripts/emailhub-compose.mjs --prod config >/dev/null",
     );
-    expect(rootPackage.scripts["compose:up:prod:detached"]).toContain(
-      'EMAILHUB_ENV_FILE="$ENV_FILE" npm run verify:emailengine-launch:env',
-    );
-    expect(rootPackage.scripts["compose:up:prod:detached"]).toContain(
-      'npm run verify:emailengine-launch:env && docker compose --env-file "$ENV_FILE"',
-    );
-    expect(rootPackage.scripts["compose:up:prod:detached"]).toContain(
-      "infra/docker-compose.yml -f infra/docker-compose.prod.yml up -d --build",
-    );
-    expect(rootPackage.scripts["compose:config:prod"]).toContain(
-      "infra/docker-compose.prod.yml config >/dev/null",
-    );
-    expect(rootPackage.scripts["compose:config:prod"]).toContain(
-      "EMAILHUB_ENV_FILE",
+    expect(composeScript).toContain('"--project-name"');
+    expect(composeScript).toContain("EMAILHUB_DOCKER_COMPOSE_PROJECT_NAME");
+    expect(composeScript).toContain("COMPOSE_PROJECT_NAME");
+    expect(composeScript).toContain("infra/docker-compose.yml");
+    expect(composeScript).toContain("infra/docker-compose.test.yml");
+    expect(composeScript).toContain("infra/docker-compose.prod.yml");
+    expect(composeScript).toContain("EMAILHUB_ENV_FILE");
+    expect(composeScript).toContain(".env.example");
+    expect(composeScript).toContain("sanitizeProjectName");
+    expect(rootPackage.scripts["compose:config:prod"]).not.toContain(
+      "--env-file \"$ENV_FILE\"",
     );
     expect(rootPackage.scripts["compose:config:prod"]).not.toContain("/tmp/");
     expect(rootPackage.scripts["verify:emailengine-launch:offline"]).toContain(
@@ -678,6 +698,10 @@ describe("EmailEngine Docker configuration", () => {
     );
     expect(envExample).toContain("EMAILHUB_API_BASE_URL=http://127.0.0.1:8080");
     expect(envExample).toContain("EMAILHUB_WEB_BASE_URL=http://127.0.0.1:5173");
+    expect(envExample).toContain("EMAILHUB_DOCKER_COMPOSE_PROJECT_NAME=");
+    expect(readme).toContain("EMAILHUB_DOCKER_COMPOSE_PROJECT_NAME");
+    expect(readme).toContain("does not accidentally reuse another checkout's");
+    expect(readme).toContain("`infra-*`");
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS=5000");
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_ATTEMPTS=12");
     expect(envExample).toContain("EMAILHUB_DOCKER_HEALTH_WAIT_MS=5000");

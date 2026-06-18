@@ -53,9 +53,7 @@ describe("EmailEngine GreenMail verify CLI runner", () => {
     expect(commands[0]?.env.EMAILHUB_SMOKE_MAIL_SECRET).toBe(
       "file-smoke-secret",
     );
-    expect(commands[0]?.env.EMAILHUB_SMOKE_MAIL_EMAIL).toBe(
-      "fixed@example.com",
-    );
+    expect(commands[0]?.env.EMAILHUB_SMOKE_MAIL_EMAIL).toBeUndefined();
     expect(commands[2]?.env.EMAILHUB_SMOKE_MAIL_EMAIL).toBeUndefined();
     expect(commands[3]?.env.EMAILHUB_SMOKE_MAIL_EMAIL).toBeUndefined();
     expect(commands[3]?.env.EMAILHUB_SMOKE_RECIPIENT_EMAIL).toBeUndefined();

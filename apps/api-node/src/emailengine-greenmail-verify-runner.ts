@@ -36,7 +36,10 @@ interface GreenMailSmokeScript {
 }
 
 const GREENMAIL_SMOKE_SCRIPTS: GreenMailSmokeScript[] = [
-  { name: "smoke:imap-smtp-onboarding" },
+  {
+    name: "smoke:imap-smtp-onboarding",
+    unsetEnv: ["EMAILHUB_SMOKE_MAIL_EMAIL"],
+  },
   { name: "smoke:imap-smtp-onboarding:auth" },
   {
     name: "smoke:emailengine-real-webhook",

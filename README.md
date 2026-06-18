@@ -67,13 +67,16 @@ file included, then run:
 
 ```powershell
 $env:EMAILHUB_API_BASE_URL = "http://127.0.0.1:8080"
-docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.test.yml up --build
+npm run compose:up:test
 npm run smoke:imap-smtp-onboarding
 ```
 
 The smoke check first calls `/api/accounts/imap-smtp/test`, then creates the
 account through `/api/accounts/imap-smtp`, and finally verifies the account and
-initial sync job are visible from `/api/sync-center/accounts`.
+initial sync job are visible from `/api/sync-center/accounts`. By default it
+creates a fresh `emailhub-smoke-<uuid>@example.com` mailbox and uses it as the
+auth-disabled GreenMail login. Set `EMAILHUB_SMOKE_MAIL_EMAIL` only when
+deliberately reusing a fixed test mailbox.
 
 Mailbox read APIs use app-owned Postgres DTOs only:
 
@@ -290,12 +293,13 @@ The API resolves the internal provider attachment id server-side and streams the
 
 ```powershell
 Copy-Item .env.example .env
-docker compose --env-file .env -f infra/docker-compose.yml up --build
+npm run compose:up
 ```
 
-Run the compose command from the repository root. The compose file lives under
-`infra/`, so `--env-file .env` is required to interpolate the root `.env`
-values for EmailEngine tokens, webhook secrets, and host port bindings.
+Run the compose npm scripts from the repository root. They load `.env`, fall
+back to `.env.example`, and pass a stable Docker Compose project name so
+EmailEngine tokens, webhook secrets, host port bindings, and container names
+come from the intended checkout.
 Email Hub pins the default EmailEngine image to
 `postalsys/emailengine:v2.71.0@sha256:4f732fd40e39f8e3af0b3d1580f1972a7e7270741be510f217a6b07eac5b0efc` instead of `latest` so a self-hosted launch is
 repeatable. Override `EMAILENGINE_IMAGE` with a newer `v2.x.x` tag or immutable
@@ -316,6 +320,13 @@ require both `EMAILENGINE_ACCESS_TOKEN` and `EENGINE_PREPARED_TOKEN`. A stack
 with missing EmailEngine tokens, rejected API auth, missing prepared token, or
 the default EmailEngine webhook/auth/service secret will fail startup or stay
 unhealthy instead of appearing launched.
+
+The `compose:*` npm scripts run Docker Compose with a stable project name so a
+second checkout does not accidentally reuse another checkout's `infra-*`
+containers. By default the project name is derived from the repository
+directory. Set `EMAILHUB_DOCKER_COMPOSE_PROJECT_NAME` or
+`COMPOSE_PROJECT_NAME` when you intentionally want a specific isolated stack
+name.
 
 Default entry points:
 
@@ -523,14 +534,17 @@ For the real IMAP/SMTP onboarding smoke check, include the test compose file so
 EmailEngine can reach GreenMail on the Docker network:
 
 ```powershell
-docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.test.yml up --build
+npm run compose:up:test
 $env:EMAILHUB_API_BASE_URL = "http://127.0.0.1:8080"
 npm run smoke:imap-smtp-onboarding
 ```
 
 This uses `greenmail-test:3143` for IMAP and `greenmail-test:3025` for SMTP by
-default. Override the `EMAILHUB_SMOKE_*` variables when pointing the smoke at a
-different test mailbox.
+default. It creates a fresh `emailhub-smoke-<uuid>@example.com` mailbox unless
+`EMAILHUB_SMOKE_MAIL_EMAIL` is explicitly set. Override the
+`EMAILHUB_SMOKE_*` variables only when pointing the smoke at a deliberately
+fixed test mailbox; the launch GreenMail verifier clears that fixed mailbox for
+end-to-end checks so old EmailEngine state cannot satisfy a new run.
 
 To prove the EmailEngine container really emits webhooks, run the real webhook
 smoke after the same compose stack is healthy:
@@ -615,8 +629,10 @@ The same GreenMail-backed checks are also grouped as:
 npm run verify:emailengine-launch:greenmail
 ```
 
-That group includes both the default auth-disabled GreenMail onboarding smoke
-and `npm run smoke:imap-smtp-onboarding:auth`, which targets the
+That group clears fixed smoke sender/recipient mailbox env vars for the
+auth-disabled onboarding, webhook, send, attachment, and mail-action checks, so
+each launch run creates fresh EmailEngine accounts and sync jobs. It also
+includes `npm run smoke:imap-smtp-onboarding:auth`, which targets the
 `greenmail-auth-test` service and its fixed
 `emailhub-auth-smoke@example.com` mailbox. The auth smoke first requires a
 wrong secret to fail, then proves the configured IMAP/SMTP username and secret
@@ -645,7 +661,7 @@ When a disposable Postgres test database is available, also run the database
 concurrency gate:
 
 ```powershell
-docker compose -f infra/docker-compose.test.yml up -d postgres-test
+npm run compose:up:postgres-test
 $env:TEST_DATABASE_URL = "postgres://emailhub_test:emailhub_test@127.0.0.1:55432/emailhub_sync_jobs_test"
 npm run stress:sync-queue:postgres
 npm run verify:emailengine-launch:strict-db
