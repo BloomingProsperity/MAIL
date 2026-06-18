@@ -1003,10 +1003,10 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(await screen.findByText("Fresh translation.")).toBeTruthy();
     expect(
-      within(screen.getByLabelText("Hermes 邮件翻译")).queryByRole("button", {
+      within(screen.getByLabelText("Hermes 邮件翻译")).getByRole("button", {
         name: "Refresh Hermes translation",
       }),
-    ).toBeNull();
+    ).toBeTruthy();
     expect(await screen.findByText("Hermes 已重新翻译：run_translate_refreshed")).toBeTruthy();
   });
 
