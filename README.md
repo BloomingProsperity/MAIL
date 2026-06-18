@@ -403,6 +403,14 @@ smoke suites are ready, optional suites such as strict Postgres stress or real
 Hermes AI, and the production-only follow-ups still required before public
 launch. It never prints token or password values.
 
+When the report marks the GreenMail suites ready, start the internal test stack
+with the bundled mail server overlay:
+
+```powershell
+npm run compose:up:test:detached
+npm run verify:emailengine-launch:greenmail
+```
+
 You can also run the env preflight gate by itself against the same env file:
 
 ```powershell

@@ -43,6 +43,11 @@ interface RequiredInternalSecret {
 
 const REQUIRED_INTERNAL_SECRETS: RequiredInternalSecret[] = [
   {
+    name: "EMAILHUB_API_TOKEN",
+    detail:
+      "Lets diagnostics-backed smoke checks read protected launch evidence.",
+  },
+  {
     name: "EMAILENGINE_ACCESS_TOKEN",
     detail: "Lets the API and worker call EmailEngine during internal testing.",
   },
@@ -293,6 +298,14 @@ function readinessSuites(input: {
       detail: input.internalTestReady
         ? "Can start the EmailEngine-first self-hosted stack for internal testing."
         : "Fix required internal env follow-ups before starting the stack.",
+    },
+    {
+      name: "docker_greenmail_stack",
+      command: "npm run compose:up:test:detached",
+      status: input.internalTestReady ? "ready" : "blocked",
+      detail: input.internalTestReady
+        ? "Can start the EmailEngine-first stack with GreenMail test services."
+        : "Fix required internal env follow-ups before starting GreenMail smokes.",
     },
     {
       name: "greenmail_smokes",

@@ -9,7 +9,6 @@ import { createEmailEngineLaunchReadinessReport } from "../src/mail-engine/launc
 describe("EmailEngine launch readiness report", () => {
   it("separates internal test readiness from production launch readiness", () => {
     const env = internalEnv({
-      EMAILHUB_API_TOKEN: "",
       EMAILENGINE_AUTH_SERVER_SECRET: "",
       HERMES_CHAT_COMPLETIONS_URL: "",
       GOOGLE_OAUTH_CLIENT_ID: "",
@@ -43,13 +42,19 @@ describe("EmailEngine launch readiness report", () => {
     });
     expect(result.productionFollowUps).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("EMAILHUB_API_TOKEN must be set"),
         expect.stringContaining("EMAILENGINE_AUTH_SERVER_SECRET must be set"),
       ]),
     );
     expect(result.runnableSuites).toContainEqual(
       expect.objectContaining({
         name: "docker_internal_stack",
+        status: "ready",
+      }),
+    );
+    expect(result.runnableSuites).toContainEqual(
+      expect.objectContaining({
+        name: "docker_greenmail_stack",
+        command: "npm run compose:up:test:detached",
         status: "ready",
       }),
     );
@@ -93,6 +98,36 @@ describe("EmailEngine launch readiness report", () => {
     expect(result.runnableSuites).toContainEqual(
       expect.objectContaining({
         name: "docker_internal_stack",
+        status: "blocked",
+      }),
+    );
+  });
+
+  it("blocks diagnostics-backed smokes when the API token is missing", () => {
+    const result = createEmailEngineLaunchReadinessReport({
+      env: internalEnv({
+        EMAILHUB_API_TOKEN: "",
+      }),
+      now: () => new Date("2026-06-18T03:00:00.000Z"),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.checks.internalSecrets.issues).toContainEqual({
+      code: "emailhub_api_token_missing",
+      severity: "error",
+      env: ["EMAILHUB_API_TOKEN"],
+      detail:
+        "EMAILHUB_API_TOKEN must be set before the EmailEngine internal test gate. Lets diagnostics-backed smoke checks read protected launch evidence.",
+    });
+    expect(result.runnableSuites).toContainEqual(
+      expect.objectContaining({
+        name: "greenmail_smokes",
+        status: "blocked",
+      }),
+    );
+    expect(result.runnableSuites).toContainEqual(
+      expect.objectContaining({
+        name: "docker_greenmail_stack",
         status: "blocked",
       }),
     );
