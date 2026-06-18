@@ -155,6 +155,7 @@ describe("HermesRuleManagerPanel", () => {
           candidateFixture({
             id: "candidate_client_priority",
             title: "启用客户优先级",
+            ruleType: "sender_priority",
             condition: { senderEmail: "client@example.com" },
             action: {
               type: "classify_sender",
@@ -183,6 +184,22 @@ describe("HermesRuleManagerPanel", () => {
       });
     });
     expect(await within(panel).findByText("启用客户优先级")).toBeTruthy();
+    expect(
+      within(panel).queryByLabelText("Hermes rule label 启用客户优先级"),
+    ).toBeNull();
+    expect(
+      within(panel).queryByLabelText("Hermes rule keywords 启用客户优先级"),
+    ).toBeNull();
+    expect(
+      within(panel).queryByRole("button", {
+        name: "Save Hermes rule candidate 启用客户优先级",
+      }),
+    ).toBeNull();
+    expect(
+      within(panel).getByRole("button", {
+        name: "Simulate Hermes rule 启用客户优先级",
+      }),
+    ).toBeTruthy();
     expect(
       within(panel).getByText(
         "Hermes 已生成 1 条行为候选规则，请先模拟再确认。",

@@ -502,6 +502,8 @@ export function HermesRuleCandidateWorkbench(
             const isDismissing =
               props.ruleDraftBusy === `dismiss:${candidate.id}`;
             const isCandidateLocked = candidate.status === "approved";
+            const isCandidateEditable =
+              canEditHermesRuleCandidate(candidate);
             return (
               <article className="rule-candidate-card" key={candidate.id}>
                 <div className="hermes-memory-meta">
@@ -527,57 +529,65 @@ export function HermesRuleCandidateWorkbench(
                 ) : (
                   <p>确认前必须先运行 shadow simulation，不会直接修改邮箱。</p>
                 )}
-                <div className="rule-candidate-editor">
-                  <label>
-                    <span>分组名称</span>
-                    <input
-                      aria-label={`Hermes rule label ${candidate.title}`}
-                      value={edit.labelName}
+                {isCandidateEditable ? (
+                  <div className="rule-candidate-editor">
+                    <label>
+                      <span>分组名称</span>
+                      <input
+                        aria-label={`Hermes rule label ${candidate.title}`}
+                        value={edit.labelName}
+                        disabled={
+                          Boolean(props.ruleDraftBusy) || isCandidateLocked
+                        }
+                        onChange={(event) =>
+                          updateRuleCandidateEdit(candidate, {
+                            labelName: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>关键词</span>
+                      <input
+                        aria-label={`Hermes rule keywords ${candidate.title}`}
+                        value={edit.keywordsText}
+                        disabled={
+                          Boolean(props.ruleDraftBusy) || isCandidateLocked
+                        }
+                        onChange={(event) =>
+                          updateRuleCandidateEdit(candidate, {
+                            keywordsText: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="rule-candidate-toggle">
+                      <input
+                        type="checkbox"
+                        aria-label={`Apply Hermes rule to history ${candidate.title}`}
+                        checked={edit.applyToHistory}
+                        disabled={
+                          Boolean(props.ruleDraftBusy) || isCandidateLocked
+                        }
+                        onChange={(event) =>
+                          updateRuleCandidateEdit(candidate, {
+                            applyToHistory: event.target.checked,
+                          })
+                        }
+                      />
+                      <span>回填已有邮件</span>
+                    </label>
+                    <button
+                      className="ghost-button"
+                      type="button"
                       disabled={Boolean(props.ruleDraftBusy) || isCandidateLocked}
-                      onChange={(event) =>
-                        updateRuleCandidateEdit(candidate, {
-                          labelName: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span>关键词</span>
-                    <input
-                      aria-label={`Hermes rule keywords ${candidate.title}`}
-                      value={edit.keywordsText}
-                      disabled={Boolean(props.ruleDraftBusy) || isCandidateLocked}
-                      onChange={(event) =>
-                        updateRuleCandidateEdit(candidate, {
-                          keywordsText: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="rule-candidate-toggle">
-                    <input
-                      type="checkbox"
-                      aria-label={`Apply Hermes rule to history ${candidate.title}`}
-                      checked={edit.applyToHistory}
-                      disabled={Boolean(props.ruleDraftBusy) || isCandidateLocked}
-                      onChange={(event) =>
-                        updateRuleCandidateEdit(candidate, {
-                          applyToHistory: event.target.checked,
-                        })
-                      }
-                    />
-                    <span>回填已有邮件</span>
-                  </label>
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    disabled={Boolean(props.ruleDraftBusy) || isCandidateLocked}
-                    aria-label={`Save Hermes rule candidate ${candidate.title}`}
-                    onClick={() => void saveRuleCandidateEdit(candidate)}
-                  >
-                    {isSaving ? "保存中" : "保存草案"}
-                  </button>
-                </div>
+                      aria-label={`Save Hermes rule candidate ${candidate.title}`}
+                      onClick={() => void saveRuleCandidateEdit(candidate)}
+                    >
+                      {isSaving ? "保存中" : "保存草案"}
+                    </button>
+                  </div>
+                ) : null}
                 <div className="inline-actions">
                   <button
                     className="ghost-button"
@@ -620,6 +630,13 @@ export function HermesRuleCandidateWorkbench(
         </div>
       ) : null}
     </div>
+  );
+}
+
+function canEditHermesRuleCandidate(candidate: HermesRuleCandidateDto): boolean {
+  return (
+    candidate.ruleType === "content_label" &&
+    candidate.action.type === "apply_label"
   );
 }
 
