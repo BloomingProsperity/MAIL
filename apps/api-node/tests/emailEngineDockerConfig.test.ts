@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { MICROSOFT_GRAPH_MAIL_SCOPE } from "../src/accounts/oauth-scopes";
 import { readApiConfig, readNativeEngineEnabled } from "../src/config";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
@@ -404,6 +405,7 @@ describe("EmailEngine Docker configuration", () => {
   });
 
   it("passes Gmail and Outlook OAuth settings into self-hosted API and worker containers", async () => {
+    const envExample = await readProjectFile(".env.example");
     const compose = await readProjectFile("infra", "docker-compose.yml");
     const api = serviceSection(compose, "api");
     const worker = serviceSection(compose, "worker");
@@ -436,8 +438,22 @@ describe("EmailEngine Docker configuration", () => {
       expect(section).toContain(
         "MICROSOFT_GRAPH_BASE_URL: ${MICROSOFT_GRAPH_BASE_URL:-https://graph.microsoft.com/v1.0}",
       );
+      expect(section).toContain(
+        `MICROSOFT_GRAPH_SCOPE: \${MICROSOFT_GRAPH_SCOPE:-${MICROSOFT_GRAPH_MAIL_SCOPE}}`,
+      );
     }
 
+    expect(envExample).toContain(
+      `MICROSOFT_GRAPH_SCOPE=${MICROSOFT_GRAPH_MAIL_SCOPE}`,
+    );
+    expect(envExample).toContain("EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID=");
+    expect(envExample).toContain("EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID=");
+    expect(api).toContain(
+      "EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID: ${EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID:-}",
+    );
+    expect(api).toContain(
+      "EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID: ${EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID:-}",
+    );
     expect(api).toContain(
       "GOOGLE_OAUTH_AUTHORIZATION_URL: ${GOOGLE_OAUTH_AUTHORIZATION_URL:-https://accounts.google.com/o/oauth2/v2/auth}",
     );
@@ -450,6 +466,37 @@ describe("EmailEngine Docker configuration", () => {
     expect(api).toContain(
       "MICROSOFT_GRAPH_PROFILE_URL: ${MICROSOFT_GRAPH_PROFILE_URL:-https://graph.microsoft.com/v1.0/me}",
     );
+  });
+
+  it("only marks OAuth web-login providers ready when EmailEngine app ids are configured", () => {
+    const missingProviderId = readApiConfig({
+      NODE_ENV: "development",
+      GOOGLE_OAUTH_CLIENT_ID: "google-client",
+      GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
+      MICROSOFT_OAUTH_CLIENT_ID: "microsoft-client",
+      MICROSOFT_OAUTH_CLIENT_SECRET: "microsoft-secret",
+      EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID: "ee_gmail_app",
+    } as NodeJS.ProcessEnv);
+
+    expect(missingProviderId.oauthProvidersConfigured).toEqual({
+      gmail: true,
+      outlook: false,
+    });
+
+    const ready = readApiConfig({
+      NODE_ENV: "development",
+      GOOGLE_OAUTH_CLIENT_ID: "google-client",
+      GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
+      MICROSOFT_OAUTH_CLIENT_ID: "microsoft-client",
+      MICROSOFT_OAUTH_CLIENT_SECRET: "microsoft-secret",
+      EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID: "ee_gmail_app",
+      EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID: "ee_outlook_app",
+    } as NodeJS.ProcessEnv);
+
+    expect(ready.oauthProvidersConfigured).toEqual({
+      gmail: true,
+      outlook: true,
+    });
   });
 
   it("keeps an IMAP/SMTP test mailbox service for real onboarding smoke checks", async () => {

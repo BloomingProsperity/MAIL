@@ -356,8 +356,10 @@ function productionEnv(
     HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
     GOOGLE_OAUTH_CLIENT_ID: "google-client",
     GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
+    EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID: "ee-gmail-app",
     MICROSOFT_OAUTH_CLIENT_ID: "microsoft-client",
     MICROSOFT_OAUTH_CLIENT_SECRET: "microsoft-secret",
+    EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID: "ee-outlook-app",
     ...overrides,
   };
 }

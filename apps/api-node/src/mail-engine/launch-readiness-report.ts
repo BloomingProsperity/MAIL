@@ -117,10 +117,12 @@ export function createEmailEngineLaunchReadinessReport(
       hermesReady: hasValue(options.env.HERMES_CHAT_COMPLETIONS_URL),
       gmailReady:
         hasValue(options.env.GOOGLE_OAUTH_CLIENT_ID) &&
-        hasValue(options.env.GOOGLE_OAUTH_CLIENT_SECRET),
+        hasValue(options.env.GOOGLE_OAUTH_CLIENT_SECRET) &&
+        hasValue(options.env.EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID),
       outlookReady:
         hasValue(options.env.MICROSOFT_OAUTH_CLIENT_ID) &&
-        hasValue(options.env.MICROSOFT_OAUTH_CLIENT_SECRET),
+        hasValue(options.env.MICROSOFT_OAUTH_CLIENT_SECRET) &&
+        hasValue(options.env.EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID),
       strictDbReady: hasValue(options.env.TEST_DATABASE_URL),
     }),
     requiredFollowUps,
@@ -238,26 +240,36 @@ function checkOptionalIntegrations(
   }
   if (
     !hasValue(env.GOOGLE_OAUTH_CLIENT_ID) ||
-    !hasValue(env.GOOGLE_OAUTH_CLIENT_SECRET)
+    !hasValue(env.GOOGLE_OAUTH_CLIENT_SECRET) ||
+    !hasValue(env.EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID)
   ) {
     issues.push({
       code: "gmail_oauth_not_configured",
       severity: "warning",
-      env: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"],
+      env: [
+        "GOOGLE_OAUTH_CLIENT_ID",
+        "GOOGLE_OAUTH_CLIENT_SECRET",
+        "EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID",
+      ],
       detail:
-        "Gmail OAuth onboarding is not ready for internal test until Google OAuth credentials are configured.",
+        "Gmail OAuth onboarding is not ready for internal test until Google OAuth credentials and the EmailEngine OAuth2 app id are configured.",
     });
   }
   if (
     !hasValue(env.MICROSOFT_OAUTH_CLIENT_ID) ||
-    !hasValue(env.MICROSOFT_OAUTH_CLIENT_SECRET)
+    !hasValue(env.MICROSOFT_OAUTH_CLIENT_SECRET) ||
+    !hasValue(env.EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID)
   ) {
     issues.push({
       code: "outlook_oauth_not_configured",
       severity: "warning",
-      env: ["MICROSOFT_OAUTH_CLIENT_ID", "MICROSOFT_OAUTH_CLIENT_SECRET"],
+      env: [
+        "MICROSOFT_OAUTH_CLIENT_ID",
+        "MICROSOFT_OAUTH_CLIENT_SECRET",
+        "EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID",
+      ],
       detail:
-        "Outlook OAuth onboarding is not ready for internal test until Microsoft OAuth credentials are configured.",
+        "Outlook OAuth onboarding is not ready for internal test until Microsoft OAuth credentials and the EmailEngine OAuth2 app id are configured.",
     });
   }
 
@@ -335,16 +347,16 @@ function readinessSuites(input: {
       command: "Exercise Gmail OAuth onboarding after Google OAuth env is configured.",
       status: input.gmailReady ? "ready" : "optional",
       detail: input.gmailReady
-        ? "Google OAuth credentials are configured."
-        : "Gmail OAuth should be skipped until credentials are configured.",
+        ? "Google OAuth credentials and EmailEngine OAuth2 app id are configured."
+        : "Gmail OAuth should be skipped until credentials and the EmailEngine OAuth2 app id are configured.",
     },
     {
       name: "outlook_oauth",
       command: "Exercise Outlook OAuth onboarding after Microsoft OAuth env is configured.",
       status: input.outlookReady ? "ready" : "optional",
       detail: input.outlookReady
-        ? "Microsoft OAuth credentials are configured."
-        : "Outlook OAuth should be skipped until credentials are configured.",
+        ? "Microsoft OAuth credentials and EmailEngine OAuth2 app id are configured."
+        : "Outlook OAuth should be skipped until credentials and the EmailEngine OAuth2 app id are configured.",
     },
     {
       name: "production_launch_gate",

@@ -67,12 +67,16 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     emailEngineServiceSecretUsesDefault:
       !env.EENGINE_SECRET || emailEngineServiceSecret === "dev-emailhub-secret",
     oauthProvidersConfigured: {
-      gmail:
-        typeof env.GOOGLE_OAUTH_CLIENT_ID === "string" &&
-        env.GOOGLE_OAUTH_CLIENT_ID.trim().length > 0,
-      outlook:
-        typeof env.MICROSOFT_OAUTH_CLIENT_ID === "string" &&
-        env.MICROSOFT_OAUTH_CLIENT_ID.trim().length > 0,
+      gmail: hasOAuthProviderConfig([
+        env.GOOGLE_OAUTH_CLIENT_ID,
+        env.GOOGLE_OAUTH_CLIENT_SECRET,
+        env.EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID,
+      ]),
+      outlook: hasOAuthProviderConfig([
+        env.MICROSOFT_OAUTH_CLIENT_ID,
+        env.MICROSOFT_OAUTH_CLIENT_SECRET,
+        env.EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID,
+      ]),
     },
   };
   if (apiAccessToken.length > 0) {
@@ -129,6 +133,12 @@ function readPortValue(value: string | undefined, fallback: number): number {
   }
 
   return parsed;
+}
+
+function hasOAuthProviderConfig(values: Array<string | undefined>): boolean {
+  return values.every(
+    (value) => typeof value === "string" && value.trim().length > 0,
+  );
 }
 
 function readBoundedIntegerValue(

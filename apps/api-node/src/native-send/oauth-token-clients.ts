@@ -1,3 +1,5 @@
+import { MICROSOFT_GRAPH_MAIL_SCOPE } from "../accounts/oauth-scopes.js";
+
 export interface RefreshedAccessToken {
   accessToken: string;
   expiresAt: string;
@@ -23,8 +25,6 @@ export interface OAuthRefreshClientOptions {
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const MICROSOFT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
-const MICROSOFT_SCOPE =
-  "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared";
 
 export function createGoogleOAuthRefreshClient(input: {
   clientId: string;
@@ -50,7 +50,7 @@ export function createMicrosoftOAuthRefreshClient(input: {
   return createOAuthRefreshClient({
     ...input,
     tokenUrl: input.tokenUrl ?? MICROSOFT_TOKEN_URL,
-    scope: input.scope ?? MICROSOFT_SCOPE,
+    scope: input.scope ?? MICROSOFT_GRAPH_MAIL_SCOPE,
   });
 }
 

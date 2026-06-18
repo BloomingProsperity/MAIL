@@ -234,6 +234,10 @@ if (pool) {
     ? createEmailEngineAccountsClient({
         baseUrl: config.emailEngineUrl,
         accessToken: emailEngineAccessToken!,
+        oauth2ProviderIds: {
+          gmail: process.env.EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID,
+          outlook: process.env.EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID,
+        },
       })
     : {
         async registerImapSmtpAccount() {

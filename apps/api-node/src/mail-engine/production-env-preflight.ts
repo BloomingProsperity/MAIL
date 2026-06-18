@@ -314,27 +314,37 @@ function checkOptionalIntegrations(
 
   if (
     !env.GOOGLE_OAUTH_CLIENT_ID?.trim() ||
-    !env.GOOGLE_OAUTH_CLIENT_SECRET?.trim()
+    !env.GOOGLE_OAUTH_CLIENT_SECRET?.trim() ||
+    !env.EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID?.trim()
   ) {
     issues.push({
       code: "gmail_oauth_not_set",
       severity: "warning",
-      env: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"],
+      env: [
+        "GOOGLE_OAUTH_CLIENT_ID",
+        "GOOGLE_OAUTH_CLIENT_SECRET",
+        "EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID",
+      ],
       detail:
-        "Gmail OAuth onboarding will stay unavailable until Google OAuth credentials are set.",
+        "Gmail OAuth onboarding will stay unavailable until Google OAuth credentials and the EmailEngine OAuth2 app id are set.",
     });
   }
 
   if (
     !env.MICROSOFT_OAUTH_CLIENT_ID?.trim() ||
-    !env.MICROSOFT_OAUTH_CLIENT_SECRET?.trim()
+    !env.MICROSOFT_OAUTH_CLIENT_SECRET?.trim() ||
+    !env.EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID?.trim()
   ) {
     issues.push({
       code: "outlook_oauth_not_set",
       severity: "warning",
-      env: ["MICROSOFT_OAUTH_CLIENT_ID", "MICROSOFT_OAUTH_CLIENT_SECRET"],
+      env: [
+        "MICROSOFT_OAUTH_CLIENT_ID",
+        "MICROSOFT_OAUTH_CLIENT_SECRET",
+        "EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID",
+      ],
       detail:
-        "Outlook OAuth onboarding will stay unavailable until Microsoft OAuth credentials are set.",
+        "Outlook OAuth onboarding will stay unavailable until Microsoft OAuth credentials and the EmailEngine OAuth2 app id are set.",
     });
   }
 

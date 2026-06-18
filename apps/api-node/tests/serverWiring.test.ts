@@ -107,6 +107,8 @@ describe("server wiring", () => {
 
     expect(source).toMatch(/createConfiguredEmailEngineAuthServerService/);
     expect(source).toMatch(/config\.emailEngineAuthServerService\s*=/);
+    expect(source).toMatch(/EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID/);
+    expect(source).toMatch(/EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID/);
     expect(source).toMatch(/createOAuthOnboardingService\(\{[\s\S]*emailEngineAccounts,/);
   });
 

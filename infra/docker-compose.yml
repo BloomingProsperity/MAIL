@@ -122,6 +122,7 @@ services:
       GOOGLE_OAUTH_AUTHORIZATION_URL: ${GOOGLE_OAUTH_AUTHORIZATION_URL:-https://accounts.google.com/o/oauth2/v2/auth}
       GMAIL_PROFILE_URL: ${GMAIL_PROFILE_URL:-https://gmail.googleapis.com/gmail/v1/users/me/profile}
       GMAIL_API_BASE_URL: ${GMAIL_API_BASE_URL:-https://gmail.googleapis.com/gmail/v1}
+      EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID: ${EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID:-}
       MICROSOFT_OAUTH_CLIENT_ID: ${MICROSOFT_OAUTH_CLIENT_ID:-}
       MICROSOFT_OAUTH_CLIENT_SECRET: ${MICROSOFT_OAUTH_CLIENT_SECRET:-}
       MICROSOFT_OAUTH_TENANT: ${MICROSOFT_OAUTH_TENANT:-common}
@@ -129,7 +130,8 @@ services:
       MICROSOFT_OAUTH_AUTHORIZATION_URL: ${MICROSOFT_OAUTH_AUTHORIZATION_URL:-https://login.microsoftonline.com/common/oauth2/v2.0/authorize}
       MICROSOFT_GRAPH_PROFILE_URL: ${MICROSOFT_GRAPH_PROFILE_URL:-https://graph.microsoft.com/v1.0/me}
       MICROSOFT_GRAPH_BASE_URL: ${MICROSOFT_GRAPH_BASE_URL:-https://graph.microsoft.com/v1.0}
-      MICROSOFT_GRAPH_SCOPE: ${MICROSOFT_GRAPH_SCOPE:-offline_access https://graph.microsoft.com/Mail.Read}
+      MICROSOFT_GRAPH_SCOPE: ${MICROSOFT_GRAPH_SCOPE:-offline_access https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared}
+      EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID: ${EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID:-}
     volumes:
       - emailhub-compose-attachments:/data/email-hub/compose-attachments
     ports:
@@ -188,7 +190,7 @@ services:
       MICROSOFT_OAUTH_TENANT: ${MICROSOFT_OAUTH_TENANT:-common}
       MICROSOFT_OAUTH_TOKEN_URL: ${MICROSOFT_OAUTH_TOKEN_URL:-https://login.microsoftonline.com/common/oauth2/v2.0/token}
       MICROSOFT_GRAPH_BASE_URL: ${MICROSOFT_GRAPH_BASE_URL:-https://graph.microsoft.com/v1.0}
-      MICROSOFT_GRAPH_SCOPE: ${MICROSOFT_GRAPH_SCOPE:-offline_access https://graph.microsoft.com/Mail.Read}
+      MICROSOFT_GRAPH_SCOPE: ${MICROSOFT_GRAPH_SCOPE:-offline_access https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared}
     volumes:
       - emailhub-compose-attachments:/data/email-hub/compose-attachments
     extra_hosts:

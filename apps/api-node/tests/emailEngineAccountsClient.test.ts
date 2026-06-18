@@ -174,6 +174,9 @@ describe("EmailEngine accounts client", () => {
     const client = createEmailEngineAccountsClient({
       baseUrl: "http://emailengine:3000",
       accessToken: "secret-token",
+      oauth2ProviderIds: {
+        gmail: "ee_gmail_oauth_app",
+      },
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
         return Response.json({
@@ -201,7 +204,7 @@ describe("EmailEngine accounts client", () => {
       name: "Me",
       email: "me@gmail.com",
       oauth2: {
-        provider: "gmail",
+        provider: "ee_gmail_oauth_app",
         auth: {
           user: "me@gmail.com",
         },
@@ -209,6 +212,29 @@ describe("EmailEngine accounts client", () => {
       },
     });
     expect(result).toEqual({ account: "acc_1", state: "syncing" });
+  });
+
+  it("rejects OAuth account registration without an EmailEngine OAuth2 app id", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createEmailEngineAccountsClient({
+      baseUrl: "http://emailengine:3000",
+      accessToken: "secret-token",
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return Response.json({ account: "acc_1" });
+      },
+    });
+
+    await expect(
+      client.registerOAuthAccount({
+        accountId: "acc_1",
+        email: "me@outlook.com",
+        provider: "outlook",
+      }),
+    ).rejects.toThrow(
+      "EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID is not configured",
+    );
+    expect(calls).toEqual([]);
   });
 
   it("throws a useful error when account registration fails", async () => {

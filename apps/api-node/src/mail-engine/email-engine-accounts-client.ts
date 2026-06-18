@@ -1,6 +1,9 @@
 export interface EmailEngineAccountsClientOptions {
   baseUrl: string;
   accessToken: string;
+  oauth2ProviderIds?: Partial<
+    Record<RegisterOAuthAccountInput["provider"], string>
+  >;
   fetchImpl?: typeof fetch;
 }
 
@@ -123,7 +126,11 @@ export function createEmailEngineAccountsClient(
         "EmailEngine account registration failed",
       );
     },
-    registerOAuthAccount(input) {
+    async registerOAuthAccount(input) {
+      const providerId = resolveOAuth2ProviderId(
+        options.oauth2ProviderIds,
+        input.provider,
+      );
       return request<EmailEngineAccountRegistrationResult>(
         "/account",
         {
@@ -133,7 +140,7 @@ export function createEmailEngineAccountsClient(
             name: input.displayName ?? input.email,
             email: input.email,
             oauth2: {
-              provider: input.provider,
+              provider: providerId,
               auth: {
                 user: input.email,
               },
@@ -145,6 +152,28 @@ export function createEmailEngineAccountsClient(
       );
     },
   };
+}
+
+function resolveOAuth2ProviderId(
+  providerIds: EmailEngineAccountsClientOptions["oauth2ProviderIds"],
+  provider: RegisterOAuthAccountInput["provider"],
+): string {
+  const providerId = providerIds?.[provider]?.trim();
+  if (providerId) {
+    return providerId;
+  }
+
+  throw new Error(
+    `${oauth2ProviderIdEnv(provider)} is not configured for EmailEngine OAuth account registration`,
+  );
+}
+
+function oauth2ProviderIdEnv(
+  provider: RegisterOAuthAccountInput["provider"],
+): string {
+  return provider === "gmail"
+    ? "EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID"
+    : "EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID";
 }
 
 function toEmailEngineEndpoint(endpoint: EmailEngineEndpointCredentials) {

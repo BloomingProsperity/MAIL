@@ -32,6 +32,9 @@ describe("OAuth provider registry", () => {
     expect(url.searchParams.get("prompt")).toBe("consent");
     expect(url.searchParams.get("login_hint")).toBe("me@gmail.com");
     expect(url.searchParams.get("scope")).toContain(
+      "https://www.googleapis.com/auth/gmail.modify",
+    );
+    expect(url.searchParams.get("scope")).toContain(
       "https://www.googleapis.com/auth/gmail.readonly",
     );
     expect(url.searchParams.get("scope")).toContain(
@@ -67,7 +70,7 @@ describe("OAuth provider registry", () => {
     expect(url.searchParams.get("state")).toBe("state_2");
     expect(url.searchParams.get("scope")).toContain("offline_access");
     expect(url.searchParams.get("scope")).toContain(
-      "https://graph.microsoft.com/Mail.Read",
+      "https://graph.microsoft.com/Mail.ReadWrite",
     );
     expect(url.searchParams.get("scope")).toContain(
       "https://graph.microsoft.com/Mail.Send",

@@ -1,3 +1,8 @@
+import {
+  GMAIL_OAUTH_SCOPES,
+  OUTLOOK_OAUTH_SCOPES,
+} from "./oauth-scopes.js";
+
 export type OAuthProviderName = "gmail" | "outlook";
 export type NativeProviderName = "gmail" | "graph";
 
@@ -38,25 +43,6 @@ export interface OAuthProviderRegistryOptions {
   microsoftProfileUrl?: string;
 }
 
-const GMAIL_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/gmail.settings.basic",
-];
-
-const OUTLOOK_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "offline_access",
-  "https://graph.microsoft.com/Mail.Read",
-  "https://graph.microsoft.com/Mail.Send",
-  "https://graph.microsoft.com/Mail.Send.Shared",
-];
-
 export function createOAuthProviderRegistry(
   options: OAuthProviderRegistryOptions,
 ): OAuthProviderRegistry {
@@ -93,7 +79,7 @@ function gmailProvider(options: OAuthProviderRegistryOptions): OAuthProvider {
     profileUrl:
       options.gmailProfileUrl ??
       "https://gmail.googleapis.com/gmail/v1/users/me/profile",
-    scopes: GMAIL_SCOPES,
+    scopes: [...GMAIL_OAUTH_SCOPES],
     refreshCredentialKind: "google_oauth_refresh_token",
   } satisfies Omit<OAuthProvider, "buildAuthorizationUrl">;
 
@@ -133,7 +119,7 @@ function outlookProvider(options: OAuthProviderRegistryOptions): OAuthProvider {
     authorizationUrl: options.microsoftAuthorizationUrl ?? `${base}/authorize`,
     tokenUrl: options.microsoftTokenUrl ?? `${base}/token`,
     profileUrl: options.microsoftProfileUrl ?? "https://graph.microsoft.com/v1.0/me",
-    scopes: OUTLOOK_SCOPES,
+    scopes: [...OUTLOOK_OAUTH_SCOPES],
     refreshCredentialKind: "microsoft_oauth_refresh_token",
   } satisfies Omit<OAuthProvider, "buildAuthorizationUrl">;
 

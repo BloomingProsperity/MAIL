@@ -14,7 +14,7 @@ describe("native OAuth refresh clients", () => {
           access_token: "access-token",
           expires_in: 3600,
           scope:
-            "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared",
+            "offline_access https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared",
           token_type: "Bearer",
         });
       },
@@ -29,12 +29,12 @@ describe("native OAuth refresh clients", () => {
       "https://login.microsoftonline.com/common/oauth2/v2.0/token",
     );
     expect(String(calls[0].init?.body)).toBe(
-      "client_id=client-id&client_secret=client-secret&refresh_token=refresh-token&grant_type=refresh_token&scope=offline_access+https%3A%2F%2Fgraph.microsoft.com%2FMail.Read+https%3A%2F%2Fgraph.microsoft.com%2FMail.Send+https%3A%2F%2Fgraph.microsoft.com%2FMail.Send.Shared",
+      "client_id=client-id&client_secret=client-secret&refresh_token=refresh-token&grant_type=refresh_token&scope=offline_access+https%3A%2F%2Fgraph.microsoft.com%2FMail.ReadWrite+https%3A%2F%2Fgraph.microsoft.com%2FMail.Send+https%3A%2F%2Fgraph.microsoft.com%2FMail.Send.Shared",
     );
     expect(token).toMatchObject({
       accessToken: "access-token",
       scope:
-        "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared",
+        "offline_access https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared",
       tokenType: "Bearer",
     });
   });
