@@ -11,7 +11,12 @@ import type {
   HermesRuntimeUpdatePolicy,
   HermesSkillRequiredPermission,
   HermesRuntimeVersionStatus,
+  SyncCenterAccountDto,
 } from "../../lib/emailHubApi";
+import {
+  HermesAccountScopePanel,
+  type HermesAccountScopeOption,
+} from "./HermesAccountScopePanel";
 import {
   HermesAuditLogPanel,
   HermesMemoryManagerPanel,
@@ -74,12 +79,24 @@ function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string
   return fields.map((field) => labels[field]).join("、");
 }
 
+function syncCenterAccountToScopeOption(
+  account: SyncCenterAccountDto,
+): HermesAccountScopeOption {
+  return {
+    id: account.accountId,
+    label: account.displayName?.trim() || account.email || account.accountId,
+    email: account.email,
+  };
+}
+
 export function HermesRuntimeSettingsPanel(props: {
   api?: EmailHubApi;
   accountId?: string;
   focusedSkillId?: string;
   focusedPermission?: HermesSkillRequiredPermission;
   focusRequestId?: number;
+  accountOptions?: HermesAccountScopeOption[];
+  onAccountScopeChange?: (accountId: string) => void;
   onHermesRuleApproved?: (rule: HermesRuleDto) => void;
 }) {
   const [enabled, setEnabled] = useState(true);
@@ -99,6 +116,10 @@ export function HermesRuntimeSettingsPanel(props: {
   const [hermesProviders, setHermesProviders] = useState<
     HermesProviderCatalogItem[]
   >(fallbackHermesProviders);
+  const [scopedAccountId, setScopedAccountId] = useState(props.accountId ?? "");
+  const [scopedAccountOptions, setScopedAccountOptions] = useState<
+    HermesAccountScopeOption[]
+  >([]);
   const [auditMemoryFocus, setAuditMemoryFocus] = useState<
     { memoryId: string; label: string } | undefined
   >();
@@ -128,6 +149,8 @@ export function HermesRuntimeSettingsPanel(props: {
     () => providerOptions.find((provider) => provider.key === providerKey),
     [providerKey, providerOptions],
   );
+  const accountOptions = props.accountOptions ?? scopedAccountOptions;
+  const effectiveAccountId = scopedAccountId || undefined;
 
   function applyProviderSelection(nextProviderKey: string) {
     const provider = providerOptions.find((item) => item.key === nextProviderKey);
@@ -151,6 +174,12 @@ export function HermesRuntimeSettingsPanel(props: {
     if (provider.modelExamples[0]) {
       setModel(provider.modelExamples[0]);
     }
+  }
+
+  function updateAccountScope(accountId: string) {
+    setScopedAccountId(accountId);
+    setAuditMemoryFocus(undefined);
+    props.onAccountScopeChange?.(accountId);
   }
 
   function currentRuntimePayload() {
@@ -232,6 +261,43 @@ export function HermesRuntimeSettingsPanel(props: {
       alive = false;
     };
   }, [props.api]);
+
+  useEffect(() => {
+    setScopedAccountId(props.accountId ?? "");
+    setAuditMemoryFocus(undefined);
+  }, [props.accountId]);
+
+  useEffect(() => {
+    let alive = true;
+
+    if (props.accountOptions) {
+      return () => {
+        alive = false;
+      };
+    }
+
+    if (!props.api) {
+      setScopedAccountOptions([]);
+      return () => {
+        alive = false;
+      };
+    }
+
+    void props.api
+      .listSyncCenterAccounts()
+      .then((page) => {
+        if (!alive) return;
+        setScopedAccountOptions(page.items.map(syncCenterAccountToScopeOption));
+      })
+      .catch(() => {
+        if (!alive) return;
+        setScopedAccountOptions([]);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [props.accountOptions, props.api]);
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -508,6 +574,12 @@ export function HermesRuntimeSettingsPanel(props: {
         {notice}
       </div>
 
+      <HermesAccountScopePanel
+        accountId={effectiveAccountId}
+        accounts={accountOptions}
+        onAccountChange={updateAccountScope}
+      />
+
       <HermesSkillSettingsPanel
         api={props.api}
         focusedSkillId={props.focusedSkillId}
@@ -517,12 +589,12 @@ export function HermesRuntimeSettingsPanel(props: {
 
       <HermesRuleManagerPanel
         api={props.api}
-        accountId={props.accountId}
+        accountId={effectiveAccountId}
         onRuleApproved={props.onHermesRuleApproved}
       />
       <HermesMemoryManagerPanel
         api={props.api}
-        accountId={props.accountId}
+        accountId={effectiveAccountId}
         onInspectMemoryUsage={(memory) =>
           setAuditMemoryFocus({
             memoryId: memory.id,
@@ -532,7 +604,7 @@ export function HermesRuntimeSettingsPanel(props: {
       />
       <HermesAuditLogPanel
         api={props.api}
-        accountId={props.accountId}
+        accountId={effectiveAccountId}
         focusedMemoryId={auditMemoryFocus?.memoryId}
         focusedMemoryLabel={auditMemoryFocus?.label}
         onClearFocusedMemory={() => setAuditMemoryFocus(undefined)}
