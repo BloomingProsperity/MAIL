@@ -6,6 +6,8 @@ export interface HermesNoticeProps {
   requiredPermission?: HermesSkillRequiredPermission;
   compact?: boolean;
   className?: string;
+  actionLabel?: string;
+  onAction?: () => void;
   onOpenSkillSettings?: (
     skillId: string,
     requiredPermission?: HermesSkillRequiredPermission,
@@ -30,7 +32,11 @@ export function HermesNotice(props: HermesNoticeProps) {
   return (
     <div className={className} role="status">
       <span>{props.notice}</span>
-      {canOpenSkillSettings ? (
+      {props.actionLabel && props.onAction ? (
+        <button type="button" onClick={props.onAction}>
+          {props.actionLabel}
+        </button>
+      ) : canOpenSkillSettings ? (
         <button type="button" onClick={openSkillSettings}>
           打开能力选项
         </button>

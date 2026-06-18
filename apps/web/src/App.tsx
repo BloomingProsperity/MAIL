@@ -572,7 +572,10 @@ interface HermesNoticeState {
   text: string;
   skillId?: string;
   requiredPermission?: HermesSkillRequiredPermission;
+  action?: HermesNoticeAction;
 }
+
+type HermesNoticeAction = "open_runtime_settings";
 
 interface HermesSkillSettingsFocus {
   skillId: string;
@@ -655,9 +658,10 @@ export function App(props: AppProps = {}) {
     notice: string | undefined,
     skillId?: string,
     requiredPermission?: HermesSkillRequiredPermission,
+    action?: HermesNoticeAction,
   ) {
     setHermesDockNoticeState(
-      notice ? { text: notice, skillId, requiredPermission } : undefined,
+      notice ? { text: notice, skillId, requiredPermission, action } : undefined,
     );
   }
 
@@ -670,6 +674,10 @@ export function App(props: AppProps = {}) {
       requiredPermission,
       requestId: (current?.requestId ?? 0) + 1,
     }));
+    setActiveView("settings");
+  }
+
+  function openHermesRuntimeSettings() {
     setActiveView("settings");
   }
   const [accountDiscoveryReady, setAccountDiscoveryReady] = useState(
@@ -950,6 +958,7 @@ export function App(props: AppProps = {}) {
           hermesActionPlanErrorNotice(error, "create"),
           hermesDisabledSkillIdFromError(error, "action_plan"),
           hermesDisabledSkillRequiredPermissionFromError(error),
+          hermesNoticeActionFromError(error),
         );
       } finally {
         if (isCurrentHermesDockRequest(requestId)) {
@@ -990,6 +999,7 @@ export function App(props: AppProps = {}) {
         }),
         hermesDisabledSkillIdFromError(error, "email_search_qa"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       if (isCurrentHermesDockRequest(requestId)) {
@@ -1060,6 +1070,7 @@ export function App(props: AppProps = {}) {
         hermesActionPlanErrorNotice(error, "confirm"),
         hermesDisabledSkillIdFromError(error, "action_plan"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       if (isCurrentHermesDockRequest(requestId)) {
@@ -1810,6 +1821,7 @@ export function App(props: AppProps = {}) {
               onTrackFollowUp={() => void trackSelectedFollowUp()}
               onConfirmHermesFollowUp={() => void confirmHermesFollowUp()}
               onOpenHermesSkillSettings={openHermesSkillSettings}
+              onOpenHermesRuntimeSettings={openHermesRuntimeSettings}
             />
           ) : (
             <MailEmptyState
@@ -1861,6 +1873,7 @@ export function App(props: AppProps = {}) {
             launch={searchLaunch}
             onOpenResult={openSearchResult}
             onOpenHermesSkillSettings={openHermesSkillSettings}
+            onOpenHermesRuntimeSettings={openHermesRuntimeSettings}
           />
         ) : null}
         {activeView === "settings" ? (
@@ -1894,11 +1907,17 @@ export function App(props: AppProps = {}) {
         busy={hermesDockBusy}
         noticeActionSkillId={hermesDockNoticeState?.skillId}
         noticeActionPermission={hermesDockNoticeState?.requiredPermission}
+        noticeActionLabel={hermesNoticeActionLabel(hermesDockNoticeState?.action)}
         formatDate={formatMailDate}
         onPromptChange={updateHermesPrompt}
         onOpen={() => void refreshHermesWorkspaceContext()}
         onSubmit={(prompt) => void submitHermesDockPrompt(prompt)}
         onApproveRule={() => void approveHermesDockRule()}
+        onNoticeAction={
+          hermesDockNoticeState?.action === "open_runtime_settings"
+            ? openHermesRuntimeSettings
+            : undefined
+        }
         onOpenSearch={launchGlobalSearch}
         onOpenHermesSkillSettings={openHermesSkillSettings}
       />
@@ -2157,6 +2176,7 @@ function MailWorkspace(props: {
     skillId: string,
     requiredPermission?: HermesSkillRequiredPermission,
   ) => void;
+  onOpenHermesRuntimeSettings: () => void;
 }) {
   const [topSearchQuery, setTopSearchQuery] = useState("");
   const [labelFormOpen, setLabelFormOpen] = useState(false);
@@ -2269,16 +2289,18 @@ function MailWorkspace(props: {
     notice: string,
     skillId?: string,
     requiredPermission?: HermesSkillRequiredPermission,
+    action?: HermesNoticeAction,
   ) {
-    setComposeNoticeState({ text: notice, skillId, requiredPermission });
+    setComposeNoticeState({ text: notice, skillId, requiredPermission, action });
   }
 
   function setReaderHermesNotice(
     notice: string,
     skillId?: string,
     requiredPermission?: HermesSkillRequiredPermission,
+    action?: HermesNoticeAction,
   ) {
-    setReaderHermesNoticeState({ text: notice, skillId, requiredPermission });
+    setReaderHermesNoticeState({ text: notice, skillId, requiredPermission, action });
   }
 
   function selectReaderTranslationSource(sourceLanguage: string) {
@@ -2984,6 +3006,7 @@ function MailWorkspace(props: {
         }),
         hermesDisabledSkillIdFromError(error, "thread_summarize"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       if (readerHermesRequestRef.current === requestId) {
@@ -3039,6 +3062,7 @@ function MailWorkspace(props: {
         }),
         hermesDisabledSkillIdFromError(error, "translate_text"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       if (readerHermesRequestRef.current === requestId) {
@@ -3157,6 +3181,7 @@ function MailWorkspace(props: {
         }),
         hermesDisabledSkillIdFromError(error, "priority_triage"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       if (readerHermesRequestRef.current === requestId) {
@@ -3325,6 +3350,7 @@ function MailWorkspace(props: {
         }),
         hermesDisabledSkillIdFromError(error, "reply_draft"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       finishComposeMessageRequest(requestId);
@@ -3385,6 +3411,7 @@ function MailWorkspace(props: {
         }),
         hermesDisabledSkillIdFromError(error, "quick_reply"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       finishComposeMessageRequest(requestId);
@@ -3707,6 +3734,7 @@ function MailWorkspace(props: {
         }),
         hermesDisabledSkillIdFromError(error, "translate_text"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       finishComposeMessageRequest(requestId);
@@ -3756,6 +3784,7 @@ function MailWorkspace(props: {
         }),
         hermesDisabledSkillIdFromError(error, "rewrite_polish"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       finishComposeMessageRequest(requestId);
@@ -4033,6 +4062,12 @@ function MailWorkspace(props: {
               notice={composeNotice}
               skillId={composeNoticeState.skillId}
               requiredPermission={composeNoticeState.requiredPermission}
+              actionLabel={hermesNoticeActionLabel(composeNoticeState.action)}
+              onAction={
+                composeNoticeState.action === "open_runtime_settings"
+                  ? props.onOpenHermesRuntimeSettings
+                  : undefined
+              }
               compact
               onOpenSkillSettings={props.onOpenHermesSkillSettings}
             />
@@ -5061,6 +5096,12 @@ function MailWorkspace(props: {
                 notice={readerHermesNotice}
                 skillId={readerHermesNoticeState.skillId}
                 requiredPermission={readerHermesNoticeState.requiredPermission}
+                actionLabel={hermesNoticeActionLabel(readerHermesNoticeState.action)}
+                onAction={
+                  readerHermesNoticeState.action === "open_runtime_settings"
+                    ? props.onOpenHermesRuntimeSettings
+                    : undefined
+                }
                 onOpenSkillSettings={props.onOpenHermesSkillSettings}
               />
             ) : null}
@@ -8049,6 +8090,7 @@ function SearchPage(props: {
     skillId: string,
     requiredPermission?: HermesSkillRequiredPermission,
   ) => void;
+  onOpenHermesRuntimeSettings: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [naturalLanguageQuery, setNaturalLanguageQuery] = useState("");
@@ -8083,6 +8125,7 @@ function SearchPage(props: {
     nextNotice: string | ((current: string) => string),
     skillId?: string,
     requiredPermission?: HermesSkillRequiredPermission,
+    action?: HermesNoticeAction,
   ) {
     setNoticeState((current) => ({
       text:
@@ -8091,6 +8134,7 @@ function SearchPage(props: {
           : nextNotice,
       skillId,
       requiredPermission,
+      action,
     }));
   }
 
@@ -8288,6 +8332,7 @@ function SearchPage(props: {
         }),
         hermesDisabledSkillIdFromError(error, "email_search_qa"),
         hermesDisabledSkillRequiredPermissionFromError(error),
+        hermesNoticeActionFromError(error),
       );
     } finally {
       setHermesSearchBusy(false);
@@ -8508,6 +8553,12 @@ function SearchPage(props: {
             notice={notice}
             skillId={noticeState.skillId}
             requiredPermission={noticeState.requiredPermission}
+            actionLabel={hermesNoticeActionLabel(noticeState.action)}
+            onAction={
+              noticeState.action === "open_runtime_settings"
+                ? props.onOpenHermesRuntimeSettings
+                : undefined
+            }
             onOpenSkillSettings={props.onOpenHermesSkillSettings}
           />
         {results.length > 0
@@ -10296,6 +10347,21 @@ function hermesSkillErrorNotice(
   }
 
   return input.fallback;
+}
+
+function hermesNoticeActionFromError(
+  error: unknown,
+): HermesNoticeAction | undefined {
+  return error instanceof ApiRequestError &&
+    error.code === "hermes_runtime_not_configured"
+    ? "open_runtime_settings"
+    : undefined;
+}
+
+function hermesNoticeActionLabel(
+  action: HermesNoticeAction | undefined,
+): string | undefined {
+  return action === "open_runtime_settings" ? "打开 Hermes 配置" : undefined;
 }
 
 function hermesDisabledSkillRequiredPermissionFromError(

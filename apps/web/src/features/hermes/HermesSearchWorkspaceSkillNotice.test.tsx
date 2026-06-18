@@ -79,6 +79,41 @@ describe("Hermes Search workspace skill notices", () => {
       expect(document.activeElement).toBe(bodyReadToggle);
     });
   });
+
+  it("opens Hermes runtime settings when the model gateway is not configured", async () => {
+    const api = createSearchSkillApiFixture();
+    vi.mocked(api.searchMailWithHermes).mockRejectedValueOnce(
+      new ApiRequestError(503, "hermes_runtime_not_configured", {
+        error: "hermes_runtime_not_configured",
+      }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    await screen.findByRole("heading", { name: "Live subject" });
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", {
+        name: "搜索",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
+      target: { value: "客户上次提到的合同在哪里" },
+    });
+    fireEvent.submit(
+      screen.getByRole("form", { name: "Hermes 自然语言搜索" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
+
+    expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Hermes 配置" })).toBeTruthy();
+  });
 });
 
 function createSearchSkillApiFixture(): EmailHubApi {

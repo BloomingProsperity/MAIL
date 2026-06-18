@@ -140,6 +140,7 @@ import {
   type SenderScreeningStatus,
   type SenderScreeningStore,
 } from "../gatekeeper/sender-screening.js";
+import { parseHermesEmailSearchQaInput } from "./hermes-search-qa-input.js";
 import {
   InvalidGatekeeperSettingsRequestError,
   isGatekeeperMode,
@@ -2677,7 +2678,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
 
       if (
         request.method === "POST" &&
-        request.url === "/api/hermes/skills/email_search_qa/run"
+        isRequestPath(request.url, "/api/hermes/skills/email_search_qa/run")
       ) {
         if (!config.hermesService?.searchMail) {
           writeJson(response, 503, { error: "hermes_search_unavailable" });
@@ -2685,13 +2686,33 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         }
 
         const skill = await ensureHermesSkillAllowed(config, "email_search_qa");
-        const input = parseHermesEmailSearchQaInput(await readRequestBody());
+        const input = parseHermesEmailSearchQaInput(
+          await readRequestBody(),
+          readHermesSkillRunAccountId(
+            request.url,
+            "/api/hermes/skills/email_search_qa/run",
+          ),
+          () =>
+            new InvalidOAuthRequestError(
+              "invalid_email_search_qa_request",
+              400,
+            ),
+        );
+        if (isApiAccessAccountScoped(apiAccessContext) && !input.accountId) {
+          rejectAccountScopedAdminRoute(response, config, requestId, requestPath);
+          return;
+        }
+        if (!input.accountId) {
+          writeJson(response, 400, { error: "invalid_email_search_qa_request" });
+          return;
+        }
         if (!ensureRouteAccountAccess(input.accountId)) {
           return;
         }
 
+        const scopedInput = { ...input, accountId: input.accountId };
         const result = await config.hermesService.searchMail(
-          withHermesSkillContextBudget(input, skill),
+          withHermesSkillContextBudget(scopedInput, skill),
         );
         writeJson(response, 202, result);
         return;
@@ -4123,13 +4144,15 @@ function isHermesGlobalSkillAdminRoute(pathname: string): boolean {
     "/api/hermes/skills/newsletter_cleanup/run",
     "/api/hermes/skills/priority_triage/run",
     "/api/hermes/skills/followup_tracker/run",
+    "/api/hermes/skills/email_search_qa/run",
   ].includes(pathname);
 }
 
 function isAccountScopedHermesSkillRunRoute(url: URL): boolean {
   if (
     url.pathname !== "/api/hermes/skills/translate_text/run" &&
-    url.pathname !== "/api/hermes/skills/rewrite_polish/run"
+    url.pathname !== "/api/hermes/skills/rewrite_polish/run" &&
+    url.pathname !== "/api/hermes/skills/email_search_qa/run"
   ) {
     return false;
   }
@@ -4144,7 +4167,8 @@ function isAccountBodyScopedHermesSkillRunRoute(
   return (
     method === "POST" &&
     (url.pathname === "/api/hermes/skills/translate_text/run" ||
-      url.pathname === "/api/hermes/skills/rewrite_polish/run")
+      url.pathname === "/api/hermes/skills/rewrite_polish/run" ||
+      url.pathname === "/api/hermes/skills/email_search_qa/run")
   );
 }
 
@@ -7156,79 +7180,6 @@ function isHermesThreadSummaryMode(
   value: unknown,
 ): value is "short" | "detailed" | "action_points" {
   return value === "short" || value === "detailed" || value === "action_points";
-}
-
-function parseHermesEmailSearchQaInput(body: string): {
-  accountId: string;
-  mailboxId?: string;
-  question: string;
-  searchQuery?: string;
-  language?: string;
-  limit?: number;
-  readMessageIds?: string[];
-  memoryIds?: string[];
-  memoryScope?: string;
-  memoryLayers?: string[];
-} {
-  const payload = JSON.parse(body) as {
-    accountId?: unknown;
-    mailboxId?: unknown;
-    question?: unknown;
-    searchQuery?: unknown;
-    language?: unknown;
-    limit?: unknown;
-    readMessageIds?: unknown;
-    memoryIds?: unknown;
-    memoryScope?: unknown;
-    memoryLayers?: unknown;
-  };
-  if (!isNonEmptyString(payload.accountId) || !isNonEmptyString(payload.question)) {
-    throw new InvalidOAuthRequestError("invalid_email_search_qa_request", 400);
-  }
-
-  return {
-    accountId: payload.accountId,
-    ...(isNonEmptyString(payload.mailboxId) ? { mailboxId: payload.mailboxId } : {}),
-    question: payload.question,
-    ...(isNonEmptyString(payload.searchQuery)
-      ? { searchQuery: payload.searchQuery }
-      : {}),
-    ...(isNonEmptyString(payload.language) ? { language: payload.language } : {}),
-    ...(payload.limit !== undefined
-      ? { limit: parseHermesSearchQaLimit(payload.limit) }
-      : {}),
-    ...parseOptionalStringArray(
-      payload.readMessageIds,
-      "readMessageIds",
-      "invalid_email_search_qa_request",
-    ),
-    ...parseOptionalStringArray(
-      payload.memoryIds,
-      "memoryIds",
-      "invalid_email_search_qa_request",
-    ),
-    ...(isNonEmptyString(payload.memoryScope)
-      ? { memoryScope: payload.memoryScope }
-      : {}),
-    ...parseOptionalStringArray(
-      payload.memoryLayers,
-      "memoryLayers",
-      "invalid_email_search_qa_request",
-    ),
-  };
-}
-
-function parseHermesSearchQaLimit(value: unknown): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < 1 ||
-    value > 20
-  ) {
-    throw new InvalidOAuthRequestError("invalid_email_search_qa_request", 400);
-  }
-
-  return value;
 }
 
 function parseHermesActionItemExtractInput(body: string): {

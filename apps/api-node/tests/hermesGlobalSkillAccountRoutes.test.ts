@@ -128,6 +128,91 @@ describe("Hermes global skill account routes", () => {
     );
   });
 
+  it("allows account-scoped tokens to run email_search_qa with a body account scope", async () => {
+    const calls: unknown[] = [];
+    const hermesService = {
+      async searchMail(input: unknown) {
+        calls.push(input);
+        return {
+          skillRunId: "run_search_1",
+          skillId: "email_search_qa",
+          answerText: "Found the latest contract thread.",
+          searchQuery: "contract",
+          citations: [],
+          matches: [],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/email_search_qa/run`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              accountId: "account_1",
+              question: "找合同",
+              limit: 5,
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(calls).toEqual([
+          {
+            accountId: "account_1",
+            question: "找合同",
+            limit: 5,
+          },
+        ]);
+      },
+      { hermesService, apiAccessAccountIds: ["account_1"] },
+    );
+  });
+
+  it("allows account-scoped tokens to run email_search_qa with a query account scope", async () => {
+    const calls: unknown[] = [];
+    const hermesService = {
+      async searchMail(input: unknown) {
+        calls.push(input);
+        return {
+          skillRunId: "run_search_1",
+          skillId: "email_search_qa",
+          answerText: "Found the latest contract thread.",
+          searchQuery: "contract",
+          citations: [],
+          matches: [],
+        };
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/hermes/skills/email_search_qa/run?accountId=account_1`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              question: "找合同",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(202);
+        expect(calls).toEqual([
+          {
+            accountId: "account_1",
+            question: "找合同",
+          },
+        ]);
+      },
+      { hermesService, apiAccessAccountIds: ["account_1"] },
+    );
+  });
+
   it("rejects mismatched query and body account scopes before calling Hermes", async () => {
     const hermesService = {
       async translate() {
@@ -135,6 +220,9 @@ describe("Hermes global skill account routes", () => {
       },
       async rewritePolish() {
         throw new Error("rewritePolish should not be called");
+      },
+      async searchMail() {
+        throw new Error("searchMail should not be called");
       },
     };
 
@@ -158,6 +246,14 @@ describe("Hermes global skill account routes", () => {
               action: "polish",
             },
             error: "invalid_rewrite_polish_request",
+          },
+          {
+            path: "/api/hermes/skills/email_search_qa/run?accountId=account_1",
+            body: {
+              accountId: "account_2",
+              question: "找合同",
+            },
+            error: "invalid_email_search_qa_request",
           },
         ];
 
@@ -184,6 +280,9 @@ describe("Hermes global skill account routes", () => {
       async rewritePolish() {
         throw new Error("rewritePolish should not be called");
       },
+      async searchMail() {
+        throw new Error("searchMail should not be called");
+      },
     };
 
     await withApi(
@@ -196,6 +295,10 @@ describe("Hermes global skill account routes", () => {
           {
             path: "/api/hermes/skills/rewrite_polish/run",
             body: { text: "Draft body", action: "polish" },
+          },
+          {
+            path: "/api/hermes/skills/email_search_qa/run",
+            body: { question: "找合同" },
           },
         ];
 
@@ -224,6 +327,9 @@ describe("Hermes global skill account routes", () => {
       async rewritePolish() {
         throw new Error("rewritePolish should not be called");
       },
+      async searchMail() {
+        throw new Error("searchMail should not be called");
+      },
     };
 
     await withApi(
@@ -239,6 +345,13 @@ describe("Hermes global skill account routes", () => {
               accountId: "account_2",
               text: "Draft body",
               action: "polish",
+            },
+          },
+          {
+            path: "/api/hermes/skills/email_search_qa/run",
+            body: {
+              accountId: "account_2",
+              question: "找合同",
             },
           },
         ];

@@ -50,6 +50,26 @@ describe("HermesDock", () => {
     expect(within(dock).getByText("邮件同步服务需检查")).toBeTruthy();
     expect(within(dock).queryByText(/EmailEngine degraded/)).toBeNull();
   });
+
+  it("routes a dock recovery action", () => {
+    const onNoticeAction = vi.fn();
+
+    render(
+      <HermesDock
+        {...dockHandlers()}
+        prompt=""
+        notice="Hermes 尚未配置模型接口。"
+        noticeActionLabel="打开 Hermes 配置"
+        onNoticeAction={onNoticeAction}
+        busy={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
+
+    expect(onNoticeAction).toHaveBeenCalledTimes(1);
+  });
 });
 
 function dockHandlers() {

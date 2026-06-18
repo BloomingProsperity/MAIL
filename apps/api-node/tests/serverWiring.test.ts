@@ -22,6 +22,15 @@ describe("server wiring", () => {
     expect(source).toMatch(/memoryStore:\s*config\.hermesMemoryStore/);
   });
 
+  it("wires Hermes email search to the production mail read store", async () => {
+    const serverUrl = new URL("../src/server.ts", import.meta.url);
+    const source = await readFile(serverUrl, "utf8");
+
+    expect(source).toMatch(
+      /createConfiguredHermesTranslationService\(\{[\s\S]*mailReadStore:\s*config\.mailReadStore,/,
+    );
+  });
+
   it("injects Hermes draft feedback learning into mail compose", async () => {
     const serverUrl = new URL("../src/server.ts", import.meta.url);
     const source = await readFile(serverUrl, "utf8");

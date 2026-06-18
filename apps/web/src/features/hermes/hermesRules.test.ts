@@ -44,6 +44,17 @@ describe("hermesRules helpers", () => {
         "confirm",
       ),
     ).toBe("Hermes 执行计划存储暂时不可用，请检查后端配置。");
+
+    expect(
+      hermesActionPlanErrorNotice(
+        new ApiRequestError(503, "hermes_runtime_not_configured", {
+          error: "hermes_runtime_not_configured",
+        }),
+        "create",
+      ),
+    ).toBe(
+      "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。",
+    );
   });
 
   it("prefers saved views but falls back to provider labels for rule navigation", () => {

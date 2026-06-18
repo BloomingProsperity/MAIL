@@ -42,6 +42,22 @@ describe("HermesNotice", () => {
     );
   });
 
+  it("renders a general recovery action when provided", () => {
+    const onAction = vi.fn();
+
+    render(
+      <HermesNotice
+        notice="Hermes 尚未配置模型接口。"
+        actionLabel="打开 Hermes 配置"
+        onAction={onAction}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves a custom class while keeping the actionable marker", () => {
     render(<HermesNotice notice="正在搜索。" className="dock-result-status" />);
 

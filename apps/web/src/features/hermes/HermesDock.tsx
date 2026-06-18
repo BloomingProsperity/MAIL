@@ -33,11 +33,13 @@ export function HermesDock(props: {
   busy: boolean;
   noticeActionSkillId?: string;
   noticeActionPermission?: HermesSkillRequiredPermission;
+  noticeActionLabel?: string;
   formatDate: (value: string) => string;
   onPromptChange: (value: string) => void;
   onOpen: () => void;
   onSubmit: (prompt: string) => void;
   onApproveRule: () => void;
+  onNoticeAction?: () => void;
   onOpenSearch: (query: string, options?: HermesSearchLaunchOptions) => void;
   onOpenHermesSkillSettings: (
     skillId: string,
@@ -139,6 +141,8 @@ export function HermesDock(props: {
               notice={props.notice}
               skillId={props.noticeActionSkillId}
               requiredPermission={props.noticeActionPermission}
+              actionLabel={props.noticeActionLabel}
+              onAction={props.onNoticeAction}
               onOpenSkillSettings={props.onOpenHermesSkillSettings}
             />
           ) : null}
