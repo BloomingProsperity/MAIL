@@ -15,6 +15,7 @@ export interface HermesSearchLaunchOptions {
   hasAttachment?: boolean;
   labelIds?: string[];
   tagMode?: MailTagMode;
+  savedView?: string;
   accountId?: string;
 }
 
@@ -22,7 +23,10 @@ export function searchLaunchFromHermesResult(
   result: HermesEmailSearchQaResult,
   accountId?: string,
 ): HermesSearchLaunchOptions {
-  const planInput = result.searchPlan.listMessagesInput;
+  const planInput = result.searchPlan.listMessagesInput as
+    typeof result.searchPlan.listMessagesInput & {
+      savedView?: string;
+    };
   return {
     ...(accountId ? { accountId } : {}),
     ...(planInput.quickFilters ? { quickFilters: planInput.quickFilters } : {}),
@@ -42,5 +46,6 @@ export function searchLaunchFromHermesResult(
       : {}),
     ...(planInput.labelIds ? { labelIds: planInput.labelIds } : {}),
     ...(planInput.tagMode ? { tagMode: planInput.tagMode } : {}),
+    ...(planInput.savedView ? { savedView: planInput.savedView } : {}),
   };
 }

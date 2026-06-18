@@ -3599,6 +3599,55 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("Filtered search result")).toBeTruthy();
   });
 
+  it("combines Search workspace saved views with account-scoped keyword filters", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items: [
+        {
+          id: input.savedView ? "message_saved_view_search" : "message_1",
+          accountId: "account_1",
+          subject: input.savedView ? "Verification saved view result" : "Live subject",
+          from: { email: "security@example.com", name: "Security" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: input.savedView ? "Matched verification code category" : "Live snippet",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: input.savedView ? 89 : 96,
+            reasons: input.savedView ? ["Saved view"] : ["Direct to you"],
+          },
+        },
+      ],
+    }));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+    fireEvent.click(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "搜索" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Search saved view 验证码" }));
+    fireEvent.change(screen.getByLabelText("搜索邮件"), {
+      target: { value: "security code" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        limit: 50,
+        q: "security code",
+        sort: "smart",
+        savedView: "codes",
+        qScopes: ["sender", "recipients", "subject", "body"],
+      });
+    });
+    expect(await screen.findByText("Verification saved view result")).toBeTruthy();
+  });
+
   it("runs Hermes natural language search from the Search workspace", async () => {
     const api = createApiFixture();
     vi.mocked(api.searchMailWithHermes).mockResolvedValueOnce({

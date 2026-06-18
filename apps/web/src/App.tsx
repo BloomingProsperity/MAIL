@@ -72,6 +72,7 @@ import {
   searchLaunchFromHermesResult,
   type HermesSearchLaunchOptions,
 } from "./features/hermes/hermesSearchLaunch";
+import { SearchSavedViewFilter } from "./features/search/SearchSavedViewFilter";
 import {
   detectHermesCommandIntent,
   hermesReaderCommandNotice,
@@ -1902,6 +1903,7 @@ export function App(props: AppProps = {}) {
             accountId={selectedMail?.accountId ?? selectedAccountId ?? ""}
             restrictToAccount={Boolean(restrictToDefaultAccount)}
             labels={navigationLabels}
+            quickCategories={navigationQuickCategories}
             launch={searchLaunch}
             onOpenResult={openSearchResult}
             onOpenHermesSkillSettings={openHermesSkillSettings}
@@ -7945,6 +7947,7 @@ function SearchPage(props: {
   accountId: string;
   restrictToAccount?: boolean;
   labels: LabelItem[];
+  quickCategories: QuickCategory[];
   launch?: SearchLaunch;
   onOpenResult: (mail: MailItem) => void;
   onOpenHermesSkillSettings: (
@@ -7980,6 +7983,7 @@ function SearchPage(props: {
   const [hasAttachment, setHasAttachment] = useState<boolean | undefined>();
   const [labelIds, setLabelIds] = useState<string[]>([]);
   const [tagMode, setTagMode] = useState<MailTagMode>("any");
+  const [selectedSavedView, setSelectedSavedView] = useState<string | undefined>();
   const [hermesSearchBusy, setHermesSearchBusy] = useState(false);
   const [hermesSearchResult, setHermesSearchResult] =
     useState<HermesEmailSearchQaResult>();
@@ -8033,26 +8037,6 @@ function SearchPage(props: {
     isCurrentRequest: () => boolean = () => true,
   ) {
     const trimmedQuery = rawQuery.trim();
-    if (!trimmedQuery) {
-      setResults([]);
-      setHasSearched(false);
-      setNotice("请输入要查找的关键词。");
-      return false;
-    }
-
-    if (!props.api) {
-      setResults([
-        {
-          ...mailItems[0],
-          subject: "关于 Q2 合作方案的确认",
-          preview: "命中：合同、附件、客户标签",
-        },
-      ]);
-      setHasSearched(true);
-      setNotice("本地预览结果。连接后会搜索已同步邮件。");
-      return true;
-    }
-
     const effectiveQuickFilters =
       launchOverride?.quickFilters ?? quickFilters;
     const effectiveQScopes = launchOverride?.qScopes ?? qScopes;
@@ -8070,6 +8054,31 @@ function SearchPage(props: {
       launchOverride?.hasAttachment ?? hasAttachment;
     const effectiveLabelIds = launchOverride?.labelIds ?? labelIds;
     const effectiveTagMode = launchOverride?.tagMode ?? tagMode;
+    const effectiveSavedView =
+      launchOverride?.savedView ?? selectedSavedView;
+
+    if (!trimmedQuery && !effectiveSavedView) {
+      setResults([]);
+      setHasSearched(false);
+      setNotice("请输入要查找的关键词，或选择一个常用分类。");
+      return false;
+    }
+
+    if (!props.api) {
+      setResults([
+        {
+          ...mailItems[0],
+          subject: "关于 Q2 合作方案的确认",
+          preview: effectiveSavedView
+            ? "命中：常用分类、合同、附件"
+            : "命中：合同、附件、客户标签",
+        },
+      ]);
+      setHasSearched(true);
+      setNotice("本地预览结果。连接后会搜索已同步邮件。");
+      return true;
+    }
+
     const hasLaunchOverride = launchOverride !== undefined;
     const effectiveSearchAllAccounts = props.restrictToAccount
       ? false
@@ -8090,8 +8099,9 @@ function SearchPage(props: {
       const page = await props.api.listMessages({
         ...(effectiveSearchAllAccounts ? {} : { accountId: effectiveAccountId }),
         limit: 50,
-        q: trimmedQuery,
+        ...(trimmedQuery ? { q: trimmedQuery } : {}),
         sort: "smart",
+        ...(effectiveSavedView ? { savedView: effectiveSavedView } : {}),
         ...(effectiveQuickFilters.length
           ? { quickFilters: effectiveQuickFilters }
           : {}),
@@ -8202,6 +8212,7 @@ function SearchPage(props: {
       setHasAttachment(searchOptions.hasAttachment);
       setLabelIds(searchOptions.labelIds ?? []);
       setTagMode(searchOptions.tagMode ?? "any");
+      setSelectedSavedView(searchOptions.savedView);
       setSearchAllAccounts(hermesSearchAllAccounts);
       const searched = await executeSearch(
         result.searchQuery,
@@ -8262,6 +8273,7 @@ function SearchPage(props: {
     setHasAttachment(props.launch.hasAttachment);
     setLabelIds(props.launch.labelIds ?? []);
     setTagMode(props.launch.tagMode ?? "any");
+    setSelectedSavedView(props.launch.savedView);
     setSearchAllAccounts(
       props.restrictToAccount ? false : !props.launch.accountId,
     );
@@ -8375,6 +8387,11 @@ function SearchPage(props: {
               收件人
             </button>
           </div>
+          <SearchSavedViewFilter
+            categories={props.quickCategories}
+            selectedSavedView={selectedSavedView}
+            onSelectSavedView={setSelectedSavedView}
+          />
           <div className="search-advanced-grid" aria-label="高级搜索筛选">
             <label>
               <span>发件人</span>
