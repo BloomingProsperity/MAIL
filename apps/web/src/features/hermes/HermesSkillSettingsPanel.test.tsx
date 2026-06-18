@@ -157,6 +157,45 @@ describe("HermesSkillSettingsPanel", () => {
     expect(within(savedTranslateCard).getByText(/已同步/)).toBeTruthy();
   });
 
+  it("snaps budget inputs to backend bounds before saving", async () => {
+    const api = createSkillApiFixture();
+
+    render(<HermesSkillSettingsPanel api={api} />);
+
+    const panel = await screen.findByLabelText("Hermes skill settings");
+    const translateCard = within(panel)
+      .getByText("翻译邮件")
+      .closest("article") as HTMLElement;
+    const contextInput = within(translateCard).getByLabelText(
+      "Hermes skill max context 翻译邮件",
+    ) as HTMLInputElement;
+    const memoryInput = within(translateCard).getByLabelText(
+      "Hermes skill memory limit 翻译邮件",
+    ) as HTMLInputElement;
+
+    fireEvent.change(contextInput, { target: { value: "12500" } });
+    fireEvent.change(memoryInput, { target: { value: "99" } });
+
+    expect(contextInput.value).toBe("12000");
+    expect(memoryInput.value).toBe("50");
+
+    fireEvent.click(
+      within(translateCard).getByRole("button", {
+        name: "Save Hermes skill settings 翻译邮件",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.updateHermesSkillSettings).toHaveBeenCalledWith({
+        skillId: "translate_text",
+        patch: expect.objectContaining({
+          maxContextChars: 12000,
+          memoryLimit: 50,
+        }),
+      });
+    });
+  });
+
   it("locks skill inputs while a backend save is in flight", async () => {
     const api = createSkillApiFixture();
     const pendingUpdate = deferred<HermesSkillDto>();

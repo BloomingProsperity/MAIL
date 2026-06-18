@@ -789,14 +789,20 @@ function formatHermesGuardrail(guardrail: string): string {
 function clampHermesSkillInteger(
   value: string,
   current: number,
-  bounds: { min: number; max: number },
+  bounds: { min: number; max: number; step?: number },
 ): number {
   const next = Number(value);
   if (!Number.isFinite(next)) {
     return current;
   }
 
-  return Math.min(bounds.max, Math.max(bounds.min, Math.trunc(next)));
+  const clamped = Math.min(bounds.max, Math.max(bounds.min, Math.trunc(next)));
+  const step = bounds.step ?? 1;
+  if (!Number.isFinite(step) || step <= 1) {
+    return clamped;
+  }
+
+  return bounds.min + Math.floor((clamped - bounds.min) / step) * step;
 }
 
 function isHermesSkillUnsaved(
