@@ -940,7 +940,7 @@ export function App(props: AppProps = {}) {
         setHermesDockRuleCandidate(plan.candidate);
         setHermesDockRuleSimulation(plan.simulation);
         setHermesDockNotice(
-          `Hermes 已生成执行计划，shadow simulation 命中 ${plan.simulation?.matchedCount ?? 0} 封邮件。`,
+          `Hermes 已生成执行计划，试运行命中 ${plan.simulation?.matchedCount ?? 0} 封邮件。`,
         );
       } catch (error) {
         if (!isCurrentHermesDockRequest(requestId)) {
@@ -2971,7 +2971,7 @@ function MailWorkspace(props: {
         return;
       }
       setReaderHermesSummary(result);
-      setReaderHermesNotice(`Hermes 已总结：${result.skillRunId}`);
+      setReaderHermesNotice("Hermes 已完成线程总结。");
     } catch (error) {
       if (readerHermesRequestRef.current !== requestId) {
         return;
@@ -3025,7 +3025,7 @@ function MailWorkspace(props: {
       }
       setReaderHermesTranslation(result);
       setReaderHermesNotice(
-        `${options.forceRefresh ? "Hermes 已重新翻译" : "Hermes 已翻译"}：${result.skillRunId}`,
+        options.forceRefresh ? "Hermes 已重新翻译。" : "Hermes 已翻译。",
       );
     } catch (error) {
       if (readerHermesRequestRef.current !== requestId) {
@@ -3144,9 +3144,7 @@ function MailWorkspace(props: {
         return;
       }
       setReaderHermesOrganization(organization);
-      setReaderHermesNotice(
-        `Hermes 已整理：${organization.priority.skillRunId}`,
-      );
+      setReaderHermesNotice("Hermes 已整理这封邮件。");
     } catch (error) {
       if (readerHermesRequestRef.current !== requestId) {
         return;
@@ -3313,7 +3311,7 @@ function MailWorkspace(props: {
         source: "hermes_reply",
         hermesSkillRunId: result.skillRunId,
         hermesDraftText: result.draftText,
-        notice: `Hermes 已生成回复草稿：${result.skillRunId}`,
+        notice: "Hermes 已生成回复草稿。",
       });
       focusComposeTarget("body");
     } catch (error) {
@@ -3373,7 +3371,7 @@ function MailWorkspace(props: {
         source: "hermes_reply",
         hermesSkillRunId: result.skillRunId,
         hermesDraftText: result.draftText,
-        notice: `Hermes 已生成快速回复：${result.skillRunId}`,
+        notice: "Hermes 已生成快速回复。",
       });
       focusComposeTarget("body");
     } catch (error) {
@@ -3696,7 +3694,7 @@ function MailWorkspace(props: {
       setComposeHermesSkillRunId(result.skillRunId);
       setComposeHermesDraftText(result.translatedText);
       setComposePreview(undefined);
-      setComposeNotice(`Hermes 已翻译草稿：${result.skillRunId}`);
+      setComposeNotice("Hermes 已翻译草稿。");
       focusComposeTarget("body");
     } catch (error) {
       if (!canApplyComposeMessageResult({ requestId, accountId, body: originalBody })) {
@@ -3746,7 +3744,7 @@ function MailWorkspace(props: {
       setComposeHermesSkillRunId(result.skillRunId);
       setComposeHermesDraftText(result.rewrittenText);
       setComposePreview(undefined);
-      setComposeNotice(`Hermes 已润色：${result.skillRunId}`);
+      setComposeNotice("Hermes 已润色草稿。");
     } catch (error) {
       if (!canApplyComposeMessageResult({ requestId, accountId, body: originalBody })) {
         return;

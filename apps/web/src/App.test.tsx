@@ -406,8 +406,8 @@ describe("Email Hub first UI baseline", () => {
 
     const plan = await screen.findByLabelText("Hermes 执行计划");
     expect(within(plan).getByText("启用验证码智能分组")).toBeTruthy();
-    expect(within(plan).getByText("审计事件：audit_plan_1")).toBeTruthy();
-    expect(within(plan).getByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+    expect(within(plan).queryByText(/audit_plan_1/)).toBeNull();
+    expect(within(plan).getByText(/试运行：命中 4 封邮件/)).toBeTruthy();
     expect(within(plan).getByText(/不写回服务商 · 会处理历史/)).toBeTruthy();
 
     fireEvent.click(within(plan).getByRole("button", { name: "确认计划" }));
@@ -700,7 +700,7 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("你好，请确认发布计划。")).toBeTruthy();
     expect(
       within(screen.getByLabelText("Hermes 邮件翻译")).getByText(
-        /新翻译 · 运行 run_translate_1 · 审计 audit_translate_1/,
+        /刚刚完成翻译/,
       ),
     ).toBeTruthy();
     const rememberPreferenceButton = within(
@@ -903,7 +903,7 @@ describe("Email Hub first UI baseline", () => {
     expect(within(translation).getByText("Hello, please confirm the launch plan.")).toBeTruthy();
     expect(
       within(translation).getByText(
-        /缓存命中 · 运行 run_translate_cached · 审计 audit_cached_translate/,
+        /使用上次翻译结果/,
       ),
     ).toBeTruthy();
     expect(api.translateMessage).toHaveBeenCalledWith(
@@ -979,7 +979,7 @@ describe("Email Hub first UI baseline", () => {
     expect(within(translation).getByText("Cached translation.")).toBeTruthy();
     expect(
       within(translation).getByText(
-        /缓存命中 · 运行 run_translate_cached · 审计 audit_cached_translate/,
+        /使用上次翻译结果/,
       ),
     ).toBeTruthy();
 
@@ -1002,12 +1002,8 @@ describe("Email Hub first UI baseline", () => {
       );
     });
     expect(await screen.findByText("Fresh translation.")).toBeTruthy();
-    expect(
-      within(screen.getByLabelText("Hermes 邮件翻译")).getByRole("button", {
-        name: "Refresh Hermes translation",
-      }),
-    ).toBeTruthy();
-    expect(await screen.findByText("Hermes 已重新翻译：run_translate_refreshed")).toBeTruthy();
+    expect(await screen.findByText("Hermes 已重新翻译。")).toBeTruthy();
+    expect(screen.queryByText(/run_translate_refreshed/)).toBeNull();
   });
 
   it("ignores a stale Hermes translation preference after switching messages", async () => {
@@ -2447,7 +2443,7 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(within(rulePanel).getByText("启用发票/账单智能分组")).toBeTruthy();
     expect(within(rulePanel).getByText(/82% · 草案/)).toBeTruthy();
-    expect(within(rulePanel).getByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/确认前必须先试运行/)).toBeTruthy();
   });
 
   it("lets users draft, simulate, and approve Hermes rules from Settings", async () => {
@@ -2473,7 +2469,7 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(within(rulePanel).getByText(/关键词 验证码、verification、otp/)).toBeTruthy();
-    expect(within(rulePanel).getByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/确认前必须先试运行/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
@@ -2487,7 +2483,7 @@ describe("Email Hub first UI baseline", () => {
         sampleLimit: 25,
       });
     });
-    expect(within(rulePanel).getByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+    expect(within(rulePanel).getByText(/试运行：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
@@ -2591,14 +2587,14 @@ describe("Email Hub first UI baseline", () => {
       target: { value: command },
     });
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(rulePanel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
         name: "Simulate Hermes rule 启用验证码智能分组",
       }),
     );
-    expect(await within(rulePanel).findByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
@@ -2634,14 +2630,14 @@ describe("Email Hub first UI baseline", () => {
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(rulePanel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
         name: "Simulate Hermes rule 启用验证码智能分组",
       }),
     );
-    expect(await within(rulePanel).findByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
@@ -2668,14 +2664,14 @@ describe("Email Hub first UI baseline", () => {
 
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(rulePanel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
         name: "Simulate Hermes rule 启用验证码智能分组",
       }),
     );
-    expect(await within(rulePanel).findByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.change(
       within(rulePanel).getByLabelText("Hermes rule label 启用验证码智能分组"),
@@ -2710,9 +2706,9 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(
-      await screen.findByText("Hermes 规则草案已保存，请重新运行 shadow simulation。"),
+      await screen.findByText("Hermes 规则草案已保存，请重新试运行。"),
     ).toBeTruthy();
-    expect(within(rulePanel).queryByText(/Shadow simulation：命中 4 封邮件/)).toBeNull();
+    expect(within(rulePanel).queryByText(/试运行：命中 4 封邮件/)).toBeNull();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
@@ -2720,7 +2716,7 @@ describe("Email Hub first UI baseline", () => {
       }),
     );
     expect(
-      await screen.findByText("请先运行 shadow simulation，再确认启用规则。"),
+      await screen.findByText("请先试运行，再确认启用规则。"),
     ).toBeTruthy();
     expect(api.createHermesActionPlan).not.toHaveBeenCalled();
 
@@ -2761,7 +2757,7 @@ describe("Email Hub first UI baseline", () => {
     );
     const rulePanel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(rulePanel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(rulePanel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    expect(await within(rulePanel).findByText(/确认前必须先试运行/)).toBeTruthy();
 
     fireEvent.click(
       within(rulePanel).getByRole("button", {
@@ -2770,7 +2766,7 @@ describe("Email Hub first UI baseline", () => {
     );
 
     expect(
-      await screen.findByText("请先运行 shadow simulation，再确认启用规则。"),
+      await screen.findByText("请先试运行，再确认启用规则。"),
     ).toBeTruthy();
     expect(api.createHermesActionPlan).not.toHaveBeenCalled();
     expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
@@ -4967,7 +4963,7 @@ describe("Email Hub first UI baseline", () => {
     expect(
       (screen.getByLabelText("Compose body") as HTMLTextAreaElement).value,
     ).not.toContain("This stale reply should not enter compose.");
-    expect(screen.queryByText(/Hermes 已生成回复草稿：run_stale_reply/)).toBeNull();
+    expect(screen.queryByText(/run_stale_reply/)).toBeNull();
   });
 
   it("uses Hermes quick reply with editable reply learning metadata", async () => {
@@ -7621,7 +7617,8 @@ describe("Email Hub first UI baseline", () => {
         memoryLayers: ["writing_style_profile", "semantic_profile"],
       });
     });
-    expect(await screen.findByText(/Hermes 已翻译草稿：run_translate_1/)).toBeTruthy();
+    expect(await screen.findByText("Hermes 已翻译草稿。")).toBeTruthy();
+    expect(screen.queryByText(/run_translate_1/)).toBeNull();
     expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
       "Hello, please confirm the launch plan.",
     );
@@ -7685,7 +7682,7 @@ describe("Email Hub first UI baseline", () => {
     });
 
     expect(body.value).toBe("我已经手动改了正文。");
-    expect(screen.queryByText(/Hermes 已翻译草稿：run_translate_stale/)).toBeNull();
+    expect(screen.queryByText(/run_translate_stale/)).toBeNull();
   });
 
   it("explains when Hermes composed draft translation is disabled by skill settings", async () => {
@@ -8159,7 +8156,7 @@ describe("Email Hub first UI baseline", () => {
     });
 
     expect(body.value).toBe("I edited this draft myself.");
-    expect(screen.queryByText(/Hermes 已润色：run_rewrite_stale/)).toBeNull();
+    expect(screen.queryByText(/run_rewrite_stale/)).toBeNull();
   });
 
   it("keeps the Hermes polished text when the user edits before saving", async () => {

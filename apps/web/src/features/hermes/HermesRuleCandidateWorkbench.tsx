@@ -76,7 +76,7 @@ export function HermesRuleCandidateWorkbench(
         hermesRuleCandidateEditMap(props.previewCandidates),
       );
       props.setCandidateSimulations({});
-      props.setRuleNotice("预览规则草案已生成，连接后会先影子模拟再确认启用。");
+      props.setRuleNotice("预览规则草案已生成，连接后会先试运行再确认启用。");
       return;
     }
 
@@ -126,7 +126,7 @@ export function HermesRuleCandidateWorkbench(
       );
       props.setCandidateSimulations({});
       props.setRuleNotice(
-        "预览行为候选已生成，连接后会从最近行为学习并先影子模拟。",
+        "预览行为候选已生成，连接后会从最近行为学习并先试运行。",
       );
       return;
     }
@@ -253,7 +253,7 @@ export function HermesRuleCandidateWorkbench(
         delete next[updated.id];
         return next;
       });
-      props.setRuleNotice("Hermes 规则草案已保存，请重新运行 shadow simulation。");
+      props.setRuleNotice("Hermes 规则草案已保存，请重新试运行。");
     } catch {
       if (!isCurrentRuleDraftRequest(requestId)) {
         return;
@@ -273,7 +273,7 @@ export function HermesRuleCandidateWorkbench(
         props.candidateEdits[candidate.id],
       )
     ) {
-      props.setRuleNotice("请先保存草案修改，再运行 shadow simulation。");
+      props.setRuleNotice("请先保存草案修改，再试运行。");
       return;
     }
 
@@ -291,7 +291,7 @@ export function HermesRuleCandidateWorkbench(
           createdAt: new Date().toISOString(),
         },
       }));
-      props.setRuleNotice("预览影子模拟已完成：命中 4 封邮件。");
+      props.setRuleNotice("预览试运行已完成：命中 4 封邮件。");
       return;
     }
 
@@ -303,7 +303,7 @@ export function HermesRuleCandidateWorkbench(
     const requestId = beginRuleDraftRequest();
     const accountId = props.accountId;
     props.setRuleDraftBusy(`simulate:${candidate.id}`);
-    props.setRuleNotice("Hermes 正在影子模拟规则...");
+    props.setRuleNotice("Hermes 正在试运行规则...");
     try {
       const simulation = await props.api.simulateHermesRule({
         accountId,
@@ -318,13 +318,13 @@ export function HermesRuleCandidateWorkbench(
         [candidate.id]: simulation,
       }));
       props.setRuleNotice(
-        `Shadow simulation 已完成：命中 ${simulation.matchedCount} 封邮件。`,
+        `试运行已完成：命中 ${simulation.matchedCount} 封邮件。`,
       );
     } catch {
       if (!isCurrentRuleDraftRequest(requestId)) {
         return;
       }
-      props.setRuleNotice("Hermes 规则影子模拟失败。");
+      props.setRuleNotice("Hermes 规则试运行失败。");
     } finally {
       if (isCurrentRuleDraftRequest(requestId)) {
         props.setRuleDraftBusy("");
@@ -344,7 +344,7 @@ export function HermesRuleCandidateWorkbench(
     }
 
     if (!props.candidateSimulations[candidate.id]) {
-      props.setRuleNotice("请先运行 shadow simulation，再确认启用规则。");
+      props.setRuleNotice("请先试运行，再确认启用规则。");
       return;
     }
 
@@ -549,13 +549,13 @@ export function HermesRuleCandidateWorkbench(
                 </div>
                 {simulation ? (
                   <p>
-                    Shadow simulation：命中 {simulation.matchedCount} 封邮件
+                    试运行：命中 {simulation.matchedCount} 封邮件
                     {simulation.sampleMessageIds.length > 0
                       ? `，样本 ${simulation.sampleMessageIds.slice(0, 3).join("、")}`
                       : ""}
                   </p>
                 ) : (
-                  <p>确认前必须先运行 shadow simulation，不会直接修改邮箱。</p>
+                  <p>确认前必须先试运行，不会直接修改邮箱。</p>
                 )}
                 {isCandidateEditable ? (
                   <div className="rule-candidate-editor">

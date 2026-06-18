@@ -362,13 +362,13 @@ describe("HermesRuleManagerPanel", () => {
     );
     const panel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(panel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    expect(await within(panel).findByText(/确认前必须先试运行/)).toBeTruthy();
     fireEvent.click(
       within(panel).getByRole("button", {
         name: "Simulate Hermes rule 启用验证码智能分组",
       }),
     );
-    expect(await within(panel).findByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(panel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
     fireEvent.click(
       within(panel).getByRole("button", {
         name: "Confirm Hermes action plan 启用验证码智能分组",
@@ -403,14 +403,14 @@ describe("HermesRuleManagerPanel", () => {
 
     const panel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(panel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    expect(await within(panel).findByText(/确认前必须先试运行/)).toBeTruthy();
 
     fireEvent.click(
       within(panel).getByRole("button", {
         name: "Simulate Hermes rule 启用验证码智能分组",
       }),
     );
-    expect(await within(panel).findByText(/Shadow simulation：命中 4 封邮件/)).toBeTruthy();
+    expect(await within(panel).findByText(/试运行：命中 4 封邮件/)).toBeTruthy();
 
     fireEvent.change(
       within(panel).getByLabelText("Hermes rule label 启用验证码智能分组"),
@@ -451,7 +451,7 @@ describe("HermesRuleManagerPanel", () => {
       }),
     );
     expect(
-      await within(panel).findByText("请先运行 shadow simulation，再确认启用规则。"),
+      await within(panel).findByText("请先试运行，再确认启用规则。"),
     ).toBeTruthy();
     expect(api.createHermesActionPlan).not.toHaveBeenCalled();
 
@@ -489,7 +489,7 @@ describe("HermesRuleManagerPanel", () => {
 
     const panel = await screen.findByLabelText("Hermes 规则管理");
     fireEvent.click(within(panel).getByRole("button", { name: "生成规则草案" }));
-    expect(await within(panel).findByText(/确认前必须先运行 shadow simulation/)).toBeTruthy();
+    expect(await within(panel).findByText(/确认前必须先试运行/)).toBeTruthy();
 
     const simulateButton = within(panel).getByRole("button", {
       name: "Simulate Hermes rule 启用验证码智能分组",

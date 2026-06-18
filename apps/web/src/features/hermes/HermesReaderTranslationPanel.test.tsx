@@ -126,7 +126,7 @@ describe("Hermes reader translation panel", () => {
     expect(onTranslate).toHaveBeenCalledTimes(1);
   });
 
-  it("renders translation metadata and remembers preferences", () => {
+  it("renders user-facing translation status and remembers preferences", () => {
     const onRememberPreference = vi.fn();
     const onRefresh = vi.fn();
 
@@ -143,11 +143,8 @@ describe("Hermes reader translation panel", () => {
 
     const result = screen.getByLabelText("Hermes 邮件翻译");
     expect(within(result).getByText("Hermes 翻译 · English")).toBeTruthy();
-    expect(
-      within(result).getByText(
-        /缓存命中 · 运行 run_translate_1 · 审计 audit_translate_1/,
-      ),
-    ).toBeTruthy();
+    expect(within(result).getByText("使用上次翻译结果")).toBeTruthy();
+    expect(within(result).queryByText(/run_translate_1|audit_translate_1/)).toBeNull();
     expect(
       within(result).getByText("Hello, please confirm the launch plan."),
     ).toBeTruthy();

@@ -206,9 +206,6 @@ export function HermesDock(props: {
                 </span>
               </div>
               <p>{ruleCandidate.title}</p>
-              {actionPlan?.auditEventId ? (
-                <p>审计事件：{actionPlan.auditEventId}</p>
-              ) : null}
               {rulePreview ? (
                 <p>
                   左侧分组：{rulePreview.label} · 关键词{" "}
@@ -226,7 +223,7 @@ export function HermesDock(props: {
               ) : null}
               {props.ruleSimulation ? (
                 <p>
-                  Shadow simulation：命中 {props.ruleSimulation.matchedCount} 封邮件
+                  试运行：命中 {props.ruleSimulation.matchedCount} 封邮件
                 </p>
               ) : null}
               {props.historyBackfill ? (
@@ -293,11 +290,11 @@ function HermesWorkspaceContextBar(props: {
   );
   const statusLabel =
     context.mailEngine?.readiness.status === "ready"
-      ? "EmailEngine ready"
-      : "EmailEngine degraded";
+      ? "邮件同步服务正常"
+      : "邮件同步服务需检查";
 
   return (
-    <div className="dock-context" aria-label="Hermes mailbox context">
+    <div className="dock-context" aria-label="Hermes 邮箱环境">
       <span>{context.accounts.length} 个账号</span>
       <span>{context.navigation?.quickCategories.length ?? 0} 个分组</span>
       <span>{context.rules.length} 条规则</span>

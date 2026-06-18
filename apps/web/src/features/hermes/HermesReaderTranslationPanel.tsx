@@ -84,11 +84,7 @@ export function HermesReaderTranslationResult(props: {
         </strong>
       </div>
       <small>
-        {props.translation.cached ? "缓存命中" : "新翻译"} · 运行{" "}
-        {props.translation.skillRunId}
-        {props.translation.auditEventId
-          ? ` · 审计 ${props.translation.auditEventId}`
-          : ""}
+        {props.translation.cached ? "使用上次翻译结果" : "刚刚完成翻译"}
       </small>
       <p>{props.translation.translatedText}</p>
       <div className="hermes-apply-actions">
