@@ -71,7 +71,7 @@ describe("HermesRuntimeSettingsPanel", () => {
     vi.mocked(api.getHermesRuntimeSettings).mockResolvedValueOnce(
       runtimeSettingsFixture({
         apiKeyConfigured: false,
-        endpointUrl: "http://hermes:8081/v1/chat/completions",
+        endpointUrl: "http://hermes:4000/v1/chat/completions",
       }),
     );
 
@@ -80,7 +80,7 @@ describe("HermesRuntimeSettingsPanel", () => {
     await screen.findByText("Hermes 访问密钥未配置。");
     expect(screen.getByLabelText("Hermes 网关")).toBeTruthy();
     expect((screen.getByLabelText("网关地址") as HTMLInputElement).value).toBe(
-      "http://hermes:8081/v1/chat/completions",
+      "http://hermes:4000/v1/chat/completions",
     );
     expect((screen.getByLabelText("路由或模型") as HTMLInputElement).value).toBe(
       "hermes-email",

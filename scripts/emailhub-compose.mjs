@@ -49,12 +49,16 @@ function parseArgs(args) {
       files.push("infra/docker-compose.prod.yml");
       continue;
     }
+    if (arg === "--hermes") {
+      files.push("infra/docker-compose.hermes.yml");
+      continue;
+    }
     command.push(arg);
   }
 
   if (command.length === 0) {
     console.error(
-      "Usage: node scripts/emailhub-compose.mjs [--test] [--prod] <docker compose args...>",
+      "Usage: node scripts/emailhub-compose.mjs [--test] [--prod] [--hermes] <docker compose args...>",
     );
     process.exit(1);
   }

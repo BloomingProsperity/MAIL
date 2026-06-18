@@ -389,7 +389,7 @@ function productionEnv(
     EMAILENGINE_AUTH_SERVER_SECRET: "prod-auth-secret",
     EENGINE_SECRET: "prod-service-secret",
     POSTGRES_PASSWORD: "prod-postgres-password",
-    HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+    HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
     GOOGLE_OAUTH_CLIENT_ID: "google-client",
     GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
     EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID: "ee-gmail-app",

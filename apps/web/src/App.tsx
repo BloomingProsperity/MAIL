@@ -8536,7 +8536,7 @@ function hermesSkillErrorNotice(
       );
     }
     if (error.code === "hermes_runtime_not_configured") {
-      return "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。";
+      return "Hermes 暂时不可用，请到设置 > Hermes 配置检查网关连接。";
     }
     const unavailableNotice = input.unavailable?.[error.code];
     if (unavailableNotice) {

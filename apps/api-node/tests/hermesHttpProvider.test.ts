@@ -6,7 +6,7 @@ describe("Hermes HTTP text provider", () => {
   it("sends prompts to a Hermes-compatible chat completions endpoint", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const provider = createHermesHttpTextProvider({
-      endpointUrl: "http://hermes:8081/v1/chat/completions",
+      endpointUrl: "http://hermes:4000/v1/chat/completions",
       apiKey: "hermes-secret",
       model: "hermes-email",
       fetchImpl: async (url, init) => {
@@ -23,7 +23,7 @@ describe("Hermes HTTP text provider", () => {
     });
 
     expect(result).toBe("你好，张三");
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     expect(calls[0].init?.method).toBe("POST");
     expect(calls[0].init?.redirect).toBe("manual");
     expect(calls[0].init?.headers).toMatchObject({
@@ -203,7 +203,7 @@ describe("Hermes HTTP text provider", () => {
 
   it("throws sanitized provider errors without leaking prompts or api keys", async () => {
     const provider = createHermesHttpTextProvider({
-      endpointUrl: "http://hermes:8081/v1/chat/completions",
+      endpointUrl: "http://hermes:4000/v1/chat/completions",
       apiKey: "hermes-secret",
       model: "hermes-email",
       fetchImpl: async () =>

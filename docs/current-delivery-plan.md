@@ -41,8 +41,8 @@ backend contracts, and verify the stack with more than smoke-level tests.
   decision gate. It does not start Docker or rerun broad suites; it reads the
   selected env file, reports `internalTestReady` separately from
   `productionReady`, lists runnable smoke suites, and calls out optional or
-  blocked coverage such as strict Postgres stress, real Hermes runtime, Gmail
-  OAuth, Outlook OAuth, and production-only secrets.
+  blocked coverage such as strict Postgres stress, overlay-backed real Hermes
+  runtime, Gmail OAuth, Outlook OAuth, and production-only secrets.
   `verify:emailengine-launch:env` is a read-only production env preflight that
   fails before Docker/HTTP checks if required launch secrets are missing,
   development defaults are still in use, or the bundled web token conflicts with
@@ -265,11 +265,14 @@ backend contracts, and verify the stack with more than smoke-level tests.
   been saved. Once a database setting exists it is explicit, including
   disabled settings; the API does not silently fall back to env in that case.
   The default product path is still Hermes-first: the UI exposes a Hermes
-  gateway and route/model, not direct model-provider setup. The current compose
-  stack does not yet bundle a runnable `hermes` service container, so internal
-  tests that exercise real AI must either provide a reachable Hermes gateway
-  through env/settings or add the dedicated Hermes runtime service as a separate
-  Docker boundary before this item can count as production-ready.
+  gateway and route/model, not direct model-provider setup. Docker self-hosting
+  now has an optional `infra/docker-compose.hermes.yml` overlay that starts a
+  LiteLLM-backed service named `hermes` and wires the API to
+  `http://hermes:4000/v1/chat/completions`. Core mailbox testing can still run
+  without AI, while internal tests that exercise real AI should start
+  `compose:up:hermes:detached` or `compose:up:prod:hermes:detached` and run the
+  runtime connection test after `HERMES_API_KEY` and the upstream
+  `HERMES_LITELLM_*` settings are configured.
 - Current data-boundary status: `hermes_memories`, `hermes_skill_runs`, and
   `hermes_audit_events` now have structure-level `account_id` columns for new
   data. Account-bound skill runs write that scope into both run and audit rows,

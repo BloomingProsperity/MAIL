@@ -50,7 +50,7 @@ describe("Hermes provider probe service", () => {
       ok: true,
       status: "ready",
       providerKey: "hermes",
-      endpointUrl: "http://hermes:8081/v1/chat/completions",
+      endpointUrl: "http://hermes:4000/v1/chat/completions",
       missing: [],
     });
     expect(calls).toHaveLength(1);

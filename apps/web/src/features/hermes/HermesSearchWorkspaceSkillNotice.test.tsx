@@ -97,7 +97,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。",
+        "Hermes 暂时不可用，请到设置 > Hermes 配置检查网关连接。",
       ),
     ).toBeTruthy();
 
@@ -123,7 +123,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 尚未配置模型接口，请到设置 > Hermes 配置填写服务地址、模型和访问密钥。",
+        "Hermes 暂时不可用，请到设置 > Hermes 配置检查网关连接。",
       ),
     ).toBeTruthy();
 
@@ -241,7 +241,7 @@ function createSearchSkillApiFixture(): EmailHubApi {
       enabled: true,
       mode: "external_hermes",
       providerKey: "hermes",
-      endpointUrl: "http://hermes:8081/v1/chat/completions",
+      endpointUrl: "http://hermes:4000/v1/chat/completions",
       model: "hermes-email",
       apiKeyConfigured: true,
       updatePolicy: "manual",

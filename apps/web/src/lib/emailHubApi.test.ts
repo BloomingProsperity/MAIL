@@ -740,7 +740,7 @@ describe("emailHubApi", () => {
           enabled: true,
           mode: "external_hermes",
           providerKey: "hermes",
-          endpointUrl: "http://hermes:8081/v1/chat/completions",
+          endpointUrl: "http://hermes:4000/v1/chat/completions",
           model: "hermes-email",
           apiKeyConfigured: true,
           updatePolicy: "manual",

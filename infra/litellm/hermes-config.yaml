@@ -1,0 +1,9 @@
+model_list:
+  - model_name: hermes-email
+    litellm_params:
+      model: os.environ/HERMES_LITELLM_MODEL
+      api_key: os.environ/HERMES_LITELLM_API_KEY
+      api_base: os.environ/HERMES_LITELLM_API_BASE
+
+general_settings:
+  background_health_checks: false

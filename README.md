@@ -9,6 +9,7 @@ Email Hub is a self-hosted email aggregation workspace. The MVP uses EmailEngine
 - `apps/worker-node`: TypeScript/Node worker entry for sync, mirror, Hermes, and import lanes.
 - `apps/api` and `apps/worker`: legacy Rust skeletons kept as future native-engine reference.
 - `infra/docker-compose.yml`: web, api, worker, postgres, emailengine, and redis-engine.
+- `infra/docker-compose.hermes.yml`: optional LiteLLM-backed Hermes gateway overlay for self-hosted AI.
 - `redis-engine` is configured with RDB snapshots and `maxmemory-policy noeviction` so EmailEngine state is not evicted under self-hosted load.
 - Docker compose waits for Postgres, Redis, EmailEngine, and API health checks before starting dependent services.
 - `infra/migrations/0001_core.sql`: core tables for accounts, messages, state, classification, search, Hermes, aliases, and domains.
@@ -35,6 +36,7 @@ the intended env file:
 cp .env.example .env
 npm run compose:up
 npm run compose:up:detached
+npm run compose:up:hermes:detached
 ```
 
 For production launch verification, use the strict overlay so API health checks
@@ -43,6 +45,7 @@ require EmailEngine launch readiness and the worker requires prepared tokens:
 ```powershell
 npm run compose:up:prod
 npm run compose:up:prod:detached
+npm run compose:up:prod:hermes:detached
 ```
 
 These production startup scripts run the EmailEngine env preflight before Docker
@@ -321,6 +324,24 @@ with missing EmailEngine tokens, rejected API auth, missing prepared token, or
 the default EmailEngine webhook/auth/service secret will fail startup or stay
 unhealthy instead of appearing launched.
 
+To include a self-hosted Hermes gateway, add the Hermes overlay:
+
+```powershell
+npm run compose:up:hermes:detached
+npm run compose:up:prod:hermes:detached
+```
+
+The Hermes overlay starts a Docker service named `hermes` from LiteLLM and wires
+the API to `http://hermes:4000/v1/chat/completions` with `HERMES_MODEL` fixed to
+the Email Hub route `hermes-email`. Set `HERMES_API_KEY` to the key Email Hub
+uses against the gateway, then set `HERMES_LITELLM_MODEL`,
+`HERMES_LITELLM_API_KEY`, and optionally `HERMES_LITELLM_API_BASE` for the
+upstream model provider inside the gateway. The web app still talks only to
+`/api/hermes/*`; model-provider keys are not browser configuration.
+After the stack is healthy, use Settings -> Hermes -> Test connection or
+`POST /api/hermes/runtime/test` to prove real AI connectivity; the EmailEngine
+env preflight is not a Hermes gateway connectivity check.
+
 The `compose:*` npm scripts run Docker Compose with a stable project name so a
 second checkout does not accidentally reuse another checkout's `infra-*`
 containers. By default the project name is derived from the repository
@@ -374,6 +395,12 @@ real mailboxes:
 - `EMAILENGINE_WEBHOOK_SECRET`, `EMAILENGINE_AUTH_SERVER_SECRET`, and
   `EENGINE_SECRET`: rotate all three away from `dev-emailhub-secret` for
   production.
+- `HERMES_API_KEY`: bearer key used by Email Hub when the optional bundled
+  Hermes gateway overlay is enabled.
+- `HERMES_LITELLM_MODEL`, `HERMES_LITELLM_API_KEY`, and
+  `HERMES_LITELLM_API_BASE`: upstream model routing for the bundled Hermes
+  gateway. Keep these provider credentials behind the gateway, not in the web
+  app.
 
 Then check the launch readiness endpoint:
 

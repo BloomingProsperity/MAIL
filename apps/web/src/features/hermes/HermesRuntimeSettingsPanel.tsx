@@ -38,7 +38,7 @@ const fallbackHermesProviders: HermesProviderCatalogItem[] = [
     aliases: [],
     modelExamples: ["hermes-email"],
     capabilities: ["chat", "email_skills", "memory"],
-    defaultEndpoint: "http://hermes:8081/v1/chat/completions",
+    defaultEndpoint: "http://hermes:4000/v1/chat/completions",
   },
   {
     key: "custom",
@@ -106,7 +106,7 @@ export function HermesRuntimeSettingsPanel(props: {
   const [mode, setMode] = useState<HermesRuntimeMode>("external_hermes");
   const [providerKey, setProviderKey] = useState("hermes");
   const [endpointUrl, setEndpointUrl] = useState(
-    "http://hermes:8081/v1/chat/completions",
+    "http://hermes:4000/v1/chat/completions",
   );
   const [model, setModel] = useState("hermes-email");
   const [apiKey, setApiKey] = useState("");
@@ -515,7 +515,7 @@ export function HermesRuntimeSettingsPanel(props: {
                 disabled={
                   isRuntimeBusy || selectedProvider?.endpointEditable === false
                 }
-                placeholder="http://hermes:8081/v1/chat/completions"
+                placeholder="http://hermes:4000/v1/chat/completions"
               />
             </label>
           </article>

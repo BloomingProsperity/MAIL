@@ -243,7 +243,7 @@ function internalEnv(
     EMAILHUB_API_TOKEN: "internal-api-token",
     VITE_EMAILHUB_API_TOKEN: "internal-api-token",
     POSTGRES_PASSWORD: "internal-postgres-password",
-    HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+    HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
     GOOGLE_OAUTH_CLIENT_ID: "google-client",
     GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
     EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID: "ee-gmail-app",

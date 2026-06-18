@@ -41,7 +41,7 @@ const HERMES_PROVIDER_CATALOG: HermesProviderCatalogItem[] = [
     key: "hermes",
     label: "Hermes 服务",
     aliases: ["external-hermes", "hermes-agent"],
-    defaultEndpoint: "http://hermes:8081/v1/chat/completions",
+    defaultEndpoint: "http://hermes:4000/v1/chat/completions",
     examples: ["hermes-email"],
     note: "Email Hub 推荐入口。让 Hermes 继续负责模型路由、技能和 memory。",
   }),

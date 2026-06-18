@@ -13,7 +13,7 @@ describe("Hermes runtime config service", () => {
       store: emptyStore(),
       env: {
         HERMES_CHAT_COMPLETIONS_URL:
-          "http://hermes:8081/v1/chat/completions",
+          "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
         HERMES_API_KEY: "env-secret",
       },
@@ -22,14 +22,14 @@ describe("Hermes runtime config service", () => {
     await expect(service.getSettings()).resolves.toMatchObject({
       enabled: true,
       mode: "external_hermes",
-      endpointUrl: "http://hermes:8081/v1/chat/completions",
+      endpointUrl: "http://hermes:4000/v1/chat/completions",
       model: "hermes-email",
       apiKeyConfigured: true,
       source: "environment",
       providerKey: "custom",
     });
     await expect(service.getConnectionSettings()).resolves.toMatchObject({
-      endpointUrl: "http://hermes:8081/v1/chat/completions",
+      endpointUrl: "http://hermes:4000/v1/chat/completions",
       model: "hermes-email",
       apiKey: "env-secret",
       providerKey: "custom",
@@ -64,7 +64,7 @@ describe("Hermes runtime config service", () => {
       },
       env: {
         HERMES_CHAT_COMPLETIONS_URL:
-          "http://hermes:8081/v1/chat/completions",
+          "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
         HERMES_API_KEY: "env-secret",
       },
@@ -341,7 +341,7 @@ describe("Hermes runtime config service", () => {
       store: emptyStore(),
       env: {
         HERMES_CHAT_COMPLETIONS_URL:
-          "http://hermes:8081/v1/chat/completions",
+          "http://hermes:4000/v1/chat/completions",
         HERMES_PROVIDER: "QWEN",
         HERMES_MODEL: "qwen3.5-plus",
       },
@@ -366,7 +366,7 @@ describe("Hermes runtime config service", () => {
             enabled: true,
             mode: "external_hermes",
             providerKey: "hermes",
-            endpointUrl: "http://hermes:8081/v1/chat/completions",
+            endpointUrl: "http://hermes:4000/v1/chat/completions",
             model: "hermes-email",
             apiKeyConfigured: true,
             updatePolicy: "manual",
@@ -379,7 +379,7 @@ describe("Hermes runtime config service", () => {
           return {
             enabled: true,
             providerKey: "hermes",
-            endpointUrl: "http://hermes:8081/v1/chat/completions",
+            endpointUrl: "http://hermes:4000/v1/chat/completions",
             model: "hermes-email",
             apiKey: "runtime-secret",
           };
@@ -400,11 +400,11 @@ describe("Hermes runtime config service", () => {
       checkedAt: "2026-06-14T08:00:00.000Z",
       providerKey: "hermes",
       requestProtocol: "openai_chat_completions",
-      endpointUrl: "http://hermes:8081/v1/chat/completions",
+      endpointUrl: "http://hermes:4000/v1/chat/completions",
       model: "hermes-email",
     });
     expect(fetchImpl).toHaveBeenCalledWith(
-      "http://hermes:8081/v1/chat/completions",
+      "http://hermes:4000/v1/chat/completions",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({

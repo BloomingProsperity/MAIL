@@ -14,7 +14,7 @@ describe("configured Hermes translation service", () => {
     const ids = ["run_1", "audit_1"];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_API_KEY: "hermes-secret",
         HERMES_MODEL: "hermes-email",
       },
@@ -68,7 +68,7 @@ describe("configured Hermes translation service", () => {
       auditEventId: "audit_1",
       translatedText: "你好",
     });
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     expect(calls[0].init?.headers).toMatchObject({
       authorization: "Bearer hermes-secret",
     });
@@ -88,7 +88,7 @@ describe("configured Hermes translation service", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
       },
       createId: () => "run_reply_1",
@@ -111,7 +111,7 @@ describe("configured Hermes translation service", () => {
       skillId: "reply_draft",
       draftText: "Hi Lina,\n\nI will review this.",
     });
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     expect(
       JSON.parse(String(calls[0].init?.body)).messages[0].content,
     ).toContain("Do not send");
@@ -121,7 +121,7 @@ describe("configured Hermes translation service", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
       },
       createId: () => "run_quick_1",
@@ -154,7 +154,7 @@ describe("configured Hermes translation service", () => {
       editable: true,
       sendsDirectly: false,
     });
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     const body = JSON.parse(String(calls[0].init?.body));
     expect(body.messages[0].content).toContain("quick email reply");
     expect(body.messages[0].content).toContain("Do not send");
@@ -165,7 +165,7 @@ describe("configured Hermes translation service", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
       },
       createId: () => "run_rewrite_1",
@@ -199,7 +199,7 @@ describe("configured Hermes translation service", () => {
       editable: true,
       sendsDirectly: false,
     });
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     const body = JSON.parse(String(calls[0].init?.body));
     expect(body.messages[0].content).toContain("Rewrite or polish");
     expect(body.messages[0].content).toContain("Do not send");
@@ -211,7 +211,7 @@ describe("configured Hermes translation service", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
       },
       createId: () => "run_summary_1",
@@ -242,7 +242,7 @@ describe("configured Hermes translation service", () => {
       mode: "short",
       summaryText: "Decision: schedule needs confirmation.",
     });
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     expect(
       JSON.parse(String(calls[0].init?.body)).messages[0].content,
     ).toContain("summarize email threads");
@@ -253,7 +253,7 @@ describe("configured Hermes translation service", () => {
     const mailSearchCalls: unknown[] = [];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
       },
       createId: () => "run_search_1",
@@ -340,7 +340,7 @@ describe("configured Hermes translation service", () => {
         sort: "smart",
       },
     ]);
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     expect(
       JSON.parse(String(calls[0].init?.body)).messages[0].content,
     ).toContain("answer questions about email search results");
@@ -350,7 +350,7 @@ describe("configured Hermes translation service", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
       },
       createId: () => "run_action_1",
@@ -392,7 +392,7 @@ describe("configured Hermes translation service", () => {
         },
       ],
     });
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     expect(
       JSON.parse(String(calls[0].init?.body)).messages[0].content,
     ).toContain("extract action items");
@@ -402,7 +402,7 @@ describe("configured Hermes translation service", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
       },
       createId: () => "run_label_1",
@@ -435,7 +435,7 @@ describe("configured Hermes translation service", () => {
       labels: [{ name: "客户", confidence: 0.86 }],
       actions: [{ type: "keep_in_inbox" }],
     });
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     expect(
       JSON.parse(String(calls[0].init?.body)).messages[0].content,
     ).toContain("suggest labels");
@@ -445,7 +445,7 @@ describe("configured Hermes translation service", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
       },
       createId: () => "run_priority_1",
@@ -483,7 +483,7 @@ describe("configured Hermes translation service", () => {
       score: 91,
       reasons: ["needs reply today"],
     });
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     expect(
       JSON.parse(String(calls[0].init?.body)).messages[0].content,
     ).toContain("triage email priority");
@@ -493,7 +493,7 @@ describe("configured Hermes translation service", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createConfiguredHermesTranslationService({
       env: {
-        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:8081/v1/chat/completions",
+        HERMES_CHAT_COMPLETIONS_URL: "http://hermes:4000/v1/chat/completions",
         HERMES_MODEL: "hermes-email",
       },
       createId: () => "run_followup_1",
@@ -535,7 +535,7 @@ describe("configured Hermes translation service", () => {
       reasons: ["we asked for confirmation and no reply yet"],
       nextAction: "Follow up tomorrow morning.",
     });
-    expect(calls[0].url).toBe("http://hermes:8081/v1/chat/completions");
+    expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");
     expect(
       JSON.parse(String(calls[0].init?.body)).messages[0].content,
     ).toContain("track follow-up state");
