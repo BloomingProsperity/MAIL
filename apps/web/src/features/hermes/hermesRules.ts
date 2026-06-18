@@ -107,7 +107,10 @@ export function hermesActionPlanErrorNotice(
 ): string {
   if (error instanceof ApiRequestError) {
     if (error.code === "hermes_skill_disabled") {
-      return hermesSkillDisabledNotice(error.skillId ?? "action_plan");
+      return hermesSkillDisabledNotice(
+        error.skillId ?? "action_plan",
+        error.requiredPermission,
+      );
     }
     if (error.code === "hermes_action_plans_unavailable") {
       return "Hermes 执行计划存储暂时不可用，请检查后端配置。";
@@ -133,8 +136,18 @@ export function hermesDisabledSkillIdFromError(
   return undefined;
 }
 
-export function hermesSkillDisabledNotice(skillId: string): string {
+export function hermesSkillDisabledNotice(
+  skillId: string,
+  requiredPermission?: "body_read" | "memory_write",
+): string {
   const skillLabel = formatHermesAuditSkillId(skillId);
+  if (requiredPermission === "body_read") {
+    return `Hermes ${skillLabel}能力缺少正文读取权限，请到设置 > Hermes 配置 > 能力选项打开“${skillLabel}”的“读取正文”开关。`;
+  }
+  if (requiredPermission === "memory_write") {
+    return `Hermes ${skillLabel}能力缺少记忆写入权限，请到设置 > Hermes 配置 > 能力选项打开“${skillLabel}”的“写入记忆”开关。`;
+  }
+
   return `Hermes ${skillLabel}能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“${skillLabel}”。`;
 }
 

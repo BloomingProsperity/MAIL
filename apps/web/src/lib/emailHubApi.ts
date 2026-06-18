@@ -2419,16 +2419,20 @@ export interface CreateEmailHubApiOptions {
 export interface ApiErrorPayload {
   error?: string;
   skillId?: string;
+  requiredPermission?: HermesSkillRequiredPermission;
   provider?: string;
   detail?: string;
   requestId?: string;
   diagnostics?: ImapSmtpConnectionDiagnostic[];
 }
 
+export type HermesSkillRequiredPermission = "body_read" | "memory_write";
+
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
   readonly skillId?: string;
+  readonly requiredPermission?: HermesSkillRequiredPermission;
   readonly provider?: string;
   readonly detail?: string;
   readonly requestId?: string;
@@ -2440,6 +2444,7 @@ export class ApiRequestError extends Error {
     this.status = status;
     this.code = code;
     this.skillId = payload?.skillId;
+    this.requiredPermission = payload?.requiredPermission;
     this.provider = payload?.provider;
     this.detail = payload?.detail;
     this.requestId = payload?.requestId;
@@ -3907,6 +3912,9 @@ function normalizeApiErrorPayload(
   if (typeof payload.skillId === "string") {
     normalized.skillId = payload.skillId;
   }
+  if (isHermesSkillRequiredPermission(payload.requiredPermission)) {
+    normalized.requiredPermission = payload.requiredPermission;
+  }
   if (typeof payload.provider === "string") {
     normalized.provider = payload.provider;
   }
@@ -3923,6 +3931,12 @@ function normalizeApiErrorPayload(
   }
 
   return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function isHermesSkillRequiredPermission(
+  value: unknown,
+): value is HermesSkillRequiredPermission {
+  return value === "body_read" || value === "memory_write";
 }
 
 function normalizeApiConnectionDiagnostics(

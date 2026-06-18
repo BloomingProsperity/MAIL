@@ -3326,6 +3326,9 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         writeJson(response, error.statusCode, {
           error: error.code,
           skillId: error.skillId,
+          ...(error.requiredPermission
+            ? { requiredPermission: error.requiredPermission }
+            : {}),
         });
         return;
       }
@@ -3411,12 +3414,14 @@ async function ensureHermesSkillAllowed(
     throw new HermesSkillDisabledError(
       skillId,
       "Hermes skill body reads are disabled",
+      "body_read",
     );
   }
   if (options.requiresMemoryWrite && !skill.settings.allowMemoryWrite) {
     throw new HermesSkillDisabledError(
       skillId,
       "Hermes skill memory writes are disabled",
+      "memory_write",
     );
   }
 

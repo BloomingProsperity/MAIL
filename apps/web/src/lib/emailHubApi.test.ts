@@ -4570,6 +4570,7 @@ describe("emailHubApi", () => {
           JSON.stringify({
             error: "hermes_skill_disabled",
             skillId: "translate_text",
+            requiredPermission: "body_read",
           }),
           {
             status: 403,
@@ -4589,6 +4590,7 @@ describe("emailHubApi", () => {
       status: 403,
       code: "hermes_skill_disabled",
       skillId: "translate_text",
+      requiredPermission: "body_read",
     } satisfies Partial<ApiRequestError>);
   });
 

@@ -393,6 +393,7 @@ describe("Hermes action plan routes", () => {
         expect(await response.json()).toEqual({
           error: "hermes_skill_disabled",
           skillId: "action_plan",
+          requiredPermission: "memory_write",
         });
       },
       { hermesActionPlanService, hermesSkillSettingsService },

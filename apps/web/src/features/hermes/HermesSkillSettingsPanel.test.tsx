@@ -72,6 +72,38 @@ describe("HermesSkillSettingsPanel", () => {
     ).toBe("true");
   });
 
+  it("focuses the requested skill permission toggle", async () => {
+    const { rerender } = render(
+      <HermesSkillSettingsPanel
+        focusedSkillId="translate_text"
+        focusedPermission="body_read"
+        focusRequestId={1}
+      />,
+    );
+
+    const bodyReadToggle = await screen.findByLabelText(
+      "Allow Hermes body reads 翻译邮件",
+    );
+    await waitFor(() => {
+      expect(document.activeElement).toBe(bodyReadToggle);
+    });
+
+    rerender(
+      <HermesSkillSettingsPanel
+        focusedSkillId="translate_text"
+        focusedPermission="memory_write"
+        focusRequestId={2}
+      />,
+    );
+
+    const memoryWriteToggle = await screen.findByLabelText(
+      "Allow Hermes memory writes 翻译邮件",
+    );
+    await waitFor(() => {
+      expect(document.activeElement).toBe(memoryWriteToggle);
+    });
+  });
+
   it("saves all changed backend skill settings and refreshes the resource profile", async () => {
     const api = createSkillApiFixture();
 

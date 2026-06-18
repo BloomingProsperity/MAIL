@@ -5,6 +5,7 @@ import type {
   HermesResourceProfileDto,
   HermesSkillDto,
   HermesSkillMode,
+  HermesSkillRequiredPermission,
 } from "../../lib/emailHubApi";
 
 type SkillModeFilter = "all" | HermesSkillMode;
@@ -113,6 +114,7 @@ const fallbackHermesResourceProfile: HermesResourceProfileDto = {
 export function HermesSkillSettingsPanel(props: {
   api?: EmailHubApi;
   focusedSkillId?: string;
+  focusedPermission?: HermesSkillRequiredPermission;
   focusRequestId?: number;
 }) {
   const [skills, setSkills] = useState<HermesSkillDto[]>(fallbackHermesSkills);
@@ -126,6 +128,7 @@ export function HermesSkillSettingsPanel(props: {
   const [savingSkillId, setSavingSkillId] = useState<string>();
   const [notice, setNotice] = useState("正在读取 Hermes 能力选项...");
   const focusedSkillRef = useRef<HTMLElement | null>(null);
+  const focusedSkillControlRef = useRef<HTMLInputElement | null>(null);
   const handledFocusRequestRef = useRef("");
   const savedSkillsById = useMemo(
     () => new Map(savedSkills.map((skill) => [skill.id, skill])),
@@ -155,7 +158,11 @@ export function HermesSkillSettingsPanel(props: {
       return;
     }
 
-    const focusRequestKey = `${props.focusRequestId ?? 0}:${props.focusedSkillId}`;
+    const focusRequestKey = [
+      props.focusRequestId ?? 0,
+      props.focusedSkillId,
+      props.focusedPermission ?? "enabled",
+    ].join(":");
     if (handledFocusRequestRef.current === focusRequestKey) {
       return;
     }
@@ -166,19 +173,31 @@ export function HermesSkillSettingsPanel(props: {
     if (focusedSkill) {
       handledFocusRequestRef.current = focusRequestKey;
     }
-  }, [props.focusRequestId, props.focusedSkillId, skills]);
+  }, [
+    props.focusRequestId,
+    props.focusedSkillId,
+    props.focusedPermission,
+    skills,
+  ]);
 
   useEffect(() => {
     if (!props.focusedSkillId || !focusedSkillRef.current) {
       return;
     }
 
-    focusedSkillRef.current.focus({ preventScroll: true });
+    const focusTarget =
+      focusedSkillControlRef.current ?? focusedSkillRef.current;
+    focusTarget.focus({ preventScroll: true });
     focusedSkillRef.current.scrollIntoView?.({
       block: "center",
       behavior: "smooth",
     });
-  }, [props.focusRequestId, props.focusedSkillId, visibleSkills.length]);
+  }, [
+    props.focusRequestId,
+    props.focusedSkillId,
+    props.focusedPermission,
+    visibleSkills.length,
+  ]);
 
   useEffect(() => {
     let alive = true;
@@ -476,6 +495,9 @@ export function HermesSkillSettingsPanel(props: {
         {visibleSkills.map((skill) => {
           const hasUnsavedChanges = unsavedSkillIds.has(skill.id);
           const isFocusedSkill = skill.id === props.focusedSkillId;
+          const focusedControl = isFocusedSkill
+            ? props.focusedPermission ?? "enabled"
+            : undefined;
           return (
             <article
               key={skill.id}
@@ -501,6 +523,11 @@ export function HermesSkillSettingsPanel(props: {
                 <div className="hermes-skill-toggles">
                   <label className="field-toggle">
                     <input
+                      ref={
+                        focusedControl === "enabled"
+                          ? focusedSkillControlRef
+                          : undefined
+                      }
                       aria-label={`Enable Hermes skill ${skill.title}`}
                       type="checkbox"
                       disabled={isSavingAnySkill}
@@ -515,6 +542,11 @@ export function HermesSkillSettingsPanel(props: {
                   </label>
                   <label className="field-toggle">
                     <input
+                      ref={
+                        focusedControl === "body_read"
+                          ? focusedSkillControlRef
+                          : undefined
+                      }
                       aria-label={`Allow Hermes body reads ${skill.title}`}
                       type="checkbox"
                       disabled={isSavingAnySkill}
@@ -529,6 +561,11 @@ export function HermesSkillSettingsPanel(props: {
                   </label>
                   <label className="field-toggle">
                     <input
+                      ref={
+                        focusedControl === "memory_write"
+                          ? focusedSkillControlRef
+                          : undefined
+                      }
                       aria-label={`Allow Hermes memory writes ${skill.title}`}
                       type="checkbox"
                       disabled={isSavingAnySkill}

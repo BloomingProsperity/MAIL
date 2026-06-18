@@ -15,11 +15,25 @@ describe("hermesRules helpers", () => {
         new ApiRequestError(403, "hermes_skill_disabled", {
           error: "hermes_skill_disabled",
           skillId: "action_plan",
+          requiredPermission: "memory_write",
         }),
         "create",
       ),
     ).toBe(
-      "Hermes 执行计划能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“执行计划”。",
+      "Hermes 执行计划能力缺少记忆写入权限，请到设置 > Hermes 配置 > 能力选项打开“执行计划”的“写入记忆”开关。",
+    );
+
+    expect(
+      hermesActionPlanErrorNotice(
+        new ApiRequestError(403, "hermes_skill_disabled", {
+          error: "hermes_skill_disabled",
+          skillId: "action_plan",
+          requiredPermission: "body_read",
+        }),
+        "create",
+      ),
+    ).toBe(
+      "Hermes 执行计划能力缺少正文读取权限，请到设置 > Hermes 配置 > 能力选项打开“执行计划”的“读取正文”开关。",
     );
 
     expect(

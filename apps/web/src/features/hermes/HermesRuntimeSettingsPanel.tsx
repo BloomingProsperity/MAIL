@@ -9,6 +9,7 @@ import type {
   HermesRuntimeMode,
   HermesRuntimeUpdateChannel,
   HermesRuntimeUpdatePolicy,
+  HermesSkillRequiredPermission,
   HermesRuntimeVersionStatus,
 } from "../../lib/emailHubApi";
 import {
@@ -77,6 +78,7 @@ export function HermesRuntimeSettingsPanel(props: {
   api?: EmailHubApi;
   accountId?: string;
   focusedSkillId?: string;
+  focusedPermission?: HermesSkillRequiredPermission;
   focusRequestId?: number;
   onHermesRuleApproved?: (rule: HermesRuleDto) => void;
 }) {
@@ -509,6 +511,7 @@ export function HermesRuntimeSettingsPanel(props: {
       <HermesSkillSettingsPanel
         api={props.api}
         focusedSkillId={props.focusedSkillId}
+        focusedPermission={props.focusedPermission}
         focusRequestId={props.focusRequestId}
       />
 

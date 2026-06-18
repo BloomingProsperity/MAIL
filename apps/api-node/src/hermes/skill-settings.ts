@@ -34,14 +34,22 @@ export class InvalidHermesSkillSettingsRequestError extends Error {
   }
 }
 
+export type HermesSkillRequiredPermission = "body_read" | "memory_write";
+
 export class HermesSkillDisabledError extends Error {
   readonly code = "hermes_skill_disabled";
   readonly statusCode = 403;
   readonly skillId: string;
+  readonly requiredPermission?: HermesSkillRequiredPermission;
 
-  constructor(skillId: string, message = "Hermes skill is disabled") {
+  constructor(
+    skillId: string,
+    message = "Hermes skill is disabled",
+    requiredPermission?: HermesSkillRequiredPermission,
+  ) {
     super(message);
     this.skillId = skillId;
+    this.requiredPermission = requiredPermission;
   }
 }
 

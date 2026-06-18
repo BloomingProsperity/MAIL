@@ -953,6 +953,63 @@ describe("Hermes routes", () => {
     );
   });
 
+  it("blocks message translation body reads when the skill disallows them", async () => {
+    const hermesSkillSettingsService = {
+      async listSkills() {
+        throw new Error("not used");
+      },
+      async updateSkillSettings() {
+        throw new Error("not used");
+      },
+      async getSkill(skillId: string) {
+        return {
+          id: skillId,
+          title: "翻译邮件",
+          mode: "read",
+          description: "翻译邮件正文",
+          settings: {
+            enabled: true,
+            maxContextChars: 24000,
+            memoryLimit: 6,
+            allowBodyRead: false,
+            allowMemoryWrite: false,
+            requireConfirmation: false,
+          },
+          settingBounds: {
+            maxContextChars: { min: 1000, max: 200000, step: 1000 },
+            memoryLimit: { min: 0, max: 50, step: 1 },
+          },
+        };
+      },
+    };
+    const hermesMessageTranslationService = {
+      async translateMessage() {
+        throw new Error("translation should not run without body read access");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/account_1/messages/message_1/translate`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ targetLanguage: "Chinese" }),
+          },
+        );
+
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({
+          error: "hermes_skill_disabled",
+          skillId: "translate_text",
+          requiredPermission: "body_read",
+        });
+      },
+      { hermesMessageTranslationService, hermesSkillSettingsService },
+    );
+  });
+
   it("returns 404 when message-scoped Hermes translation cannot read the message", async () => {
     const hermesMessageTranslationService = {
       async translateMessage() {
@@ -1944,6 +2001,7 @@ describe("Hermes routes", () => {
         expect(await response.json()).toEqual({
           error: "hermes_skill_disabled",
           skillId: "translate_text",
+          requiredPermission: "memory_write",
         });
       },
       { hermesTranslationPreferenceService, hermesSkillSettingsService },
@@ -3490,6 +3548,7 @@ describe("Hermes routes", () => {
         expect(await response.json()).toEqual({
           error: "hermes_skill_disabled",
           skillId: "reply_draft",
+          requiredPermission: "memory_write",
         });
       },
       { hermesDraftFeedbackStore, hermesSkillSettingsService },

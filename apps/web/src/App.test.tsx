@@ -1489,10 +1489,19 @@ describe("Email Hub first UI baseline", () => {
 
   it("explains when Hermes reader summary is disabled by skill settings", async () => {
     const api = createApiFixture();
+    vi.mocked(api.listHermesSkills).mockResolvedValueOnce([
+      hermesSkillFixture({
+        id: "thread_summarize",
+        title: "邮件总结",
+        mode: "read",
+        description: "总结邮件正文",
+      }),
+    ]);
     vi.mocked(api.summarizeMessage).mockRejectedValueOnce(
       new ApiRequestError(403, "hermes_skill_disabled", {
         error: "hermes_skill_disabled",
         skillId: "thread_summarize",
+        requiredPermission: "body_read",
       }),
     );
 
@@ -1508,11 +1517,19 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 邮件总结能力已禁用，请到设置 > Hermes 配置 > 能力选项启用“邮件总结”。",
+        "Hermes 邮件总结能力缺少正文读取权限，请到设置 > Hermes 配置 > 能力选项打开“邮件总结”的“读取正文”开关。",
       ),
     ).toBeTruthy();
     expect(screen.getByText("Live body from backend")).toBeTruthy();
     expect(screen.queryByText("需要确认发布时间，并在今天回复 Lina。")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开能力选项" }));
+    const bodyReadToggle = await screen.findByLabelText(
+      "Allow Hermes body reads 邮件总结",
+    );
+    await waitFor(() => {
+      expect(document.activeElement).toBe(bodyReadToggle);
+    });
   });
 
   it("ignores a stale Hermes reader summary after switching messages", async () => {
