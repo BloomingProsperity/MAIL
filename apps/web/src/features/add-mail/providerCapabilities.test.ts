@@ -94,6 +94,46 @@ describe("providerCapabilityToOption", () => {
     expect(JSON.stringify(option)).not.toMatch(/send_on_behalf|large_attachment/);
   });
 
+  it("keeps Gmail and Outlook on official web login even when capabilities are incomplete", () => {
+    expect(
+      providerCapabilityToOption(
+        capabilityFixture({
+          provider: "gmail",
+          label: "Gmail",
+          connectionLabel: "输入 Google 应用专用密码",
+          accountGroup: "global",
+          supportsWebLogin: false,
+          supportsAppPassword: true,
+          supportsMailboxPassword: true,
+        }),
+      ),
+    ).toMatchObject({
+      action: "oauth",
+      subtitle: "使用 Google 官方网页登录授权",
+      badges: ["网页登录"],
+      setupHints: ["不会要求填写 Gmail 密码"],
+    });
+
+    expect(
+      providerCapabilityToOption(
+        capabilityFixture({
+          provider: "outlook",
+          label: "Outlook",
+          connectionLabel: "输入 Outlook 应用专用密码",
+          accountGroup: "global",
+          supportsWebLogin: false,
+          supportsAppPassword: true,
+          supportsMailboxPassword: true,
+        }),
+      ),
+    ).toMatchObject({
+      action: "oauth",
+      subtitle: "使用 Microsoft 官方网页登录授权",
+      badges: ["网页登录"],
+      setupHints: ["不会要求填写 Outlook 密码"],
+    });
+  });
+
   it("keeps fallback custom-domain provider ids aligned with backend capabilities", () => {
     expect(
       fallbackAddMailProviderOptions.find(

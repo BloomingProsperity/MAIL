@@ -90,6 +90,8 @@ import {
   type HermesReaderCommandAction,
 } from "./features/hermes/hermesCommandIntent";
 import { AddMailProviderCard } from "./features/add-mail/AddMailProviderCard";
+import { ACCOUNT_CSV_TEMPLATE } from "./features/add-mail/accountCsvTemplate";
+import { formatAccountCsvImportIssue } from "./features/add-mail/csvImportIssues";
 import {
   fallbackAddMailProviderOptions,
   providerCapabilityToOption,
@@ -184,12 +186,6 @@ type MailDensity = "roomy" | "comfortable" | "compact";
 const MAX_COMPOSE_ATTACHMENTS = 20;
 const MAX_COMPOSE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const COMPOSE_AUTOSAVE_DELAY_MS = 2_000;
-const ACCOUNT_CSV_TEMPLATE = [
-  "email,provider,display_name,auth_method,username,secret,imap_host,imap_port,imap_security,smtp_host,smtp_port,smtp_security,labels,group,enabled,notes",
-  "owner@gmail.com,gmail,Owner,oauth,,,,,,,,,priority,personal,true,Log in with Google",
-  "support@qq.com,qq,Support,password,support@qq.com,mailbox-auth-code,,,,,,,support,team,true,Use mailbox authorization code",
-  "me@example.com,custom_domain,Personal domain,password,me@example.com,app-password,imap.example.com,993,tls,smtp.example.com,465,tls,personal,domain,true,Custom servers",
-].join("\n");
 const PREVIEW_ATTACHMENT_ROWS = [
   { name: "Q2_合作方案_最终版.pdf", size: "1.2 MB" },
   { name: "报价明细表.xlsx", size: "320 KB" },
@@ -6006,7 +6002,7 @@ function AddMailPage(props: {
       setCsvPreview(result);
       setCsvImportResult(undefined);
       setBulkNotice(
-        `预览完成：${result.summary.ready} 个可接入，${result.summary.needsOAuth} 个需要登录，${result.summary.invalid} 个需要修正。`,
+        `预览完成：${result.summary.ready} 个可接入，${result.summary.invalid} 个需要修正。`,
       );
     } catch {
       setBulkNotice("CSV 预览失败，请检查表头和行内容。");
@@ -6031,7 +6027,7 @@ function AddMailPage(props: {
       setCsvPreview(result);
       setCsvImportResult(result);
       setBulkNotice(
-        `已创建 ${result.createdTaskCount} 个导入任务，${result.summary.needsOAuth} 个需要在同步中心继续授权。`,
+        `已创建 ${result.createdTaskCount} 个导入任务。`,
       );
       props.onConnected?.();
     } catch {
@@ -6191,7 +6187,6 @@ function AddMailPage(props: {
   }
 
   const showSyncCenterAction =
-    (csvImportResult?.summary.needsOAuth ?? 0) > 0 ||
     (transferImportResult?.reauthRequiredCount ?? 0) > 0;
   const mailOnboardingNotice = mailOnboardingUnavailable
     ? "邮箱接入服务还没准备好，请稍后再试。"
@@ -6436,12 +6431,12 @@ function AddMailPage(props: {
         })}
       </div>
 
-      <details className="page-panel import-transfer-panel" aria-label="高级导入和账号迁移">
-        <summary>高级导入 / 账号迁移</summary>
+      <details className="page-panel import-transfer-panel" aria-label="企业导入和账号迁移">
+        <summary>企业导入 / 账号迁移</summary>
         <div className="custom-server-heading import-transfer-heading">
           <div>
-            <h2>批量导入 / 账号转移</h2>
-            <p>适合个人域名、企业邮箱或批量迁移；主流邮箱建议直接网页登录。</p>
+            <h2>企业导入 / 账号转移</h2>
+            <p>适合企业、域名邮箱和账号迁移；Gmail、Outlook 请逐个网页登录。</p>
           </div>
           {showSyncCenterAction ? (
             <button
@@ -6578,9 +6573,6 @@ function AddMailPage(props: {
             result={csvPreview}
             createdTaskCount={csvImportResult?.createdTaskCount}
             createdTasks={csvImportResult?.tasks}
-            busyTaskId={busyImportTaskId}
-            onOpenSyncCenter={props.onOpenSyncCenter}
-            onStartOAuthTask={(task) => void startImportedOAuthTask(task)}
           />
         ) : null}
         {transferImportResult ? (
@@ -6612,9 +6604,6 @@ function CsvImportPreviewTable(props: {
   result: AccountImportPreview;
   createdTaskCount?: number;
   createdTasks?: AccountImportCreateResult["tasks"];
-  busyTaskId?: string;
-  onOpenSyncCenter?: () => void;
-  onStartOAuthTask?: (task: AccountImportCreateResult["tasks"][number]) => void;
 }) {
   const createdTasksByRow = new Map(
     (props.createdTasks ?? []).map((task) => [task.rowNumber, task]),
@@ -6630,10 +6619,6 @@ function CsvImportPreviewTable(props: {
         <p>
           <strong>{props.result.summary.ready}</strong>
           <span>可直接接入</span>
-        </p>
-        <p>
-          <strong>{props.result.summary.needsOAuth}</strong>
-          <span>需要登录</span>
         </p>
         <p>
           <strong>{props.result.summary.invalid}</strong>
@@ -6675,22 +6660,10 @@ function CsvImportPreviewTable(props: {
                   </td>
                   <td>{formatCsvImportIssues(row)}</td>
                   <td>
-                    {createdTask?.authMethod === "oauth" ? (
-                      <button
-                        className="table-action-button"
-                        type="button"
-                        aria-label={`Continue authorization for row ${row.rowNumber} ${createdTask.email}`}
-                        disabled={props.busyTaskId === createdTask.id}
-                        onClick={() => props.onStartOAuthTask?.(createdTask)}
-                      >
-                        继续授权
-                      </button>
-                    ) : (
-                      formatCsvImportNextAction(
-                        row,
-                        props.createdTaskCount !== undefined,
-                        createdTask,
-                      )
+                    {formatCsvImportNextAction(
+                      row,
+                      props.createdTaskCount !== undefined,
+                      createdTask,
                     )}
                   </td>
                 </tr>
@@ -6806,7 +6779,7 @@ function formatCsvImportStatus(status: AccountImportPreviewRow["status"]): strin
 }
 
 function formatCsvImportIssues(row: AccountImportPreviewRow): string {
-  const issues = [...row.errors, ...row.warnings];
+  const issues = [...row.errors, ...row.warnings].map(formatAccountCsvImportIssue);
   return issues.length > 0 ? issues.join("；") : "无";
 }
 
@@ -6822,7 +6795,7 @@ function formatCsvImportNextAction(
     return "已跳过";
   }
   if (row.status === "needs_oauth") {
-    return tasksCreated ? "等待授权任务" : "创建任务后授权";
+    return "请改为逐个网页登录";
   }
   if (createdTask) {
     return "已创建任务";

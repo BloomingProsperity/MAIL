@@ -4109,10 +4109,14 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByText(/OAuth|IMAP|SMTP|API/)).toBeNull();
   });
 
-  it("previews CSV import and imports account transfer packages from Add Mail", async () => {
+  it("previews enterprise CSV import and imports account transfer packages from Add Mail", async () => {
     const api = createApiFixture();
-    const oauthRedirect = vi.fn();
-    const csv = "email,provider,auth_method,secret\nsupport@qq.com,qq,password,code";
+    const csv = [
+      "email,provider,auth_method,secret",
+      "support@qq.com,qq,password,code",
+      "owner@gmail.com,gmail,oauth,",
+      "bad,qq,password,",
+    ].join("\n");
     const transferPackage = {
       schemaVersion: 1 as const,
       exportedAt: "2026-06-14T08:00:00.000Z",
@@ -4131,7 +4135,6 @@ describe("Email Hub first UI baseline", () => {
       <App
         api={api}
         defaultAccountId="account_1"
-        oauthRedirect={oauthRedirect}
       />,
     );
     fireEvent.click(
@@ -4139,17 +4142,21 @@ describe("Email Hub first UI baseline", () => {
     );
 
     const advancedImport = screen.getByLabelText(
-      "高级导入和账号迁移",
+      "企业导入和账号迁移",
     ) as HTMLDetailsElement;
     expect(advancedImport.open).toBe(false);
-    fireEvent.click(screen.getByText("高级导入 / 账号迁移"));
+    fireEvent.click(screen.getByText("企业导入 / 账号迁移"));
     expect(advancedImport.open).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "下载 CSV 模板" }));
+    const templateTextArea = await screen.findByLabelText(
+      "Account CSV import",
+    ) as HTMLTextAreaElement;
     expect(
-      (await screen.findByLabelText("Account CSV import") as HTMLTextAreaElement)
-        .value,
+      templateTextArea.value,
     ).toContain("email,provider,display_name,auth_method");
+    expect(templateTextArea.value).not.toContain("gmail");
+    expect(templateTextArea.value).not.toContain("outlook");
     expect(await screen.findByText(/CSV 模板已放入文本框/)).toBeTruthy();
 
     fireEvent.change(await screen.findByLabelText("Account CSV import"), {
@@ -4161,34 +4168,17 @@ describe("Email Hub first UI baseline", () => {
       expect(api.previewAccountCsv).toHaveBeenCalledWith({ csv });
     });
     expect(await screen.findByText("owner@gmail.com")).toBeTruthy();
-    expect(await screen.findByText("email is invalid")).toBeTruthy();
-    expect((await screen.findAllByText("需登录")).length).toBeGreaterThan(0);
+    expect(
+      await screen.findByText("Gmail 请逐个网页登录，不能用 CSV 批量导入。"),
+    ).toBeTruthy();
+    expect(await screen.findByText("邮箱地址格式不正确")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "创建导入任务" }));
     await waitFor(() => {
       expect(api.createAccountCsvImport).toHaveBeenCalledWith({ csv });
     });
-    expect(await screen.findByText(/已创建 2 个导入任务/)).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Continue authorization for row 3 owner@gmail.com",
-      }),
-    );
-    await waitFor(() => {
-      expect(api.startSyncCenterOAuthReauthorization).toHaveBeenCalledWith({
-        taskId: "task_csv_2",
-        redirectUri: "http://localhost:3000/oauth/callback",
-      });
-    });
-    expect(oauthRedirect).toHaveBeenCalledWith(
-      "https://accounts.google.com/o/oauth2/v2/auth",
-    );
-    expect(sessionStorage.getItem("email-hub:oauth:state_1")).toContain(
-      '"returnTo":"add-mail"',
-    );
-    expect(sessionStorage.getItem("email-hub:oauth:state_1")).toContain(
-      '"flow":"reauthorization"',
-    );
+    expect(await screen.findByText(/已创建 1 个导入任务/)).toBeTruthy();
+    expect(api.startSyncCenterOAuthReauthorization).not.toHaveBeenCalled();
 
     fireEvent.click(
       await screen.findByLabelText("Select transfer account sync@example.com"),
@@ -5582,7 +5572,7 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.getByText("iCloud Mail")).toBeTruthy();
   });
 
-  it("falls back to EmailEngine app-password onboarding when Gmail web login is unavailable", async () => {
+  it("keeps Gmail on official web login when provider capabilities omit web login", async () => {
     const api = createApiFixture();
     const oauthRedirect = vi.fn();
     vi.mocked(api.getMailProviderCapabilities).mockResolvedValueOnce({
@@ -5614,27 +5604,20 @@ describe("Email Hub first UI baseline", () => {
       target: { value: "owner@gmail.com" },
     });
     expect(screen.queryByLabelText("Add mail secret")).toBeNull();
-    await selectCredentialProvider("Gmail");
-    fireEvent.change(screen.getByLabelText("Add mail secret"), {
-      target: { value: "google-app-password" },
-    });
-    expect(await screen.findByText("输入 Google 应用专用密码")).toBeTruthy();
-    submitCredentialProvider("Gmail");
+    expect(await screen.findByText("使用 Google 官方网页登录授权")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "连接 Gmail" }));
 
     await waitFor(() => {
-      expect(api.testImapSmtpConnection).toHaveBeenCalledWith({
-        email: "owner@gmail.com",
+      expect(api.startOAuthAccount).toHaveBeenCalledWith({
         provider: "gmail",
-        secret: "google-app-password",
+        redirectUri: expect.stringMatching(/\/oauth\/callback$/),
       });
     });
-    expect(api.onboardImapSmtpAccount).toHaveBeenCalledWith({
-      email: "owner@gmail.com",
-      provider: "gmail",
-      secret: "google-app-password",
-    });
-    expect(api.startOAuthAccount).not.toHaveBeenCalled();
-    expect(oauthRedirect).not.toHaveBeenCalled();
+    expect(api.testImapSmtpConnection).not.toHaveBeenCalled();
+    expect(api.onboardImapSmtpAccount).not.toHaveBeenCalled();
+    expect(oauthRedirect).toHaveBeenCalledWith(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
   });
 
   it("completes an OAuth callback from the provider and clears pending state", async () => {
@@ -9116,9 +9099,9 @@ function createApiFixture(): EmailHubApi {
       summary: {
         totalRows: 3,
         ready: 1,
-        needsOAuth: 1,
+        needsOAuth: 0,
         disabled: 0,
-        invalid: 1,
+        invalid: 2,
       },
       rows: [
         {
@@ -9135,8 +9118,8 @@ function createApiFixture(): EmailHubApi {
           email: "owner@gmail.com",
           provider: "gmail",
           authMethod: "oauth" as const,
-          status: "needs_oauth" as const,
-          errors: [],
+          status: "invalid" as const,
+          errors: ["gmail must be added with web login, not CSV import"],
           warnings: [],
         },
         {
@@ -9154,9 +9137,9 @@ function createApiFixture(): EmailHubApi {
       summary: {
         totalRows: 3,
         ready: 1,
-        needsOAuth: 1,
+        needsOAuth: 0,
         disabled: 0,
-        invalid: 1,
+        invalid: 2,
       },
       rows: [
         {
@@ -9173,8 +9156,8 @@ function createApiFixture(): EmailHubApi {
           email: "owner@gmail.com",
           provider: "gmail",
           authMethod: "oauth" as const,
-          status: "needs_oauth" as const,
-          errors: [],
+          status: "invalid" as const,
+          errors: ["gmail must be added with web login, not CSV import"],
           warnings: [],
         },
         {
@@ -9187,7 +9170,7 @@ function createApiFixture(): EmailHubApi {
           warnings: [],
         },
       ],
-      createdTaskCount: 2,
+      createdTaskCount: 1,
       tasks: [
         {
           rowNumber: 2,
@@ -9195,14 +9178,6 @@ function createApiFixture(): EmailHubApi {
           email: "support@qq.com",
           provider: "qq",
           authMethod: "password",
-          status: "pending",
-        },
-        {
-          rowNumber: 3,
-          id: "task_csv_2",
-          email: "owner@gmail.com",
-          provider: "gmail",
-          authMethod: "oauth",
           status: "pending",
         },
       ],

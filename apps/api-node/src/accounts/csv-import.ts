@@ -151,6 +151,7 @@ function buildImportRow(
   const enabled = parseEnabled(row.enabled);
   const errors: string[] = [];
   const warnings: string[] = [];
+  const webLoginOnlyProvider = isCsvWebLoginOnlyProvider(provider);
 
   if (!isEmailLike(email)) {
     errors.push("email is invalid");
@@ -161,11 +162,12 @@ function buildImportRow(
   if (!authMethod) {
     errors.push("auth_method is invalid");
   }
-  if (provider === "outlook" && authMethod === "password") {
-    errors.push("outlook CSV import requires OAuth");
-  }
-  if (authMethod === "oauth" && provider !== "gmail" && provider !== "outlook") {
-    errors.push("OAuth CSV import is only supported for gmail and outlook");
+  if (webLoginOnlyProvider) {
+    errors.push(`${provider} must be added with web login, not CSV import`);
+  } else if (authMethod === "oauth") {
+    errors.push(
+      "OAuth CSV import is not supported; add web-login mailboxes individually",
+    );
   }
 
   if (!enabled) {
@@ -182,7 +184,7 @@ function buildImportRow(
     };
   }
 
-  if (authMethod === "password") {
+  if (authMethod === "password" && !webLoginOnlyProvider) {
     validatePasswordRow(row, errors);
   }
 
@@ -196,34 +198,6 @@ function buildImportRow(
         status: "invalid",
         errors,
         warnings,
-      },
-    };
-  }
-
-  if (authMethod === "oauth") {
-    return {
-      preview: {
-        rowNumber,
-        email,
-        provider,
-        authMethod,
-        status: "needs_oauth",
-        errors,
-        warnings,
-      },
-      task: {
-        email,
-        provider,
-        authMethod,
-        status: "pending",
-        payload: {
-          source: "csv_import",
-          loginHint: email,
-          displayName: optionalString(row.display_name),
-          labels: parseLabels(row.labels),
-          group: optionalString(row.group),
-          notes: optionalString(row.notes),
-        },
       },
     };
   }
@@ -438,6 +412,10 @@ function normalizeAuthMethod(
   }
 
   return undefined;
+}
+
+function isCsvWebLoginOnlyProvider(provider: string): boolean {
+  return provider === "gmail" || provider === "outlook";
 }
 
 function parseEnabled(value: string | undefined): boolean {

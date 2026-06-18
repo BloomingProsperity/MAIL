@@ -13,17 +13,21 @@ export interface AddMailProviderOption {
 export const fallbackAddMailProviderOptions: AddMailProviderOption[] = [
   providerOption({
     title: "Gmail",
-    subtitle: "登录后同步 Gmail 邮件",
+    subtitle: "使用 Google 官方网页登录授权",
     mark: "G",
     provider: "gmail",
     action: "oauth",
+    badges: ["网页登录"],
+    setupHints: ["不会要求填写 Gmail 密码"],
   }),
   providerOption({
     title: "Outlook",
-    subtitle: "登录后同步 Outlook 邮件",
+    subtitle: "使用 Microsoft 官方网页登录授权",
     mark: "O",
     provider: "outlook",
     action: "oauth",
+    badges: ["网页登录"],
+    setupHints: ["不会要求填写 Outlook 密码"],
   }),
   providerOption({
     title: "163 邮箱",
@@ -74,14 +78,16 @@ export const fallbackAddMailProviderOptions: AddMailProviderOption[] = [
 export function providerCapabilityToOption(
   capability: MailProviderCapabilityDto,
 ): AddMailProviderOption {
+  const officialWebLoginCopy =
+    officialWebLoginProviderCopy[capability.provider];
   return providerOption({
     title: capability.label,
-    subtitle: capability.connectionLabel,
+    subtitle: officialWebLoginCopy?.subtitle ?? capability.connectionLabel,
     mark: providerMark(capability),
     provider: capability.provider,
     action: providerAction(capability),
     badges: providerBadges(capability),
-    setupHints: capability.setupHints,
+    setupHints: officialWebLoginCopy?.setupHints ?? capability.setupHints,
   });
 }
 
@@ -99,6 +105,9 @@ function providerOption(
 function providerAction(
   capability: MailProviderCapabilityDto,
 ): AddMailProviderOption["action"] {
+  if (isOfficialWebLoginProvider(capability.provider)) {
+    return "oauth";
+  }
   if (capability.supportsWebLogin) {
     return "oauth";
   }
@@ -128,12 +137,13 @@ function providerMark(capability: MailProviderCapabilityDto): string {
 }
 
 function providerBadges(capability: MailProviderCapabilityDto): string[] {
+  const officialWebLogin = isOfficialWebLoginProvider(capability.provider);
   const badges = [
-    capability.supportsWebLogin ? "网页登录" : undefined,
+    capability.supportsWebLogin || officialWebLogin ? "网页登录" : undefined,
     capability.supportsScanLogin ? "扫码登录" : undefined,
     capability.requiresLocalBridge ? "本地 Bridge" : undefined,
-    capability.supportsAppPassword ? "专用密码" : undefined,
-    capability.supportsMailboxPassword ? "授权码" : undefined,
+    !officialWebLogin && capability.supportsAppPassword ? "专用密码" : undefined,
+    !officialWebLogin && capability.supportsMailboxPassword ? "授权码" : undefined,
     capability.supportsLabels ? "标签同步" : undefined,
     capability.supportsAliasSync ? "别名同步" : undefined,
     capability.supportsLargeAttachment || capability.supportsCloudAttachment
@@ -147,3 +157,24 @@ function providerBadges(capability: MailProviderCapabilityDto): string[] {
 
   return [...new Set(badges)].slice(0, 5);
 }
+
+export function isOfficialWebLoginProvider(provider: string): boolean {
+  return Object.prototype.hasOwnProperty.call(
+    officialWebLoginProviderCopy,
+    provider,
+  );
+}
+
+const officialWebLoginProviderCopy: Record<
+  string,
+  { subtitle: string; setupHints: string[] }
+> = {
+  gmail: {
+    subtitle: "使用 Google 官方网页登录授权",
+    setupHints: ["不会要求填写 Gmail 密码"],
+  },
+  outlook: {
+    subtitle: "使用 Microsoft 官方网页登录授权",
+    setupHints: ["不会要求填写 Outlook 密码"],
+  },
+};

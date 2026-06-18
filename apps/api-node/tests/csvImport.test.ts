@@ -7,7 +7,7 @@ import {
 import { createInMemoryAccountOnboardingStore } from "../src/accounts/imap-smtp-onboarding";
 
 describe("account CSV import service", () => {
-  it("previews password, OAuth, disabled, and invalid rows without creating tasks", async () => {
+  it("previews supported bulk rows and rejects web-login mailboxes without creating tasks", async () => {
     const store = createInMemoryAccountOnboardingStore();
     const service = createAccountCsvImportService({
       store,
@@ -22,40 +22,43 @@ describe("account CSV import service", () => {
     expect(preview.summary).toEqual({
       totalRows: 4,
       ready: 1,
-      needsOAuth: 1,
+      needsOAuth: 0,
       disabled: 1,
-      invalid: 1,
+      invalid: 2,
     });
     expect(preview.rows.map((row) => row.status)).toEqual([
       "ready",
-      "needs_oauth",
+      "invalid",
       "disabled",
       "invalid",
     ]);
+    expect(preview.rows[1].errors).toEqual([
+      "gmail must be added with web login, not CSV import",
+    ]);
     expect(preview.rows[3].errors).toEqual([
-      "outlook CSV import requires OAuth",
+      "outlook must be added with web login, not CSV import",
     ]);
     expect(store.listTasks()).toEqual([]);
   });
 
-  it("creates onboarding tasks for valid rows and redacts secrets", async () => {
+  it("creates onboarding tasks only for supported bulk rows and redacts secrets", async () => {
     const store = createInMemoryAccountOnboardingStore();
     const service = createAccountCsvImportService({
       store,
       createId: (() => {
-        const ids = ["task_password", "task_oauth"];
+        const ids = ["task_password"];
         return () => ids.shift() ?? "extra";
       })(),
     });
 
     const result = await service.createImport({ csv: sampleCsv() });
 
-    expect(result.createdTaskCount).toBe(2);
+    expect(result.createdTaskCount).toBe(1);
     expect(result.summary).toMatchObject({
       ready: 1,
-      needsOAuth: 1,
+      needsOAuth: 0,
       disabled: 1,
-      invalid: 1,
+      invalid: 2,
     });
     expect(result.tasks).toEqual([
       {
@@ -64,14 +67,6 @@ describe("account CSV import service", () => {
         email: "support@qq.com",
         provider: "qq",
         authMethod: "password",
-        status: "pending",
-      },
-      {
-        rowNumber: 3,
-        id: "task_oauth",
-        email: "boss@gmail.com",
-        provider: "gmail",
-        authMethod: "oauth",
         status: "pending",
       },
     ]);
@@ -104,21 +99,6 @@ describe("account CSV import service", () => {
             username: "support@qq.com",
             secret: "[redacted]",
           },
-        },
-      },
-      {
-        id: "task_oauth",
-        email: "boss@gmail.com",
-        provider: "gmail",
-        authMethod: "oauth",
-        status: "pending",
-        payload: {
-          source: "csv_import",
-          loginHint: "boss@gmail.com",
-          displayName: "Boss",
-          labels: [],
-          group: "leadership",
-          notes: "authorize interactively",
         },
       },
     ]);
