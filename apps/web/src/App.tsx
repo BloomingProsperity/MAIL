@@ -4075,6 +4075,8 @@ function MailWorkspace(props: {
     `compose-surface-${composeSurface}`,
     composeContextClass,
   ].join(" ");
+  const composePortalTarget =
+    composeSurface === "floating" ? document.body : composeSlotElement;
   const composeTitle =
     composeSource === "forward"
       ? "转发邮件"
@@ -4159,7 +4161,7 @@ function MailWorkspace(props: {
         <UndoDoneNotice onUndoDone={props.onUndoDone} />
       ) : null}
 
-      {composeSurface !== "closed" && composeSlotElement
+      {composeSurface !== "closed" && composePortalTarget
         ? createPortal(
           <section
             className={composeSurfaceClass}
@@ -4761,7 +4763,7 @@ function MailWorkspace(props: {
           )}
         </div>
           </section>,
-          composeSlotElement,
+          composePortalTarget,
         )
         : null}
 
@@ -5172,15 +5174,6 @@ function MailWorkspace(props: {
             </button>
           </div>
 
-          {composeSurface === "floating" ? (
-            <div className="reader-content reader-compose-content">
-              <div
-                ref={attachComposeSlot}
-                className="reader-compose-slot"
-                aria-label="阅读窗写信区"
-              />
-            </div>
-          ) : (
           <div className="reader-content">
             <div className="reader-heading">
               <h2>{props.selectedMail.subject}</h2>
@@ -5369,7 +5362,6 @@ function MailWorkspace(props: {
               />
             ) : null}
           </div>
-          )}
         </article>
       </div>
 

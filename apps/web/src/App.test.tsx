@@ -6581,6 +6581,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "Lina <lina@example.com>, team@example.com" },
     });
@@ -6695,6 +6697,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Outlook shared sender address"), {
       target: { value: "shared@example.com" },
@@ -6831,6 +6835,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.click(
       await screen.findByRole("button", {
         name: "Diagnose Outlook shared sender shared@example.com",
@@ -6861,6 +6867,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -6900,6 +6908,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -6947,6 +6957,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
     });
@@ -6987,6 +6999,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
     });
@@ -7023,6 +7037,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
     });
@@ -7055,6 +7071,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -7107,6 +7125,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
     });
@@ -7143,6 +7163,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -7201,6 +7223,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     const body = screen.getByLabelText("Compose body") as HTMLTextAreaElement;
     fireEvent.change(body, {
       target: { value: "你好，请确认发布计划。" },
@@ -7247,6 +7271,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "你好，请确认发布计划。" },
     });
@@ -7280,6 +7306,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -7339,6 +7367,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Attach files to compose"), {
       target: { files: [oversizedFile] },
     });
@@ -7358,6 +7388,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Attach files to compose"), {
       target: {
         files: [new File(["hello"], "brief.txt", { type: "text/plain" })],
@@ -7375,6 +7407,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Attach files to compose"), {
       target: {
@@ -7576,6 +7610,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
     });
@@ -7615,6 +7651,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -7673,6 +7711,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     const body = screen.getByLabelText("Compose body") as HTMLTextAreaElement;
     fireEvent.change(body, {
       target: { value: "please review launch plan" },
@@ -7716,6 +7756,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
+    await openComposeWindow();
+
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
     });
@@ -7757,6 +7799,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -7809,6 +7853,7 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     vi.mocked(api.listOutbox).mockClear();
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -7844,6 +7889,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -7883,6 +7930,8 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+
+    await openComposeWindow();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
       target: { value: "lina@example.com" },
@@ -7933,6 +7982,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    await openComposeWindow();
     vi.useFakeTimers();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
@@ -8028,6 +8078,7 @@ describe("Email Hub first UI baseline", () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await openComposeWindow();
     await screen.findByText("draft_1");
     fireEvent.click(
       screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
@@ -8056,6 +8107,7 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
+    await openComposeWindow();
     vi.useFakeTimers();
 
     fireEvent.change(screen.getByLabelText("Compose recipients"), {
@@ -8190,6 +8242,7 @@ describe("Email Hub first UI baseline", () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await openComposeWindow();
     await screen.findByText("draft_1");
 
     fireEvent.change(screen.getByLabelText("Reschedule schedule_1"), {
@@ -8232,6 +8285,7 @@ describe("Email Hub first UI baseline", () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await openComposeWindow();
     await screen.findByText("draft_1");
 
     fireEvent.click(
@@ -8261,6 +8315,7 @@ describe("Email Hub first UI baseline", () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await openComposeWindow();
     await screen.findByText("draft_1");
     fireEvent.click(
       screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
@@ -8303,6 +8358,7 @@ describe("Email Hub first UI baseline", () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await openComposeWindow();
     await screen.findByText("draft_1");
     fireEvent.click(
       screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
@@ -8334,6 +8390,7 @@ describe("Email Hub first UI baseline", () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await openComposeWindow();
     await screen.findByText("draft_1");
     fireEvent.click(
       screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
@@ -8368,6 +8425,7 @@ describe("Email Hub first UI baseline", () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await openComposeWindow();
     await screen.findByText("draft_1");
     fireEvent.click(
       screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
@@ -8406,6 +8464,7 @@ describe("Email Hub first UI baseline", () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" />);
+    await openComposeWindow();
     await screen.findByText("draft_1");
     fireEvent.click(
       screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
@@ -10658,7 +10717,10 @@ function createApiFixture(): EmailHubApi {
 }
 
 async function openComposeWindow() {
-  fireEvent.click(screen.getAllByRole("button", { name: "写邮件" })[0]);
+  const [composeButton] = await screen.findAllByRole("button", {
+    name: "写邮件",
+  });
+  fireEvent.click(composeButton);
   await screen.findByLabelText("Compose body");
 }
 

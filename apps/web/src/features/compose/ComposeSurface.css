@@ -2,13 +2,21 @@
   display: none;
 }
 
-.compose-surface-floating,
 .compose-surface-reader {
   width: 100%;
 }
 
-.reader-compose-content {
-  align-content: start;
+.compose-surface-floating {
+  position: fixed;
+  right: clamp(12px, 2vw, 24px);
+  bottom: clamp(12px, 2vw, 24px);
+  z-index: 70;
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 48px));
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+  overflow: auto;
+  box-shadow: 0 24px 72px rgba(17, 24, 39, 0.22);
 }
 
 .reader-compose-slot {
@@ -38,9 +46,24 @@
   display: none;
 }
 
+.compose-surface-floating .compose-panel {
+  max-height: inherit;
+  overflow: auto;
+}
+
 .compose-window-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
+}
+
+@media (max-width: 720px) {
+  .compose-surface-floating {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: calc(100vh - 24px);
+  }
 }
