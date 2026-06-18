@@ -99,7 +99,7 @@ describe("Email Hub first UI baseline", () => {
     const navLabels = within(globalNav).getAllByRole("button").map((button) => button.textContent ?? "");
     expect(navLabels).toContain("邮箱128");
     expect(navLabels).toContain("添加邮箱");
-    expect(navLabels).toContain("搜索");
+    expect(navLabels).not.toContain("搜索");
     expect(navLabels).toContain("Hermes");
     expect(navLabels).toContain("配置域名");
     expect(navLabels).toContain("设置");
@@ -1792,7 +1792,7 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByRole("button", { name: "新发件人处理" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "域名管理" })).toBeNull();
 
-    fireEvent.click(screen.getByText("管理员工具"));
+    expect(screen.getByRole("heading", { name: "高级维护" })).toBeTruthy();
     expect(await screen.findByLabelText("数据维护面板")).toBeTruthy();
   });
 
@@ -1887,14 +1887,14 @@ describe("Email Hub first UI baseline", () => {
     expect(api.listHermesAuditLog).not.toHaveBeenCalled();
   });
 
-  it("opens data maintenance from the collapsed Settings admin tools", async () => {
+  it("shows data maintenance directly in Settings", async () => {
     render(<App />);
 
     fireEvent.click(
       within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
     );
-    fireEvent.click(screen.getByText("管理员工具"));
 
+    expect(screen.getByRole("heading", { name: "高级维护" })).toBeTruthy();
     expect(await screen.findByLabelText("数据维护面板")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "数据维护" })).toBeTruthy();
   });
@@ -2356,7 +2356,6 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
-        accountId: "account_1",
         limit: 50,
         q: "signed contract",
         sort: "smart",
@@ -2421,7 +2420,6 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
-        accountId: "account_1",
         limit: 50,
         q: "contract",
         sort: "smart",
@@ -2474,7 +2472,6 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
-        accountId: "account_1",
         limit: 50,
         q: "security code",
         sort: "smart",
@@ -2551,7 +2548,6 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.searchMailWithHermes).toHaveBeenCalledWith({
-        accountId: "account_1",
         question: "客户上次提到的合同在哪里",
         language: "zh-CN",
         limit: 10,
@@ -2560,7 +2556,6 @@ describe("Email Hub first UI baseline", () => {
     });
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
-        accountId: "account_1",
         limit: 50,
         q: "signed contract",
         sort: "smart",
@@ -2705,7 +2700,6 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
-        accountId: "account_1",
         limit: 50,
         q: "billing contact",
         qScopes: ["sender", "subject", "body"],
@@ -2751,7 +2745,6 @@ describe("Email Hub first UI baseline", () => {
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
-        accountId: "account_1",
         limit: 50,
         q: "missing invoice",
         qScopes: ["sender", "recipients", "subject", "body"],
@@ -2948,27 +2941,8 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByText(/OAuth|IMAP|SMTP|API/)).toBeNull();
   });
 
-  it("previews enterprise CSV import and imports account transfer packages from Add Mail", async () => {
+  it("keeps enterprise import and account transfer out of the regular Add Mail page", async () => {
     const api = createApiFixture();
-    const csv = [
-      "email,provider,auth_method,secret",
-      "support@qq.com,qq,password,code",
-      "owner@gmail.com,gmail,oauth,",
-      "bad,qq,password,",
-    ].join("\n");
-    const transferPackage = {
-      schemaVersion: 1 as const,
-      exportedAt: "2026-06-14T08:00:00.000Z",
-      accounts: [
-        {
-          email: "sync@example.com",
-          provider: "gmail",
-          authMethod: "oauth" as const,
-          engineProvider: "native" as const,
-          displayName: "Sync",
-        },
-      ],
-    };
 
     render(
       <App
@@ -2980,84 +2954,11 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
     );
 
-    const advancedImport = screen.getByLabelText(
-      "企业导入和账号迁移",
-    ) as HTMLDetailsElement;
-    expect(advancedImport.open).toBe(false);
-    fireEvent.click(screen.getByText("企业导入 / 账号迁移"));
-    expect(advancedImport.open).toBe(true);
-
-    fireEvent.click(screen.getByRole("button", { name: "下载 CSV 模板" }));
-    const templateTextArea = await screen.findByLabelText(
-      "Account CSV import",
-    ) as HTMLTextAreaElement;
-    expect(
-      templateTextArea.value,
-    ).toContain("email,provider,display_name,auth_method");
-    expect(templateTextArea.value).not.toContain("gmail");
-    expect(templateTextArea.value).not.toContain("outlook");
-    expect(await screen.findByText(/CSV 模板已放入文本框/)).toBeTruthy();
-
-    fireEvent.change(await screen.findByLabelText("Account CSV import"), {
-      target: { value: csv },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "预览 CSV" }));
-
-    await waitFor(() => {
-      expect(api.previewAccountCsv).toHaveBeenCalledWith({ csv });
-    });
-    expect(await screen.findByText("owner@gmail.com")).toBeTruthy();
-    expect(
-      await screen.findByText("Gmail 请逐个网页登录，不能用 CSV 批量导入。"),
-    ).toBeTruthy();
-    expect(await screen.findByText("邮箱地址格式不正确")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "创建导入任务" }));
-    await waitFor(() => {
-      expect(api.createAccountCsvImport).toHaveBeenCalledWith({ csv });
-    });
-    expect(await screen.findByText(/已创建 1 个导入任务/)).toBeTruthy();
-    expect(api.startSyncCenterOAuthReauthorization).not.toHaveBeenCalled();
-
-    fireEvent.click(
-      await screen.findByLabelText("Select transfer account sync@example.com"),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "导出安全配置" }));
-    await waitFor(() => {
-      expect(api.exportAccountTransfer).toHaveBeenCalledWith({
-        accountIds: ["account_1"],
-      });
-    });
-
-    fireEvent.change(screen.getByLabelText("Account transfer file"), {
-      target: {
-        files: [
-          new File([JSON.stringify(transferPackage)], "transfer.json", {
-            type: "application/json",
-          }),
-        ],
-      },
-    });
-    await waitFor(() => {
-      expect(
-        (screen.getByLabelText("Account transfer package") as HTMLTextAreaElement)
-          .value,
-      ).toContain("sync@example.com");
-    });
-    expect(await screen.findByText(/已读取迁移包文件/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "导入迁移包" }));
-    await waitFor(() => {
-      expect(api.importAccountTransfer).toHaveBeenCalledWith({
-        package: transferPackage,
-      });
-    });
-    expect(await screen.findByText(/已导入 1 个账号/)).toBeTruthy();
-    const transferResult = await screen.findByLabelText("账号迁移导入结果");
-    expect(within(transferResult).getByText("sync@example.com")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "打开同步中心授权" }));
-    expect(await screen.findByRole("heading", { name: "同步中心" })).toBeTruthy();
+    expect(screen.queryByLabelText("企业导入和账号迁移")).toBeNull();
+    expect(screen.queryByText("企业导入 / 账号迁移")).toBeNull();
+    expect(screen.queryByLabelText("Account CSV import")).toBeNull();
+    expect(screen.queryByLabelText("Account transfer package")).toBeNull();
+    expect(screen.queryByLabelText("迁移导出账号选择")).toBeNull();
   });
 
   it("loads common categories through the backend saved view route", async () => {
@@ -4000,8 +3901,8 @@ describe("Email Hub first UI baseline", () => {
     ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    fireEvent.click(screen.getByText("管理员工具"));
 
+    expect(screen.getByRole("heading", { name: "高级维护" })).toBeTruthy();
     expect(await screen.findByRole("region", { name: "服务运行体检" })).toBeTruthy();
     expect(
       await screen.findByRole("region", { name: "邮箱接入体检" }),

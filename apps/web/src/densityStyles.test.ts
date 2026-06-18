@@ -12,8 +12,8 @@ function ruleBody(selector: string): string {
 }
 
 describe("mail density styles", () => {
-  it("keeps the base UI font compact for a desktop mail client", () => {
-    expect(ruleBody("body")).toContain("font-size: 13px");
+  it("keeps the base UI readable for a desktop mail client", () => {
+    expect(ruleBody("body")).toContain("font-size: 14px");
   });
 
   it("keeps Outlook-style density modes materially different", () => {
@@ -22,8 +22,8 @@ describe("mail density styles", () => {
     expect(ruleBody(".density-roomy .message-row")).toContain("min-height: 82px");
   });
 
-  it("keeps common controls short enough for dense mail workflows", () => {
-    expect(ruleBody(".top-search,\n.large-search")).toContain("min-height: 30px");
+  it("keeps search readable and common controls dense for mail workflows", () => {
+    expect(ruleBody(".top-search,\n.large-search")).toContain("min-height: 38px");
     expect(ruleBody(".primary-button,\n.ghost-button,\n.tiny-button,\n.tiny-icon-button,\n.icon-button,\n.toolbar-button,\n.provider-card button,\n.task-row button,\n.filter-row button,\n.dock-launcher,\n.dock-model,\n.dock-action,\n.dock-send")).toContain("min-height: 30px");
   });
 });

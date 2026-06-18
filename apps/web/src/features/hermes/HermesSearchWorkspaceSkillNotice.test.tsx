@@ -52,7 +52,6 @@ describe("Hermes Search workspace skill notices", () => {
     ).toBeTruthy();
     await waitFor(() => {
       expect(api.searchMailWithHermes).toHaveBeenCalledWith({
-        accountId: "account_1",
         question: "客户上次提到的合同在哪里",
         language: "zh-CN",
         limit: 10,

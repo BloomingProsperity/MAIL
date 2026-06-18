@@ -1463,12 +1463,12 @@ describe("API native send transport", () => {
         subject: "Launch plan",
         bodyText: "Plain body",
       }),
-    ).rejects.toThrow("native access token unavailable");
+    ).rejects.toThrow("OAuth access token unavailable");
     expect(queries.at(-1)?.text).toMatch(/sync_state = 'reauth_required'/i);
     expect(queries.at(-1)?.values).toEqual([
       "acc_gmail",
       "task_reauth_1",
-      "native access token unavailable for account acc_gmail: OAuth refresh failed: 400 invalid_grant",
+      "OAuth access token unavailable for account acc_gmail: OAuth refresh failed: 400 invalid_grant",
     ]);
   });
 

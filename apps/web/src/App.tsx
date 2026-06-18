@@ -300,7 +300,6 @@ const PREVIEW_ACCOUNT_ID = "account_1";
 const navItems: Array<{ id: ViewId; label: string; icon: typeof Inbox; count?: number }> = [
   { id: "mail", label: "邮箱", icon: Inbox },
   { id: "add-mail", label: "添加邮箱", icon: MailPlus },
-  { id: "search", label: "搜索", icon: Search },
   { id: "hermes", label: "Hermes", icon: Sparkles },
   { id: "domains", label: "配置域名", icon: Globe2 },
   { id: "settings", label: "设置", icon: Settings }
@@ -573,9 +572,9 @@ export function App(props: AppProps = {}) {
     typeof window === "undefined" ? undefined : window.location,
   );
   const sidebarResize = useResizablePane({
-    initialSize: 168,
-    minSize: 132,
-    maxSize: 280,
+    initialSize: 184,
+    minSize: 164,
+    maxSize: 320,
     storageKey: "email-hub:layout:sidebar",
   });
   const [activeView, setActiveView] = useState<ViewId>(
@@ -6115,6 +6114,7 @@ function AddMailPage(props: {
 
   const showSyncCenterAction =
     (transferImportResult?.reauthRequiredCount ?? 0) > 0;
+  const showEnterpriseImportPanel = false;
   const mailOnboardingNotice = mailOnboardingUnavailable
     ? "邮箱接入服务还没准备好，请稍后再试。"
     : mailEngineHealthUnavailable
@@ -6358,6 +6358,7 @@ function AddMailPage(props: {
         })}
       </div>
 
+      {showEnterpriseImportPanel ? (
       <details className="page-panel import-transfer-panel" aria-label="企业导入和账号迁移">
         <summary>企业导入 / 账号迁移</summary>
         <div className="custom-server-heading import-transfer-heading">
@@ -6511,6 +6512,7 @@ function AddMailPage(props: {
           />
         ) : null}
       </details>
+      ) : null}
 
       {diagnostics.length > 0 ? (
         <section className="page-panel diagnostic-list" aria-label="添加邮箱诊断">
@@ -7605,12 +7607,12 @@ function SearchPage(props: {
   const [hasSearched, setHasSearched] = useState(false);
   const [noticeState, setNoticeState] = useState<HermesNoticeState>({
     text:
-      props.restrictToAccount || props.accountId
+      props.restrictToAccount
         ? "输入关键词后搜索当前邮箱。"
         : "输入关键词后搜索所有已同步邮件。",
   });
   const [searchAllAccounts, setSearchAllAccounts] = useState(
-    () => !props.restrictToAccount && !props.accountId,
+    () => !props.restrictToAccount,
   );
   const [quickFilters, setQuickFilters] = useState<MailQuickFilter[]>([]);
   const [qScopes, setQScopes] = useState<MailSearchScope[]>([
@@ -7924,7 +7926,7 @@ function SearchPage(props: {
   }, [props.launch?.requestId]);
 
   useEffect(() => {
-    if (props.restrictToAccount || props.accountId) {
+    if (props.restrictToAccount) {
       setSearchAllAccounts(false);
       setNotice((current) =>
         current === "输入关键词后搜索所有已同步邮件。"
@@ -7935,7 +7937,7 @@ function SearchPage(props: {
   }, [props.accountId, props.restrictToAccount]);
 
   return (
-    <section className="workspace-page page-scroll narrow">
+    <section className="workspace-page page-scroll search-page">
       <header className="topbar single">
         <div>
           <h1>搜索</h1>
@@ -8182,14 +8184,14 @@ function SettingsPage(props: {
         </div>
       </header>
       <div className="settings-detail settings-admin-detail">
-        <details className="settings-drawer">
-          <summary>
+        <section className="settings-admin-section" aria-label="高级维护">
+          <div className="settings-admin-heading">
             <Settings size={18} />
-            <span>管理员工具</span>
-          </summary>
+            <h2>高级维护</h2>
+          </div>
           <SystemStatusSettingsPanel api={props.api} />
           <ComposeAttachmentMaintenancePanel api={props.api} />
-        </details>
+        </section>
       </div>
     </section>
   );

@@ -4,7 +4,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -26,11 +25,8 @@ describe("Hermes search account scope", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", {
-        name: "搜索",
-      }),
-    );
+    fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
+    await screen.findByRole("heading", { name: "搜索" });
     fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
       target: { value: "所有邮箱里谁发过合同？" },
     });
@@ -75,11 +71,8 @@ describe("Hermes search account scope", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", {
-        name: "搜索",
-      }),
-    );
+    fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
+    await screen.findByRole("heading", { name: "搜索" });
     fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
       target: { value: "旧问题" },
     });
