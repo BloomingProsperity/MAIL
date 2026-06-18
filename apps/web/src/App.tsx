@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Archive,
-  AtSign,
   Bold,
   CheckCircle2,
   ChevronDown,
@@ -73,14 +72,18 @@ import {
   searchLaunchFromHermesResult,
   type HermesSearchLaunchOptions,
 } from "./features/hermes/hermesSearchLaunch";
+import { AddMailProviderCard } from "./features/add-mail/AddMailProviderCard";
+import {
+  fallbackAddMailProviderOptions,
+  providerCapabilityToOption,
+  type AddMailProviderOption,
+} from "./features/add-mail/providerCapabilities";
 import { SyncCenterAccountNextAction } from "./features/sync-center/SyncCenterAccountNextAction";
 import { SyncCenterLatestJobSummary } from "./features/sync-center/SyncCenterLatestJobSummary";
+import { ConnectionDiagnosticList } from "./features/sync-center/ConnectionDiagnosticList";
 import {
   apiErrorConnectionDiagnostics,
   connectionDiagnosticsFromTestResult,
-  formatConnectionDiagnosticAction,
-  formatConnectionDiagnosticScope,
-  formatConnectionDiagnosticTitle,
 } from "./features/sync-center/connectionDiagnostics";
 import type { ComposeBodyFormat } from "./features/compose/rich-text";
 import type { MailItem, Tone } from "./features/mail/mail-items";
@@ -135,7 +138,6 @@ import type {
   MailDraftDto,
   MailDraftSource,
   MailEngineHealthDto,
-  MailProviderCapabilityDto,
   MailSearchScope,
   MailSendIdentityCandidateDto,
   MailSendIdentityDiagnosticsDto,
@@ -251,14 +253,6 @@ interface FolderItem {
   id: string;
   label: string;
   count: number;
-}
-
-interface ProviderOption {
-  title: string;
-  subtitle: string;
-  mark: string;
-  provider: string;
-  action: "oauth" | "password" | "bridge" | "manual";
 }
 
 interface ProviderGroup {
@@ -522,27 +516,6 @@ const mailItems: MailItem[] = [
     reasons: ["项目标签", "稍后处理"]
   }
 ];
-
-const providers: ProviderOption[] = [
-  { title: "Gmail", subtitle: "登录后同步 Gmail 邮件", mark: "G", provider: "gmail", action: "oauth" },
-  { title: "Outlook", subtitle: "登录后同步 Outlook 邮件", mark: "O", provider: "outlook", action: "oauth" },
-  { title: "163 邮箱", subtitle: "按提示完成邮箱授权", mark: "163", provider: "163", action: "password" },
-  { title: "QQ 邮箱", subtitle: "按提示完成邮箱授权", mark: "QQ", provider: "qq", action: "password" },
-  { title: "iCloud Mail", subtitle: "连接 iCloud 邮箱", mark: "iC", provider: "icloud", action: "password" },
-  { title: "Proton Mail", subtitle: "连接 Proton 邮箱", mark: "P", provider: "proton_bridge", action: "bridge" },
-  { title: "个人域名邮箱", subtitle: "连接企业或个人域名邮箱", mark: "@", provider: "custom", action: "manual" }
-];
-
-const providerIconSources: Record<string, string> = {
-  gmail: "https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico",
-  outlook: "https://res.cdn.office.net/assets/mail/pwa/v1/pngs/apple-touch-icon.png",
-  "163": "https://mail.163.com/favicon.ico",
-  qq: "https://mail.qq.com/favicon.ico",
-  icloud: "https://www.icloud.com/favicon.ico",
-  proton: "https://mail.proton.me/assets/apple-touch-icon.png",
-  proton_bridge: "https://mail.proton.me/assets/apple-touch-icon.png",
-  tencent_exmail: "https://exmail.qq.com/favicon.ico"
-};
 
 export interface AppProps {
   api?: EmailHubApi;
@@ -5460,49 +5433,6 @@ function formatComposeAutosaveStatus(status: ComposeAutosaveStatus): string {
   }
 }
 
-function providerCapabilityToOption(
-  capability: MailProviderCapabilityDto,
-): ProviderOption {
-  return {
-    title: capability.label,
-    subtitle: capability.connectionLabel,
-    mark: providerMark(capability),
-    provider: capability.provider,
-    action: providerAction(capability),
-  };
-}
-
-function providerAction(
-  capability: MailProviderCapabilityDto,
-): ProviderOption["action"] {
-  if (capability.supportsWebLogin) {
-    return "oauth";
-  }
-  if (capability.requiresLocalBridge) {
-    return "bridge";
-  }
-  if (capability.accountGroup === "domain") {
-    return "manual";
-  }
-
-  return "password";
-}
-
-function providerMark(capability: MailProviderCapabilityDto): string {
-  const knownMarks: Record<string, string> = {
-    gmail: "G",
-    outlook: "O",
-    "163": "163",
-    qq: "QQ",
-    icloud: "iC",
-    proton_bridge: "P",
-    tencent_exmail: "企",
-    custom_domain: "@",
-  };
-
-  return knownMarks[capability.provider] ?? capability.label.slice(0, 2);
-}
-
 interface CustomServerFields {
   username: string;
   secret: string;
@@ -5525,9 +5455,11 @@ function AddMailPage(props: {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [secret, setSecret] = useState("");
-  const [manualProvider, setManualProvider] = useState<ProviderOption | undefined>();
+  const [manualProvider, setManualProvider] = useState<
+    AddMailProviderOption | undefined
+  >();
   const [activeCredentialProvider, setActiveCredentialProvider] =
-    useState<ProviderOption | undefined>();
+    useState<AddMailProviderOption | undefined>();
   const [customServerFields, setCustomServerFields] =
     useState<CustomServerFields>({
       username: "",
@@ -5548,7 +5480,7 @@ function AddMailPage(props: {
   const [mailEngineHealthUnavailable, setMailEngineHealthUnavailable] =
     useState(false);
   const [providerOptions, setProviderOptions] =
-    useState<ProviderOption[]>(providers);
+    useState<AddMailProviderOption[]>(fallbackAddMailProviderOptions);
   const [csvImportText, setCsvImportText] = useState("");
   const [csvPreview, setCsvPreview] = useState<AccountImportPreview | undefined>();
   const [csvImportResult, setCsvImportResult] =
@@ -5565,7 +5497,7 @@ function AddMailPage(props: {
 
   useEffect(() => {
     if (!props.api) {
-      setProviderOptions(providers);
+      setProviderOptions(fallbackAddMailProviderOptions);
       return;
     }
 
@@ -5578,11 +5510,15 @@ function AddMailPage(props: {
         }
 
         const nextProviders = response.providers.map(providerCapabilityToOption);
-        setProviderOptions(nextProviders.length > 0 ? nextProviders : providers);
+        setProviderOptions(
+          nextProviders.length > 0
+            ? nextProviders
+            : fallbackAddMailProviderOptions,
+        );
       })
       .catch(() => {
         if (!cancelled) {
-          setProviderOptions(providers);
+          setProviderOptions(fallbackAddMailProviderOptions);
         }
       });
 
@@ -5672,7 +5608,7 @@ function AddMailPage(props: {
   const mailOnboardingUnavailable =
     mailEngineHealth?.capabilities.imapSmtpOnboarding === false;
 
-  async function connectProvider(provider: ProviderOption) {
+  async function connectProvider(provider: AddMailProviderOption) {
     if (!props.api) {
       setNotice(`${provider.title} 连接服务还没有准备好。`);
       return;
@@ -6074,29 +6010,13 @@ function AddMailPage(props: {
         />
       ) : null}
 
-      {onboardingRecoveryDiagnostics.length > 0 ? (
-        <section
-          className="page-panel diagnostic-list connection-diagnostic-list"
-          aria-label="添加邮箱恢复建议"
-        >
-          <h2>恢复建议</h2>
-          {onboardingRecoveryDiagnostics.map((diagnostic) => (
-            <div
-              className="diagnostic-row connection-diagnostic-row"
-              key={`${diagnostic.provider}:${diagnostic.affected}:${diagnostic.code}`}
-            >
-              <div>
-                <strong>{formatConnectionDiagnosticTitle(diagnostic)}</strong>
-                <span>
-                  {formatProviderLabel(diagnostic.provider)} ·{" "}
-                  {formatConnectionDiagnosticScope(diagnostic)}
-                </span>
-                <p>{formatConnectionDiagnosticAction(diagnostic)}</p>
-              </div>
-            </div>
-          ))}
-        </section>
-      ) : null}
+      <ConnectionDiagnosticList
+        ariaLabel="添加邮箱恢复建议"
+        className="page-panel diagnostic-list connection-diagnostic-list"
+        diagnostics={onboardingRecoveryDiagnostics}
+        rowClassName="diagnostic-row connection-diagnostic-row"
+        title="恢复建议"
+      />
 
       <section className="page-panel add-mail-form" aria-label="添加邮箱信息">
         <label>
@@ -6262,26 +6182,13 @@ function AddMailPage(props: {
             mailOnboardingUnavailable && provider.action !== "manual";
 
           return (
-            <article key={provider.title} className="provider-card">
-              <ProviderIcon provider={provider.provider} title={provider.title} mark={provider.mark} />
-              <div>
-                <strong>{provider.title}</strong>
-                <span>{provider.subtitle}</span>
-                {provider.action === "bridge" ? (
-                  <p className="provider-card-note">
-                    先启动 Proton Bridge；使用 Bridge 用户名和 Bridge 密码连接。
-                  </p>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                aria-label={`连接 ${provider.title}`}
-                disabled={busyProvider === provider.provider || providerBlocked}
-                onClick={() => void connectProvider(provider)}
-              >
-                {busyProvider === provider.provider ? "连接中" : "连接"}
-              </button>
-            </article>
+            <AddMailProviderCard
+              key={provider.provider}
+              busy={busyProvider === provider.provider}
+              disabled={providerBlocked}
+              provider={provider}
+              onConnect={() => void connectProvider(provider)}
+            />
           );
         })}
       </div>
@@ -6985,7 +6892,7 @@ function downloadTextFile(
 }
 
 function buildPresetOnboardingInput(
-  provider: ProviderOption,
+  provider: AddMailProviderOption,
   fields: { email: string; username: string; secret: string },
 ): ImapSmtpOnboardingInput | undefined {
   const email = fields.email.trim();
@@ -7004,7 +6911,7 @@ function buildPresetOnboardingInput(
 }
 
 function buildManualOnboardingInput(
-  provider: ProviderOption,
+  provider: AddMailProviderOption,
   input: { email: string; fields: CustomServerFields },
 ): ImapSmtpOnboardingInput | undefined {
   const email = input.email.trim();
@@ -7147,32 +7054,6 @@ function formatOperationalEventSource(event: OperationalEventDto): string {
   };
 
   return labels[event.service] ?? event.service;
-}
-
-function ProviderIcon(props: { provider: string; title: string; mark: string }) {
-  const source = providerIconSources[props.provider];
-
-  if (source) {
-    return (
-      <div className="provider-icon official-icon" aria-label={`${props.title} 图标`}>
-        <img src={source} alt="" loading="lazy" referrerPolicy="no-referrer" />
-      </div>
-    );
-  }
-
-  if (props.provider === "custom") {
-    return (
-      <div className="provider-icon custom-icon" aria-label={`${props.title} 图标`}>
-        <AtSign size={22} />
-      </div>
-    );
-  }
-
-  return (
-    <div className={`provider-icon ${props.provider}-icon`} aria-label={`${props.title} 图标`}>
-      <span>{props.mark}</span>
-    </div>
-  );
 }
 
 function formatProviderLabel(provider: string) {
@@ -7973,29 +7854,14 @@ function SyncCenterPage(props: {
                     </button>
                   </form>
                 )}
-                {taskDiagnostics.length > 0 ? (
-                  <div
-                    className="reauthorization-diagnostics"
-                    role="status"
-                    aria-label={`Reauthorization diagnostics for ${task.email}`}
-                  >
-                    {taskDiagnostics.map((diagnostic) => (
-                      <div
-                        className="reauthorization-diagnostic-card"
-                        key={`${diagnostic.affected}:${diagnostic.code}`}
-                      >
-                        <div>
-                          <strong>{formatConnectionDiagnosticTitle(diagnostic)}</strong>
-                          <span>
-                            {formatProviderLabel(diagnostic.provider)} ·{" "}
-                            {formatConnectionDiagnosticScope(diagnostic)}
-                          </span>
-                        </div>
-                        <p>{formatConnectionDiagnosticAction(diagnostic)}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
+                <ConnectionDiagnosticList
+                  ariaLabel={`Reauthorization diagnostics for ${task.email}`}
+                  className="reauthorization-diagnostics"
+                  container="div"
+                  diagnostics={taskDiagnostics}
+                  role="status"
+                  rowClassName="reauthorization-diagnostic-card"
+                />
               </div>
             );
           })}

@@ -72,6 +72,23 @@ export function formatConnectionDiagnosticScope(
   return labels[diagnostic.affected];
 }
 
+export function formatConnectionDiagnosticProviderLabel(provider: string): string {
+  const labels: Record<string, string> = {
+    gmail: "Gmail",
+    outlook: "Outlook",
+    proton: "Proton",
+    proton_bridge: "Proton Mail",
+    qq: "QQ 邮箱",
+    "163": "163 邮箱",
+    icloud: "iCloud Mail",
+    tencent_exmail: "腾讯企业邮箱",
+    custom: "个人域名邮箱",
+    custom_domain: "个人域名邮箱",
+  };
+
+  return labels[provider] ?? provider;
+}
+
 function isImapSmtpConnectionDiagnostic(
   value: unknown,
 ): value is ImapSmtpConnectionDiagnostic {
