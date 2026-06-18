@@ -94,6 +94,11 @@ import {
   defaultCustomServerFields,
   type CustomServerFields,
 } from "./features/add-mail/onboardingInput";
+import {
+  formatOAuthCallbackError,
+  formatOAuthProviderDeniedError,
+  formatOAuthStartError,
+} from "./features/add-mail/oauthDiagnostics";
 import { SyncCenterAccountNextAction } from "./features/sync-center/SyncCenterAccountNextAction";
 import { SyncCenterLatestJobSummary } from "./features/sync-center/SyncCenterLatestJobSummary";
 import { ConnectionDiagnosticList } from "./features/sync-center/ConnectionDiagnosticList";
@@ -1981,9 +1986,14 @@ function OAuthCallbackPage(props: {
 
     async function completeCallback() {
       if (props.callback.error) {
+        const pending = props.callback.state
+          ? loadOAuthPendingState(props.callback.state)
+          : undefined;
         setStatus({
           kind: "error",
-          message: "登录没有完成，请回到添加邮箱重试。",
+          message: formatOAuthProviderDeniedError(
+            pending?.flow ?? "onboarding",
+          ),
         });
         return;
       }
@@ -2037,15 +2047,14 @@ function OAuthCallbackPage(props: {
           kind: "success",
           message: `${result.account?.email ?? result.task.email} ${actionText}，正在同步邮件。`,
         });
-      } catch {
+      } catch (error) {
         if (alive) {
-          const retryText =
-            pending.flow === "reauthorization"
-              ? "重新登录没有完成，请回到同步中心重试。"
-              : "邮箱连接没有完成，请回到添加邮箱重试。";
           setStatus({
             kind: "error",
-            message: retryText,
+            message: formatOAuthCallbackError({
+              flow: pending.flow,
+              error,
+            }),
           });
         }
       }
@@ -5685,9 +5694,9 @@ function AddMailPage(props: {
           createdAt: new Date().toISOString(),
         });
         props.oauthRedirect(result.authorizationUrl);
-      } catch {
+      } catch (error) {
         await loadOnboardingDiagnostics();
-        setNotice(`${provider.title} 暂时无法开始连接。`);
+        setNotice(formatOAuthStartError(provider.title, error));
       } finally {
         setBusyProvider("");
       }
