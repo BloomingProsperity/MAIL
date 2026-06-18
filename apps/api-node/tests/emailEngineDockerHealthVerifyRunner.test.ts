@@ -4,6 +4,7 @@ import {
   DEFAULT_EMAILENGINE_IMAGE,
   basicAuthHeaders,
   bearerTokenHeaders,
+  dockerHealthComposeFiles,
   dockerHealthEnvInvariants,
   dockerHealthImageInvariants,
   dockerHealthPreparedTokenPairs,
@@ -15,6 +16,22 @@ import type { DockerComposeHealthVerificationResult } from "../src/mail-engine/d
 import { verifyDockerComposeHealth } from "../src/mail-engine/docker-compose-health-verifier";
 
 describe("EmailEngine Docker health verify CLI runner", () => {
+  it("adds the test overlay before the prod overlay for GreenMail production checks", () => {
+    expect(dockerHealthComposeFiles({})).toEqual([
+      "infra/docker-compose.yml",
+      "infra/docker-compose.prod.yml",
+    ]);
+    expect(
+      dockerHealthComposeFiles({
+        EMAILHUB_DOCKER_HEALTH_INCLUDE_TEST_OVERLAY: "true",
+      }),
+    ).toEqual([
+      "infra/docker-compose.yml",
+      "infra/docker-compose.test.yml",
+      "infra/docker-compose.prod.yml",
+    ]);
+  });
+
   it("returns zero and wires prod compose health checks when the gate passes", async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];

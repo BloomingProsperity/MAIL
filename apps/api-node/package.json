@@ -19,6 +19,7 @@
     "verify:emailengine-greenmail": "tsx src/emailengine-greenmail-verify.ts",
     "verify:emailengine-live": "tsx src/emailengine-launch-verify.ts",
     "verify:emailengine-docker-health": "tsx src/emailengine-docker-health-verify.ts",
+    "verify:emailengine-docker-health:greenmail-prod": "tsx src/emailengine-docker-health-greenmail-verify.ts",
     "test": "vitest run"
   },
   "dependencies": {

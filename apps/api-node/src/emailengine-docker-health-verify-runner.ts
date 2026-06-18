@@ -35,10 +35,7 @@ export async function runEmailEngineDockerHealthVerifyCli(
     fileExists: options.fileExists,
     readEnvFile: options.readEnvFile,
   });
-  const composeFiles = [
-    "infra/docker-compose.yml",
-    "infra/docker-compose.prod.yml",
-  ];
+  const composeFiles = dockerHealthComposeFiles(runtimeEnv);
   const httpTimeoutMs = readPositiveInteger(
     runtimeEnv.EMAILHUB_DOCKER_HEALTH_TIMEOUT_MS,
     5_000,
@@ -187,6 +184,16 @@ export function dockerHealthPreparedTokenPairs(
       expectedPreparedToken: preparedToken,
       redisUrl: "redis://redis-engine:6379/0",
     },
+  ];
+}
+
+export function dockerHealthComposeFiles(env: CliEnv): string[] {
+  return [
+    "infra/docker-compose.yml",
+    ...(readBooleanEnvValue(env.EMAILHUB_DOCKER_HEALTH_INCLUDE_TEST_OVERLAY)
+      ? ["infra/docker-compose.test.yml"]
+      : []),
+    "infra/docker-compose.prod.yml",
   ];
 }
 
@@ -383,6 +390,11 @@ function readDockerHealthEnvValue(
 ): string | undefined {
   const value = env[name]?.trim();
   return value ? value : undefined;
+}
+
+function readBooleanEnvValue(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 function dockerHealthDefaultAuthServerUrl(authServerSecret: string): string;

@@ -615,6 +615,12 @@ describe("EmailEngine Docker configuration", () => {
       "src",
       "emailengine-docker-health-verify.ts",
     );
+    const greenmailProdDockerHealthEntrypoint = await readProjectFile(
+      "apps",
+      "api-node",
+      "src",
+      "emailengine-docker-health-greenmail-verify.ts",
+    );
     const dockerHealthScript = await readProjectFile(
       "apps",
       "api-node",
@@ -635,6 +641,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(apiPackage.scripts["verify:emailengine-docker-health"]).toBe(
       "tsx src/emailengine-docker-health-verify.ts",
     );
+    expect(
+      apiPackage.scripts["verify:emailengine-docker-health:greenmail-prod"],
+    ).toBe("tsx src/emailengine-docker-health-greenmail-verify.ts");
     expect(rootPackage.scripts["compose:up"]).toBe(
       "node scripts/emailhub-compose.mjs up --build",
     );
@@ -661,6 +670,12 @@ describe("EmailEngine Docker configuration", () => {
     );
     expect(rootPackage.scripts["compose:up:prod:detached"]).toBe(
       "npm run verify:emailengine-launch:env && node scripts/emailhub-compose.mjs --prod up -d --build",
+    );
+    expect(rootPackage.scripts["compose:up:prod:test"]).toBe(
+      "npm run verify:emailengine-launch:env && node scripts/emailhub-compose.mjs --test --prod up --build",
+    );
+    expect(rootPackage.scripts["compose:up:prod:test:detached"]).toBe(
+      "npm run verify:emailengine-launch:env && node scripts/emailhub-compose.mjs --test --prod up -d --build",
     );
     expect(rootPackage.scripts["compose:config:prod"]).toBe(
       "node scripts/emailhub-compose.mjs --prod config >/dev/null",
@@ -690,11 +705,21 @@ describe("EmailEngine Docker configuration", () => {
     expect(rootPackage.scripts["verify:emailengine-launch:docker-health"]).toBe(
       "npm run verify:emailengine-docker-health -w apps/api-node",
     );
+    expect(
+      rootPackage.scripts[
+        "verify:emailengine-launch:docker-health:greenmail-prod"
+      ],
+    ).toBe(
+      "npm run verify:emailengine-docker-health:greenmail-prod -w apps/api-node",
+    );
     expect(rootPackage.scripts["verify:emailengine-launch:env"]).toBe(
       "npm run verify:emailengine-prod-env -w apps/api-node",
     );
     expect(dockerHealthEntrypoint).toContain(
       "runEmailEngineDockerHealthVerifyCli",
+    );
+    expect(greenmailProdDockerHealthEntrypoint).toContain(
+      'EMAILHUB_DOCKER_HEALTH_INCLUDE_TEST_OVERLAY: "true"',
     );
     expect(envExample).toContain("EMAILHUB_API_BASE_URL=http://127.0.0.1:8080");
     expect(envExample).toContain("EMAILHUB_WEB_BASE_URL=http://127.0.0.1:5173");
@@ -714,6 +739,8 @@ describe("EmailEngine Docker configuration", () => {
     expect(dockerHealthScript).toContain(
       "runtimeEnv.EMAILHUB_DOCKER_HEALTH_WAIT_MS",
     );
+    expect(dockerHealthScript).toContain("dockerHealthComposeFiles");
+    expect(dockerHealthScript).toContain("infra/docker-compose.test.yml");
     expect(dockerHealthScript).toContain('name: "api_health"');
     expect(dockerHealthScript).toContain('name: "mail_engine_readiness"');
     expect(dockerHealthScript).toContain('name: "mail_engine_auth_server"');
@@ -733,6 +760,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(rootPackage.scripts["verify:emailengine-launch:greenmail"]).toBe(
       "npm run verify:emailengine-greenmail -w apps/api-node",
     );
+    expect(rootPackage.scripts["verify:emailengine-launch:greenmail-prod"]).toBe(
+      "npm run verify:emailengine-launch:env && npm run verify:emailengine-launch:docker-health:greenmail-prod && npm run verify:emailengine-launch:greenmail",
+    );
     expect(apiPackage.scripts["verify:emailengine-greenmail"]).toBe(
       "tsx src/emailengine-greenmail-verify.ts",
     );
@@ -749,7 +779,10 @@ describe("EmailEngine Docker configuration", () => {
     expect(readme).toContain("npm run verify:emailengine-launch:env");
     expect(readme).toContain("npm run verify:emailengine-launch:live");
     expect(readme).toContain("npm run verify:emailengine-launch:greenmail");
+    expect(readme).toContain("npm run compose:up:prod:test:detached");
+    expect(readme).toContain("npm run verify:emailengine-launch:greenmail-prod");
     expect(readme).toContain("npm run verify:emailengine-launch:docker-health");
+    expect(readme).toContain("infra/docker-compose.test.yml");
     expect(readme).toContain("npm run verify:emailengine-launch:strict-db");
     expect(readme).toContain("npm run verify:emailengine-launch:core");
     expect(readme).toContain("npm run compose:up");

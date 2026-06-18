@@ -425,6 +425,20 @@ npm run verify:emailengine-launch:greenmail
 The GreenMail verifier reads the same `EMAILHUB_ENV_FILE`/`.env` selection as
 the other launch verifiers before it runs the individual smoke scripts.
 
+For the production self-hosted release gate, run the same GreenMail smoke suite
+against a stack that includes both the test mail server overlay and the strict
+production overlay:
+
+```powershell
+npm run compose:up:prod:test:detached
+npm run verify:emailengine-launch:greenmail-prod
+```
+
+This first proves the running containers were started with
+`infra/docker-compose.yml`, `infra/docker-compose.test.yml`, and
+`infra/docker-compose.prod.yml`, then runs onboarding, webhook, send,
+attachment, and mail-action smoke checks through GreenMail.
+
 You can also run the env preflight gate by itself against the same env file:
 
 ```powershell
