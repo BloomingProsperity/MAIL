@@ -13,39 +13,35 @@ export interface AddMailProviderOption {
 export const fallbackAddMailProviderOptions: AddMailProviderOption[] = [
   providerOption({
     title: "Gmail",
-    subtitle: "使用 Google 官方网页登录授权",
+    subtitle: "Google 账号",
     mark: "G",
     provider: "gmail",
     action: "oauth",
     badges: ["网页登录"],
-    setupHints: ["不会要求填写 Gmail 密码"],
   }),
   providerOption({
     title: "Outlook",
-    subtitle: "使用 Microsoft 官方网页登录授权",
+    subtitle: "Microsoft 账号",
     mark: "O",
     provider: "outlook",
     action: "oauth",
     badges: ["网页登录"],
-    setupHints: ["不会要求填写 Outlook 密码"],
   }),
   providerOption({
     title: "163 邮箱",
-    subtitle: "按提示完成邮箱授权",
+    subtitle: "邮箱授权",
     mark: "163",
     provider: "163",
     action: "password",
     badges: ["授权码"],
-    setupHints: ["在 163 邮箱设置里生成授权码"],
   }),
   providerOption({
     title: "QQ 邮箱",
-    subtitle: "按提示完成邮箱授权",
+    subtitle: "邮箱授权",
     mark: "QQ",
     provider: "qq",
     action: "password",
     badges: ["授权码"],
-    setupHints: ["在 QQ 邮箱设置里生成授权码"],
   }),
   providerOption({
     title: "iCloud Mail",
@@ -54,7 +50,6 @@ export const fallbackAddMailProviderOptions: AddMailProviderOption[] = [
     provider: "icloud",
     action: "password",
     badges: ["专用密码"],
-    setupHints: ["使用 Apple 专用密码，不是 Apple ID 密码"],
   }),
   providerOption({
     title: "Proton Mail",
@@ -63,7 +58,6 @@ export const fallbackAddMailProviderOptions: AddMailProviderOption[] = [
     provider: "proton_bridge",
     action: "bridge",
     badges: ["本地 Bridge"],
-    setupHints: ["先启动 Proton Bridge 并使用 Bridge 用户名和 Bridge 密码"],
   }),
   providerOption({
     title: "个人域名邮箱",
@@ -78,16 +72,24 @@ export const fallbackAddMailProviderOptions: AddMailProviderOption[] = [
 export function providerCapabilityToOption(
   capability: MailProviderCapabilityDto,
 ): AddMailProviderOption {
-  const officialWebLoginCopy =
-    officialWebLoginProviderCopy[capability.provider];
+  const officialWebLoginCopy = capability.supportsWebLogin
+    ? officialWebLoginProviderCopy[capability.provider]
+    : undefined;
+  const passwordSetupCopy =
+    !officialWebLoginCopy && capability.supportsAppPassword
+      ? passwordProviderCopy[capability.provider]
+      : undefined;
   return providerOption({
     title: capability.label,
-    subtitle: officialWebLoginCopy?.subtitle ?? capability.connectionLabel,
+    subtitle:
+      officialWebLoginCopy?.subtitle ??
+      passwordSetupCopy?.subtitle ??
+      capability.connectionLabel,
     mark: providerMark(capability),
     provider: capability.provider,
     action: providerAction(capability),
     badges: providerBadges(capability),
-    setupHints: officialWebLoginCopy?.setupHints ?? capability.setupHints,
+    setupHints: officialWebLoginCopy?.setupHints ?? passwordSetupCopy?.setupHints ?? [],
   });
 }
 
@@ -105,10 +107,10 @@ function providerOption(
 function providerAction(
   capability: MailProviderCapabilityDto,
 ): AddMailProviderOption["action"] {
-  if (isOfficialWebLoginProvider(capability.provider)) {
-    return "oauth";
-  }
-  if (capability.supportsWebLogin) {
+  if (
+    capability.supportsWebLogin &&
+    isOfficialWebLoginProvider(capability.provider)
+  ) {
     return "oauth";
   }
   if (capability.requiresLocalBridge) {
@@ -137,13 +139,13 @@ function providerMark(capability: MailProviderCapabilityDto): string {
 }
 
 function providerBadges(capability: MailProviderCapabilityDto): string[] {
-  const officialWebLogin = isOfficialWebLoginProvider(capability.provider);
+  const supportsOfficialWebLogin =
+    capability.supportsWebLogin && isOfficialWebLoginProvider(capability.provider);
   const badges = [
-    capability.supportsWebLogin || officialWebLogin ? "网页登录" : undefined,
-    capability.supportsScanLogin ? "扫码登录" : undefined,
+    supportsOfficialWebLogin ? "网页登录" : undefined,
     capability.requiresLocalBridge ? "本地 Bridge" : undefined,
-    !officialWebLogin && capability.supportsAppPassword ? "专用密码" : undefined,
-    !officialWebLogin && capability.supportsMailboxPassword ? "授权码" : undefined,
+    capability.supportsAppPassword ? "专用密码" : undefined,
+    capability.supportsMailboxPassword ? "授权码" : undefined,
     capability.supportsLabels ? "标签同步" : undefined,
     capability.supportsAliasSync ? "别名同步" : undefined,
     capability.supportsLargeAttachment || capability.supportsCloudAttachment
@@ -170,11 +172,21 @@ const officialWebLoginProviderCopy: Record<
   { subtitle: string; setupHints: string[] }
 > = {
   gmail: {
-    subtitle: "使用 Google 官方网页登录授权",
-    setupHints: ["不会要求填写 Gmail 密码"],
+    subtitle: "Google 账号",
+    setupHints: [],
   },
   outlook: {
-    subtitle: "使用 Microsoft 官方网页登录授权",
-    setupHints: ["不会要求填写 Outlook 密码"],
+    subtitle: "Microsoft 账号",
+    setupHints: [],
+  },
+};
+
+const passwordProviderCopy: Record<
+  string,
+  { subtitle: string; setupHints: string[] }
+> = {
+  tencent_exmail: {
+    subtitle: "输入企业邮箱授权码或专用密码",
+    setupHints: [],
   },
 };

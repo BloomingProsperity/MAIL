@@ -29,7 +29,7 @@ export function createPostgresNativeSendReauthorizationMarker(input: {
             FROM onboarding_tasks
             WHERE status IN ('pending', 'failed')
               AND payload ->> 'reauthRequired' = 'true'
-              AND payload ->> 'accountId' = $1
+              AND payload ->> 'accountId' = $1::text
             ORDER BY created_at DESC, id DESC
             LIMIT 1
           ), inserted_task AS (

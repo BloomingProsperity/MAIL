@@ -33,27 +33,27 @@ describe("Hermes compose assistant panel", () => {
 
     fireEvent.change(
       screen.getByRole("combobox", {
-        name: "Compose translation source language",
+        name: "草稿源语言",
       }),
       { target: { value: "Chinese" } },
     );
     fireEvent.change(
       screen.getByRole("combobox", {
-        name: "Compose translation target language",
+        name: "草稿目标语言",
       }),
       { target: { value: "French" } },
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Translate composed draft with Hermes",
+        name: "让 Hermes 翻译草稿",
       }),
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Polish composed draft with Hermes",
+        name: "让 Hermes 润色草稿",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "预览草稿" }));
 
     expect(onSourceLanguageChange).toHaveBeenCalledWith("Chinese");
     expect(onTargetLanguageChange).toHaveBeenCalledWith("French");
@@ -79,20 +79,20 @@ describe("Hermes compose assistant panel", () => {
     expect(
       (
         screen.getByRole("combobox", {
-          name: "Compose translation source language",
+          name: "草稿源语言",
         }) as HTMLSelectElement
       ).disabled,
     ).toBe(true);
     expect(
       (
         screen.getByRole("button", {
-          name: "Polish composed draft with Hermes",
+          name: "让 Hermes 润色草稿",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
     expect(
       (
-        screen.getByRole("button", { name: "Preview composed draft" }) as HTMLButtonElement
+        screen.getByRole("button", { name: "预览草稿" }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
   });
@@ -116,7 +116,7 @@ describe("Hermes compose assistant panel", () => {
     );
 
     const translateButton = screen.getByRole("button", {
-      name: "Translate composed draft with Hermes",
+      name: "让 Hermes 翻译草稿",
     }) as HTMLButtonElement;
     expect(translateButton.disabled).toBe(true);
     expect(translateButton.title).toBe("源语言和目标语言相同，无需翻译");
@@ -125,10 +125,10 @@ describe("Hermes compose assistant panel", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Polish composed draft with Hermes",
+        name: "让 Hermes 润色草稿",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "预览草稿" }));
     expect(onPolish).toHaveBeenCalledTimes(1);
     expect(onPreview).toHaveBeenCalledTimes(1);
 
@@ -164,10 +164,10 @@ describe("Hermes compose assistant panel", () => {
     );
 
     expect(screen.getByText("From: Support <support@example.com>")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    fireEvent.click(screen.getByRole("button", { name: "让 Hermes 写回复" }));
     fireEvent.click(
       within(screen.getByLabelText("Hermes 快速回复")).getByRole("button", {
-        name: "Ask Hermes quick reply thanks",
+        name: "让 Hermes 快速回复 感谢",
       }),
     );
 

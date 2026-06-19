@@ -9,7 +9,7 @@ export function FollowUpTodoPanel(props: {
   embedded?: boolean;
 }) {
   const [items, setItems] = useState<FollowUpDto[]>([]);
-  const [notice, setNotice] = useState("正在加载待办...");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!props.api?.listFollowUps) {
@@ -28,12 +28,12 @@ export function FollowUpTodoPanel(props: {
           updatedAt: "2026-06-13T09:00:00.000Z",
         },
       ]);
-      setNotice("连接服务后会显示同步后的待办。");
+      setNotice("");
       return;
     }
 
     let alive = true;
-    setNotice("正在加载待办...");
+    setNotice("");
     void props.api
       .listFollowUps({
         accountId: props.accountId,
@@ -71,7 +71,7 @@ export function FollowUpTodoPanel(props: {
     setItems((current) =>
       current.filter((candidate) => candidate.id !== updated.id),
     );
-    setNotice(`${updated.title ?? updated.messageId} marked done.`);
+    setNotice(`${updated.title ?? updated.messageId} 已完成。`);
   }
 
   return (

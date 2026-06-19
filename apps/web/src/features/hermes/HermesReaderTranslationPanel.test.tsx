@@ -44,7 +44,7 @@ describe("Hermes reader translation panel", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to translate selected message",
+        name: "让 Hermes 翻译当前邮件",
       }),
     );
 
@@ -82,7 +82,7 @@ describe("Hermes reader translation panel", () => {
     expect(
       (
         screen.getByRole("button", {
-          name: "Ask Hermes to translate selected message",
+          name: "让 Hermes 翻译当前邮件",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -103,7 +103,7 @@ describe("Hermes reader translation panel", () => {
     );
 
     const translateButton = screen.getByRole("button", {
-      name: "Ask Hermes to translate selected message",
+      name: "让 Hermes 翻译当前邮件",
     }) as HTMLButtonElement;
     expect(translateButton.disabled).toBe(true);
     expect(translateButton.title).toBe("源语言和目标语言相同，无需翻译");

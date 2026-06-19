@@ -57,7 +57,7 @@ export function buildPresetOnboardingInput(
   if (!email || !secret) {
     return {
       ok: false,
-      notice: `${provider.title} 需要先填写邮箱和授权码。`,
+      notice: `${provider.title} 需要先填写邮箱和授权码或专用密码。`,
     };
   }
 

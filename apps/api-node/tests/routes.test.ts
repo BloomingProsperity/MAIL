@@ -1382,12 +1382,10 @@ describe("API routes", () => {
             { id: "message_outlook", accountId: "22222222-2222-4222-8222-222222222222" },
           ],
         });
-        expect(calls).toEqual([
-          {
-            limit: 25,
-            sort: "smart",
-          },
-        ]);
+        expect(calls).toEqual([{ limit: 25, sort: "smart" }]);
+
+        expect((await fetch(`${baseUrl}/api/messages?mailboxRole=inbox&sort=smart`)).status).toBe(200);
+        expect(calls[1]).toEqual({ mailboxRole: "inbox", limit: 50, sort: "smart" });
       },
       { mailReadStore },
     );

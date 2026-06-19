@@ -92,11 +92,10 @@ describe("EmailEngine production env verify CLI runner", () => {
     expect(serialized).not.toContain("emailhub_dev");
   });
 
-  it("fails when the bundled web API token would not match the API token", () => {
+  it("fails when a browser-bundled web API token is configured", () => {
     const result = verifyEmailEngineProductionEnv({
       env: productionEnv({
-        EMAILHUB_API_TOKEN: "api-token",
-        VITE_EMAILHUB_API_TOKEN: "wrong-web-token",
+        VITE_EMAILHUB_API_TOKEN: "browser-token",
       }),
       now: () => new Date("2026-06-17T12:00:00.000Z"),
     });
@@ -106,16 +105,15 @@ describe("EmailEngine production env verify CLI runner", () => {
       ok: false,
       issues: [
         {
-          code: "vite_emailhub_api_token_mismatch",
+          code: "vite_emailhub_api_token_configured",
           severity: "error",
-          env: ["EMAILHUB_API_TOKEN", "VITE_EMAILHUB_API_TOKEN"],
+          env: ["VITE_EMAILHUB_API_TOKEN"],
           detail:
-            "VITE_EMAILHUB_API_TOKEN must match EMAILHUB_API_TOKEN for the bundled protected web app.",
+            "VITE_EMAILHUB_API_TOKEN must not be set for the production web build; browsers authenticate with an HttpOnly session cookie after login.",
         },
       ],
     });
-    expect(JSON.stringify(result)).not.toContain("api-token");
-    expect(JSON.stringify(result)).not.toContain("wrong-web-token");
+    expect(JSON.stringify(result)).not.toContain("browser-token");
   });
 
   it("does not require the bundled Postgres password when DATABASE_URL is explicit", () => {
@@ -299,7 +297,6 @@ describe("EmailEngine production env verify CLI runner", () => {
     const readEnvFile = vi.fn(() =>
       [
         "EMAILHUB_API_TOKEN=file-token",
-        "VITE_EMAILHUB_API_TOKEN=file-token",
         `EMAILENGINE_ACCESS_TOKEN=${EMAILENGINE_ACCESS_TOKEN}`,
         `EENGINE_PREPARED_TOKEN=${EENGINE_PREPARED_TOKEN}`,
         "EMAILENGINE_WEBHOOK_SECRET=file-webhook-secret",
@@ -314,7 +311,6 @@ describe("EmailEngine production env verify CLI runner", () => {
         EMAILHUB_REPO_ROOT: "/repo",
         EMAILHUB_ENV_FILE: ".env.prod",
         EMAILHUB_API_TOKEN: "process-token",
-        VITE_EMAILHUB_API_TOKEN: "process-token",
       },
       fileExists: (path) => path === "/repo/.env.prod",
       readEnvFile,
@@ -381,7 +377,6 @@ function productionEnv(
 ): Record<string, string | undefined> {
   return {
     EMAILHUB_API_TOKEN: "prod-api-token",
-    VITE_EMAILHUB_API_TOKEN: "prod-api-token",
     EMAILENGINE_ACCESS_TOKEN,
     EENGINE_PREPARED_TOKEN,
     EMAILENGINE_WEBHOOK_SECRET: "prod-webhook-secret",

@@ -64,9 +64,10 @@ export function HermesReaderOrganizationPanel(props: {
         <strong>Hermes 整理建议</strong>
       </div>
       <p>
-        {props.organization.priority.bucket} · 分数{" "}
-        {props.organization.priority.score} ·{" "}
-        {props.organization.priority.reasons.join("，")}
+        优先级：{formatHermesPriorityBucket(props.organization.priority.bucket)}
+        {props.organization.priority.reasons.length > 0
+          ? `，${props.organization.priority.reasons.join("，")}`
+          : ""}
       </p>
       {props.organization.priority.explanation ? (
         <p>{props.organization.priority.explanation}</p>
@@ -88,10 +89,12 @@ export function HermesReaderOrganizationPanel(props: {
         </p>
       ) : null}
       <p>
-        订阅判断：{props.organization.newsletter.senderCategory} ·{" "}
-        {Math.round(props.organization.newsletter.confidence * 100)}%
+        订阅判断：{formatHermesNewsletterCategory(
+          props.organization.newsletter.senderCategory,
+          props.organization.newsletter.isNewsletter,
+        )}
         {props.organization.newsletter.reasons.length > 0
-          ? ` · ${props.organization.newsletter.reasons.join("，")}`
+          ? `，${props.organization.newsletter.reasons.join("，")}`
           : ""}
       </p>
       {props.organization.newsletter.actions.length > 0 ? (
@@ -109,11 +112,11 @@ export function HermesReaderOrganizationPanel(props: {
               key={action.id}
               className="tiny-button"
               type="button"
-              aria-label={`Apply Hermes organization action ${action.label}`}
+              aria-label={`执行 Hermes 整理动作：${action.label}`}
               disabled={Boolean(props.applyBusyId)}
               onClick={() => props.onApplyAction(action)}
             >
-              {props.applyBusyId === action.id ? "应用中" : action.label}
+              {action.label}
             </button>
           ))}
         </div>
@@ -135,17 +138,17 @@ export function HermesReaderOrganizationPanel(props: {
                   {item.dueText ?? item.dueAt
                     ? ` · ${item.dueText ?? props.formatDate(item.dueAt!)}`
                     : ""}
-                  {item.priority ? ` · ${item.priority}` : ""}
+                  {item.priority ? ` · ${formatHermesActionItemPriority(item.priority)}` : ""}
                 </span>
                 {item.dueAt ? (
                   <button
                     className="tiny-button"
                     type="button"
-                    aria-label={`Create Hermes action item follow-up ${item.title}`}
+                    aria-label={`创建 Hermes 跟进提醒：${item.title}`}
                     disabled={Boolean(props.applyBusyId)}
                     onClick={() => props.onCreateActionItemFollowUp(item, index)}
                   >
-                    {props.applyBusyId === applyId ? "创建中" : "创建提醒"}
+                    创建提醒
                   </button>
                 ) : null}
               </li>
@@ -187,7 +190,7 @@ export function hermesOrganizationApplyActions(
         id: "smart_inbox:move_to_feed",
         kind: "smart_inbox",
         action: "move_to_feed",
-        label: "移到 Feed",
+        label: "移到动态",
       });
     }
     if (action.type === "mark_important") {
@@ -209,7 +212,7 @@ export function hermesOrganizationApplyActions(
         id: "smart_inbox:move_to_feed",
         kind: "smart_inbox",
         action: "move_to_feed",
-        label: "移到 Feed",
+        label: "移到动态",
       });
     }
     if (action.type === "mark_not_important") {
@@ -232,12 +235,39 @@ export function hermesActionItemApplyId(
   return `followup:${hermesActionItemKey(item, index)}`;
 }
 
+function formatHermesPriorityBucket(bucket: string): string {
+  if (bucket.includes("Urgent")) return "优先";
+  if (bucket.includes("Important")) return "重要";
+  if (bucket.includes("Feed")) return "动态";
+  if (bucket.includes("Transactions")) return "通知";
+  return "邮件";
+}
+
+function formatHermesNewsletterCategory(
+  senderCategory: string,
+  isNewsletter: boolean,
+): string {
+  if (isNewsletter) return "订阅邮件";
+  if (senderCategory === "personal") return "个人邮件";
+  if (senderCategory === "transactional") return "通知邮件";
+  return "普通邮件";
+}
+
+function formatHermesActionItemPriority(priority: string): string {
+  const labels: Record<string, string> = {
+    high: "高",
+    medium: "中",
+    low: "低",
+  };
+  return labels[priority.toLowerCase()] ?? priority;
+}
+
 export function formatHermesActionItemNote(item: HermesActionItem): string {
   return [
-    item.owner ? `Owner: ${item.owner}` : undefined,
-    item.priority ? `Priority: ${item.priority}` : undefined,
-    item.status ? `Status: ${item.status}` : undefined,
-    item.sourceQuote ? `Source: ${item.sourceQuote}` : undefined,
+    item.owner ? `负责人：${item.owner}` : undefined,
+    item.priority ? `优先级：${item.priority}` : undefined,
+    item.status ? `状态：${item.status}` : undefined,
+    item.sourceQuote ? `来源：${item.sourceQuote}` : undefined,
   ]
     .filter(Boolean)
     .join("\n");
@@ -270,7 +300,7 @@ function formatHermesLabelAction(
     archive: "归档",
     snooze: "稍后",
     keep_in_inbox: "保留收件箱",
-    move_to_feed: "移入 Feed",
+    move_to_feed: "移入动态",
     mark_important: "标为重要",
   };
   const target = action.label ?? action.snoozeUntil;
@@ -282,7 +312,7 @@ function formatHermesNewsletterAction(
   action: HermesMessageOrganizationResult["newsletter"]["actions"][number],
 ): string {
   const actionLabels: Record<typeof action.type, string> = {
-    move_to_feed: "移入 Feed",
+    move_to_feed: "移入动态",
     archive: "归档",
     unsubscribe_later: "稍后退订",
     keep_in_inbox: "保留收件箱",

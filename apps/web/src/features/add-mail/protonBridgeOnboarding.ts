@@ -55,7 +55,7 @@ export function buildProtonBridgeOnboardingResult(input: {
   if (!email || !username || !secret) {
     return {
       ok: false,
-      notice: `${input.title} 需要先填写邮箱、Bridge 用户名和 Bridge 密码。`,
+      notice: `${input.title} 接入信息不完整。`,
     };
   }
 
@@ -80,19 +80,19 @@ export function buildProtonBridgeOnboardingResult(input: {
   if (!receiveHost || !sendHost) {
     return {
       ok: false,
-      notice: `${input.title} 的 Bridge 收信和发信地址需要一起填写，或都留空使用服务器默认配置。`,
+      notice: `${input.title} Bridge 地址不完整。`,
     };
   }
   if (!receivePort) {
     return {
       ok: false,
-      notice: `${input.title} 的 Bridge 收信端口需要是 1 到 65535 的数字。`,
+      notice: `${input.title} Bridge 收信端口无效。`,
     };
   }
   if (!sendPort) {
     return {
       ok: false,
-      notice: `${input.title} 的 Bridge 发信端口需要是 1 到 65535 的数字。`,
+      notice: `${input.title} Bridge 发信端口无效。`,
     };
   }
 

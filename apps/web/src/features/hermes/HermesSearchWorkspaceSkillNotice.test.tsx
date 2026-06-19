@@ -47,7 +47,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 搜索问答暂时不可用，系统正在自动调整读取权限。",
+        "Hermes 搜索问答暂时不可用。",
       ),
     ).toBeTruthy();
     await waitFor(() => {
@@ -84,11 +84,11 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。",
+        "Hermes 暂时不可用。",
       ),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "设置 Hermes" }));
 
     expect(await screen.findByLabelText("Hermes 配置")).toBeTruthy();
   });
@@ -109,11 +109,11 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。",
+        "Hermes 暂时不可用。",
       ),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "设置 Hermes" }));
 
     expect(await screen.findByLabelText("Hermes 配置")).toBeTruthy();
   });
@@ -136,7 +136,7 @@ describe("Hermes Search workspace skill notices", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 搜索问答暂时不可用，系统正在自动调整读取权限。",
+        "Hermes 搜索问答暂时不可用。",
       ),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "打开能力选项" })).toBeNull();

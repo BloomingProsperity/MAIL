@@ -151,12 +151,14 @@ export function createPostgresMailReadStore(
       const q = input.q?.trim() ? input.q.trim() : null;
       const savedView = await resolveSavedView(client, input.savedViewId);
       const values: unknown[] = [input.accountId ?? null, input.mailboxId ?? null, q];
+      const mailboxRoleSql = appendMailboxRoleFilter(values, input.mailboxRole);
       const quickFilterSql = appendQuickFilters(values, input);
       const structuredFilterSql = appendStructuredFilters(values, input);
       const savedViewSql = appendSavedViewFilter(values, savedView);
       const searchPreviewSql = buildSearchPreviewExpression(input.qScopes);
       const whereClause = [
         buildSearchClause(input.qScopes),
+        mailboxRoleSql,
         quickFilterSql.whereClause,
         structuredFilterSql.whereClause,
         savedViewSql.whereClause,
@@ -225,9 +227,9 @@ export function createPostgresMailReadStore(
           FROM messages
           JOIN message_state
             ON message_state.message_id = messages.id
-          JOIN message_locations
+          LEFT JOIN message_locations
             ON message_locations.message_id = messages.id
-          JOIN mailboxes
+          LEFT JOIN mailboxes
             ON mailboxes.id = message_locations.mailbox_id
           LEFT JOIN attachments
             ON attachments.message_id = messages.id
@@ -323,11 +325,6 @@ export function createPostgresMailReadStore(
           WHERE messages.account_id = $1
             AND messages.id = $2
             AND message_state.deleted_at IS NULL
-            AND EXISTS (
-              SELECT 1
-              FROM message_locations visible_locations
-              WHERE visible_locations.message_id = messages.id
-            )
           GROUP BY
             messages.id,
             messages.account_id,
@@ -367,11 +364,6 @@ export function createPostgresMailReadStore(
           WHERE messages.account_id = $1
             AND attachments.id = $2
             AND message_state.deleted_at IS NULL
-            AND EXISTS (
-              SELECT 1
-              FROM message_locations
-              WHERE message_locations.message_id = messages.id
-            )
           LIMIT 1
         `,
         [input.accountId, input.attachmentId],
@@ -488,6 +480,28 @@ function appendQuickFilters(
     whereClause: whereClauses.join("\n"),
     havingClause: havingClauses.join("\n AND "),
   };
+}
+
+function appendMailboxRoleFilter(
+  values: unknown[],
+  mailboxRole: string | undefined,
+): string {
+  if (!mailboxRole) {
+    return "";
+  }
+
+  values.push(mailboxRole);
+  const parameter = `$${values.length}`;
+  return `
+    AND EXISTS (
+      SELECT 1
+      FROM message_locations AS role_message_locations
+      JOIN mailboxes AS role_mailboxes
+        ON role_mailboxes.id = role_message_locations.mailbox_id
+      WHERE role_message_locations.message_id = messages.id
+        AND role_mailboxes.role = ${parameter}
+    )
+  `;
 }
 
 function appendStructuredFilters(

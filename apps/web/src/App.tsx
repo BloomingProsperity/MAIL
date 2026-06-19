@@ -2,11 +2,12 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties, FormEvent, KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   Archive,
@@ -92,6 +93,7 @@ import {
   type HermesReaderCommandAction,
 } from "./features/hermes/hermesCommandIntent";
 import { AddMailProviderCard } from "./features/add-mail/AddMailProviderCard";
+import "./features/add-mail/AddMailPage.css";
 import { ACCOUNT_CSV_TEMPLATE } from "./features/add-mail/accountCsvTemplate";
 import { formatAccountCsvImportIssue } from "./features/add-mail/csvImportIssues";
 import {
@@ -119,8 +121,7 @@ import { SyncCenterAccountNextAction } from "./features/sync-center/SyncCenterAc
 import { SyncCenterLatestJobSummary } from "./features/sync-center/SyncCenterLatestJobSummary";
 import { ConnectionDiagnosticList } from "./features/sync-center/ConnectionDiagnosticList";
 import { DomainAliasSettingsPanel } from "./features/domain-alias/DomainAliasSettingsPanel";
-import { ComposeAttachmentMaintenancePanel } from "./features/maintenance/ComposeAttachmentMaintenancePanel";
-import { SystemStatusSettingsPanel } from "./features/settings/SystemStatusSettingsPanel";
+import { SettingsHomePage } from "./features/settings/SettingsHomePage";
 import {
   apiErrorConnectionDiagnostics,
   connectionDiagnosticsFromTestResult,
@@ -319,6 +320,19 @@ const folders: FolderItem[] = [
   { id: "attachments", label: "附件", count: 68 }
 ];
 
+const aggregateFolderShell: FolderItem[] = [
+  { id: "inbox", label: "收件箱", count: 0 },
+  { id: "drafts", label: "草稿", count: 0 },
+  { id: "sent", label: "已发送", count: 0 },
+  { id: "trash", label: "已删除", count: 0 },
+  { id: "junk", label: "垃圾邮件", count: 0 },
+  { id: "archive", label: "归档", count: 0 },
+  { id: "all", label: "所有邮件", count: 0 },
+  { id: "flagged", label: "已标记", count: 0 },
+  { id: "snoozed", label: "稍后提醒", count: 0 },
+  { id: "attachments", label: "附件", count: 0 },
+];
+
 const previewLabels: LabelItem[] = [
   {
     id: "work",
@@ -393,12 +407,14 @@ const quickCategories: QuickCategory[] = [
 
 const folderIcons: Record<string, typeof Inbox> = {
   inbox: Inbox,
+  flagged: Star,
   priority: Clock3,
   starred: Star,
   snoozed: Clock3,
   drafts: FileText,
   sent: Send,
   archive: Archive,
+  junk: ShieldCheck,
   spam: ShieldCheck,
   trash: Trash2,
   all: Mail,
@@ -537,10 +553,36 @@ interface UndoToastState {
   mail?: MailItem;
 }
 
+const BLANK_MAIL_ITEM_ID = "__blank_reader_message__";
+const BLANK_MAIL_RECEIVED_AT = "1970-01-01T00:00:00.000Z";
+
+function createBlankMailItem(accountId: string): MailItem {
+  return {
+    id: BLANK_MAIL_ITEM_ID,
+    accountId,
+    receivedAt: BLANK_MAIL_RECEIVED_AT,
+    sender: "",
+    email: "",
+    subject: "",
+    preview: "",
+    time: "",
+    date: "",
+    label: "",
+    tone: "blue",
+    unread: false,
+    starred: false,
+    attachmentCount: 0,
+    bucket: "",
+    score: 0,
+    reasons: [],
+  };
+}
+
 interface OAuthCallbackParams {
   state: string;
   code: string;
   error?: string;
+  issuer?: string;
 }
 
 interface OAuthPendingState {
@@ -568,8 +610,11 @@ const OAUTH_PENDING_PREFIX = "email-hub:oauth:";
 const SELECTED_ACCOUNT_STORAGE_KEY = "email-hub:selected-account-id";
 
 export function App(props: AppProps = {}) {
-  const oauthCallback = readOAuthCallbackFromLocation(
-    typeof window === "undefined" ? undefined : window.location,
+  const [oauthCallback, setOauthCallback] = useState(
+    () =>
+      readOAuthCallbackFromLocation(
+        typeof window === "undefined" ? undefined : window.location,
+      ),
   );
   const sidebarResize = useResizablePane({
     initialSize: 184,
@@ -613,7 +658,9 @@ export function App(props: AppProps = {}) {
     useState(false);
   const [hermesDockBusy, setHermesDockBusy] = useState(false);
   const hermesDockRequestRef = useRef(0);
-  const [workspaceFolders, setWorkspaceFolders] = useState<FolderItem[]>(folders);
+  const [workspaceFolders, setWorkspaceFolders] = useState<FolderItem[]>(
+    props.api ? aggregateFolderShell : folders,
+  );
   const [workspaceMail, setWorkspaceMail] = useState<MailItem[]>(
     props.api ? [] : mailItems,
   );
@@ -623,6 +670,8 @@ export function App(props: AppProps = {}) {
   const [searchLaunch, setSearchLaunch] = useState<SearchLaunch | undefined>();
   const [navigationProviderGroups, setNavigationProviderGroups] =
     useState<ProviderGroup[]>(props.api ? [] : providerGroups);
+  const [navigationFolders, setNavigationFolders] =
+    useState<FolderItem[]>(props.api ? aggregateFolderShell : folders);
   const [navigationQuickCategories, setNavigationQuickCategories] =
     useState<QuickCategory[]>(props.api ? [] : quickCategories);
   const [navigationLabels, setNavigationLabels] =
@@ -661,6 +710,7 @@ export function App(props: AppProps = {}) {
   );
   const [mailDensity, setMailDensity] = useState<MailDensity>("compact");
   const [mailSort, setMailSort] = useState<MessageListSort>("smart");
+  const mailLoadRequestRef = useRef(0);
   const [hermesFollowUpSuggestion, setHermesFollowUpSuggestion] = useState<
     HermesFollowupTrackerResult | undefined
   >();
@@ -672,22 +722,29 @@ export function App(props: AppProps = {}) {
     props.api && props.defaultAccountId && props.restrictToDefaultAccount
       ? props.defaultAccountId
       : undefined;
-  const accountId = selectedAccountId ?? PREVIEW_ACCOUNT_ID;
+  const fallbackPreviewAccountId = props.api ? "" : PREVIEW_ACCOUNT_ID;
   const sortedMail = useMemo(
     () => sortMailItems(workspaceMail, mailSort),
     [mailSort, workspaceMail],
   );
+  const navigationInboxCount =
+    navigationFolders.find((folder) => folder.id === "inbox")?.count ??
+    workspaceFolders.find((folder) => folder.id === "inbox")?.count;
   const sidebarMailCount = props.api
-    ? workspaceMail.length
+    ? navigationInboxCount ?? 0
     : folders.find((folder) => folder.id === "inbox")?.count ?? workspaceMail.length;
   const effectiveNavItems = navItems.map((item) =>
     item.id === "mail" ? { ...item, count: sidebarMailCount } : item,
   );
+  const primaryNavItems = effectiveNavItems.filter(
+    (item) => item.id !== "settings",
+  );
+  const settingsNavItem = effectiveNavItems.find((item) => item.id === "settings");
   const selectedMail =
     sortedMail.find((mail) => mailItemKey(mail) === activeMailId) ?? sortedMail[0];
   const selectedMailAccountId = selectedMail?.accountId ?? selectedAccountId;
   const workspaceAccountId =
-    selectedMailAccountId ?? selectedAccountId ?? PREVIEW_ACCOUNT_ID;
+    selectedMailAccountId ?? selectedAccountId ?? fallbackPreviewAccountId;
   const activeFolderSummary = folderSummaryForActiveView({
     activeFolder,
     folders: workspaceFolders,
@@ -715,10 +772,21 @@ export function App(props: AppProps = {}) {
 
     try {
       const summary = await props.api.getMailNavigationSummary();
+      const nextFolders = Array.isArray(summary.folders)
+        ? summary.folders.map(mapNavigationFolderDtoToFolderItem)
+        : aggregateFolderShell;
       setNavigationProviderGroups(summary.providerGroups);
+      setNavigationFolders(nextFolders);
+      if (!selectedAccountId) {
+        setWorkspaceFolders(nextFolders);
+      }
       setNavigationQuickCategories(summary.quickCategories);
     } catch {
       setNavigationProviderGroups([]);
+      setNavigationFolders(aggregateFolderShell);
+      if (!selectedAccountId) {
+        setWorkspaceFolders(aggregateFolderShell);
+      }
       setNavigationQuickCategories([]);
     }
   }
@@ -767,6 +835,29 @@ export function App(props: AppProps = {}) {
     }
   }
 
+  function replaceWorkspaceMail(
+    mappedMail: MailItem[],
+    sortOverride: MessageListSort,
+  ) {
+    const nextActiveMailId = firstMailKey(mappedMail, sortOverride);
+    setWorkspaceMail(mappedMail);
+    setActiveMailId(nextActiveMailId);
+    setSelectedDetail((currentDetail) =>
+      messageDetailKey(currentDetail) === nextActiveMailId
+        ? currentDetail
+      : undefined,
+    );
+  }
+
+  function startMailLoadRequest(): number {
+    mailLoadRequestRef.current += 1;
+    return mailLoadRequestRef.current;
+  }
+
+  function isCurrentMailLoadRequest(requestId: number): boolean {
+    return mailLoadRequestRef.current === requestId;
+  }
+
   async function handleConnectedAccount(nextAccountId?: string) {
     let connectedAccountId = nextAccountId;
     if (nextAccountId) {
@@ -778,6 +869,19 @@ export function App(props: AppProps = {}) {
     await refreshNavigationSummary();
     await refreshConnectedAccountCount();
     await refreshLabels(connectedAccountId ?? selectedAccountId);
+  }
+
+  function finishOAuthCallback() {
+    if (
+      typeof window !== "undefined" &&
+      window.location.pathname === "/oauth/callback"
+    ) {
+      window.history.replaceState({}, "", "/");
+    }
+
+    setOauthCallback(undefined);
+    setActiveView("mail");
+    setActiveFolder("inbox");
   }
 
   function launchGlobalSearch(
@@ -905,7 +1009,7 @@ export function App(props: AppProps = {}) {
     const hermesAccountId = selectedMail?.accountId ?? selectedAccountId;
     if (!hermesAccountId) {
       setHermesDockBusy(false);
-      setHermesDockNotice("请先添加邮箱并完成同步，再让 Hermes 搜索邮件。");
+      setHermesDockNotice("Hermes 搜索需要已同步邮件。");
       return;
     }
 
@@ -914,7 +1018,7 @@ export function App(props: AppProps = {}) {
       if (!selectedMail) {
         setHermesDockBusy(false);
         setHermesDockNotice(
-          "请先打开一封邮件，再让 Hermes 总结、翻译或写回复。",
+          "未打开邮件。",
         );
         return;
       }
@@ -932,7 +1036,7 @@ export function App(props: AppProps = {}) {
 
     setHermesDockBusy(true);
     if (hermesIntent.kind === "rule") {
-      setHermesDockNotice("Hermes 正在生成可确认执行计划...");
+      setHermesDockNotice("");
       try {
         await refreshHermesWorkspaceContext({
           accountId: hermesAccountId,
@@ -953,7 +1057,7 @@ export function App(props: AppProps = {}) {
         setHermesDockRuleCandidate(plan.candidate);
         setHermesDockRuleSimulation(plan.simulation);
         setHermesDockNotice(
-          `Hermes 已生成执行计划，试运行命中 ${plan.simulation?.matchedCount ?? 0} 封邮件。`,
+          `Hermes 已准备整理建议，预计影响 ${plan.simulation?.matchedCount ?? 0} 封邮件。`,
         );
       } catch (error) {
         if (!isCurrentHermesDockRequest(requestId)) {
@@ -973,7 +1077,7 @@ export function App(props: AppProps = {}) {
       return;
     }
 
-    setHermesDockNotice("Hermes 正在搜索已同步邮件...");
+    setHermesDockNotice("");
     try {
       const memoryInput = hermesSearchMemoryInput(selectedMail);
       const result = await props.api.searchMailWithHermes({
@@ -1021,7 +1125,7 @@ export function App(props: AppProps = {}) {
     const requestId = hermesDockRequestRef.current + 1;
     hermesDockRequestRef.current = requestId;
     setHermesDockBusy(true);
-    setHermesDockNotice("正在确认 Hermes 执行计划...");
+    setHermesDockNotice("");
     try {
       const confirmation = await props.api.confirmHermesActionPlan({
         planId: hermesDockActionPlan.id,
@@ -1064,8 +1168,8 @@ export function App(props: AppProps = {}) {
       }
       setHermesDockNotice(
         confirmation.historyBackfill
-          ? `Hermes 执行计划已完成：${rule.title}，已回填 ${confirmation.historyBackfill.appliedCount} 封历史邮件。${target ? `已打开${target.label}。` : ""}`
-          : `Hermes 执行计划已完成：${rule.title}${target ? `，已打开${target.label}` : ""}。`,
+          ? `Hermes 已完成整理：${rule.title}，已整理 ${confirmation.historyBackfill.appliedCount} 封历史邮件。${target ? `已打开${target.label}。` : ""}`
+          : `Hermes 已完成整理：${rule.title}${target ? `，已打开${target.label}` : ""}。`,
       );
     } catch (error) {
       if (!isCurrentHermesDockRequest(requestId)) {
@@ -1090,7 +1194,12 @@ export function App(props: AppProps = {}) {
   }, [props.api]);
 
   useEffect(() => {
-    if (!props.api || props.defaultAccountId || accountDiscoveryReady) {
+    if (
+      oauthCallback ||
+      !props.api ||
+      props.defaultAccountId ||
+      accountDiscoveryReady
+    ) {
       return;
     }
 
@@ -1124,7 +1233,13 @@ export function App(props: AppProps = {}) {
     return () => {
       alive = false;
     };
-  }, [accountDiscoveryReady, props.api, props.defaultAccountId, selectedAccountId]);
+  }, [
+    accountDiscoveryReady,
+    oauthCallback,
+    props.api,
+    props.defaultAccountId,
+    selectedAccountId,
+  ]);
 
   useEffect(() => {
     if (!props.api || !accountDiscoveryReady) {
@@ -1132,8 +1247,13 @@ export function App(props: AppProps = {}) {
     }
 
     let alive = true;
-    setBackendNotice("正在加载聚合收件箱...");
-    const request = selectedAccountId
+    setBackendNotice(undefined);
+    const requestId = startMailLoadRequest();
+    const request: Promise<{
+      folders?: FolderItem[];
+      messages: MessageListItemDto[];
+      activeFolderId: string;
+    }> = selectedAccountId
       ? Promise.all([
           props.api.listMailboxes({ accountId: selectedAccountId }),
           props.api.listMessages({
@@ -1147,32 +1267,25 @@ export function App(props: AppProps = {}) {
           activeFolderId: mailboxPage.items[0]?.id ?? "inbox",
         }))
       : props.api.listMessages({ limit: 50, sort: mailSort }).then((messagePage) => ({
-          folders,
           messages: messagePage.items,
           activeFolderId: "inbox",
         }));
 
     void request
       .then((result) => {
-        if (!alive) {
+        if (!alive || !isCurrentMailLoadRequest(requestId)) {
           return;
         }
         const mappedMail = result.messages.map(mapMessageDtoToMailItem);
-        setWorkspaceFolders(result.folders);
-        setWorkspaceMail(mappedMail);
+        if (result.folders) {
+          setWorkspaceFolders(result.folders);
+        }
         setActiveFolder(result.activeFolderId);
-        setActiveMailId(firstMailKey(mappedMail, mailSort));
-        setSelectedDetail(undefined);
-        setBackendNotice(
-          mappedMail.length > 0
-            ? undefined
-            : selectedAccountId
-              ? "当前邮箱还没有已同步邮件。"
-              : "还没有已同步邮件，添加邮箱后会显示聚合收件箱。",
-        );
+        replaceWorkspaceMail(mappedMail, mailSort);
+        setBackendNotice(undefined);
       })
       .catch(() => {
-        if (alive) {
+        if (alive && isCurrentMailLoadRequest(requestId)) {
           setWorkspaceMail([]);
           setSelectedDetail(undefined);
           setActiveMailId("");
@@ -1193,12 +1306,13 @@ export function App(props: AppProps = {}) {
   }, [accountDiscoveryReady, props.api, selectedAccountId]);
 
   async function loadSavedView(savedView: string, sortOverride = mailSort) {
+    const requestId = startMailLoadRequest();
     setActiveFolder(savedView);
     if (!props.api) {
       return;
     }
 
-    setBackendNotice("正在加载分类邮件...");
+    setBackendNotice(undefined);
     try {
       const messagePage = await props.api.listMessages({
         ...(selectedAccountId ? { accountId: selectedAccountId } : {}),
@@ -1207,22 +1321,26 @@ export function App(props: AppProps = {}) {
         savedView,
       });
       const mappedMail = messagePage.items.map(mapMessageDtoToMailItem);
-      setWorkspaceMail(mappedMail);
-      setSelectedDetail(undefined);
-      setActiveMailId(firstMailKey(mappedMail, sortOverride));
+      if (!isCurrentMailLoadRequest(requestId)) {
+        return;
+      }
+      replaceWorkspaceMail(mappedMail, sortOverride);
       setBackendNotice(undefined);
     } catch {
-      setBackendNotice("分类邮件暂时不可用，正在显示当前邮件。");
+      if (isCurrentMailLoadRequest(requestId)) {
+        setBackendNotice("分类邮件暂时不可用。");
+      }
     }
   }
 
   async function loadLabel(labelId: string, sortOverride = mailSort) {
+    const requestId = startMailLoadRequest();
     setActiveFolder(`label:${labelId}`);
     if (!props.api || !selectedAccountId) {
       return;
     }
 
-    setBackendNotice("正在加载标签邮件...");
+    setBackendNotice(undefined);
     try {
       const messagePage = await props.api.listMessages({
         accountId: selectedAccountId,
@@ -1232,39 +1350,48 @@ export function App(props: AppProps = {}) {
         tagMode: "any",
       });
       const mappedMail = messagePage.items.map(mapMessageDtoToMailItem);
-      setWorkspaceMail(mappedMail);
-      setSelectedDetail(undefined);
-      setActiveMailId(firstMailKey(mappedMail, sortOverride));
+      if (!isCurrentMailLoadRequest(requestId)) {
+        return;
+      }
+      replaceWorkspaceMail(mappedMail, sortOverride);
       setBackendNotice(undefined);
     } catch {
-      setBackendNotice("标签邮件暂时不可用，正在显示当前邮件。");
+      if (isCurrentMailLoadRequest(requestId)) {
+        setBackendNotice("标签邮件暂时不可用。");
+      }
     }
   }
 
   async function loadMailbox(mailboxId: string, sortOverride = mailSort) {
+    const requestId = startMailLoadRequest();
     setActiveFolder(mailboxId);
     if (!props.api) {
       return;
     }
     if (!selectedAccountId) {
-      setBackendNotice("正在加载聚合收件箱...");
+      setBackendNotice(undefined);
       try {
+        const aggregateFilter = aggregateMessageFilterForFolder(mailboxId);
         const messagePage = await props.api.listMessages({
+          ...aggregateFilter,
           limit: 50,
           sort: sortOverride,
         });
         const mappedMail = messagePage.items.map(mapMessageDtoToMailItem);
-        setWorkspaceMail(mappedMail);
-        setSelectedDetail(undefined);
-        setActiveMailId(firstMailKey(mappedMail, sortOverride));
+        if (!isCurrentMailLoadRequest(requestId)) {
+          return;
+        }
+        replaceWorkspaceMail(mappedMail, sortOverride);
         setBackendNotice(undefined);
       } catch {
-        setBackendNotice("聚合收件箱暂时不可用。");
+        if (isCurrentMailLoadRequest(requestId)) {
+          setBackendNotice("聚合收件箱暂时不可用。");
+        }
       }
       return;
     }
 
-    setBackendNotice("正在加载邮箱目录...");
+    setBackendNotice(undefined);
     try {
       const messagePage = await props.api.listMessages({
         accountId: selectedAccountId,
@@ -1273,12 +1400,15 @@ export function App(props: AppProps = {}) {
         sort: sortOverride,
       });
       const mappedMail = messagePage.items.map(mapMessageDtoToMailItem);
-      setWorkspaceMail(mappedMail);
-      setSelectedDetail(undefined);
-      setActiveMailId(firstMailKey(mappedMail, sortOverride));
+      if (!isCurrentMailLoadRequest(requestId)) {
+        return;
+      }
+      replaceWorkspaceMail(mappedMail, sortOverride);
       setBackendNotice(undefined);
     } catch {
-      setBackendNotice("邮箱目录暂时不可用，正在显示当前邮件。");
+      if (isCurrentMailLoadRequest(requestId)) {
+        setBackendNotice("邮箱目录暂时不可用。");
+      }
     }
   }
 
@@ -1303,10 +1433,17 @@ export function App(props: AppProps = {}) {
 
   useEffect(() => {
     if (!props.api || !selectedMail) {
+      setSelectedDetail(undefined);
       return;
     }
 
     let alive = true;
+    const selectedKey = mailItemKey(selectedMail);
+    setSelectedDetail((currentDetail) =>
+      messageDetailKey(currentDetail) === selectedKey
+        ? currentDetail
+        : undefined,
+    );
     void props.api
       .getMessage({
         accountId: selectedMail.accountId,
@@ -1314,7 +1451,9 @@ export function App(props: AppProps = {}) {
       })
       .then((message) => {
         if (alive) {
-          setSelectedDetail(message);
+          setSelectedDetail(
+            messageDetailKey(message) === selectedKey ? message : undefined,
+          );
         }
       })
       .catch(() => {
@@ -1337,7 +1476,7 @@ export function App(props: AppProps = {}) {
 
   async function applySelectedAction(action: MailAction): Promise<boolean> {
     if (!props.api || !selectedMail) {
-      setBackendNotice("连接服务后才能执行邮件操作。");
+      setBackendNotice("邮件操作暂时不可用。");
       return false;
     }
 
@@ -1440,7 +1579,7 @@ export function App(props: AppProps = {}) {
     successContext: string,
   ) {
     if (!props.api) {
-      setBackendNotice("连接服务后才能执行 Smart Inbox 批量 Done。");
+      setBackendNotice("批量处理暂时不可用。");
       return;
     }
 
@@ -1465,6 +1604,7 @@ export function App(props: AppProps = {}) {
       messageIdsByGroup.set(groupKey, group);
     }
 
+    const listRequestId = mailLoadRequestRef.current;
     setSmartInboxBusy("bulk_done");
     try {
       const results = await Promise.all(
@@ -1488,6 +1628,10 @@ export function App(props: AppProps = {}) {
         }
       }
 
+      if (mailLoadRequestRef.current !== listRequestId) {
+        return;
+      }
+
       if (succeededKeys.size > 0) {
         const remainingMail = workspaceMail.filter(
           (item) => !succeededKeys.has(mailItemKey(item)),
@@ -1505,11 +1649,13 @@ export function App(props: AppProps = {}) {
 
       setBackendNotice(
         failedCount > 0
-          ? `Smart Inbox 已完成 ${succeededCount} 封，${failedCount} 封稍后重试。`
-          : `Smart Inbox 已完成 ${succeededCount} 封${successContext}邮件。`,
+          ? `智能收件箱已完成 ${succeededCount} 封，${failedCount} 封稍后重试。`
+          : `智能收件箱已完成 ${succeededCount} 封${successContext}邮件。`,
       );
     } catch {
-      setBackendNotice("Smart Inbox 批量 Done 暂时不可用。");
+      if (mailLoadRequestRef.current === listRequestId) {
+        setBackendNotice("智能收件箱批量完成暂时不可用。");
+      }
     } finally {
       setSmartInboxBusy("");
     }
@@ -1518,7 +1664,7 @@ export function App(props: AppProps = {}) {
   async function applySmartInboxBucketDone(bucket: string) {
     await applySmartInboxItemsDone(
       workspaceMail.filter((item) => item.bucket === bucket),
-      "当前 Smart Inbox 卡片没有可处理邮件。",
+      "当前智能收件箱卡片没有可处理邮件。",
       bucketLabel(bucket),
     );
   }
@@ -1526,7 +1672,7 @@ export function App(props: AppProps = {}) {
   async function applySelectedMessagesDone(items: MailItem[]) {
     await applySmartInboxItemsDone(
       items,
-      "请先选择要 Done 的邮件。",
+      "未选择邮件。",
       "选中",
     );
   }
@@ -1539,7 +1685,7 @@ export function App(props: AppProps = {}) {
       candidates.length > 0 ? candidates : selectedMail ? [selectedMail] : [],
     );
     if (!props.api || targets.length === 0) {
-      setBackendNotice("连接服务后才能训练 Smart Inbox。");
+      setBackendNotice("反馈暂时不可用。");
       return false;
     }
 
@@ -1558,7 +1704,7 @@ export function App(props: AppProps = {}) {
         result.status === "fulfilled" ? [result.value] : [],
       );
       if (results.length === 0) {
-        setBackendNotice("Smart Inbox 反馈暂时不可用。");
+        setBackendNotice("智能收件箱反馈暂时不可用。");
         return false;
       }
 
@@ -1575,7 +1721,9 @@ export function App(props: AppProps = {}) {
                 tone: toneForBucket(result.classification.bucket),
                 bucket: result.classification.bucket,
                 score: result.classification.priorityScore,
-                reasons: result.classification.reasons,
+                reasons: userFacingClassificationReasons(
+                  result.classification.reasons,
+                ),
               }
             : item;
         }),
@@ -1585,14 +1733,14 @@ export function App(props: AppProps = {}) {
       const feedbackLabel = smartInboxFeedbackLabel(action);
       setBackendNotice(
         failedCount > 0
-          ? `Smart Inbox 已学习 ${results.length} 封，${failedCount} 封稍后重试。`
+          ? `智能收件箱已学习 ${results.length} 封，${failedCount} 封稍后重试。`
           : results.length > 1
-            ? `Smart Inbox 已学习 ${results.length} 封：${feedbackLabel}。`
-            : `Smart Inbox 已学习：${feedbackLabel}。`,
+            ? `智能收件箱已学习 ${results.length} 封：${feedbackLabel}。`
+            : `智能收件箱已学习：${feedbackLabel}。`,
       );
       return failedCount === 0;
     } catch {
-      setBackendNotice("Smart Inbox 反馈暂时不可用。");
+      setBackendNotice("智能收件箱反馈暂时不可用。");
       return false;
     } finally {
       setSmartInboxBusy("");
@@ -1634,7 +1782,7 @@ export function App(props: AppProps = {}) {
           fallback: "Hermes 跟进暂时不可用。",
           unavailable: {
             hermes_message_followup_unavailable:
-              "Hermes 跟进识别服务暂时不可用，请联系管理员检查服务配置。",
+              "Hermes 跟进暂时不可用。",
           },
         }),
       );
@@ -1653,7 +1801,7 @@ export function App(props: AppProps = {}) {
 
     try {
       const followUp = await props.api.confirmHermesFollowUp({
-        accountId,
+        accountId: selectedMail.accountId,
         messageId: selectedMail.id,
         skillRunId: hermesFollowUpSuggestion.skillRunId,
         status: hermesFollowUpSuggestion.status,
@@ -1670,8 +1818,7 @@ export function App(props: AppProps = {}) {
           skillId: "followup_tracker",
           fallback: "Hermes 跟进保存失败。",
           unavailable: {
-            hermes_follow_up_unavailable:
-              "Hermes 跟进保存服务暂时不可用，请联系管理员检查服务配置。",
+            hermes_follow_up_unavailable: "Hermes 跟进保存失败。",
           },
         }),
       );
@@ -1683,7 +1830,8 @@ export function App(props: AppProps = {}) {
       <OAuthCallbackPage
         api={props.api}
         callback={oauthCallback}
-        onConnected={(nextAccountId) => void handleConnectedAccount(nextAccountId)}
+        onConnected={handleConnectedAccount}
+        onComplete={finishOAuthCallback}
       />
     );
   }
@@ -1697,12 +1845,11 @@ export function App(props: AppProps = {}) {
           </div>
           <div>
             <strong>Email Hub</strong>
-            <span>快速聚合邮件</span>
           </div>
         </div>
 
         <nav className="global-nav">
-          {effectiveNavItems.map((item) => {
+          {primaryNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <Fragment key={item.id}>
@@ -1748,12 +1895,28 @@ export function App(props: AppProps = {}) {
           })}
         </nav>
 
-        <div className="sidebar-footer">
-          <span className="online-dot" />
-          <div>
-            <strong>已连接 {connectedAccountCount} 个邮箱</strong>
-            <span>{connectedAccountCount > 0 ? "Hermes 可用" : "等待邮箱接入"}</span>
+        <div className="sidebar-bottom">
+          <div className="sidebar-footer">
+            <span className="online-dot" />
+            <div>
+              <strong>已连接 {connectedAccountCount} 个邮箱</strong>
+            </div>
           </div>
+          {settingsNavItem ? (
+            <button
+              className={
+                activeView === settingsNavItem.id
+                  ? "nav-button sidebar-settings-button active"
+                  : "nav-button sidebar-settings-button"
+              }
+              onClick={() => setActiveView(settingsNavItem.id)}
+              type="button"
+              aria-label={settingsNavItem.label}
+            >
+              <Settings size={19} />
+              <span>{settingsNavItem.label}</span>
+            </button>
+          ) : null}
         </div>
       </aside>
       <div
@@ -1764,67 +1927,64 @@ export function App(props: AppProps = {}) {
 
       <main className="main-area">
         {activeView === "mail" ? (
-          selectedMail ? (
-            <MailWorkspace
-              api={props.api}
-              accountId={workspaceAccountId}
-              activeFolder={activeFolder}
-              activeMailId={activeMailId}
-                folders={workspaceFolders}
-                mail={sortedMail}
-                folderTitle={activeFolderSummary.title}
-                folderCount={activeFolderSummary.count}
-                selectedMail={selectedMail}
-              selectedDetail={selectedDetail}
-              undoToast={undoToast}
-              backendNotice={backendNotice}
-              smartInboxBusy={smartInboxBusy}
-              quickCategories={navigationQuickCategories}
-              labels={navigationLabels}
-              hermesDockReaderIntent={hermesDockReaderIntent}
-              hermesFollowUpSuggestion={hermesFollowUpSuggestion}
-              followUpNotice={followUpNotice}
-                density={mailDensity}
-                sort={mailSort}
-                onAddMail={() => setActiveView("add-mail")}
-                onGlobalSearch={launchGlobalSearch}
-                onDensityChange={setMailDensity}
-                onRefresh={() => void refreshCurrentMail()}
-                onSortChange={changeMailSort}
-                onFolderChange={(id) => void loadMailbox(id)}
-              onSavedViewChange={(id) => void loadSavedView(id)}
-              onLabelChange={(id) => void loadLabel(id)}
-              onMailChange={setActiveMailId}
-              onDone={() => applySelectedAction("done")}
-              onArchive={() => applySelectedAction("archive")}
-              onTrash={() => applySelectedAction("trash")}
-              onToggleStar={() =>
-                applySelectedAction(selectedMail.starred ? "unstar" : "star")
-              }
-              onToggleRead={() =>
-                applySelectedAction(
-                  selectedMail.unread ? "mark_read" : "mark_unread",
-                )
-              }
-              onUndoDone={() => void undoDone()}
-                onSmartInboxBucketDone={(bucket) => void applySmartInboxBucketDone(bucket)}
-                onSelectedMessagesDone={(items) => void applySelectedMessagesDone(items)}
-                onSmartInboxFeedback={recordSmartInboxFeedback}
-              onMailActionResult={applyActionResult}
-              onLabelsChanged={(accountId) => void refreshLabels(accountId)}
-              onTrackFollowUp={() => void trackSelectedFollowUp()}
-              onConfirmHermesFollowUp={() => void confirmHermesFollowUp()}
-              onOpenHermesRuntimeSettings={openHermesRuntimeSettings}
-            />
-          ) : (
-            <MailEmptyState
-              notice={backendNotice}
-              undoToast={undoToast}
-              onAddMail={() => setActiveView("add-mail")}
-              onOpenSyncCenter={() => setActiveView("sync")}
-              onUndoDone={() => void undoDone()}
-            />
-          )
+          <MailWorkspace
+            api={props.api}
+            accountId={workspaceAccountId}
+            activeFolder={activeFolder}
+            activeMailId={activeMailId}
+            folders={workspaceFolders}
+            mail={sortedMail}
+            folderTitle={activeFolderSummary.title}
+            folderCount={activeFolderSummary.count}
+            selectedMail={
+              selectedMail ??
+              createBlankMailItem(workspaceAccountId || PREVIEW_ACCOUNT_ID)
+            }
+            hasSelectedMail={Boolean(selectedMail)}
+            selectedDetail={selectedDetail}
+            undoToast={undoToast}
+            backendNotice={backendNotice}
+            smartInboxBusy={smartInboxBusy}
+            quickCategories={navigationQuickCategories}
+            labels={navigationLabels}
+            hermesDockReaderIntent={hermesDockReaderIntent}
+            hermesFollowUpSuggestion={hermesFollowUpSuggestion}
+            followUpNotice={followUpNotice}
+            density={mailDensity}
+            sort={mailSort}
+            onGlobalSearch={launchGlobalSearch}
+            onDensityChange={setMailDensity}
+            onRefresh={() => void refreshCurrentMail()}
+            onSortChange={changeMailSort}
+            onFolderChange={(id) => void loadMailbox(id)}
+            onSavedViewChange={(id) => void loadSavedView(id)}
+            onLabelChange={(id) => void loadLabel(id)}
+            onMailChange={setActiveMailId}
+            onDone={() => applySelectedAction("done")}
+            onArchive={() => applySelectedAction("archive")}
+            onTrash={() => applySelectedAction("trash")}
+            onToggleStar={() =>
+              selectedMail
+                ? applySelectedAction(selectedMail.starred ? "unstar" : "star")
+                : false
+            }
+            onToggleRead={() =>
+              selectedMail
+                ? applySelectedAction(
+                    selectedMail.unread ? "mark_read" : "mark_unread",
+                  )
+                : false
+            }
+            onUndoDone={() => void undoDone()}
+            onSmartInboxBucketDone={(bucket) => void applySmartInboxBucketDone(bucket)}
+            onSelectedMessagesDone={(items) => void applySelectedMessagesDone(items)}
+            onSmartInboxFeedback={recordSmartInboxFeedback}
+            onMailActionResult={applyActionResult}
+            onLabelsChanged={(accountId) => void refreshLabels(accountId)}
+            onTrackFollowUp={() => void trackSelectedFollowUp()}
+            onConfirmHermesFollowUp={() => void confirmHermesFollowUp()}
+            onOpenHermesRuntimeSettings={openHermesRuntimeSettings}
+          />
         ) : null}
         {activeView === "add-mail" ? (
           <AddMailPage
@@ -1878,8 +2038,12 @@ export function App(props: AppProps = {}) {
           <DomainSetupPage api={props.api} />
         ) : null}
         {activeView === "settings" ? (
-          <SettingsPage
+          <SettingsHomePage
             api={props.api}
+            connectedAccountCount={connectedAccountCount}
+            onOpenAddMail={() => setActiveView("add-mail")}
+            onOpenDomains={() => setActiveView("domains")}
+            onOpenHermes={() => setActiveView("hermes")}
           />
         ) : null}
       </main>
@@ -1917,15 +2081,27 @@ export function App(props: AppProps = {}) {
 function OAuthCallbackPage(props: {
   api?: EmailHubApi;
   callback: OAuthCallbackParams;
-  onConnected: (accountId?: string) => void;
+  onConnected: (accountId?: string) => Promise<void> | void;
+  onComplete: () => void;
 }) {
+  const submittedCallbackKeyRef = useRef<string | undefined>(undefined);
+  const onConnectedRef = useRef(props.onConnected);
+  const onCompleteRef = useRef(props.onComplete);
   const [status, setStatus] = useState<{
     kind: "working" | "success" | "error";
     message: string;
   }>({
     kind: "working",
-    message: "正在完成邮箱连接...",
+    message: "确认登录",
   });
+
+  useEffect(() => {
+    onConnectedRef.current = props.onConnected;
+  }, [props.onConnected]);
+
+  useEffect(() => {
+    onCompleteRef.current = props.onComplete;
+  }, [props.onComplete]);
 
   useEffect(() => {
     let alive = true;
@@ -1947,7 +2123,7 @@ function OAuthCallbackPage(props: {
       if (!props.callback.state || !props.callback.code) {
         setStatus({
           kind: "error",
-          message: "登录信息不完整，请回到添加邮箱重试。",
+          message: "登录信息不完整。",
         });
         return;
       }
@@ -1956,15 +2132,26 @@ function OAuthCallbackPage(props: {
       if (!pending) {
         setStatus({
           kind: "error",
-          message: "登录已过期，请回到添加邮箱重新开始。",
+          message: "登录已过期。",
         });
         return;
       }
 
+      const callbackKey = [
+        pending.flow,
+        pending.provider,
+        props.callback.state,
+        props.callback.code,
+      ].join(":");
+      if (submittedCallbackKeyRef.current === callbackKey) {
+        return;
+      }
+      submittedCallbackKeyRef.current = callbackKey;
+
       if (!props.api) {
         setStatus({
           kind: "error",
-          message: "邮箱服务暂时不可用，请稍后重试。",
+          message: "邮箱服务暂时不可用。",
         });
         return;
       }
@@ -1986,13 +2173,12 @@ function OAuthCallbackPage(props: {
         }
 
         clearOAuthPendingState(props.callback.state);
-        props.onConnected(result.account?.id);
-        const actionText =
-          pending.flow === "reauthorization" ? "已重新授权" : "已连接";
-        setStatus({
-          kind: "success",
-          message: `${result.account?.email ?? result.task.email} ${actionText}，正在同步邮件。`,
-        });
+        void Promise.resolve(onConnectedRef.current(result.account?.id)).catch(
+          () => {
+            // Mailbox refresh failures should not keep users on the callback URL.
+          },
+        );
+        onCompleteRef.current();
       } catch (error) {
         if (alive) {
           setStatus({
@@ -2015,7 +2201,6 @@ function OAuthCallbackPage(props: {
     props.callback.code,
     props.callback.error,
     props.callback.state,
-    props.onConnected,
   ]);
 
   return (
@@ -2025,16 +2210,20 @@ function OAuthCallbackPage(props: {
           <div
             className="page-panel"
             role={status.kind === "error" ? "alert" : "status"}
-            aria-label="OAuth callback status"
+            aria-label="网页登录状态"
           >
             <CheckCircle2 size={24} />
-            <h1>{status.kind === "success" ? "邮箱已连接" : "添加邮箱"}</h1>
+            <h1>{status.kind === "success" ? "邮箱已添加" : "添加邮箱"}</h1>
             <p>{status.message}</p>
           </div>
         </section>
       </main>
     </div>
   );
+}
+
+function hasBackendAccountId(accountId: string): boolean {
+  return accountId.trim().length > 0;
 }
 
 function readOAuthCallbackFromLocation(
@@ -2049,6 +2238,7 @@ function readOAuthCallbackFromLocation(
     state: params.get("state") ?? "",
     code: params.get("code") ?? "",
     ...(params.get("error") ? { error: params.get("error") ?? undefined } : {}),
+    ...(params.get("iss") ? { issuer: params.get("iss") ?? undefined } : {}),
   };
 }
 
@@ -2130,6 +2320,7 @@ function MailWorkspace(props: {
     folderTitle: string;
     folderCount: number;
     selectedMail: MailItem;
+    hasSelectedMail: boolean;
   selectedDetail?: MessageDetailDto;
   undoToast?: UndoToastState;
   backendNotice?: string;
@@ -2141,7 +2332,6 @@ function MailWorkspace(props: {
     followUpNotice?: string;
     density: MailDensity;
     sort: MessageListSort;
-    onAddMail: () => void;
     onGlobalSearch: (query: string) => void;
     onDensityChange: (density: MailDensity) => void;
     onRefresh: () => void;
@@ -2203,6 +2393,8 @@ function MailWorkspace(props: {
   >({});
   const [graphDiagnosticsByCandidate, setGraphDiagnosticsByCandidate] =
     useState<Record<string, MailSendIdentityDiagnosticsDto>>({});
+  const [composeAdvancedSenderOpen, setComposeAdvancedSenderOpen] =
+    useState(false);
   const [composeTo, setComposeTo] = useState("");
   const [composeCc, setComposeCc] = useState("");
   const [composeBcc, setComposeBcc] = useState("");
@@ -2254,6 +2446,7 @@ function MailWorkspace(props: {
     string | undefined
   >();
   const [attachmentDownloadNotice, setAttachmentDownloadNotice] = useState("");
+  const attachmentDownloadRequestRef = useRef(0);
   const [readerHermesNoticeState, setReaderHermesNoticeState] =
     useState<HermesNoticeState>({ text: "" });
   const [readerHermesBusy, setReaderHermesBusy] =
@@ -2288,6 +2481,7 @@ function MailWorkspace(props: {
   const composeMessageAccountIdRef = useRef(props.accountId);
   const composeBodyRef = useRef(composeBody);
   const readerHermesRequestRef = useRef(0);
+  const readerHermesApplyRequestRef = useRef(0);
   const hermesDockReaderIntentRequestRef = useRef<number | undefined>(
     undefined,
   );
@@ -2296,6 +2490,9 @@ function MailWorkspace(props: {
   composeBodyRef.current = composeBody;
   const composeNotice = composeNoticeState.text;
   const readerHermesNotice = readerHermesNoticeState.text;
+  const readerControlsDisabled = !props.hasSelectedMail || composeBusy;
+  const readerHermesControlsDisabled =
+    !props.hasSelectedMail || Boolean(readerHermesBusy);
 
   function setComposeNotice(
     notice: string,
@@ -2331,6 +2528,10 @@ function MailWorkspace(props: {
   }
 
   function selectReaderTranslationSource(sourceLanguage: string) {
+    if (!props.hasSelectedMail) {
+      return;
+    }
+
     readerTranslationPreferences.selectSourceLanguageForSender({
       accountId: props.selectedMail.accountId,
       senderEmail: props.selectedMail.email,
@@ -2424,9 +2625,10 @@ function MailWorkspace(props: {
     setComposeAutosaveStatus("saved");
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     invalidateComposeMessageRequest();
     readerHermesRequestRef.current += 1;
+    readerHermesApplyRequestRef.current += 1;
     readerTranslationPreferenceRequestRef.current += 1;
     setAttachmentDownloadBusyId(undefined);
     setAttachmentDownloadNotice("");
@@ -2435,18 +2637,30 @@ function MailWorkspace(props: {
     setReaderHermesTranslation(undefined);
     setReaderHermesOrganization(undefined);
     setReaderHermesBusy(undefined);
+    if (!props.hasSelectedMail) {
+      setReaderHermesApplyBusy(undefined);
+      setReaderTranslationPreferenceBusy(false);
+      return;
+    }
+
     readerTranslationPreferences.applyPreferenceForSender({
       accountId: props.selectedMail.accountId,
       senderEmail: props.selectedMail.email,
     });
     setReaderHermesApplyBusy(undefined);
     setReaderTranslationPreferenceBusy(false);
-  }, [props.selectedMail.id]);
+  }, [
+    props.hasSelectedMail,
+    props.selectedMail.accountId,
+    props.selectedMail.email,
+    props.selectedMail.id,
+  ]);
 
   useEffect(() => {
     const intent = props.hermesDockReaderIntent;
     if (
       !intent ||
+      !props.hasSelectedMail ||
       hermesDockReaderIntentRequestRef.current === intent.requestId
     ) {
       return;
@@ -2460,7 +2674,7 @@ function MailWorkspace(props: {
     } else {
       void askHermesForReplyDraft();
     }
-  }, [props.hermesDockReaderIntent?.requestId]);
+  }, [props.hasSelectedMail, props.hermesDockReaderIntent?.requestId]);
 
   useEffect(() => {
     invalidateComposeMessageRequest();
@@ -2469,6 +2683,7 @@ function MailWorkspace(props: {
     setComposeDraftId(undefined);
     setComposeScheduledId(undefined);
     setGraphTargetMailboxes({});
+    setComposeAdvancedSenderOpen(false);
     setDraftsNotice("");
     setOutboxNotice("");
   }, [props.accountId]);
@@ -2481,6 +2696,19 @@ function MailWorkspace(props: {
       setGraphTargetMailboxes({});
       setComposeFrom(identities[0]?.id ?? "");
       setMailDrafts([]);
+      return;
+    }
+
+    if (!hasBackendAccountId(props.accountId)) {
+      setSendIdentities([]);
+      setSendIdentityCandidates([]);
+      setGraphTargetMailboxes({});
+      setComposeFrom("");
+      setMailDrafts([]);
+      setDraftsLoading(false);
+      setOutboxItems([]);
+      setOutboxNotice("");
+      setDraftsNotice("");
       return;
     }
 
@@ -2562,12 +2790,21 @@ function MailWorkspace(props: {
     selectedComposeIdentity && !selectedComposeIdentity.isDefault
       ? selectedComposeIdentity.from
       : undefined;
-  const detailAttachments = props.selectedDetail?.attachments;
+  const detailAttachments = props.hasSelectedMail
+    ? props.selectedDetail?.attachments
+    : undefined;
   const visibleAttachmentCount =
     detailAttachments?.length ??
-    (props.api ? props.selectedMail.attachmentCount : PREVIEW_ATTACHMENT_ROWS.length);
-  const previewAttachments = props.api ? [] : PREVIEW_ATTACHMENT_ROWS;
-  const readerBodyText = messageReaderText(props.selectedDetail, props.selectedMail);
+    (props.hasSelectedMail
+      ? props.api
+        ? props.selectedMail.attachmentCount
+        : PREVIEW_ATTACHMENT_ROWS.length
+      : 0);
+  const previewAttachments =
+    props.hasSelectedMail && !props.api ? PREVIEW_ATTACHMENT_ROWS : [];
+  const readerBodyText = props.hasSelectedMail
+    ? messageReaderText(props.selectedDetail, props.selectedMail)
+    : "";
   const readerRecipientSummary = messageRecipientSummary(
     props.selectedDetail,
   );
@@ -2579,6 +2816,10 @@ function MailWorkspace(props: {
     composeAutosaveGenerationRef.current += 1;
 
     if (!props.api || composeBusy || composeScheduledId) {
+      return;
+    }
+    if (!hasBackendAccountId(props.accountId)) {
+      setComposeAutosaveStatus("idle");
       return;
     }
 
@@ -2663,6 +2904,13 @@ function MailWorkspace(props: {
     if (!props.api) {
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setSendIdentities([]);
+      setSendIdentityCandidates([]);
+      setGraphTargetMailboxes({});
+      setComposeFrom("");
+      return;
+    }
 
     const page = await props.api.listSendIdentities({ accountId: props.accountId });
     setSendIdentities(page.items);
@@ -2685,6 +2933,10 @@ function MailWorkspace(props: {
     if (!props.api) {
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setOutboxItems([]);
+      return;
+    }
 
     const page = await props.api.listOutbox({ accountId: props.accountId, limit: 20 });
     setOutboxItems(page.items);
@@ -2693,6 +2945,11 @@ function MailWorkspace(props: {
 
   async function refreshMailDrafts() {
     if (!props.api) {
+      return;
+    }
+    if (!hasBackendAccountId(props.accountId)) {
+      setMailDrafts([]);
+      setDraftsNotice("");
       return;
     }
 
@@ -2707,6 +2964,10 @@ function MailWorkspace(props: {
   async function addGraphSendIdentityCandidate() {
     if (!props.api) {
       setComposeNotice("发件身份服务暂时不可用。");
+      return;
+    }
+    if (!hasBackendAccountId(props.accountId)) {
+      setComposeNotice("未选择邮箱。");
       return;
     }
 
@@ -2751,6 +3012,10 @@ function MailWorkspace(props: {
       setComposeNotice("发件身份服务暂时不可用。");
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setComposeNotice("未选择邮箱。");
+      return;
+    }
 
     setComposeBusy(true);
     try {
@@ -2783,8 +3048,12 @@ function MailWorkspace(props: {
       setComposeNotice("发件身份服务暂时不可用。");
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setComposeNotice("未选择邮箱。");
+      return;
+    }
     if (candidate.verificationState !== "verified" || !candidate.enabled) {
-      setComposeNotice("请先完成 Outlook 共享 From 验证。");
+      setComposeNotice("Outlook 共享发件人未验证。");
       return;
     }
 
@@ -2830,6 +3099,10 @@ function MailWorkspace(props: {
   ) {
     if (!props.api) {
       setComposeNotice("发件身份服务暂时不可用。");
+      return;
+    }
+    if (!hasBackendAccountId(props.accountId)) {
+      setComposeNotice("未选择邮箱。");
       return;
     }
 
@@ -2915,11 +3188,7 @@ function MailWorkspace(props: {
     }
     setComposeFrom(resolveComposeIdentityId(draft.from));
     setComposePreview(undefined);
-    setComposeNotice(
-      scheduled
-        ? `待发草稿已载入：${scheduled.id}`
-        : `草稿已载入：${draft.id}`,
-    );
+    setComposeNotice(scheduled ? "待发草稿已打开。" : "草稿已打开。");
   }
 
   function resolveComposeIdentityId(from?: MailDraftDto["from"]): string {
@@ -2945,13 +3214,17 @@ function MailWorkspace(props: {
       setComposeNotice("邮件服务暂时不可用。");
       return;
     }
+    if (!props.hasSelectedMail) {
+      setComposeNotice("未打开邮件。");
+      return;
+    }
 
     const requestId = beginComposeMessageRequest();
     const selectedMail = props.selectedMail;
     const from = selectedComposeFrom;
     try {
       const seed = await props.api.createComposeSeed({
-        accountId: props.accountId,
+        accountId: selectedMail.accountId,
         messageId: selectedMail.id,
         mode,
         ...(from ? { from } : {}),
@@ -2977,6 +3250,10 @@ function MailWorkspace(props: {
   async function previewComposedMail() {
     if (!props.api) {
       setComposeNotice("预览服务暂时不可用。");
+      return;
+    }
+    if (!hasBackendAccountId(props.accountId)) {
+      setComposeNotice("未选择邮箱。");
       return;
     }
 
@@ -3010,10 +3287,10 @@ function MailWorkspace(props: {
       setComposeNotice(
         preview.readyToSend
           ? "预览已生成，可以保存、定时或发送。"
-          : "预览已生成，请处理提示项后再发送。",
+          : "预览已生成，仍有提示项。",
       );
     } catch {
-      setComposeNotice("预览生成失败，请检查收件人和发件身份。");
+      setComposeNotice("预览生成失败。");
     } finally {
       setComposeBusy(false);
     }
@@ -3024,11 +3301,15 @@ function MailWorkspace(props: {
       setReaderHermesNotice("Hermes 暂时不可用。");
       return;
     }
+    if (!props.hasSelectedMail) {
+      setReaderHermesNotice("未打开邮件。");
+      return;
+    }
 
     const requestId = readerHermesRequestRef.current + 1;
     readerHermesRequestRef.current = requestId;
     setReaderHermesBusy("summary");
-    setReaderHermesNotice("Hermes 正在总结当前邮件...");
+    setReaderHermesNotice("");
     try {
       const result = await props.api.summarizeMessage({
         accountId: props.selectedMail.accountId,
@@ -3071,15 +3352,15 @@ function MailWorkspace(props: {
       setReaderHermesNotice("Hermes 暂时不可用。");
       return;
     }
+    if (!props.hasSelectedMail) {
+      setReaderHermesNotice("未打开邮件。");
+      return;
+    }
 
     const requestId = readerHermesRequestRef.current + 1;
     readerHermesRequestRef.current = requestId;
     setReaderHermesBusy("translation");
-    setReaderHermesNotice(
-      options.forceRefresh
-        ? "Hermes 正在重新翻译当前邮件..."
-        : "Hermes 正在翻译当前邮件...",
-    );
+    setReaderHermesNotice("");
     try {
       const result = await props.api.translateMessage({
         accountId: props.selectedMail.accountId,
@@ -3121,7 +3402,7 @@ function MailWorkspace(props: {
   }
 
   async function rememberReaderTranslationPreference() {
-    if (!props.api || !readerHermesTranslation) {
+    if (!props.api || !props.hasSelectedMail || !readerHermesTranslation) {
       setReaderHermesNotice("需要先翻译一次，才能保存翻译习惯。");
       return;
     }
@@ -3193,6 +3474,10 @@ function MailWorkspace(props: {
       setReaderHermesNotice("Hermes 暂时不可用。");
       return;
     }
+    if (!props.hasSelectedMail) {
+      setReaderHermesNotice("未打开邮件。");
+      return;
+    }
 
     const requestId = readerHermesRequestRef.current + 1;
     const memoryScope = `sender:${props.selectedMail.email}`;
@@ -3204,7 +3489,7 @@ function MailWorkspace(props: {
     ];
     readerHermesRequestRef.current = requestId;
     setReaderHermesBusy("organize");
-    setReaderHermesNotice("Hermes 正在整理当前邮件...");
+    setReaderHermesNotice("");
     try {
       const organization = await props.api.organizeMessage({
         accountId: props.selectedMail.accountId,
@@ -3245,23 +3530,31 @@ function MailWorkspace(props: {
     if (readerHermesApplyBusy) {
       return;
     }
+    if (!props.hasSelectedMail) {
+      setReaderHermesNotice("未打开邮件。");
+      return;
+    }
 
     setReaderHermesApplyBusy(action.id);
-    setReaderHermesNotice(`正在应用 Hermes 建议：${action.label}...`);
+    setReaderHermesNotice("");
 
+    const requestId = readerHermesApplyRequestRef.current + 1;
+    readerHermesApplyRequestRef.current = requestId;
+    const accountId = props.selectedMail.accountId;
+    const messageId = props.selectedMail.id;
     let applied = false;
     let successNotice: string | undefined;
-    if (action.kind === "mail") {
-      applied = await props.onArchive();
-    } else if (action.kind === "smart_inbox") {
-      applied = await props.onSmartInboxFeedback(action.action);
-    } else if (!props.api) {
-      setReaderHermesNotice("连接服务后才能应用 Hermes 标签建议。");
-      setReaderHermesApplyBusy(undefined);
-      return;
-    } else {
-      try {
-        const accountId = props.selectedMail.accountId;
+    try {
+      if (action.kind === "mail") {
+        applied = await props.onArchive();
+      } else if (action.kind === "smart_inbox") {
+        applied = await props.onSmartInboxFeedback(action.action);
+      } else if (!props.api) {
+        if (readerHermesApplyRequestRef.current === requestId) {
+          setReaderHermesNotice("Hermes 标签建议暂时不可用。");
+        }
+        return;
+      } else {
         const normalizedLabelName = action.labelName.toLowerCase();
         const existingLabel = props.labels.find(
           (label) =>
@@ -3285,20 +3578,30 @@ function MailWorkspace(props: {
         }
         const result = await props.api.applyMailAction({
           accountId,
-          messageId: props.selectedMail.id,
+          messageId,
           action: "apply_labels",
           labelIds: [labelId],
         });
+        if (readerHermesApplyRequestRef.current !== requestId) {
+          return;
+        }
         props.onMailActionResult(result);
         props.onLabelsChanged(accountId);
         applied = true;
         successNotice = `Hermes 建议已应用：${action.label}。写回状态：${result.command.status}。`;
-      } catch {
-        applied = false;
+      }
+    } catch {
+      applied = false;
+    } finally {
+      if (readerHermesApplyRequestRef.current === requestId) {
+        setReaderHermesApplyBusy(undefined);
       }
     }
 
-    setReaderHermesApplyBusy(undefined);
+    if (readerHermesApplyRequestRef.current !== requestId) {
+      return;
+    }
+
     setReaderHermesNotice(
       applied
         ? (successNotice ?? `Hermes 建议已应用：${action.label}。`)
@@ -3314,8 +3617,8 @@ function MailWorkspace(props: {
       return;
     }
 
-    if (!props.api) {
-      setReaderHermesNotice("连接服务后才能创建 Hermes 待办提醒。");
+    if (!props.api || !props.hasSelectedMail) {
+      setReaderHermesNotice("Hermes 待办提醒暂时不可用。");
       return;
     }
 
@@ -3325,31 +3628,48 @@ function MailWorkspace(props: {
     }
 
     const busyId = hermesActionItemApplyId(item, index);
+    const requestId = readerHermesApplyRequestRef.current + 1;
+    readerHermesApplyRequestRef.current = requestId;
+    const accountId = props.selectedMail.accountId;
+    const messageId = props.selectedMail.id;
+    const skillRunId = readerHermesOrganization?.actionItems.skillRunId;
     setReaderHermesApplyBusy(busyId);
-    setReaderHermesNotice(`正在创建 Hermes 待办提醒：${item.title}...`);
+    setReaderHermesNotice("");
 
     try {
       const followUp = await props.api.createFollowUp({
-        accountId: props.selectedMail.accountId,
-        messageId: props.selectedMail.id,
+        accountId,
+        messageId,
         dueAt: item.dueAt,
         kind: "manual",
         title: item.title,
         note: formatHermesActionItemNote(item),
         source: "hermes_followup",
-        hermesSkillRunId: readerHermesOrganization?.actionItems.skillRunId,
+        hermesSkillRunId: skillRunId,
       });
+      if (readerHermesApplyRequestRef.current !== requestId) {
+        return;
+      }
       setReaderHermesNotice(`Hermes 待办提醒已创建：${followUp.title ?? item.title}。`);
     } catch {
+      if (readerHermesApplyRequestRef.current !== requestId) {
+        return;
+      }
       setReaderHermesNotice("Hermes 待办提醒创建失败。");
     } finally {
-      setReaderHermesApplyBusy(undefined);
+      if (readerHermesApplyRequestRef.current === requestId) {
+        setReaderHermesApplyBusy(undefined);
+      }
     }
   }
 
   async function askHermesForReplyDraft() {
     if (!props.api) {
       setComposeNotice("Hermes 暂时不可用。");
+      return;
+    }
+    if (!props.hasSelectedMail) {
+      setComposeNotice("未打开邮件。");
       return;
     }
 
@@ -3409,6 +3729,10 @@ function MailWorkspace(props: {
   async function askHermesForQuickReply(action: HermesQuickReplyAction) {
     if (!props.api) {
       setComposeNotice("Hermes 暂时不可用。");
+      return;
+    }
+    if (!props.hasSelectedMail) {
+      setComposeNotice("未打开邮件。");
       return;
     }
 
@@ -3472,6 +3796,10 @@ function MailWorkspace(props: {
       setComposeNotice("邮件服务暂时不可用。");
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setComposeNotice("未选择邮箱。");
+      return;
+    }
 
     const to = parseComposeRecipients(composeTo);
     const cc = parseComposeRecipients(composeCc);
@@ -3506,17 +3834,17 @@ function MailWorkspace(props: {
             accountId: props.accountId,
             scheduledId: composeScheduledId,
           });
-          setComposeNotice(`待发邮件已提交立即发送：${composeScheduledId}`);
+          setComposeNotice("待发邮件已提交立即发送。");
           clearComposeForm();
           await refreshOutbox();
           return;
         }
 
-        const result = await props.api.sendMailDraft({
+        await props.api.sendMailDraft({
           accountId: props.accountId,
           draftId: draft.id,
         });
-        setComposeNotice(`邮件已进入发送队列：${result.draft.id}`);
+        setComposeNotice("邮件已进入发送队列。");
         clearComposeForm();
         await refreshMailDrafts();
         await refreshOutbox();
@@ -3551,10 +3879,10 @@ function MailWorkspace(props: {
       setComposeDraftId(draft.id);
       setComposeNotice(
         composeScheduledId
-          ? `待发草稿已更新：${draft.id}`
+          ? "待发草稿已更新。"
           : composeDraftId
-            ? `草稿已更新：${draft.id}`
-            : `草稿已保存：${draft.id}`,
+            ? "草稿已更新。"
+            : "草稿已保存。",
       );
       if (composeScheduledId) {
         await refreshOutbox();
@@ -3562,7 +3890,7 @@ function MailWorkspace(props: {
         await refreshMailDrafts();
       }
     } catch {
-      setComposeNotice("写信操作失败，请稍后再试。");
+      setComposeNotice("写信操作失败。");
     } finally {
       setComposeBusy(false);
     }
@@ -3635,6 +3963,10 @@ function MailWorkspace(props: {
 
   async function addComposeAttachments(files: FileList | null) {
     if (!files || files.length === 0) {
+      return;
+    }
+    if (props.api && !hasBackendAccountId(props.accountId)) {
+      setComposeNotice("未选择邮箱。");
       return;
     }
 
@@ -3741,10 +4073,14 @@ function MailWorkspace(props: {
       setComposeNotice("Hermes 暂时不可用。");
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setComposeNotice("未选择邮箱。");
+      return;
+    }
 
     const bodyText = composeBody.trim();
     if (!bodyText) {
-      setComposeNotice("请先写正文，再让 Hermes 翻译。");
+      setComposeNotice("正文为空。");
       return;
     }
 
@@ -3796,10 +4132,14 @@ function MailWorkspace(props: {
       setComposeNotice("Hermes 暂时不可用。");
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setComposeNotice("未选择邮箱。");
+      return;
+    }
 
     const bodyText = composeBody.trim();
     if (!bodyText) {
-      setComposeNotice("请先写正文，再让 Hermes 润色。");
+      setComposeNotice("正文为空。");
       return;
     }
 
@@ -3843,12 +4183,16 @@ function MailWorkspace(props: {
 
   function editMailDraft(draft: MailDraftDto) {
     applyDraftToCompose(draft);
-    setDraftsNotice(`已载入草稿：${draft.id}`);
+    setDraftsNotice("已载入草稿。");
     openComposeSurface("floating", "body");
   }
 
   async function editOutboxItem(item: ScheduledSendDto) {
     if (!props.api || !item.canEdit) {
+      return;
+    }
+    if (!hasBackendAccountId(props.accountId)) {
+      setOutboxNotice("未选择邮箱。");
       return;
     }
 
@@ -3859,10 +4203,10 @@ function MailWorkspace(props: {
         scheduledId: item.id,
       });
       applyDraftToCompose(detail.draft, detail.scheduledSend);
-      setOutboxNotice(`已载入待发草稿：${item.id}`);
+      setOutboxNotice("已载入待发草稿。");
       openComposeSurface("floating", "body");
     } catch {
-      setOutboxNotice("加载待发草稿失败，请稍后再试。");
+      setOutboxNotice("待发草稿读取失败。");
     } finally {
       setOutboxBusyId(undefined);
     }
@@ -3872,6 +4216,10 @@ function MailWorkspace(props: {
     if (!props.api || !item.canSendNow) {
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setOutboxNotice("未选择邮箱。");
+      return;
+    }
 
     setOutboxBusyId(item.id);
     try {
@@ -3879,10 +4227,10 @@ function MailWorkspace(props: {
         accountId: props.accountId,
         scheduledId: item.id,
       });
-      setOutboxNotice(`已提交立即发送：${item.id}`);
+      setOutboxNotice("已提交立即发送。");
       await refreshOutbox();
     } catch {
-      setOutboxNotice("立即发送失败，请稍后再试。");
+      setOutboxNotice("立即发送失败。");
     } finally {
       setOutboxBusyId(undefined);
     }
@@ -3890,6 +4238,10 @@ function MailWorkspace(props: {
 
   async function rescheduleOutboxItem(item: ScheduledSendDto) {
     if (!props.api || !item.canEdit) {
+      return;
+    }
+    if (!hasBackendAccountId(props.accountId)) {
+      setOutboxNotice("未选择邮箱。");
       return;
     }
 
@@ -3911,7 +4263,7 @@ function MailWorkspace(props: {
       setOutboxNotice(`已改到 ${formatMailDate(updated.scheduledAt)}`);
       await refreshOutbox();
     } catch {
-      setOutboxNotice("改时间失败，请稍后再试。");
+      setOutboxNotice("改时间失败。");
     } finally {
       setOutboxBusyId(undefined);
     }
@@ -3921,6 +4273,10 @@ function MailWorkspace(props: {
     if (!props.api || !item.canDelete) {
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setOutboxNotice("未选择邮箱。");
+      return;
+    }
 
     setOutboxBusyId(item.id);
     try {
@@ -3928,10 +4284,10 @@ function MailWorkspace(props: {
         accountId: props.accountId,
         scheduledId: item.id,
       });
-      setOutboxNotice(`已取消定时发送：${item.id}`);
+      setOutboxNotice("已取消定时发送。");
       await refreshOutbox();
     } catch {
-      setOutboxNotice("取消定时发送失败，请稍后再试。");
+      setOutboxNotice("取消定时发送失败。");
     } finally {
       setOutboxBusyId(undefined);
     }
@@ -3951,12 +4307,16 @@ function MailWorkspace(props: {
       return;
     }
     if (!props.api) {
-      setLabelNotice("连接服务后才能创建标签。");
+      setLabelNotice("标签暂时无法创建。");
+      return;
+    }
+    if (!hasBackendAccountId(props.accountId)) {
+      setLabelNotice("未选择邮箱。");
       return;
     }
 
     setLabelBusy(true);
-    setLabelNotice("正在创建标签...");
+    setLabelNotice("");
     try {
       const label = await props.api.upsertLabel({
         accountId: props.accountId,
@@ -3967,7 +4327,7 @@ function MailWorkspace(props: {
       setLabelNotice(`标签已创建：${label.name}`);
       props.onLabelsChanged(props.accountId);
     } catch {
-      setLabelNotice("标签创建失败，请稍后再试。");
+      setLabelNotice("标签创建失败。");
     } finally {
       setLabelBusy(false);
     }
@@ -3978,7 +4338,13 @@ function MailWorkspace(props: {
       setAttachmentDownloadNotice("附件下载服务暂时不可用。");
       return;
     }
+    if (!hasBackendAccountId(props.accountId)) {
+      setAttachmentDownloadNotice("未选择邮箱。");
+      return;
+    }
 
+    const requestId = attachmentDownloadRequestRef.current + 1;
+    attachmentDownloadRequestRef.current = requestId;
     setAttachmentDownloadBusyId(attachment.id);
     setAttachmentDownloadNotice("");
     try {
@@ -3987,18 +4353,24 @@ function MailWorkspace(props: {
         attachmentId: attachment.id,
       });
       saveAttachmentDownload(download, attachment.filename);
-      setAttachmentDownloadNotice(`附件已开始下载：${attachment.filename}`);
+      if (attachmentDownloadRequestRef.current === requestId) {
+        setAttachmentDownloadNotice(`附件已开始下载：${attachment.filename}`);
+      }
     } catch {
-      setAttachmentDownloadNotice(`附件下载失败：${attachment.filename}`);
+      if (attachmentDownloadRequestRef.current === requestId) {
+        setAttachmentDownloadNotice(`附件下载失败：${attachment.filename}`);
+      }
     } finally {
-      setAttachmentDownloadBusyId(undefined);
+      if (attachmentDownloadRequestRef.current === requestId) {
+        setAttachmentDownloadBusyId(undefined);
+      }
     }
   }
 
-  const selectedBucket = props.selectedMail.bucket;
-  const selectedBucketCount = props.mail.filter(
-    (mail) => mail.bucket === selectedBucket,
-  ).length;
+  const selectedBucket = props.hasSelectedMail ? props.selectedMail.bucket : "";
+  const selectedBucketCount = props.hasSelectedMail
+    ? props.mail.filter((mail) => mail.bucket === selectedBucket).length
+    : 0;
   const smartInboxDisabled = props.smartInboxBusy !== "";
   const visibleMailKeys = useMemo(
     () => new Set(props.mail.map((mail) => mailItemKey(mail))),
@@ -4029,6 +4401,14 @@ function MailWorkspace(props: {
       : composeReplyToMessageId
         ? "回复邮件"
         : "写邮件";
+  const composeStatusParts = [
+    selectedComposeIdentity ? formatSendIdentity(selectedComposeIdentity) : "当前账号",
+    composeDraftId ? "已保存草稿" : "",
+    composeScheduledId ? "已加入待发" : "",
+    composeAutosaveStatus !== "idle"
+      ? formatComposeAutosaveStatus(composeAutosaveStatus)
+      : "",
+  ].filter(Boolean);
 
   useEffect(() => {
     setSelectedMailKeys((current) => {
@@ -4041,6 +4421,12 @@ function MailWorkspace(props: {
       return next.size === current.size ? current : next;
     });
   }, [visibleMailKeys]);
+
+  useEffect(() => {
+    attachmentDownloadRequestRef.current += 1;
+    setAttachmentDownloadBusyId(undefined);
+    setAttachmentDownloadNotice("");
+  }, [props.selectedMail.accountId, props.selectedMail.id]);
 
   function toggleAllVisibleMail(checked: boolean) {
     setSelectedMailKeys(
@@ -4061,12 +4447,17 @@ function MailWorkspace(props: {
     });
   }
 
+  function handleComposeWindowKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (composeSurface === "floating" && event.key === "Escape") {
+      closeComposeSurface();
+    }
+  }
+
   return (
     <section className="workspace-page mail-page">
       <header className="topbar">
         <div>
           <h1>邮箱</h1>
-          <p>统一查看所有邮箱和重点邮件。</p>
         </div>
         <form
           className="top-search"
@@ -4084,10 +4475,6 @@ function MailWorkspace(props: {
           <kbd>Ctrl /</kbd>
         </form>
         <div className="top-actions">
-          <button className="ghost-button" type="button" onClick={props.onAddMail}>
-            <MailPlus size={17} />
-            添加邮箱
-          </button>
           <button
             className="primary-button"
             type="button"
@@ -4112,20 +4499,14 @@ function MailWorkspace(props: {
           <section
             className={composeSurfaceClass}
             aria-label={`${composeTitle}窗口`}
-            role="region"
+            role={composeSurface === "floating" ? "dialog" : "region"}
+            onKeyDown={handleComposeWindowKeyDown}
           >
         <div className="compose-panel" aria-label="写邮件面板">
           <div className="compose-panel-head">
             <div>
               <strong>{composeTitle}</strong>
-              <span>
-                当前账号：{props.accountId}
-                {composeDraftId ? ` · 草稿：${composeDraftId}` : ""}
-                {composeScheduledId ? ` · 待发：${composeScheduledId}` : ""}
-                {composeAutosaveStatus !== "idle"
-                  ? ` · ${formatComposeAutosaveStatus(composeAutosaveStatus)}`
-                  : ""}
-              </span>
+              <span>{composeStatusParts.join(" · ") || "当前账号"}</span>
             </div>
             <div className="compose-window-actions">
               <Send size={18} />
@@ -4151,35 +4532,50 @@ function MailWorkspace(props: {
               compact
             />
           ) : null}
-          <label className="compose-from-field">
-            <span>From</span>
-            <select
-              aria-label="Compose from identity"
-              value={composeFrom}
-              disabled={sendIdentities.length === 0}
-              onChange={(event) => {
-                setComposeFrom(event.target.value);
-                setComposePreview(undefined);
-              }}
+          <div className="compose-sender-row">
+            <label className="compose-from-field">
+              <span>发件人</span>
+              <select
+                aria-label="Compose from identity"
+                value={composeFrom}
+                disabled={sendIdentities.length === 0}
+                onChange={(event) => {
+                  setComposeFrom(event.target.value);
+                  setComposePreview(undefined);
+                }}
+              >
+                {sendIdentities.length === 0 ? (
+                  <option value="">当前账号</option>
+                ) : (
+                  sendIdentities.map((identity) => (
+                    <option key={identity.id} value={identity.id}>
+                      {formatSendIdentity(identity)}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+            <button
+              className="tiny-button compose-sender-toggle"
+              type="button"
+              aria-label="管理发件身份"
+              aria-expanded={composeAdvancedSenderOpen}
+              onClick={() => setComposeAdvancedSenderOpen((current) => !current)}
             >
-              {sendIdentities.length === 0 ? (
-                <option value="">当前账号</option>
-              ) : (
-                sendIdentities.map((identity) => (
-                  <option key={identity.id} value={identity.id}>
-                    {formatSendIdentity(identity)}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
+              发件身份
+              {sendIdentityCandidates.length > 0 ? (
+                <strong>{sendIdentityCandidates.length}</strong>
+              ) : null}
+            </button>
+          </div>
+          {composeAdvancedSenderOpen ? (
           <div
             className="provider-candidate-box"
             aria-label="Outlook shared sender candidates"
           >
             <div className="provider-candidate-entry">
               <label>
-                <span>Outlook 共享 From</span>
+                <span>Outlook 共享发件人</span>
                 <input
                   aria-label="Outlook shared sender address"
                   value={graphCandidateAddress}
@@ -4274,7 +4670,7 @@ function MailWorkspace(props: {
                             void verifyGraphSendIdentityCandidate(candidate)
                           }
                         >
-                          验证 From
+                          验证发件人
                         </button>
                         <button
                           className="tiny-button"
@@ -4335,6 +4731,7 @@ function MailWorkspace(props: {
               </div>
             ) : null}
           </div>
+          ) : null}
           <div className="compose-recipient-grid">
             <label>
               <span>收件人</span>
@@ -4350,7 +4747,7 @@ function MailWorkspace(props: {
               />
             </label>
             <label>
-              <span>Cc</span>
+              <span>抄送</span>
               <input
                 aria-label="Compose cc"
                 value={composeCc}
@@ -4362,7 +4759,7 @@ function MailWorkspace(props: {
               />
             </label>
             <label>
-              <span>Bcc</span>
+              <span>密送</span>
               <input
                 aria-label="Compose bcc"
                 value={composeBcc}
@@ -4485,7 +4882,7 @@ function MailWorkspace(props: {
                     <strong>{attachment.filename}</strong>
                     <span>
                       {formatAttachmentSize(attachment.byteSize)}
-                      {attachment.inline ? " · inline" : ""}
+                      {attachment.inline ? " · 内联" : ""}
                     </span>
                   </div>
                   <button
@@ -4574,9 +4971,7 @@ function MailWorkspace(props: {
           <div className="compose-panel-head">
             <div>
               <strong>草稿</strong>
-              <span>
-                {draftsLoading ? "加载中" : `${mailDrafts.length} 封可编辑`}
-              </span>
+              <span>{mailDrafts.length} 封可编辑</span>
             </div>
             <FileText size={18} />
           </div>
@@ -4587,11 +4982,7 @@ function MailWorkspace(props: {
           ) : null}
           {mailDrafts.length === 0 ? (
             <div className="empty-drafts">
-              {draftsLoading
-                ? "正在加载草稿..."
-                : draftsNotice
-                  ? "无法读取保存草稿。"
-                  : "当前没有保存草稿。"}
+              {draftsNotice ? "无法读取保存草稿。" : "当前没有保存草稿。"}
             </div>
           ) : (
             <div className="draft-list">
@@ -4605,15 +4996,14 @@ function MailWorkspace(props: {
                       <span>
                         {recipients || "未填写收件人"} · {formatMailDate(draft.updatedAt)}
                       </span>
-                      <em>
-                        {draft.id}
-                        {attachmentCount > 0 ? ` · ${attachmentCount} 个附件` : ""}
-                      </em>
+                      {attachmentCount > 0 ? (
+                        <em>{attachmentCount} 个附件</em>
+                      ) : null}
                     </div>
                     <button
                       className="tiny-button"
                       type="button"
-                      aria-label={`Edit saved draft ${draft.id}`}
+                      aria-label={`编辑草稿 ${draft.subject || "无主题草稿"}`}
                       disabled={composeBusy}
                       onClick={() => editMailDraft(draft)}
                     >
@@ -4646,12 +5036,15 @@ function MailWorkspace(props: {
               {outboxItems.map((item) => (
                 <div className="outbox-row" key={item.id}>
                   <div>
-                    <strong>{item.draftId}</strong>
-                    <span>{item.status} · {formatMailDate(item.scheduledAt)}</span>
+                    <strong>定时邮件</strong>
+                    <span>
+                      {formatScheduledSendStatus(item.status)} ·{" "}
+                      {formatMailDate(item.scheduledAt)}
+                    </span>
                     {item.lastError ? <em>{item.lastError}</em> : null}
                   </div>
                   <input
-                    aria-label={`Reschedule ${item.id}`}
+                    aria-label="调整发送时间"
                     type="datetime-local"
                     value={rescheduleTimes[item.id] ?? isoToDateTimeLocal(item.scheduledAt)}
                     disabled={!item.canEdit || outboxBusyId === item.id}
@@ -4666,7 +5059,7 @@ function MailWorkspace(props: {
                     <button
                       className="tiny-button"
                       type="button"
-                      aria-label={`Edit scheduled draft ${item.id}`}
+                      aria-label="编辑待发邮件"
                       disabled={!item.canEdit || outboxBusyId === item.id}
                       onClick={() => void editOutboxItem(item)}
                     >
@@ -4675,7 +5068,7 @@ function MailWorkspace(props: {
                     <button
                       className="tiny-button"
                       type="button"
-                      aria-label={`Reschedule scheduled send ${item.id}`}
+                      aria-label="调整待发时间"
                       disabled={!item.canEdit || outboxBusyId === item.id}
                       onClick={() => void rescheduleOutboxItem(item)}
                     >
@@ -4684,7 +5077,7 @@ function MailWorkspace(props: {
                     <button
                       className="tiny-button"
                       type="button"
-                      aria-label={`Send scheduled send ${item.id} now`}
+                      aria-label="立即发送待发邮件"
                       disabled={!item.canSendNow || outboxBusyId === item.id}
                       onClick={() => void sendOutboxItemNow(item)}
                     >
@@ -4693,7 +5086,7 @@ function MailWorkspace(props: {
                     <button
                       className="tiny-button danger"
                       type="button"
-                      aria-label={`Cancel scheduled send ${item.id}`}
+                      aria-label="取消待发邮件"
                       disabled={!item.canDelete || outboxBusyId === item.id}
                       onClick={() => void cancelOutboxItem(item)}
                     >
@@ -4781,7 +5174,7 @@ function MailWorkspace(props: {
                     onChange={(event) => setNewLabelName(event.target.value)}
                   />
                   <button type="submit" disabled={labelBusy}>
-                    {labelBusy ? "创建中" : "创建"}
+                    创建
                   </button>
                 </form>
               ) : null}
@@ -4879,38 +5272,38 @@ function MailWorkspace(props: {
                 />
                 全部
               </label>
-              <div className="smart-inbox-actions" aria-label="Smart Inbox actions">
+              <div className="smart-inbox-actions" aria-label="智能收件箱操作">
                 <span>
                   {selectedVisibleMail.length > 0
                     ? `已选 ${selectedVisibleMail.length} 封`
-                    : `Smart Inbox · ${bucketLabel(selectedBucket)} · ${selectedBucketCount} 封`}
+                    : `智能收件箱 · ${bucketLabel(selectedBucket)} · ${selectedBucketCount} 封`}
                 </span>
                 <div className="smart-inbox-action-set">
                   <button
                     className="tiny-button"
                     type="button"
-                    aria-label="Smart Inbox done selected messages"
+                    aria-label="完成选中邮件"
                     disabled={smartInboxDisabled || selectedVisibleMail.length === 0}
                     onClick={() => props.onSelectedMessagesDone(selectedVisibleMail)}
                   >
                     {props.smartInboxBusy === "bulk_done" &&
                     selectedVisibleMail.length > 0
                       ? "处理中"
-                      : "选中 Done"}
+                      : "完成选中"}
                   </button>
                   <button
                     className="tiny-button"
                   type="button"
-                  aria-label={`Smart Inbox done ${selectedBucket}`}
+                  aria-label={`完成当前智能分类 ${bucketLabel(selectedBucket)}`}
                   disabled={smartInboxDisabled || selectedBucketCount === 0}
                   onClick={() => props.onSmartInboxBucketDone(selectedBucket)}
                 >
-                  {props.smartInboxBusy === "bulk_done" ? "处理中" : "批量 Done"}
+                  {props.smartInboxBusy === "bulk_done" ? "处理中" : "批量完成"}
                 </button>
                 <button
                   className="tiny-button"
                   type="button"
-                  aria-label="Smart Inbox mark selected important"
+                  aria-label="将选中邮件标为重要"
                   disabled={smartInboxDisabled}
                   onClick={() =>
                     void props.onSmartInboxFeedback(
@@ -4924,7 +5317,7 @@ function MailWorkspace(props: {
                 <button
                   className="tiny-button"
                   type="button"
-                  aria-label="Smart Inbox move selected to newsletters"
+                  aria-label="将选中邮件移到订阅"
                   disabled={smartInboxDisabled}
                   onClick={() =>
                     void props.onSmartInboxFeedback(
@@ -4938,7 +5331,7 @@ function MailWorkspace(props: {
                 <button
                   className="tiny-button"
                   type="button"
-                  aria-label="Smart Inbox move selected to feed"
+                  aria-label="将选中邮件移到动态"
                   disabled={smartInboxDisabled}
                   onClick={() =>
                     void props.onSmartInboxFeedback(
@@ -4947,7 +5340,7 @@ function MailWorkspace(props: {
                     )
                   }
                 >
-                  Feed
+                  动态
                 </button>
               </div>
             </div>
@@ -5006,11 +5399,13 @@ function MailWorkspace(props: {
           />
 
         <article className="reader-panel">
+          {props.hasSelectedMail ? (
+            <>
           <div className="reader-toolbar">
             <button
               className="toolbar-button"
               type="button"
-              disabled={composeBusy}
+              disabled={readerControlsDisabled}
               onClick={() => void applyComposeSeed("reply")}
             >
               回复
@@ -5018,7 +5413,7 @@ function MailWorkspace(props: {
             <button
               className="toolbar-button"
               type="button"
-              disabled={composeBusy}
+              disabled={readerControlsDisabled}
               onClick={() => void applyComposeSeed("reply_all")}
             >
               回复全部
@@ -5026,7 +5421,7 @@ function MailWorkspace(props: {
             <button
               className="toolbar-button"
               type="button"
-              disabled={composeBusy}
+              disabled={readerControlsDisabled}
               onClick={() => void applyComposeSeed("forward")}
             >
               转发
@@ -5034,10 +5429,11 @@ function MailWorkspace(props: {
             <button
               className="toolbar-button"
               type="button"
-              aria-label="Done selected message"
+              aria-label="完成当前邮件"
+              disabled={!props.hasSelectedMail}
               onClick={() => void props.onDone()}
             >
-              Done
+              完成
             </button>
             <button
               className="toolbar-button"
@@ -5047,6 +5443,7 @@ function MailWorkspace(props: {
                   ? "Unstar selected message"
                   : "Star selected message"
               }
+              disabled={!props.hasSelectedMail}
               onClick={() => void props.onToggleStar()}
             >
               {props.selectedMail.starred ? "取消星标" : "星标"}
@@ -5059,6 +5456,7 @@ function MailWorkspace(props: {
                   ? "Mark selected message as read"
                   : "Mark selected message as unread"
               }
+              disabled={!props.hasSelectedMail}
               onClick={() => void props.onToggleRead()}
             >
               {props.selectedMail.unread ? "标已读" : "标未读"}
@@ -5066,7 +5464,8 @@ function MailWorkspace(props: {
             <button
               className="toolbar-button"
               type="button"
-              aria-label="Ask Hermes to track follow-up"
+              aria-label="让 Hermes 跟进当前邮件"
+              disabled={!props.hasSelectedMail}
               onClick={props.onTrackFollowUp}
             >
               Hermes 跟进
@@ -5074,8 +5473,8 @@ function MailWorkspace(props: {
             <button
               className="toolbar-button"
               type="button"
-              aria-label="Ask Hermes to summarize selected message"
-              disabled={Boolean(readerHermesBusy)}
+              aria-label="让 Hermes 总结当前邮件"
+              disabled={readerHermesControlsDisabled}
               onClick={() => void askHermesForReaderSummary()}
             >
               Hermes 总结
@@ -5083,7 +5482,7 @@ function MailWorkspace(props: {
             <HermesReaderTranslationControls
               sourceLanguage={readerTranslationSource}
               targetLanguage={readerTranslationTarget}
-              busy={Boolean(readerHermesBusy)}
+              busy={readerHermesControlsDisabled}
               onSourceLanguageChange={selectReaderTranslationSource}
               onTargetLanguageChange={
                 readerTranslationPreferences.setTargetLanguage
@@ -5093,8 +5492,8 @@ function MailWorkspace(props: {
             <button
               className="toolbar-button"
               type="button"
-              aria-label="Ask Hermes to organize selected message"
-              disabled={Boolean(readerHermesBusy)}
+              aria-label="让 Hermes 整理当前邮件"
+              disabled={readerHermesControlsDisabled}
               onClick={() => void askHermesToOrganizeReader()}
             >
               Hermes 整理
@@ -5103,6 +5502,7 @@ function MailWorkspace(props: {
               className="toolbar-button"
               type="button"
               aria-label="Archive selected message"
+              disabled={!props.hasSelectedMail}
               onClick={() => void props.onArchive()}
             >
               归档
@@ -5111,6 +5511,7 @@ function MailWorkspace(props: {
               className="toolbar-button danger"
               type="button"
               aria-label="Trash selected message"
+              disabled={!props.hasSelectedMail}
               onClick={() => void props.onTrash()}
             >
               删除
@@ -5148,10 +5549,10 @@ function MailWorkspace(props: {
             <div className="reason-box">
               <div>
                 <Sparkles size={18} />
-                <strong>为什么排前面</strong>
+                <strong>优先级</strong>
               </div>
               <p>
-                {props.selectedMail.bucket} · 分数 {props.selectedMail.score}，{props.selectedMail.reasons.join("，")}。
+                {formatPriorityReasonSummary(props.selectedMail)}
               </p>
             </div>
 
@@ -5179,7 +5580,7 @@ function MailWorkspace(props: {
                 <button
                   className="ghost-button"
                   type="button"
-                  aria-label="Confirm Hermes follow-up"
+                  aria-label="确认 Hermes 跟进"
                   onClick={props.onConfirmHermesFollowUp}
                 >
                   确认创建提醒
@@ -5302,6 +5703,13 @@ function MailWorkspace(props: {
               />
             ) : null}
           </div>
+            </>
+          ) : (
+            <div
+              className="reader-content reader-content-empty"
+              aria-label="空白邮件阅读区"
+            />
+          )}
         </article>
       </div>
     </section>
@@ -5382,7 +5790,7 @@ function formatSendIdentityTargetState(
   if (candidate.verificationState === "verified" && candidate.enabled) {
     return "可选目标邮箱";
   }
-  return "先验证 From";
+  return "先验证发件人";
 }
 
 function formatGraphDiagnosticsStatus(
@@ -5390,8 +5798,8 @@ function formatGraphDiagnosticsStatus(
 ): string {
   const labels: Record<MailSendIdentityDiagnosticsDto["status"], string> = {
     ready: "诊断通过",
-    needs_from_verification: "需要验证 From",
-    from_verification_failed: "From 权限失败",
+    needs_from_verification: "需要验证发件人",
+    from_verification_failed: "发件人权限失败",
     target_verification_recommended: "建议验证共享箱",
     target_verification_failed: "共享箱目标失败",
   };
@@ -5408,7 +5816,7 @@ function composeAttachmentUploadErrorNotice(error: unknown): string {
     }
   }
 
-  return "附件上传失败，请重新选择文件。";
+  return "附件上传失败。";
 }
 
 function candidateTargetMailboxValue(
@@ -5542,6 +5950,25 @@ function formatComposeAutosaveStatus(status: ComposeAutosaveStatus): string {
   }
 }
 
+function formatScheduledSendStatus(status: ScheduledSendDto["status"]): string {
+  switch (status) {
+    case "scheduled":
+      return "已定时";
+    case "queued":
+      return "等待发送";
+    case "sending":
+      return "发送中";
+    case "sent":
+      return "已发送";
+    case "cancelled":
+      return "已取消";
+    case "failed":
+      return "发送失败";
+    case "dead_letter":
+      return "需要处理";
+  }
+}
+
 function AddMailPage(props: {
   api?: EmailHubApi;
   providerGroupId?: AddMailProviderGroupId;
@@ -5585,6 +6012,14 @@ function AddMailPage(props: {
   const [bulkNotice, setBulkNotice] = useState("");
   const [bulkBusy, setBulkBusy] = useState("");
   const [busyImportTaskId, setBusyImportTaskId] = useState("");
+  const [reauthorizations, setReauthorizations] = useState<
+    ReauthorizationTaskDto[]
+  >([]);
+  const [passwordReauthorizationForms, setPasswordReauthorizationForms] =
+    useState<Record<string, PasswordReauthorizationFormState>>({});
+  const [reauthorizationDiagnostics, setReauthorizationDiagnostics] =
+    useState<Record<string, ImapSmtpConnectionDiagnostic[]>>({});
+  const [busyReauthorizationTaskId, setBusyReauthorizationTaskId] = useState("");
 
   useEffect(() => {
     if (!props.api) {
@@ -5679,6 +6114,35 @@ function AddMailPage(props: {
     };
   }, [props.api]);
 
+  useEffect(() => {
+    if (!props.api) {
+      setReauthorizations([]);
+      return;
+    }
+    if (typeof props.api.listSyncCenterReauthorizations !== "function") {
+      setReauthorizations([]);
+      return;
+    }
+
+    let cancelled = false;
+    props.api
+      .listSyncCenterReauthorizations()
+      .then((page) => {
+        if (!cancelled) {
+          setReauthorizations(page.items);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setReauthorizations([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [props.api]);
+
   const visibleProviders = providerOptions.filter((provider) =>
     props.providerGroupId
       ? addMailProviderGroupProviders[props.providerGroupId].includes(
@@ -5705,6 +6169,9 @@ function AddMailPage(props: {
   const showCredentialFields = Boolean(credentialProvider);
   const mailOnboardingUnavailable =
     mailEngineHealth?.capabilities.imapSmtpOnboarding === false;
+  const visibleReauthorizations = reauthorizations.filter(
+    isAddMailReauthorizationTask,
+  );
 
   async function connectProvider(provider: AddMailProviderOption) {
     if (!props.api) {
@@ -5713,16 +6180,23 @@ function AddMailPage(props: {
     }
 
     if (mailOnboardingUnavailable && provider.action !== "manual") {
-      setNotice("邮箱接入服务还没准备好，请稍后再试。");
+      setNotice("邮箱接入服务暂时不可用。");
       return;
     }
 
     if (provider.action === "oauth") {
+      if (provider.provider !== "gmail" && provider.provider !== "outlook") {
+        setNotice(`${provider.title} 授权码或专用密码接入。`);
+        return;
+      }
+
       setBusyProvider(provider.provider);
       try {
+        const loginHint = email.trim();
         const result = await props.api.startOAuthAccount({
-          provider: provider.provider === "outlook" ? "outlook" : "gmail",
+          provider: provider.provider,
           redirectUri: `${window.location.origin}/oauth/callback`,
+          ...(loginHint ? { loginHint } : {}),
         });
         storeOAuthPendingState(result.state, {
           provider: result.provider,
@@ -5743,17 +6217,13 @@ function AddMailPage(props: {
     if (provider.action === "manual") {
       setManualProvider(provider);
       setActiveCredentialProvider(undefined);
-      setNotice(`${provider.title} 需要填写收信和发信服务器信息。`);
+      setNotice("");
       return;
     }
 
     setActiveCredentialProvider(provider);
     setManualProvider(undefined);
-    setNotice(
-      provider.action === "bridge"
-        ? `${provider.title} 需要 Proton Bridge 中显示的用户名和密码。`
-        : `${provider.title} 需要邮箱授权码或专用密码。`,
-    );
+    setNotice("");
   }
 
   async function connectCredentialProvider() {
@@ -5763,7 +6233,7 @@ function AddMailPage(props: {
     }
 
     if (mailOnboardingUnavailable) {
-      setNotice("邮箱接入服务还没准备好，请稍后再试。");
+      setNotice("邮箱接入服务暂时不可用。");
       return;
     }
 
@@ -5792,8 +6262,8 @@ function AddMailPage(props: {
         setSecret("");
         setNotice(
           recoveryDiagnostics.length > 0
-            ? `${provider.title} 连接检查没有通过，请按提示处理。`
-            : `${provider.title} 连接检查没有通过，请检查邮箱地址、授权码和收发信服务器。`,
+            ? `${provider.title} 连接检查未通过。`
+            : `${provider.title} 连接检查未通过。`,
         );
         return;
       }
@@ -5802,16 +6272,16 @@ function AddMailPage(props: {
       props.onConnected?.(result.account?.id);
       setOnboardingRecoveryDiagnostics([]);
       setSecret("");
-      setNotice(`${provider.title} 已接入，同步会自动开始。`);
+      setNotice(`${provider.title} 已接入。`);
     } catch (error) {
       const recoveryDiagnostics = apiErrorConnectionDiagnostics(error);
       await loadOnboardingDiagnostics();
       setOnboardingRecoveryDiagnostics(recoveryDiagnostics);
       setSecret("");
-      setNotice(
-        recoveryDiagnostics.length > 0
-          ? `${provider.title} 暂时无法接入，请按恢复建议处理后重试。`
-          : `${provider.title} 暂时无法接入，连接信息未保存。请重新检查授权码或稍后再试。`,
+        setNotice(
+          recoveryDiagnostics.length > 0
+          ? `${provider.title} 暂时无法接入。`
+          : `${provider.title} 暂时无法接入。`,
       );
     } finally {
       setBusyProvider("");
@@ -5824,7 +6294,7 @@ function AddMailPage(props: {
     }
 
     if (mailOnboardingUnavailable) {
-      setNotice("邮箱接入服务还没准备好，请稍后再试。");
+      setNotice("邮箱接入服务暂时不可用。");
       return;
     }
 
@@ -5851,8 +6321,8 @@ function AddMailPage(props: {
         clearCustomServerSecret();
         setNotice(
           recoveryDiagnostics.length > 0
-            ? `${manualProvider.title} 连接检查没有通过，请按提示处理。`
-            : `${manualProvider.title} 连接检查没有通过，请检查邮箱地址、授权码和收发信服务器。`,
+            ? `${manualProvider.title} 连接检查未通过。`
+            : `${manualProvider.title} 连接检查未通过。`,
         );
         return;
       }
@@ -5861,16 +6331,16 @@ function AddMailPage(props: {
       props.onConnected?.(result.account?.id);
       setOnboardingRecoveryDiagnostics([]);
       clearCustomServerSecret();
-      setNotice(`${manualProvider.title} 已接入，同步会自动开始。`);
+      setNotice(`${manualProvider.title} 已接入。`);
     } catch (error) {
       const recoveryDiagnostics = apiErrorConnectionDiagnostics(error);
       await loadOnboardingDiagnostics();
       setOnboardingRecoveryDiagnostics(recoveryDiagnostics);
       clearCustomServerSecret();
-      setNotice(
-        recoveryDiagnostics.length > 0
-          ? `${manualProvider.title} 暂时无法接入，请按恢复建议处理后重试。`
-          : `${manualProvider.title} 暂时无法接入，连接信息未保存。请重新检查授权码或稍后再试。`,
+        setNotice(
+          recoveryDiagnostics.length > 0
+          ? `${manualProvider.title} 暂时无法接入。`
+          : `${manualProvider.title} 暂时无法接入。`,
       );
     } finally {
       setBusyProvider("");
@@ -5914,11 +6384,11 @@ function AddMailPage(props: {
 
   async function previewCsvImport() {
     if (!props.api) {
-      setBulkNotice("连接服务后才能预览批量导入。");
+      setBulkNotice("批量导入暂时不可用。");
       return;
     }
     if (!csvImportText.trim()) {
-      setBulkNotice("请先粘贴 CSV 内容。");
+      setBulkNotice("CSV 内容为空。");
       return;
     }
 
@@ -5931,7 +6401,7 @@ function AddMailPage(props: {
         `预览完成：${result.summary.ready} 个可接入，${result.summary.invalid} 个需要修正。`,
       );
     } catch {
-      setBulkNotice("CSV 预览失败，请检查表头和行内容。");
+      setBulkNotice("CSV 预览失败。");
     } finally {
       setBulkBusy("");
     }
@@ -5939,11 +6409,11 @@ function AddMailPage(props: {
 
   async function createCsvImport() {
     if (!props.api) {
-      setBulkNotice("连接服务后才能创建批量导入任务。");
+      setBulkNotice("批量导入暂时无法开始。");
       return;
     }
     if (!csvImportText.trim()) {
-      setBulkNotice("请先粘贴 CSV 内容。");
+      setBulkNotice("CSV 内容为空。");
       return;
     }
 
@@ -5957,7 +6427,7 @@ function AddMailPage(props: {
       );
       props.onConnected?.();
     } catch {
-      setBulkNotice("导入任务创建失败，请检查 CSV 内容。");
+      setBulkNotice("导入任务创建失败。");
     } finally {
       setBulkBusy("");
     }
@@ -5990,7 +6460,7 @@ function AddMailPage(props: {
       return;
     }
     if (!props.api) {
-      setBulkNotice("连接服务后才能继续授权。");
+      setBulkNotice("继续授权暂时不可用。");
       return;
     }
 
@@ -6008,15 +6478,172 @@ function AddMailPage(props: {
       });
       props.oauthRedirect(result.authorizationUrl);
     } catch {
-      setBulkNotice(`${task.email} 授权暂时无法开始，请稍后再试。`);
+      setBulkNotice(`${task.email} 授权暂时无法开始。`);
     } finally {
       setBusyImportTaskId("");
     }
   }
 
+  async function startOAuthReauthorization(task: ReauthorizationTaskDto) {
+    if (!props.api || task.authMethod !== "oauth") {
+      setNotice("请重新提交这个邮箱的授权信息。");
+      return;
+    }
+
+    setBusyReauthorizationTaskId(task.taskId);
+    try {
+      const result = await props.api.startSyncCenterOAuthReauthorization({
+        taskId: task.taskId,
+        redirectUri: `${window.location.origin}/oauth/callback`,
+      });
+      storeOAuthPendingState(result.state, {
+        provider: result.provider,
+        flow: "reauthorization",
+        returnTo: "add-mail",
+        createdAt: new Date().toISOString(),
+      });
+      props.oauthRedirect(result.authorizationUrl);
+    } catch {
+      setNotice("重新登录暂时无法开始。");
+    } finally {
+      setBusyReauthorizationTaskId("");
+    }
+  }
+
+  function passwordReauthorizationForm(task: ReauthorizationTaskDto) {
+    return (
+      passwordReauthorizationForms[task.taskId] ??
+      createPasswordReauthorizationForm(task)
+    );
+  }
+
+  function updatePasswordReauthorizationForm(
+    task: ReauthorizationTaskDto,
+    patch: Partial<PasswordReauthorizationFormState>,
+  ) {
+    setPasswordReauthorizationForms((current) => ({
+      ...current,
+      [task.taskId]: {
+        ...createPasswordReauthorizationForm(task),
+        ...current[task.taskId],
+        ...patch,
+      },
+    }));
+  }
+
+  function clearPasswordReauthorizationSecret(task: ReauthorizationTaskDto) {
+    setPasswordReauthorizationForms((current) => {
+      const existing = current[task.taskId];
+      if (!existing) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [task.taskId]: { ...existing, secret: "" },
+      };
+    });
+  }
+
+  function removePasswordReauthorizationForm(task: ReauthorizationTaskDto) {
+    setPasswordReauthorizationForms((current) => {
+      const remaining = { ...current };
+      delete remaining[task.taskId];
+      return remaining;
+    });
+  }
+
+  function removeReauthorizationDiagnostics(task: ReauthorizationTaskDto) {
+    setReauthorizationDiagnostics((current) => {
+      const remaining = { ...current };
+      delete remaining[task.taskId];
+      return remaining;
+    });
+  }
+
+  async function completePasswordReauthorization(
+    event: FormEvent<HTMLFormElement>,
+    task: ReauthorizationTaskDto,
+  ) {
+    event.preventDefault();
+    if (!props.api || task.authMethod !== "password") {
+      setNotice("请重新提交这个邮箱的授权信息。");
+      return;
+    }
+
+    const form = passwordReauthorizationForm(task);
+    const username = form.username.trim();
+    const secret = form.secret.trim();
+    if (!secret) {
+      setNotice("请输入新的授权码或专用密码。");
+      return;
+    }
+
+    const payload: SyncCenterImapSmtpReauthorizationInput = {
+      taskId: task.taskId,
+      ...(username ? { username } : {}),
+      secret,
+    };
+
+    if (form.useCustomServers) {
+      const imapHost = form.imapHost.trim();
+      const smtpHost = form.smtpHost.trim();
+      const imapPort = parseReauthorizationPort(form.imapPort);
+      const smtpPort = parseReauthorizationPort(form.smtpPort);
+      const endpointUsername = username || task.email;
+      if (!imapHost || !smtpHost || !imapPort || !smtpPort) {
+        setNotice("请填写有效的收信/发信主机和端口。");
+        return;
+      }
+
+      payload.imap = {
+        host: imapHost,
+        port: imapPort,
+        secure: form.imapSecure,
+        username: endpointUsername,
+        secret,
+      };
+      payload.smtp = {
+        host: smtpHost,
+        port: smtpPort,
+        secure: form.smtpSecure,
+        username: endpointUsername,
+        secret,
+      };
+    }
+
+    setBusyReauthorizationTaskId(task.taskId);
+    try {
+      const result = await props.api.completeSyncCenterImapSmtpReauthorization(
+        payload,
+      );
+      setReauthorizations((current) =>
+        current.filter((item) => item.taskId !== task.taskId),
+      );
+      removePasswordReauthorizationForm(task);
+      removeReauthorizationDiagnostics(task);
+      setNotice(`${result.account?.email ?? task.email} 已恢复同步。`);
+      props.onConnected?.(result.account?.id);
+    } catch (error) {
+      const diagnostics = apiErrorConnectionDiagnostics(error);
+      clearPasswordReauthorizationSecret(task);
+      setReauthorizationDiagnostics((current) => ({
+        ...current,
+        [task.taskId]: diagnostics,
+      }));
+      setNotice(
+        diagnostics.length > 0
+          ? `${task.email} 重新授权未通过。`
+          : `${task.email} 重新授权失败。`,
+      );
+    } finally {
+      setBusyReauthorizationTaskId("");
+    }
+  }
+
   async function exportTransferPackage() {
     if (!props.api) {
-      setBulkNotice("连接服务后才能导出账号配置。");
+      setBulkNotice("导出暂时不可用。");
       return;
     }
 
@@ -6049,11 +6676,11 @@ function AddMailPage(props: {
 
   async function importTransferPackage() {
     if (!props.api) {
-      setBulkNotice("连接服务后才能导入迁移包。");
+      setBulkNotice("导入暂时不可用。");
       return;
     }
     if (!transferPackageText.trim()) {
-      setBulkNotice("请先粘贴迁移包 JSON。");
+      setBulkNotice("迁移包 JSON 为空。");
       return;
     }
 
@@ -6076,7 +6703,7 @@ function AddMailPage(props: {
       );
       props.onConnected?.();
     } catch {
-      setBulkNotice("迁移包导入失败，请检查格式和账号字段。");
+      setBulkNotice("迁移包导入失败。");
     } finally {
       setBulkBusy("");
     }
@@ -6115,34 +6742,37 @@ function AddMailPage(props: {
   const showSyncCenterAction =
     (transferImportResult?.reauthRequiredCount ?? 0) > 0;
   const showEnterpriseImportPanel = false;
-  const mailOnboardingNotice = mailOnboardingUnavailable
-    ? "邮箱接入服务还没准备好，请稍后再试。"
-    : mailEngineHealthUnavailable
-      ? "邮箱接入服务状态暂时不可用，如连接失败请稍后再试。"
-      : "";
 
   return (
-    <section className="workspace-page page-scroll">
-      <header className="topbar">
+    <section className="workspace-page page-scroll add-mail-page">
+      <header className="topbar single add-mail-topbar">
         <div>
           <h1>添加邮箱</h1>
-          <p>选择要接入的邮箱，按提示登录或填写必要信息。</p>
         </div>
       </header>
 
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
-      {mailOnboardingNotice ? (
-        <div className="backend-notice" role="status">
-          {mailOnboardingNotice}
-        </div>
+
+      {visibleReauthorizations.length > 0 ? (
+        <ReauthorizationTasksPanel
+          tasks={visibleReauthorizations}
+          busyTaskId={busyReauthorizationTaskId}
+          diagnostics={reauthorizationDiagnostics}
+          passwordForm={passwordReauthorizationForm}
+          onStartOAuth={(task) => void startOAuthReauthorization(task)}
+          onSubmitPassword={(event, task) =>
+            void completePasswordReauthorization(event, task)
+          }
+          onUpdatePasswordForm={updatePasswordReauthorizationForm}
+        />
       ) : null}
 
       <ConnectionDiagnosticList
-        ariaLabel="添加邮箱恢复建议"
+        ariaLabel="添加邮箱接入状态"
         className="page-panel diagnostic-list connection-diagnostic-list"
         diagnostics={onboardingRecoveryDiagnostics}
         rowClassName="diagnostic-row connection-diagnostic-row"
-        title="恢复建议"
+        title="接入状态"
       />
 
       <section className="page-panel add-mail-form" aria-label="添加邮箱信息">
@@ -6162,11 +6792,7 @@ function AddMailPage(props: {
               <input
                 aria-label="Add mail username"
                 value={username}
-                placeholder={
-                  showBridgeFieldHelp
-                    ? "Proton Bridge 中显示的用户名"
-                    : "不填则使用邮箱地址"
-                }
+                placeholder={email || "name@example.com"}
                 onChange={(event) => setUsername(event.currentTarget.value)}
               />
             </label>
@@ -6176,46 +6802,28 @@ function AddMailPage(props: {
                 aria-label="Add mail secret"
                 value={secret}
                 type="password"
-                placeholder={
-                  showBridgeFieldHelp
-                    ? "Proton Bridge 中显示的密码"
-                    : "邮箱授权码或专用密码"
-                }
+                placeholder="授权信息"
                 onChange={(event) => setSecret(event.currentTarget.value)}
               />
             </label>
             <div className="credential-submit-row">
               <div>
                 <strong>{credentialProvider?.title}</strong>
-                <span>
-                  {showBridgeFieldHelp
-                    ? "只使用 Proton Bridge 里显示的用户名和密码。"
-                    : "主流网页登录邮箱不会要求填写邮箱密码。"}
-                </span>
               </div>
               <button
                 className="primary-button"
                 type="button"
                 disabled={
                   !credentialProvider ||
-                  busyProvider === credentialProvider.provider ||
-                  mailOnboardingUnavailable
+                  busyProvider === credentialProvider.provider
                 }
                 onClick={() => void connectCredentialProvider()}
               >
                 {credentialProvider && busyProvider === credentialProvider.provider
-                  ? "正在测试"
-                  : `测试并接入${credentialProvider?.title ?? ""}`}
+                  ? "连接中"
+                  : `接入${credentialProvider?.title ?? ""}`}
               </button>
             </div>
-            {showBridgeFieldHelp ? (
-              <div className="bridge-field-help" aria-label="Proton Bridge 接入提示">
-                <strong>先启动 Proton Bridge 并保持登录。</strong>
-                <span>
-                  邮箱地址填写 Proton 邮箱；Bridge 用户名和 Bridge 密码都使用 Proton Bridge 里显示的值，不是 Proton 账号密码。
-                </span>
-              </div>
-            ) : null}
             {showBridgeFieldHelp ? (
               <ProtonBridgeServerFieldsPanel
                 fields={protonBridgeServerFields}
@@ -6231,19 +6839,15 @@ function AddMailPage(props: {
           <div className="custom-server-heading">
             <div>
               <h2>{manualProvider.title}</h2>
-              <p>填写收信和发信服务器，系统会先测试连接，再开始同步。</p>
             </div>
             <button
               type="button"
-              disabled={
-                busyProvider === manualProvider.provider ||
-                mailOnboardingUnavailable
-              }
+              disabled={busyProvider === manualProvider.provider}
               onClick={() => void connectManualProvider()}
             >
               {busyProvider === manualProvider.provider
-                ? "正在测试"
-                : `测试并接入${manualProvider.title}`}
+                ? "连接中"
+                : `接入${manualProvider.title}`}
             </button>
           </div>
 
@@ -6342,20 +6946,14 @@ function AddMailPage(props: {
       ) : null}
 
       <div className="add-grid">
-        {visibleProviders.map((provider) => {
-          const providerBlocked =
-            mailOnboardingUnavailable && provider.action !== "manual";
-
-          return (
-            <AddMailProviderCard
-              key={provider.provider}
-              busy={busyProvider === provider.provider}
-              disabled={providerBlocked}
-              provider={provider}
-              onConnect={() => void connectProvider(provider)}
-            />
-          );
-        })}
+        {visibleProviders.map((provider) => (
+          <AddMailProviderCard
+            key={provider.provider}
+            busy={busyProvider === provider.provider}
+            provider={provider}
+            onConnect={() => void connectProvider(provider)}
+          />
+        ))}
       </div>
 
       {showEnterpriseImportPanel ? (
@@ -6364,7 +6962,6 @@ function AddMailPage(props: {
         <div className="custom-server-heading import-transfer-heading">
           <div>
             <h2>企业导入 / 账号转移</h2>
-            <p>适合企业、域名邮箱和账号迁移；Gmail、Outlook 请逐个网页登录。</p>
           </div>
           {showSyncCenterAction ? (
             <button
@@ -6372,7 +6969,7 @@ function AddMailPage(props: {
               type="button"
               onClick={() => props.onOpenSyncCenter?.()}
             >
-              打开同步中心授权
+              查看后续账号
             </button>
           ) : null}
         </div>
@@ -6439,7 +7036,7 @@ function AddMailPage(props: {
                 </label>
               ))
             ) : (
-              <span>连接服务后会列出可导出的账号。</span>
+              <span>暂无可导出的账号。</span>
             )}
           </div>
         </div>
@@ -6669,21 +7266,14 @@ function ImportAuthorizationTaskList(props: {
             <button
               className="primary-button"
               type="button"
-              aria-label={`Continue authorization for ${task.email}`}
+              aria-label={`继续授权 ${task.email}`}
               disabled={props.busyTaskId === task.id}
               onClick={() => props.onStartOAuthTask?.(task)}
             >
               继续授权
             </button>
           ) : (
-            <button
-              className="ghost-button"
-              type="button"
-              aria-label={`Open Sync Center for ${task.email}`}
-              onClick={() => props.onOpenSyncCenter?.()}
-            >
-              去同步中心
-            </button>
+            <span className="migration-task-hint">在上方重新提交授权信息</span>
           )}
         </article>
       ))}
@@ -6787,7 +7377,7 @@ function downloadTextFile(
 
 function friendlyDiagnosticMessage(event: OperationalEventDto): string {
   if (event.event === "account_onboarding_connection_test_failed") {
-    return "连接检查没有通过";
+    return "连接检查未通过";
   }
   if (event.event === "account_onboarding_failed") {
     return "邮箱接入失败";
@@ -6804,7 +7394,7 @@ function friendlyDiagnosticMessage(event: OperationalEventDto): string {
 
 function friendlyOnboardingDiagnosticMessage(event: OperationalEventDto): string {
   if (event.event === "account_onboarding_connection_test_failed") {
-    return "连接检查没有通过";
+    return "连接检查未通过";
   }
   if (event.event === "account_onboarding_failed") {
     return "邮箱接入失败";
@@ -6822,11 +7412,11 @@ function friendlyOnboardingDiagnosticMessage(event: OperationalEventDto): string
 function friendlySyncDiagnosticTitle(event: OperationalEventDto): string {
   const labels: Record<string, string> = {
     emailengine_webhook_ingested: "邮箱服务状态已更新",
-    worker_result: "同步任务已处理",
-    sync_account_failed: "同步任务没有完成",
-    sync_account_dead_lettered: "同步任务多次失败",
-    sync_job_retry_scheduled: "同步任务等待重试",
-    sync_job_dead_lettered: "同步任务多次失败",
+    worker_result: "同步已处理",
+    sync_account_failed: "同步没有完成",
+    sync_account_dead_lettered: "同步多次失败",
+    sync_job_retry_scheduled: "同步稍后重试",
+    sync_job_dead_lettered: "同步多次失败",
     reauthorization_imap_smtp_failed: "重新授权没有通过",
     native_send_reauthorization_required: "发信权限需要重新授权",
     smtp_send_reauthorization_required: "发信权限需要重新提交授权码",
@@ -6836,22 +7426,22 @@ function friendlySyncDiagnosticTitle(event: OperationalEventDto): string {
 
 function friendlySyncDiagnosticDetail(event: OperationalEventDto): string | undefined {
   if (event.event === "emailengine_webhook_ingested") {
-    return "系统已收到邮箱服务回调，正在按本地同步状态处理。";
+    return "已收到邮箱更新。";
   }
   if (event.event === "worker_result") {
-    return "后台已处理一条同步任务，邮箱镜像链路有最近活动。";
+    return "邮箱内容已同步。";
   }
   if (event.event === "sync_job_retry_scheduled") {
-    return "同步任务会自动重试；如果持续出现，请打开账号诊断查看恢复建议。";
+    return "稍后会自动重试。";
   }
   if (event.event === "sync_job_dead_lettered") {
-    return "同步任务多次失败后已停止重试，请打开账号诊断处理。";
+    return "多次失败后已暂停重试。";
   }
   if (event.event === "reauthorization_imap_smtp_failed") {
-    return "请检查授权码、专用密码和自定义服务器设置后重新提交。";
+    return "授权信息未通过。";
   }
   if (event.event.includes("reauthorization_required")) {
-    return "请从上方重新授权入口恢复这个账号。";
+    return "账号需要重新授权。";
   }
 
   return event.message;
@@ -6859,12 +7449,12 @@ function friendlySyncDiagnosticDetail(event: OperationalEventDto): string | unde
 
 function formatOperationalEventSource(event: OperationalEventDto): string {
   if (event.event === "emailengine_webhook_ingested") {
-    return "邮箱服务";
+    return "邮箱更新";
   }
 
   const labels: Record<string, string> = {
-    "email-hub-api": "服务",
-    "email-hub-worker": "同步服务",
+    "email-hub-api": "连接",
+    "email-hub-worker": "同步",
   };
 
   return labels[event.service] ?? event.service;
@@ -6894,7 +7484,7 @@ function formatSyncStateLabel(state: string) {
 
   const labels: Record<string, string> = {
     preview: "预览",
-    syncing: "正在同步",
+    syncing: "同步中",
     connected: "已连接",
     reauth_required: "需要重新登录",
     error: "需要处理",
@@ -6911,6 +7501,42 @@ function formatReauthorizationSource(source: string) {
     csv_import: "批量导入",
   };
   return labels[source] ?? source;
+}
+
+function formatReauthorizationSummary(task: ReauthorizationTaskDto): string {
+  const parts = [
+    formatProviderLabel(task.provider),
+    task.authMethod === "oauth" ? "重新登录" : "重新提交授权码",
+  ];
+  const source = task.source ? formatReauthorizationSource(task.source) : "";
+  if (
+    source &&
+    source !== task.source &&
+    source !== "批量导入" &&
+    source !== "账号迁移"
+  ) {
+    parts.push(source);
+  }
+  return parts.join(" · ");
+}
+
+function formatReauthorizationIssue(task: ReauthorizationTaskDto): string {
+  if (!task.errorMessage && task.status !== "failed") {
+    return "";
+  }
+  return task.authMethod === "oauth"
+    ? "请重新登录。"
+    : "请重新提交授权码或专用密码。";
+}
+
+function isAddMailReauthorizationTask(task: ReauthorizationTaskDto): boolean {
+  return (
+    task.reauthRequired ||
+    task.source === "emailengine_account_state" ||
+    task.source === "native_send" ||
+    task.source === "native_smtp_send" ||
+    task.source === "account_transfer_import"
+  );
 }
 
 function formatOperationalEventLevel(level: OperationalEventDto["level"]) {
@@ -6944,6 +7570,215 @@ function parseReauthorizationPort(value: string) {
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535
     ? parsed
     : undefined;
+}
+
+function ReauthorizationTasksPanel(props: {
+  tasks: ReauthorizationTaskDto[];
+  busyTaskId: string;
+  diagnostics: Record<string, ImapSmtpConnectionDiagnostic[]>;
+  passwordForm: (task: ReauthorizationTaskDto) => PasswordReauthorizationFormState;
+  onStartOAuth: (task: ReauthorizationTaskDto) => void;
+  onSubmitPassword: (
+    event: FormEvent<HTMLFormElement>,
+    task: ReauthorizationTaskDto,
+  ) => void;
+  onUpdatePasswordForm: (
+    task: ReauthorizationTaskDto,
+    patch: Partial<PasswordReauthorizationFormState>,
+  ) => void;
+}) {
+  return (
+    <section className="page-panel" aria-label="需要重新授权">
+      <div className="custom-server-heading">
+        <div>
+          <h2>需要重新授权</h2>
+        </div>
+      </div>
+      {props.tasks.map((task) => {
+        const passwordForm = props.passwordForm(task);
+        const taskDiagnostics = props.diagnostics[task.taskId] ?? [];
+
+        return (
+          <div
+            className={`task-row ${
+              task.authMethod === "password" ? "reauthorization-task-row" : ""
+            }`}
+            key={task.taskId}
+          >
+            <ShieldCheck size={19} />
+            <div>
+              <strong>{task.email}</strong>
+              <span>
+                {formatReauthorizationSummary(task)}
+              </span>
+              {formatReauthorizationIssue(task) ? (
+                <p>{formatReauthorizationIssue(task)}</p>
+              ) : null}
+            </div>
+            {task.authMethod === "oauth" ? (
+              <div className="task-actions">
+                <button
+                  type="button"
+                  aria-label={`重新登录 ${task.email}`}
+                  disabled={props.busyTaskId === task.taskId}
+                  onClick={() => props.onStartOAuth(task)}
+                >
+                  重新登录
+                </button>
+              </div>
+            ) : (
+              <form
+                aria-label={`邮箱重新授权 ${task.email}`}
+                className="reauthorization-form"
+                onSubmit={(event) => props.onSubmitPassword(event, task)}
+              >
+                <label>
+                  <span>登录用户名</span>
+                  <input
+                    aria-label={`登录用户名 ${task.email}`}
+                    autoComplete="username"
+                    type="text"
+                    value={passwordForm.username}
+                    onChange={(event) =>
+                      props.onUpdatePasswordForm(task, {
+                        username: event.currentTarget.value,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>授权码或专用密码</span>
+                  <input
+                    aria-label={`授权码或专用密码 ${task.email}`}
+                    autoComplete="new-password"
+                    type="password"
+                    value={passwordForm.secret}
+                    onChange={(event) =>
+                      props.onUpdatePasswordForm(task, {
+                        secret: event.currentTarget.value,
+                      })
+                    }
+                  />
+                </label>
+                <label className="reauthorization-toggle">
+                  <input
+                    aria-label={`使用自定义收发信服务 ${task.email}`}
+                    checked={passwordForm.useCustomServers}
+                    type="checkbox"
+                    onChange={(event) =>
+                      props.onUpdatePasswordForm(task, {
+                        useCustomServers: event.currentTarget.checked,
+                      })
+                    }
+                  />
+                  <span>使用自定义收发信服务</span>
+                </label>
+                {passwordForm.useCustomServers ? (
+                  <div className="reauthorization-endpoints">
+                    <label>
+                      <span>收信主机</span>
+                      <input
+                        aria-label={`收信主机 ${task.email}`}
+                        type="text"
+                        value={passwordForm.imapHost}
+                        onChange={(event) =>
+                          props.onUpdatePasswordForm(task, {
+                            imapHost: event.currentTarget.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>收信端口</span>
+                      <input
+                        aria-label={`收信端口 ${task.email}`}
+                        inputMode="numeric"
+                        type="text"
+                        value={passwordForm.imapPort}
+                        onChange={(event) =>
+                          props.onUpdatePasswordForm(task, {
+                            imapPort: event.currentTarget.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="reauthorization-toggle">
+                      <input
+                        aria-label={`收信安全连接 ${task.email}`}
+                        checked={passwordForm.imapSecure}
+                        type="checkbox"
+                        onChange={(event) =>
+                          props.onUpdatePasswordForm(task, {
+                            imapSecure: event.currentTarget.checked,
+                          })
+                        }
+                      />
+                      <span>收信安全连接</span>
+                    </label>
+                    <label>
+                      <span>发信主机</span>
+                      <input
+                        aria-label={`发信主机 ${task.email}`}
+                        type="text"
+                        value={passwordForm.smtpHost}
+                        onChange={(event) =>
+                          props.onUpdatePasswordForm(task, {
+                            smtpHost: event.currentTarget.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>发信端口</span>
+                      <input
+                        aria-label={`发信端口 ${task.email}`}
+                        inputMode="numeric"
+                        type="text"
+                        value={passwordForm.smtpPort}
+                        onChange={(event) =>
+                          props.onUpdatePasswordForm(task, {
+                            smtpPort: event.currentTarget.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="reauthorization-toggle">
+                      <input
+                        aria-label={`发信安全连接 ${task.email}`}
+                        checked={passwordForm.smtpSecure}
+                        type="checkbox"
+                        onChange={(event) =>
+                          props.onUpdatePasswordForm(task, {
+                            smtpSecure: event.currentTarget.checked,
+                          })
+                        }
+                      />
+                      <span>发信安全连接</span>
+                    </label>
+                  </div>
+                ) : null}
+                <button
+                  type="submit"
+                  aria-label={`提交重新授权 ${task.email}`}
+                  disabled={props.busyTaskId === task.taskId}
+                >
+                  提交重新授权
+                </button>
+              </form>
+            )}
+            <ConnectionDiagnosticList
+              ariaLabel={`重新授权检查 ${task.email}`}
+              className="reauthorization-diagnostics"
+              container="div"
+              diagnostics={taskDiagnostics}
+              role="status"
+              rowClassName="reauthorization-diagnostic-card"
+            />
+          </div>
+        );
+      })}
+    </section>
+  );
 }
 
 function SyncCenterPage(props: {
@@ -6985,7 +7820,7 @@ function SyncCenterPage(props: {
     action: "resync" | "pause" | "resume" | "retry-failed",
   ) {
     if (!props.api) {
-      setNotice("连接服务后才能处理同步。");
+      setNotice("同步操作暂时不可用。");
       return;
     }
 
@@ -7023,7 +7858,7 @@ function SyncCenterPage(props: {
       });
       setNotice(`已重新排队 ${result.retriedJobCount} 个失败任务。`);
     } catch {
-      setNotice("同步操作暂时失败，请稍后再试。");
+      setNotice("同步操作暂时失败。");
     } finally {
       setBusyAction("");
     }
@@ -7034,12 +7869,12 @@ function SyncCenterPage(props: {
 
     if (!props.api) {
       setDiagnosticEvents([]);
-      setDiagnosticNotice("连接服务后才能查看同步诊断。");
+      setDiagnosticNotice("检查暂时不可用。");
       return;
     }
 
     setDiagnosticBusy(true);
-    setDiagnosticNotice("正在加载同步诊断...");
+    setDiagnosticNotice("");
     try {
       const page = await props.api.listSyncCenterAccountDiagnostics({
         accountId: account.accountId,
@@ -7051,7 +7886,7 @@ function SyncCenterPage(props: {
       );
     } catch {
       setDiagnosticEvents([]);
-      setDiagnosticNotice("同步诊断暂时不可用。");
+      setDiagnosticNotice("检查暂时不可用。");
     } finally {
       setDiagnosticBusy(false);
     }
@@ -7077,7 +7912,7 @@ function SyncCenterPage(props: {
       });
       props.oauthRedirect(result.authorizationUrl);
     } catch {
-      setNotice("重新登录暂时无法开始，请稍后再试。");
+      setNotice("重新登录暂时无法开始。");
     } finally {
       setBusyReauthorizationTaskId("");
     }
@@ -7209,15 +8044,15 @@ function SyncCenterPage(props: {
       }));
       setNotice(
         diagnostics.length > 0
-          ? `${task.email} 重新授权没有通过，请按提示处理。`
-          : `${task.email} 重新授权失败，请检查授权码和收发信服务器设置。`,
+          ? `${task.email} 重新授权未通过。`
+          : `${task.email} 重新授权失败。`,
       );
     } finally {
       setBusyReauthorizationTaskId("");
     }
   }
 
-  const [notice, setNotice] = useState("正在加载同步状态...");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!props.api) {
@@ -7231,12 +8066,12 @@ function SyncCenterPage(props: {
         }
       ]);
       setReauthorizations([]);
-      setNotice("正在显示演示数据，连接服务后会同步真实状态。");
+      setNotice("");
       return;
     }
 
     let alive = true;
-    setNotice("正在加载同步状态...");
+    setNotice("");
     void Promise.all([
       props.api.listSyncCenterAccounts(),
       props.api.listSyncCenterReauthorizations(),
@@ -7249,7 +8084,7 @@ function SyncCenterPage(props: {
       })
       .catch(() => {
         if (alive) {
-          setNotice("同步中心暂时不可用。");
+          setNotice("账号状态暂时不可用。");
         }
       });
 
@@ -7262,8 +8097,7 @@ function SyncCenterPage(props: {
     <section className="workspace-page page-scroll">
       <header className="topbar single">
         <div>
-          <h1>同步中心</h1>
-          <p>查看连接状态、同步队列、失效账号和重新授权入口。</p>
+          <h1>账号状态</h1>
         </div>
       </header>
       {notice ? <div className="backend-notice" role="status">{notice}</div> : null}
@@ -7282,8 +8116,8 @@ function SyncCenterPage(props: {
                 type="button"
                 aria-label={
                   props.selectedAccountId === account.accountId
-                    ? `Active account ${account.email}`
-                    : `Use account ${account.email}`
+                    ? `当前邮箱 ${account.email}`
+                    : `使用邮箱 ${account.email}`
                 }
                 disabled={props.selectedAccountId === account.accountId}
                 onClick={() => props.onSelectAccount?.(account.accountId)}
@@ -7292,7 +8126,7 @@ function SyncCenterPage(props: {
               </button>
               <button
                 type="button"
-                aria-label={`Request resync for ${account.email}`}
+                aria-label={`重新同步 ${account.email}`}
                 disabled={busyAction === `${account.accountId}:resync`}
                 onClick={() => void runAccountAction(account, "resync")}
               >
@@ -7302,8 +8136,8 @@ function SyncCenterPage(props: {
                 type="button"
                 aria-label={
                   account.syncState === "paused"
-                    ? `Resume sync for ${account.email}`
-                    : `Pause sync for ${account.email}`
+                    ? `恢复同步 ${account.email}`
+                    : `暂停同步 ${account.email}`
                 }
                 disabled={
                   busyAction === `${account.accountId}:pause` ||
@@ -7320,216 +8154,36 @@ function SyncCenterPage(props: {
               </button>
               <button
                 type="button"
-                aria-label={`Retry failed sync jobs for ${account.email}`}
+                aria-label={`重试同步 ${account.email}`}
                 disabled={busyAction === `${account.accountId}:retry-failed`}
                 onClick={() => void runAccountAction(account, "retry-failed")}
               >
-                重试失败
+                重试
               </button>
               <button
                 type="button"
-                aria-label={`View sync diagnostics for ${account.email}`}
+                aria-label={`检查同步 ${account.email}`}
                 disabled={diagnosticBusy && diagnosticAccount?.accountId === account.accountId}
                 onClick={() => void openAccountDiagnostics(account)}
               >
-                查看诊断
+                检查
               </button>
             </div>
           </div>
         ))}
       </section>
       {reauthorizations.length > 0 ? (
-        <section className="page-panel" aria-label="需要重新授权">
-          <div className="custom-server-heading">
-            <div>
-              <h2>需要重新授权</h2>
-              <p>这些账号的登录或发信权限已失效，重新授权后会恢复同步和发送。</p>
-            </div>
-          </div>
-          {reauthorizations.map((task) => {
-            const passwordForm = passwordReauthorizationForm(task);
-            const taskDiagnostics =
-              reauthorizationDiagnostics[task.taskId] ?? [];
-            return (
-              <div
-                className={`task-row ${task.authMethod === "password" ? "reauthorization-task-row" : ""}`}
-                key={task.taskId}
-              >
-                <ShieldCheck size={19} />
-                <div>
-                  <strong>{task.email}</strong>
-                  <span>
-                    {formatProviderLabel(task.provider)} ·{" "}
-                    {task.authMethod === "oauth" ? "重新登录" : "重新提交授权码"}
-                    {task.source ? ` · ${formatReauthorizationSource(task.source)}` : ""}
-                  </span>
-                  {task.errorMessage ? <p>{task.errorMessage}</p> : null}
-                </div>
-                {task.authMethod === "oauth" ? (
-                  <div className="task-actions">
-                    <button
-                      type="button"
-                      aria-label={`Start reauthorization for ${task.email}`}
-                      disabled={busyReauthorizationTaskId === task.taskId}
-                      onClick={() => void startOAuthReauthorization(task)}
-                    >
-                      重新登录
-                    </button>
-                  </div>
-                ) : (
-                  <form
-                    aria-label={`Mail server reauthorization for ${task.email}`}
-                    className="reauthorization-form"
-                    onSubmit={(event) =>
-                      void completePasswordReauthorization(event, task)
-                    }
-                  >
-                    <label>
-                      <span>登录用户名</span>
-                      <input
-                        aria-label={`Reauthorization username for ${task.email}`}
-                        autoComplete="username"
-                        type="text"
-                        value={passwordForm.username}
-                        onChange={(event) =>
-                          updatePasswordReauthorizationForm(task, {
-                            username: event.currentTarget.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>授权码或专用密码</span>
-                      <input
-                        aria-label={`Reauthorization secret for ${task.email}`}
-                        autoComplete="new-password"
-                        type="password"
-                        value={passwordForm.secret}
-                        onChange={(event) =>
-                          updatePasswordReauthorizationForm(task, {
-                            secret: event.currentTarget.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="reauthorization-toggle">
-                      <input
-                        aria-label={`Use custom receiving and sending settings for ${task.email}`}
-                        checked={passwordForm.useCustomServers}
-                        type="checkbox"
-                        onChange={(event) =>
-                          updatePasswordReauthorizationForm(task, {
-                            useCustomServers: event.currentTarget.checked,
-                          })
-                        }
-                      />
-                      <span>使用自定义收发信服务</span>
-                    </label>
-                    {passwordForm.useCustomServers ? (
-                      <div className="reauthorization-endpoints">
-                        <label>
-                          <span>收信主机</span>
-                          <input
-                            aria-label={`Receiving host for ${task.email}`}
-                            type="text"
-                            value={passwordForm.imapHost}
-                            onChange={(event) =>
-                              updatePasswordReauthorizationForm(task, {
-                                imapHost: event.currentTarget.value,
-                              })
-                            }
-                          />
-                        </label>
-                        <label>
-                          <span>收信端口</span>
-                          <input
-                            aria-label={`Receiving port for ${task.email}`}
-                            inputMode="numeric"
-                            type="text"
-                            value={passwordForm.imapPort}
-                            onChange={(event) =>
-                              updatePasswordReauthorizationForm(task, {
-                                imapPort: event.currentTarget.value,
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="reauthorization-toggle">
-                          <input
-                            aria-label={`Receiving secure connection for ${task.email}`}
-                            checked={passwordForm.imapSecure}
-                            type="checkbox"
-                            onChange={(event) =>
-                              updatePasswordReauthorizationForm(task, {
-                                imapSecure: event.currentTarget.checked,
-                              })
-                            }
-                          />
-                          <span>收信安全连接</span>
-                        </label>
-                        <label>
-                          <span>发信主机</span>
-                          <input
-                            aria-label={`Sending host for ${task.email}`}
-                            type="text"
-                            value={passwordForm.smtpHost}
-                            onChange={(event) =>
-                              updatePasswordReauthorizationForm(task, {
-                                smtpHost: event.currentTarget.value,
-                              })
-                            }
-                          />
-                        </label>
-                        <label>
-                          <span>发信端口</span>
-                          <input
-                            aria-label={`Sending port for ${task.email}`}
-                            inputMode="numeric"
-                            type="text"
-                            value={passwordForm.smtpPort}
-                            onChange={(event) =>
-                              updatePasswordReauthorizationForm(task, {
-                                smtpPort: event.currentTarget.value,
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="reauthorization-toggle">
-                          <input
-                            aria-label={`Sending secure connection for ${task.email}`}
-                            checked={passwordForm.smtpSecure}
-                            type="checkbox"
-                            onChange={(event) =>
-                              updatePasswordReauthorizationForm(task, {
-                                smtpSecure: event.currentTarget.checked,
-                              })
-                            }
-                          />
-                          <span>发信安全连接</span>
-                        </label>
-                      </div>
-                    ) : null}
-                    <button
-                      type="submit"
-                      aria-label={`Complete reauthorization for ${task.email}`}
-                      disabled={busyReauthorizationTaskId === task.taskId}
-                    >
-                      提交重新授权
-                    </button>
-                  </form>
-                )}
-                <ConnectionDiagnosticList
-                  ariaLabel={`Reauthorization diagnostics for ${task.email}`}
-                  className="reauthorization-diagnostics"
-                  container="div"
-                  diagnostics={taskDiagnostics}
-                  role="status"
-                  rowClassName="reauthorization-diagnostic-card"
-                />
-              </div>
-            );
-          })}
-        </section>
+        <ReauthorizationTasksPanel
+          tasks={reauthorizations}
+          busyTaskId={busyReauthorizationTaskId}
+          diagnostics={reauthorizationDiagnostics}
+          passwordForm={passwordReauthorizationForm}
+          onStartOAuth={(task) => void startOAuthReauthorization(task)}
+          onSubmitPassword={(event, task) =>
+            void completePasswordReauthorization(event, task)
+          }
+          onUpdatePasswordForm={updatePasswordReauthorizationForm}
+        />
       ) : null}
       {diagnosticAccount ? (
         <section className="page-panel sync-diagnostics-panel" aria-label="同步诊断">
@@ -7606,10 +8260,7 @@ function SearchPage(props: {
   const [results, setResults] = useState<MailItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [noticeState, setNoticeState] = useState<HermesNoticeState>({
-    text:
-      props.restrictToAccount
-        ? "输入关键词后搜索当前邮箱。"
-        : "输入关键词后搜索所有已同步邮件。",
+    text: "",
   });
   const [searchAllAccounts, setSearchAllAccounts] = useState(
     () => !props.restrictToAccount,
@@ -7705,7 +8356,7 @@ function SearchPage(props: {
     if (!trimmedQuery && !effectiveSavedView) {
       setResults([]);
       setHasSearched(false);
-      setNotice("请输入要查找的关键词，或选择一个常用分类。");
+      setNotice("");
       return false;
     }
 
@@ -7720,7 +8371,7 @@ function SearchPage(props: {
         },
       ]);
       setHasSearched(true);
-      setNotice("演示搜索结果。连接服务后会搜索已同步邮件。");
+      setNotice("邮箱服务未连接。");
       return true;
     }
 
@@ -7735,11 +8386,11 @@ function SearchPage(props: {
     if (!effectiveSearchAllAccounts && !effectiveAccountId) {
       setResults([]);
       setHasSearched(true);
-      setNotice("请先选择一个邮箱，或切换为搜索所有邮箱。");
+      setNotice("未选择邮箱。");
       return false;
     }
 
-    setNotice("正在搜索邮件...");
+    setNotice("");
     try {
       const page = await props.api.listMessages({
         ...(effectiveSearchAllAccounts ? {} : { accountId: effectiveAccountId }),
@@ -7786,7 +8437,7 @@ function SearchPage(props: {
       }
       setResults([]);
       setHasSearched(true);
-      setNotice("搜索暂时不可用，请稍后重试。");
+      setNotice("搜索暂时不可用。");
       return false;
     }
   }
@@ -7816,17 +8467,13 @@ function SearchPage(props: {
     const hermesSearchAllAccounts = !props.restrictToAccount && searchAllAccounts;
     const hermesAccountId = hermesSearchAllAccounts ? undefined : props.accountId;
     if (!hermesSearchAllAccounts && !hermesAccountId) {
-      setNotice("请先选择一个邮箱，再让 Hermes 搜索。");
+      setNotice("未选择邮箱。");
       return;
     }
 
     setHermesSearchBusy(true);
     setHermesSearchResult(undefined);
-    setNotice(
-      hermesSearchAllAccounts
-        ? "Hermes 正在理解问题并搜索所有邮箱..."
-        : "Hermes 正在理解问题并搜索当前邮箱...",
-    );
+    setNotice("");
     try {
       const result = await props.api.searchMailWithHermes({
         ...(hermesAccountId ? { accountId: hermesAccountId } : {}),
@@ -7928,11 +8575,6 @@ function SearchPage(props: {
   useEffect(() => {
     if (props.restrictToAccount) {
       setSearchAllAccounts(false);
-      setNotice((current) =>
-        current === "输入关键词后搜索所有已同步邮件。"
-          ? "输入关键词后搜索当前邮箱。"
-          : current,
-      );
     }
   }, [props.accountId, props.restrictToAccount]);
 
@@ -7941,7 +8583,6 @@ function SearchPage(props: {
       <header className="topbar single">
         <div>
           <h1>搜索</h1>
-          <p>关键词、附件、自然语言、账号、标签、日期筛选。</p>
         </div>
       </header>
       <section className="page-panel search-panel">
@@ -7972,63 +8613,63 @@ function SearchPage(props: {
           <div className="filter-row">
             <button
               className={searchAllAccounts ? "active" : ""}
-            type="button"
-            aria-label="Search all accounts"
-            disabled={props.restrictToAccount}
-            onClick={() => {
-              if (!props.restrictToAccount) {
-                setSearchAllAccounts(true);
-              }
-            }}
-          >
-            全部账号
-          </button>
-          <button
-            className={!searchAllAccounts ? "active" : ""}
-            type="button"
-            aria-label="Search current account"
-            onClick={() => setSearchAllAccounts(false)}
-          >
-            当前账号
-          </button>
-          <button
-            className={quickFilters.includes("attachments") ? "active" : ""}
-            type="button"
-            aria-label="Filter attachments"
-            onClick={() => toggleQuickFilter("attachments")}
-          >
-            有附件
-          </button>
-          <button
-            className={quickFilters.includes("unread") ? "active" : ""}
-            type="button"
-            aria-label="Filter unread"
-            onClick={() => toggleQuickFilter("unread")}
-          >
-            未读
-          </button>
-          <button
-            className={qScopes.includes("body") ? "active" : ""}
-            type="button"
-            aria-label="Search body scope"
-            onClick={() => toggleSearchScope("body")}
-          >
-            正文/附件
-          </button>
-          <button
-            className={qScopes.includes("sender") ? "active" : ""}
-            type="button"
-            aria-label="Search sender scope"
-            onClick={() => toggleSearchScope("sender")}
-          >
-            发件人
-          </button>
-          <button
-            className={qScopes.includes("recipients") ? "active" : ""}
-            type="button"
-            aria-label="Search recipients scope"
-            onClick={() => toggleSearchScope("recipients")}
-          >
+              type="button"
+              aria-label="搜索全部账号"
+              disabled={props.restrictToAccount}
+              onClick={() => {
+                if (!props.restrictToAccount) {
+                  setSearchAllAccounts(true);
+                }
+              }}
+            >
+              全部账号
+            </button>
+            <button
+              className={!searchAllAccounts ? "active" : ""}
+              type="button"
+              aria-label="搜索当前账号"
+              onClick={() => setSearchAllAccounts(false)}
+            >
+              当前账号
+            </button>
+            <button
+              className={quickFilters.includes("attachments") ? "active" : ""}
+              type="button"
+              aria-label="只看有附件"
+              onClick={() => toggleQuickFilter("attachments")}
+            >
+              有附件
+            </button>
+            <button
+              className={quickFilters.includes("unread") ? "active" : ""}
+              type="button"
+              aria-label="只看未读"
+              onClick={() => toggleQuickFilter("unread")}
+            >
+              未读
+            </button>
+            <button
+              className={qScopes.includes("body") ? "active" : ""}
+              type="button"
+              aria-label="搜索正文和附件"
+              onClick={() => toggleSearchScope("body")}
+            >
+              正文/附件
+            </button>
+            <button
+              className={qScopes.includes("sender") ? "active" : ""}
+              type="button"
+              aria-label="搜索发件人范围"
+              onClick={() => toggleSearchScope("sender")}
+            >
+              发件人
+            </button>
+            <button
+              className={qScopes.includes("recipients") ? "active" : ""}
+              type="button"
+              aria-label="搜索收件人范围"
+              onClick={() => toggleSearchScope("recipients")}
+            >
               收件人
             </button>
           </div>
@@ -8118,15 +8759,17 @@ function SearchPage(props: {
               ))}
             </div>
           ) : null}
-          <HermesNotice
-            notice={notice}
-            actionLabel={hermesNoticeActionLabel(noticeState.action)}
-            onAction={
-              noticeState.action === "open_runtime_settings"
-                ? props.onOpenHermesRuntimeSettings
-                : undefined
-            }
-          />
+          {notice ? (
+            <HermesNotice
+              notice={notice}
+              actionLabel={hermesNoticeActionLabel(noticeState.action)}
+              onAction={
+                noticeState.action === "open_runtime_settings"
+                  ? props.onOpenHermesRuntimeSettings
+                  : undefined
+              }
+            />
+          ) : null}
         {results.length > 0
           ? results.map((mail) => (
               <button
@@ -8160,38 +8803,12 @@ function HermesPage(props: {
       <header className="topbar single">
         <div>
           <h1>Hermes</h1>
-          <p>选择 AI 服务商并连接 API Key。</p>
         </div>
       </header>
       <div className="settings-detail">
         <HermesRuntimeSettingsPanel
           api={props.api}
         />
-      </div>
-    </section>
-  );
-}
-
-function SettingsPage(props: {
-  api?: EmailHubApi;
-}) {
-  return (
-    <section className="workspace-page page-scroll">
-      <header className="topbar single">
-        <div>
-          <h1>设置</h1>
-          <p>账户偏好和管理员工具。</p>
-        </div>
-      </header>
-      <div className="settings-detail settings-admin-detail">
-        <section className="settings-admin-section" aria-label="高级维护">
-          <div className="settings-admin-heading">
-            <Settings size={18} />
-            <h2>高级维护</h2>
-          </div>
-          <SystemStatusSettingsPanel api={props.api} />
-          <ComposeAttachmentMaintenancePanel api={props.api} />
-        </section>
       </div>
     </section>
   );
@@ -8205,7 +8822,6 @@ function DomainSetupPage(props: {
       <header className="topbar single">
         <div>
           <h1>配置域名</h1>
-          <p>设置收信域名、DNS 记录和 Cloudflare 辅助配置。</p>
         </div>
       </header>
       <div className="settings-detail">
@@ -8250,41 +8866,12 @@ function readerTranslationPreferenceSourceLanguage(
   return selectedSourceLanguage !== "auto" ? selectedSourceLanguage : undefined;
 }
 
-function MailEmptyState(props: {
-  notice?: string;
-  undoToast?: UndoToastState;
-  onAddMail: () => void;
-  onOpenSyncCenter: () => void;
-  onUndoDone: () => void;
-}) {
-  return (
-    <section className="mail-empty-panel" aria-label="聚合收件箱空状态">
-      {props.undoToast ? (
-        <UndoDoneNotice onUndoDone={props.onUndoDone} />
-      ) : null}
-      <div>
-        <Inbox size={24} />
-        <h2>聚合收件箱</h2>
-        <p>{props.notice ?? "还没有可显示的邮件。"}</p>
-      </div>
-      <div className="task-actions">
-        <button type="button" onClick={props.onAddMail}>
-          添加邮箱
-        </button>
-        <button type="button" onClick={props.onOpenSyncCenter}>
-          打开同步中心
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function UndoDoneNotice(props: { onUndoDone: () => void }) {
   return (
     <div className="backend-notice" role="status">
-      Done queued.
-      <button type="button" aria-label="Undo done" onClick={props.onUndoDone}>
-        Undo
+      已标记完成。
+      <button type="button" aria-label="撤销完成" onClick={props.onUndoDone}>
+        撤销
       </button>
     </div>
   );
@@ -8296,6 +8883,45 @@ function mapMailboxDtoToFolderItem(mailbox: MailboxDto): FolderItem {
     label: mailbox.name,
     count: mailbox.messageCount
   };
+}
+
+function mapNavigationFolderDtoToFolderItem(folder: {
+  id: string;
+  label: string;
+  count: number;
+}): FolderItem {
+  return {
+    id: folder.id,
+    label: folder.label,
+    count: folder.count,
+  };
+}
+
+function aggregateMessageFilterForFolder(folderId: string): {
+  mailboxRole?: string;
+  quickFilters?: MailQuickFilter[];
+  hasAttachment?: boolean;
+} {
+  if (
+    folderId === "inbox" ||
+    folderId === "drafts" ||
+    folderId === "sent" ||
+    folderId === "archive" ||
+    folderId === "junk" ||
+    folderId === "trash"
+  ) {
+    return { mailboxRole: folderId };
+  }
+
+  if (folderId === "flagged" || folderId === "starred") {
+    return { quickFilters: ["starred"] };
+  }
+
+  if (folderId === "attachments") {
+    return { hasAttachment: true };
+  }
+
+  return {};
 }
 
 function mapLabelDtoToLabelItem(label: LabelDto): LabelItem {
@@ -8331,7 +8957,7 @@ function mapMessageDtoToMailItem(message: MessageListItemDto): MailItem {
       mailboxIds: message.mailboxIds,
     bucket: message.classification.bucket,
     score: message.classification.priorityScore,
-    reasons: message.classification.reasons,
+    reasons: userFacingClassificationReasons(message.classification.reasons),
     searchPreview: message.searchPreview?.text,
     };
   }
@@ -8351,6 +8977,10 @@ function sortMailItems(items: MailItem[], sort: MessageListSort): MailItem[] {
 function firstMailKey(items: MailItem[], sort: MessageListSort): string {
   const [first] = sortMailItems(items, sort);
   return first ? mailItemKey(first) : "";
+}
+
+function messageDetailKey(detail: MessageDetailDto | undefined): string {
+  return detail ? `${detail.accountId}:${detail.id}` : "";
 }
 
 function folderSummaryForActiveView(input: {
@@ -8407,7 +9037,7 @@ function hermesSkillErrorNotice(
       );
     }
     if (error.code === "hermes_runtime_not_configured") {
-      return "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。";
+      return "Hermes 暂时不可用。";
     }
     const unavailableNotice = input.unavailable?.[error.code];
     if (unavailableNotice) {
@@ -8430,7 +9060,7 @@ function hermesNoticeActionFromError(
 function hermesNoticeActionLabel(
   action: HermesNoticeAction | undefined,
 ): string | undefined {
-  return action === "open_runtime_settings" ? "打开 Hermes 配置" : undefined;
+  return action === "open_runtime_settings" ? "设置 Hermes" : undefined;
 }
 
 function hermesDisabledSkillRequiredPermissionFromError(
@@ -8731,7 +9361,7 @@ function formatAttachmentSize(byteSize: number): string {
 function bucketLabel(bucket: string): string {
   if (bucket.includes("Urgent")) return "优先";
   if (bucket.includes("Important")) return "重要";
-  if (bucket.includes("Feed")) return "订阅";
+  if (bucket.includes("Feed")) return "动态";
   if (bucket.includes("Transactions")) return "通知";
   return "邮件";
 }
@@ -8751,11 +9381,41 @@ function smartInboxFeedbackLabel(action: SmartInboxFeedbackAction): string {
     move_to_personal: "移到个人",
     move_to_notifications: "移到通知",
     move_to_newsletters: "移到订阅",
-    move_to_feed: "移到 Feed",
+    move_to_feed: "移到动态",
     always_important_sender: "始终重要发件人",
     mute_sender: "静音发件人",
   };
   return labels[action];
+}
+
+function userFacingClassificationReasons(reasons: string[]): string[] {
+  return reasons.map(formatClassificationReason).filter(Boolean);
+}
+
+function formatClassificationReason(reason: string): string {
+  const normalized = reason.trim();
+  const movedMatch = normalized.match(
+    /^User moved(?: .+)? to (Newsletters|Feed|Notifications|Personal|Important)$/i,
+  );
+  if (movedMatch) {
+    const targetLabels: Record<string, string> = {
+      newsletters: "订阅",
+      feed: "动态",
+      notifications: "通知",
+      personal: "个人",
+      important: "重要",
+    };
+    return `已归入${targetLabels[movedMatch[1].toLowerCase()] ?? "邮件"}`;
+  }
+  return normalized;
+}
+
+function formatPriorityReasonSummary(mail: MailItem): string {
+  const label = bucketLabel(mail.bucket);
+  const reasons = mail.reasons.filter(Boolean);
+  return reasons.length > 0
+    ? `${label}，${reasons.join("，")}。`
+    : `${label}。`;
 }
 
 function isActionableFollowUpStatus(

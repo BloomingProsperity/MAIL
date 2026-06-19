@@ -27,7 +27,7 @@ describe("providerCapabilityToOption", () => {
       mark: "QQ",
       provider: "qq",
       action: "password",
-      setupHints: ["在 QQ 邮箱设置里生成授权码"],
+      setupHints: [],
     });
     expect(option.badges).toEqual(["专用密码", "授权码", "未读撤回"]);
     expect(JSON.stringify(option)).not.toContain("recall_unread_internal");
@@ -42,13 +42,13 @@ describe("providerCapabilityToOption", () => {
           connectionLabel: "通过 Proton Bridge 连接",
           accountGroup: "private",
           requiresLocalBridge: true,
-          setupHints: ["先启动 Proton Bridge 并使用 Bridge 用户名和 Bridge 密码"],
+          setupHints: [],
         }),
       ),
     ).toMatchObject({
       action: "bridge",
       badges: ["本地 Bridge"],
-      setupHints: ["先启动 Proton Bridge 并使用 Bridge 用户名和 Bridge 密码"],
+      setupHints: [],
     });
 
     expect(
@@ -84,17 +84,18 @@ describe("providerCapabilityToOption", () => {
       }),
     );
 
+    expect(option.subtitle).toBe("输入企业邮箱授权码或专用密码");
     expect(option.badges).toEqual([
-      "扫码登录",
       "专用密码",
       "别名同步",
       "大附件",
       "共享发件",
     ]);
+    expect(option.setupHints).toEqual([]);
     expect(JSON.stringify(option)).not.toMatch(/send_on_behalf|large_attachment/);
   });
 
-  it("keeps Gmail and Outlook on official web login even when capabilities are incomplete", () => {
+  it("uses app-password setup when Gmail and Outlook web login is not configured", () => {
     expect(
       providerCapabilityToOption(
         capabilityFixture({
@@ -108,10 +109,10 @@ describe("providerCapabilityToOption", () => {
         }),
       ),
     ).toMatchObject({
-      action: "oauth",
-      subtitle: "使用 Google 官方网页登录授权",
-      badges: ["网页登录"],
-      setupHints: ["不会要求填写 Gmail 密码"],
+      action: "password",
+      subtitle: "输入 Google 应用专用密码",
+      badges: ["专用密码", "授权码"],
+      setupHints: [],
     });
 
     expect(
@@ -127,10 +128,32 @@ describe("providerCapabilityToOption", () => {
         }),
       ),
     ).toMatchObject({
+      action: "password",
+      subtitle: "输入 Outlook 应用专用密码",
+      badges: ["专用密码", "授权码"],
+      setupHints: [],
+    });
+  });
+
+  it("uses official web login only when the provider capability is configured", () => {
+    expect(
+      providerCapabilityToOption(
+        capabilityFixture({
+          provider: "gmail",
+          label: "Gmail",
+          connectionLabel: "登录 Google 账号",
+          accountGroup: "global",
+          supportsWebLogin: true,
+          supportsAppPassword: false,
+          supportsMailboxPassword: false,
+          setupHints: ["登录后自动同步邮件"],
+        }),
+      ),
+    ).toMatchObject({
       action: "oauth",
-      subtitle: "使用 Microsoft 官方网页登录授权",
+      subtitle: "Google 账号",
       badges: ["网页登录"],
-      setupHints: ["不会要求填写 Outlook 密码"],
+      setupHints: [],
     });
   });
 

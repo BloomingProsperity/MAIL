@@ -240,7 +240,6 @@ function internalEnv(
     EMAILENGINE_AUTH_SERVER_SECRET: "internal-auth-secret",
     EENGINE_SECRET: "internal-service-secret",
     EMAILHUB_API_TOKEN: "internal-api-token",
-    VITE_EMAILHUB_API_TOKEN: "internal-api-token",
     POSTGRES_PASSWORD: "internal-postgres-password",
     GOOGLE_OAUTH_CLIENT_ID: "google-client",
     GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",

@@ -25,6 +25,10 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const apiAccessToken = env.EMAILHUB_API_TOKEN?.trim() ?? "";
   const apiAccessTokenRequired =
     env.EMAILHUB_REQUIRE_API_TOKEN === "true" || env.NODE_ENV === "production";
+  const webAuthDisabled =
+    env.NODE_ENV === "production"
+      ? false
+      : readBooleanValue(env.EMAILHUB_DISABLE_WEB_AUTH, false);
   if (apiAccessTokenRequired && !isProductionApiToken(apiAccessToken)) {
     throw new Error(
       "EMAILHUB_API_TOKEN must be set to a non-default value when API token protection is required",
@@ -36,6 +40,17 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     apiAccessTokenConfigured: apiAccessToken.length > 0,
     apiAccessTokenRequired,
     apiAccessAccountIds: readCsvList(env.EMAILHUB_API_TOKEN_ACCOUNT_IDS),
+    webAuthDisabled,
+    webSessionCookieSecure: readBooleanValue(
+      env.EMAILHUB_SESSION_COOKIE_SECURE,
+      env.NODE_ENV === "production",
+    ),
+    webSessionMaxAgeSeconds: readBoundedIntegerValue(
+      env.EMAILHUB_SESSION_MAX_AGE_SECONDS,
+      12 * 60 * 60,
+      5 * 60,
+      30 * 24 * 60 * 60,
+    ),
     maxAttachmentDownloadBytes: readBoundedIntegerValue(
       env.EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES,
       25 * 1024 * 1024,
@@ -147,6 +162,14 @@ function readBoundedIntegerValue(
   }
 
   return Math.min(max, Math.max(min, parsed));
+}
+
+function readBooleanValue(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value.trim().length === 0) {
+    return fallback;
+  }
+
+  return value === "true";
 }
 
 function readCsvList(value: string | undefined): string[] {

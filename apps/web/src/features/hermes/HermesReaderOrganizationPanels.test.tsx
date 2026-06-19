@@ -37,15 +37,15 @@ describe("Hermes reader organization panels", () => {
     );
 
     const result = screen.getByLabelText("Hermes 整理建议");
-    expect(within(result).getByText(/P1 Urgent · 分数 94/)).toBeTruthy();
+    expect(within(result).getByText(/优先级：优先/)).toBeTruthy();
     expect(within(result).getByText(/标签： 客户（client thread）/)).toBeTruthy();
-    expect(within(result).getByText(/订阅判断：newsletter · 90%/)).toBeTruthy();
+    expect(within(result).getByText(/订阅判断：订阅邮件/)).toBeTruthy();
     expect(within(result).getByText(/还有 2 条建议/)).toBeTruthy();
     expect(within(result).getByText(/Confirm launch schedule/)).toBeTruthy();
 
     fireEvent.click(
       within(result).getByRole("button", {
-        name: "Apply Hermes organization action 标为重要",
+        name: "执行 Hermes 整理动作：标为重要",
       }),
     );
     expect(onApplyAction).toHaveBeenCalledWith(
@@ -58,13 +58,29 @@ describe("Hermes reader organization panels", () => {
 
     fireEvent.click(
       within(result).getByRole("button", {
-        name: "Create Hermes action item follow-up Confirm launch schedule",
+        name: "创建 Hermes 跟进提醒：Confirm launch schedule",
       }),
     );
     expect(onCreateActionItemFollowUp).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Confirm launch schedule" }),
       0,
     );
+  });
+
+  it("keeps action labels stable while an operation is busy", () => {
+    render(
+      <HermesReaderOrganizationPanel
+        organization={organizationFixture()}
+        applyBusyId="smart_inbox:mark_important"
+        formatDate={() => "2026年6月14日"}
+        onApplyAction={vi.fn()}
+        onCreateActionItemFollowUp={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("标为重要")).toBeTruthy();
+    expect(screen.getByText("创建提醒")).toBeTruthy();
+    expect(screen.queryByText(/应用中|创建中/)).toBeNull();
   });
 
   it("deduplicates executable organization actions", () => {
@@ -81,8 +97,8 @@ describe("Hermes reader organization panels", () => {
     expect(hermesActionItemApplyId(item, 0)).toBe(
       "followup:0:Confirm launch schedule:2026-06-14T09:00:00.000Z",
     );
-    expect(formatHermesActionItemNote(item)).toContain("Owner: me");
-    expect(formatHermesActionItemNote(item)).toContain("Source: please confirm today");
+    expect(formatHermesActionItemNote(item)).toContain("负责人：me");
+    expect(formatHermesActionItemNote(item)).toContain("来源：please confirm today");
   });
 
   it("renders untrusted organization fields as inert text", () => {

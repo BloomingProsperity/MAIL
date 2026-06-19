@@ -1,4 +1,6 @@
 import type { SyncCenterJobSummaryDto } from "./syncCenterTypes";
+import type { EmailHubSessionApi } from "./emailHubSessionTypes";
+import { createApiFetch } from "./apiFetch";
 
 export type MessageListSort = "time" | "smart";
 
@@ -950,6 +952,7 @@ export interface QuickCategoryDto {
 }
 
 export interface MailNavigationSummaryDto {
+  folders: Array<{ id: string; label: string; count: number }>;
   providerGroups: ProviderGroupDto[];
   quickCategories: QuickCategoryDto[];
 }
@@ -1805,10 +1808,15 @@ export interface HermesRewritePolishResult {
 }
 
 export interface EmailHubApi {
+  getSession?: EmailHubSessionApi["getSession"];
+  createAdmin?: EmailHubSessionApi["createAdmin"];
+  login?: EmailHubSessionApi["login"];
+  logout?: EmailHubSessionApi["logout"];
   listMailboxes(input: { accountId: string }): Promise<Page<MailboxDto>>;
   listMessages(input: {
     accountId?: string;
     mailboxId?: string;
+    mailboxRole?: string;
     limit?: number;
     cursor?: string;
     q?: string;
@@ -2448,11 +2456,35 @@ export class ApiRequestError extends Error {
 
 export function createEmailHubApi(
   options: CreateEmailHubApiOptions = {},
-): EmailHubApi {
+): EmailHubApi & EmailHubSessionApi {
   const fetchImpl = createApiFetch(options.fetchImpl ?? fetch, options.apiToken);
   const baseUrl = options.baseUrl?.replace(/\/$/, "") ?? "";
 
   return {
+    getSession() {
+      return request(fetchImpl, baseUrl, "/api/session");
+    },
+
+    createAdmin(input) {
+      return request(fetchImpl, baseUrl, "/api/session/setup", {
+        method: "POST",
+        body: JSON.stringify({ email: input.email, password: input.password }),
+      });
+    },
+
+    login(input) {
+      return request(fetchImpl, baseUrl, "/api/session/login", {
+        method: "POST",
+        body: JSON.stringify({ email: input.email, password: input.password }),
+      });
+    },
+
+    logout() {
+      return request(fetchImpl, baseUrl, "/api/session/logout", {
+        method: "POST",
+      });
+    },
+
     listMailboxes(input) {
       return request(fetchImpl, baseUrl, `/api/accounts/${encodePath(input.accountId)}/mailboxes`);
     },
@@ -2461,6 +2493,7 @@ export function createEmailHubApi(
       const params = new URLSearchParams();
       params.set("limit", String(input.limit ?? 50));
       appendParam(params, "mailboxId", input.mailboxId);
+      appendParam(params, "mailboxRole", input.mailboxRole);
       appendParam(params, "cursor", input.cursor);
       appendParam(params, "q", input.q?.trim() || undefined);
       appendParam(params, "sort", input.sort);
@@ -3786,22 +3819,6 @@ export function createEmailHubApi(
   };
 }
 
-function createApiFetch(fetchImpl: typeof fetch, apiToken?: string): typeof fetch {
-  const token = apiToken?.trim();
-  if (!token) {
-    return fetchImpl;
-  }
-
-  return ((input: RequestInfo | URL, init: RequestInit = {}) =>
-    fetchImpl(input, {
-      ...init,
-      headers: {
-        ...normalizeHeaders(init.headers),
-        authorization: `Bearer ${token}`,
-      },
-    })) as typeof fetch;
-}
-
 async function request<T>(
   fetchImpl: typeof fetch,
   baseUrl: string,
@@ -3827,20 +3844,6 @@ async function request<T>(
   }
 
   return payload as T;
-}
-
-function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
-  if (!headers) {
-    return {};
-  }
-  if (headers instanceof Headers) {
-    return Object.fromEntries(headers.entries());
-  }
-  if (Array.isArray(headers)) {
-    return Object.fromEntries(headers);
-  }
-
-  return { ...headers };
 }
 
 async function downloadBlob(

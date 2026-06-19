@@ -16,6 +16,7 @@ describe("OAuth token client", () => {
         return Response.json({
           access_token: "access-token",
           refresh_token: "refresh-token",
+          id_token: "header.payload.signature",
           expires_in: 3600,
           scope: "https://www.googleapis.com/auth/gmail.readonly openid email",
           token_type: "Bearer",
@@ -40,6 +41,7 @@ describe("OAuth token client", () => {
     expect(token).toEqual({
       accessToken: "access-token",
       refreshToken: "refresh-token",
+      idToken: "header.payload.signature",
       expiresIn: 3600,
       scope: "https://www.googleapis.com/auth/gmail.readonly openid email",
       tokenType: "Bearer",

@@ -10,36 +10,34 @@ describe("SystemStatusSettingsPanel", () => {
     render(<SystemStatusSettingsPanel api={api} />);
 
     const apiPanel = await screen.findByRole("region", {
-      name: "服务运行体检",
+      name: "运行状态",
     });
-    expect(within(apiPanel).getByText("服务运行正常")).toBeTruthy();
-    expect(within(apiPanel).getByText("数据库")).toBeTruthy();
+    expect(within(apiPanel).getByText("运行正常")).toBeTruthy();
+    expect(within(apiPanel).getByText("数据存储")).toBeTruthy();
 
     const mailEnginePanel = await screen.findByRole("region", {
-      name: "邮箱接入体检",
+      name: "邮箱接入状态",
     });
-    expect(within(mailEnginePanel).getByText("邮箱接入还差配置")).toBeTruthy();
+    expect(within(mailEnginePanel).getByText("邮箱接入需要处理")).toBeTruthy();
     expect(
       within(mailEnginePanel).getByText("邮箱接入服务配置未完全就绪，部分接入能力会降级。"),
     ).toBeTruthy();
-    expect(within(mailEnginePanel).getByText("认证探测")).toBeTruthy();
+    expect(within(mailEnginePanel).getByText("授权")).toBeTruthy();
     expect(within(mailEnginePanel).getByText("被拒绝")).toBeTruthy();
-    expect(
-      within(mailEnginePanel)
-        .getAllByText(/EMAILENGINE_ACCESS_TOKEN/)[0]
-        .closest("details")
-        ?.hasAttribute("open"),
-    ).toBe(false);
+    expect(within(mailEnginePanel).queryByText(/EMAILENGINE_ACCESS_TOKEN/)).toBeNull();
 
-    fireEvent.click(within(mailEnginePanel).getByText("管理员配置明细"));
-    expect(within(mailEnginePanel).getAllByText(/EMAILENGINE_ACCESS_TOKEN/).length).toBeGreaterThan(0);
-    expect(within(mailEnginePanel).getByText("更新邮箱接入访问令牌")).toBeTruthy();
+    fireEvent.click(within(mailEnginePanel).getByText("详细状态"));
+    expect(within(mailEnginePanel).getByText("访问权限未通过")).toBeTruthy();
+    expect(within(mailEnginePanel).getByText("访问权限 / 接入凭据")).toBeTruthy();
+    expect(within(mailEnginePanel).getByText("更新邮箱接入权限")).toBeTruthy();
+    expect(within(mailEnginePanel).queryByText(/EMAILENGINE_ACCESS_TOKEN/)).toBeNull();
 
     const eventsPanel = await screen.findByRole("region", {
-      name: "邮箱同步运行记录",
+      name: "同步记录",
     });
-    expect(await within(eventsPanel).findByText("同步任务已处理")).toBeTruthy();
+    expect(await within(eventsPanel).findByText("同步已处理")).toBeTruthy();
     expect(within(eventsPanel).getByText("邮箱服务状态已更新")).toBeTruthy();
+    expect(within(eventsPanel).queryByText(/后台|系统已收到|收信回调/)).toBeNull();
     await waitFor(() => {
       expect(api.listOperationalEvents).toHaveBeenCalledWith({
         service: "email-hub-api",
@@ -63,9 +61,45 @@ describe("SystemStatusSettingsPanel", () => {
 
     render(<SystemStatusSettingsPanel api={api} />);
 
-    expect(await screen.findByText("服务运行需要检查")).toBeTruthy();
-    expect(await screen.findByText("邮箱接入体检暂时不可用")).toBeTruthy();
-    expect(await screen.findByText("最近运行事件暂时不可用。")).toBeTruthy();
+    expect(await screen.findByText("运行需要处理")).toBeTruthy();
+    expect(await screen.findByText("邮箱接入暂时不可用")).toBeTruthy();
+    expect(await screen.findByText("最近同步暂时不可用。")).toBeTruthy();
+  });
+
+  it("does not expose backend readiness summaries when mail access is ready", async () => {
+    const api = systemStatusApiFixture();
+    vi.mocked(api.getMailEngineHealth).mockResolvedValueOnce({
+      provider: "emailengine",
+      ok: true,
+      detail: "ready",
+      checks: {
+        url: "configured",
+        http: "ok",
+        accessToken: "configured",
+        apiAuth: "ok",
+        preparedToken: "configured",
+        webhookSecret: "custom",
+      },
+      capabilities: {
+        urlConfigured: true,
+        accessTokenConfigured: true,
+        imapSmtpOnboarding: true,
+        attachmentDownload: true,
+        send: true,
+      },
+      missing: [],
+      warnings: [],
+      readiness: {
+        status: "ready",
+        summary: "邮箱接入服务已具备接入配置。",
+        setupActions: [],
+      },
+    });
+
+    render(<SystemStatusSettingsPanel api={api} />);
+
+    expect(await screen.findByText("邮箱接入已就绪。")).toBeTruthy();
+    expect(screen.queryByText(/服务已具备/)).toBeNull();
   });
 });
 

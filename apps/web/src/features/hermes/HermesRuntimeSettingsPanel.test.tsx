@@ -5,12 +5,25 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   EmailHubApi,
   HermesRuntimeSettingsDto,
 } from "../../lib/emailHubApi";
 import { HermesRuntimeSettingsPanel } from "./HermesRuntimeSettingsPanel";
+
+const runtimeStyles = readFileSync(
+  join(process.cwd(), "src", "features", "hermes", "HermesRuntimeSettingsPanel.css"),
+  "utf8",
+);
+
+function ruleBody(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = runtimeStyles.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, "m"));
+  return match?.[1] ?? "";
+}
 
 describe("HermesRuntimeSettingsPanel", () => {
   afterEach(() => {
@@ -30,10 +43,11 @@ describe("HermesRuntimeSettingsPanel", () => {
     render(<HermesRuntimeSettingsPanel api={api} />);
 
     expect(await screen.findByDisplayValue("小邮")).toBeTruthy();
-    expect(screen.getByLabelText("LLM 服务商")).toBeTruthy();
-    expect(screen.getByLabelText("API Key")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "测试连接" })).toBeTruthy();
+    expect(screen.getByLabelText("服务商")).toBeTruthy();
+    expect(screen.getByLabelText("访问密钥")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "保存" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "检查连接" })).toBeTruthy();
+    expect(screen.queryByText(/AI 连接|API Key|LLM 服务商/)).toBeNull();
 
     expect(screen.queryByText("能力选项")).toBeNull();
     expect(screen.queryByText("规则")).toBeNull();
@@ -48,17 +62,17 @@ describe("HermesRuntimeSettingsPanel", () => {
 
     render(<HermesRuntimeSettingsPanel api={api} />);
 
-    await screen.findByText("AI 连接已保存。");
+    await screen.findByText("连接已保存。");
     fireEvent.change(screen.getByLabelText("助手名称"), {
       target: { value: "Mail Copilot" },
     });
-    fireEvent.change(screen.getByLabelText("LLM 服务商"), {
+    fireEvent.change(screen.getByLabelText("服务商"), {
       target: { value: "nvidia" },
     });
-    fireEvent.change(screen.getByLabelText("API Key"), {
+    fireEvent.change(screen.getByLabelText("访问密钥"), {
       target: { value: "runtime-secret" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       expect(api.updateHermesRuntimeSettings).toHaveBeenCalledWith(
@@ -82,14 +96,14 @@ describe("HermesRuntimeSettingsPanel", () => {
 
     render(<HermesRuntimeSettingsPanel api={api} />);
 
-    await screen.findByText("AI 连接已保存。");
-    fireEvent.change(screen.getByLabelText("LLM 服务商"), {
+    await screen.findByText("连接已保存。");
+    fireEvent.change(screen.getByLabelText("服务商"), {
       target: { value: "deepseek" },
     });
-    fireEvent.change(screen.getByLabelText("API Key"), {
+    fireEvent.change(screen.getByLabelText("访问密钥"), {
       target: { value: "probe-secret" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查连接" }));
 
     await screen.findByText("连接成功。");
     expect(api.probeHermesProvider).toHaveBeenCalledWith({
@@ -105,13 +119,18 @@ describe("HermesRuntimeSettingsPanel", () => {
 
     render(<HermesRuntimeSettingsPanel api={api} />);
 
-    await screen.findByText("AI 连接已保存。");
+    await screen.findByText("连接已保存。");
     expect(screen.queryByLabelText("自定义服务地址")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("LLM 服务商"), {
+    fireEvent.change(screen.getByLabelText("服务商"), {
       target: { value: "custom" },
     });
     expect(screen.getByLabelText("自定义服务地址")).toBeTruthy();
+  });
+
+  it("keeps the Hermes settings panel full-width", () => {
+    expect(ruleBody(".hermes-connect-panel")).toContain("width: 100%");
+    expect(ruleBody(".hermes-connect-panel")).not.toContain("max-width: 760px");
   });
 });
 

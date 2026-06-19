@@ -109,7 +109,7 @@ export function createPostgresAccountProviderSettingsStore(
             FROM onboarding_tasks
             WHERE status IN ('pending', 'failed')
               AND payload ->> 'reauthRequired' = 'true'
-              AND payload ->> 'accountId' = $1
+              AND payload ->> 'accountId' = $1::text
             ORDER BY created_at DESC, id DESC
             LIMIT 1
           ),
@@ -129,7 +129,7 @@ export function createPostgresAccountProviderSettingsStore(
               account_context.provider,
               account_context.auth_method,
               'pending',
-              $4,
+              $4::text,
               jsonb_strip_nulls(
                 jsonb_build_object(
                   'source', 'emailengine_account_state',
@@ -162,7 +162,7 @@ export function createPostgresAccountProviderSettingsStore(
                       WHEN account_context.auth_method = 'password'
                       THEN account_context.settings -> 'smtp'
                     END,
-                  'reason', $4
+                  'reason', $4::text
                 )
               )
             FROM account_context

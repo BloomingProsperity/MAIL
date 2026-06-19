@@ -372,17 +372,21 @@ real mailboxes:
 
 - `EMAILHUB_API_TOKEN`: strong random bearer token for all `/api/*` routes
   except `/health`, EmailEngine webhooks, and the EmailEngine auth-server
-  callback. Set `EMAILHUB_REQUIRE_API_TOKEN=true` for exposed self-hosted
-  stacks; `infra/docker-compose.prod.yml` does this automatically.
+  callback. The web login form exchanges this value for an HttpOnly session
+  cookie, so do not put it in any `VITE_*` variable. Set
+  `EMAILHUB_REQUIRE_API_TOKEN=true` for exposed self-hosted stacks;
+  `infra/docker-compose.prod.yml` does this automatically.
 - `EMAILHUB_ALLOW_DEV_SECRETS`: keep `true` only for local development. The
   production overlay forces this to `false`, so default EmailEngine shared
   secrets are rejected during API startup.
-- `VITE_EMAILHUB_API_TOKEN`: same token when the bundled static web app calls
-  the API directly from a trusted self-hosted browser session.
 - `EMAILHUB_API_TOKEN_ACCOUNT_IDS`: optional comma-separated account scope for
-  that token. When set for a browser-facing token, also set
-  `VITE_EMAILHUB_DEFAULT_ACCOUNT_ID` to the same account so the web app uses
-  account-scoped mail/search routes instead of global admin routes.
+  API token and web sessions created from it. When set, also set
+  `VITE_EMAILHUB_DEFAULT_ACCOUNT_ID` to the same account so the web app starts
+  in an account-scoped mail view.
+- `EMAILHUB_SESSION_COOKIE_SECURE`: set to `true` for HTTPS deployments. The
+  production compose overlay enforces this.
+- `EMAILHUB_SESSION_MAX_AGE_SECONDS`: web login session lifetime, defaulting to
+  43200.
 - `EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES`: max bytes streamed through the API
   for a single attachment download, defaulting to 26214400.
 - `EMAILENGINE_ACCESS_TOKEN`: raw token used by the Email Hub API and worker.
@@ -477,8 +481,9 @@ This gate is read-only. It checks that production-only values such as
 and `EENGINE_SECRET` are set and not using development defaults. When
 `DATABASE_URL` is empty and Docker compose uses the bundled Postgres service, it
 also requires `POSTGRES_PASSWORD` to be changed from the local development
-default. It fails if `VITE_EMAILHUB_API_TOKEN` is set to a different value than
-`EMAILHUB_API_TOKEN`. It also catches common EmailEngine token mistakes: the
+default. It fails if `VITE_EMAILHUB_API_TOKEN` is configured because the
+production web build must authenticate with HttpOnly sessions instead of a
+browser-bundled bearer token. It also catches common EmailEngine token mistakes: the
 raw `EMAILENGINE_ACCESS_TOKEN` must use EmailEngine's 64-character hex token
 format, and `EENGINE_PREPARED_TOKEN` must not be the raw token copied into the
 wrong variable. The same gate rejects `EMAILENGINE_IMAGE=latest` and unpinned

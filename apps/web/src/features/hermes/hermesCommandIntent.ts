@@ -33,14 +33,8 @@ export function detectHermesCommandIntent(value: string): HermesCommandIntent {
 export function hermesReaderCommandNotice(
   action: HermesReaderCommandAction,
 ): string {
-  if (action === "summarize_message") {
-    return "Hermes 正在总结当前邮件...";
-  }
-  if (action === "translate_message") {
-    return "Hermes 正在翻译当前邮件...";
-  }
-
-  return "Hermes 正在准备当前邮件的回复草稿...";
+  void action;
+  return "";
 }
 
 export function isHermesSearchCommand(value: string): boolean {

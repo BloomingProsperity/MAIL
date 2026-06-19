@@ -119,7 +119,7 @@ function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string
   const labels: Record<HermesProviderProbeMissing, string> = {
     endpoint_url: "服务地址",
     model: "模型",
-    api_key: "API Key",
+    api_key: "访问密钥",
     oauth_session: "登录授权",
     aws_credentials: "云服务凭证",
   };
@@ -138,7 +138,7 @@ export function HermesRuntimeSettingsPanel(props: {
   const [hermesProviders, setHermesProviders] = useState<
     HermesProviderCatalogItem[]
   >(fallbackHermesProviders);
-  const [notice, setNotice] = useState("请选择服务商并输入 API Key。");
+  const [notice, setNotice] = useState("未连接。");
   const [busyAction, setBusyAction] = useState<HermesRuntimeBusyAction>();
 
   const providerOptions = useMemo(() => {
@@ -212,13 +212,13 @@ export function HermesRuntimeSettingsPanel(props: {
         setApiKeyConfigured(settings.apiKeyConfigured);
         setNotice(
           settings.apiKeyConfigured
-            ? "AI 连接已保存。"
-            : "请选择服务商并输入 API Key。",
+            ? "连接已保存。"
+            : "未连接。",
         );
       })
       .catch(() => {
         if (!alive) return;
-        setNotice("暂时无法读取 AI 配置。");
+        setNotice("暂时无法读取连接设置。");
       });
 
     return () => {
@@ -257,17 +257,17 @@ export function HermesRuntimeSettingsPanel(props: {
       return;
     }
     if (customProviderSelected && !endpointUrl.trim()) {
-      setNotice("请填写自定义服务地址。");
+      setNotice("自定义服务地址为空。");
       return;
     }
     if (!props.api) {
       setApiKeyConfigured(Boolean(apiKey.trim()));
-      setNotice("AI 连接已保存。");
+      setNotice("连接已保存。");
       return;
     }
 
     setBusyAction("save");
-    setNotice("正在保存 AI 连接...");
+    setNotice("");
     try {
       const saved = await props.api.updateHermesRuntimeSettings({
         ...runtimePayload(),
@@ -279,9 +279,9 @@ export function HermesRuntimeSettingsPanel(props: {
       setModel(saved.model);
       setApiKey("");
       setApiKeyConfigured(saved.apiKeyConfigured);
-      setNotice("AI 连接已保存。");
+      setNotice("连接已保存。");
     } catch {
-      setNotice("保存失败，请检查服务商和 API Key。");
+      setNotice("保存失败。");
     } finally {
       setBusyAction(undefined);
     }
@@ -292,16 +292,16 @@ export function HermesRuntimeSettingsPanel(props: {
       return;
     }
     if (customProviderSelected && !endpointUrl.trim()) {
-      setNotice("请填写自定义服务地址。");
+      setNotice("自定义服务地址为空。");
       return;
     }
     if (!props.api) {
-      setNotice("请连接后端后再测试。");
+      setNotice("当前无法连接。");
       return;
     }
 
     setBusyAction("test");
-    setNotice("正在测试连接...");
+    setNotice("");
     try {
       const typedApiKey = apiKey.trim();
       const result = typedApiKey
@@ -318,12 +318,12 @@ export function HermesRuntimeSettingsPanel(props: {
         return;
       }
       if ("status" in result && result.status === "missing_configuration") {
-        setNotice(`请补全：${formatHermesMissingFields(result.missing)}`);
+        setNotice(`缺少：${formatHermesMissingFields(result.missing)}`);
         return;
       }
-      setNotice("连接失败，请检查服务商和 API Key。");
+      setNotice("连接失败。");
     } catch {
-      setNotice("连接失败，请检查服务商和 API Key。");
+      setNotice("连接失败。");
     } finally {
       setBusyAction(undefined);
     }
@@ -336,19 +336,19 @@ export function HermesRuntimeSettingsPanel(props: {
     if (!props.api) {
       setApiKey("");
       setApiKeyConfigured(false);
-      setNotice("API Key 已清除。");
+      setNotice("访问密钥已清除。");
       return;
     }
 
     setBusyAction("clear-key");
-    setNotice("正在清除 API Key...");
+    setNotice("");
     try {
       const saved = await props.api.clearHermesRuntimeApiKey(runtimePayload());
       setApiKey("");
       setApiKeyConfigured(saved.apiKeyConfigured);
-      setNotice("API Key 已清除。");
+      setNotice("访问密钥已清除。");
     } catch {
-      setNotice("清除失败，请稍后再试。");
+      setNotice("清除失败。");
     } finally {
       setBusyAction(undefined);
     }
@@ -359,7 +359,6 @@ export function HermesRuntimeSettingsPanel(props: {
       <header className="settings-panel-head">
         <div>
           <h2>{assistantName || "Hermes"}</h2>
-          <p>连接 AI 服务后，邮箱搜索、翻译、总结和写信辅助会使用同一个入口。</p>
         </div>
       </header>
 
@@ -377,9 +376,9 @@ export function HermesRuntimeSettingsPanel(props: {
             />
           </label>
           <label>
-            <span>LLM 服务商</span>
+            <span>服务商</span>
             <select
-              aria-label="LLM 服务商"
+              aria-label="服务商"
               value={providerKey}
               disabled={isRuntimeBusy}
               onChange={(event) => applyProviderSelection(event.target.value)}
@@ -404,13 +403,13 @@ export function HermesRuntimeSettingsPanel(props: {
             </label>
           ) : null}
           <label>
-            <span>API Key</span>
+            <span>访问密钥</span>
             <input
-              aria-label="API Key"
+              aria-label="访问密钥"
               value={apiKey}
               disabled={isRuntimeBusy}
               onChange={(event) => setApiKey(event.target.value)}
-              placeholder={apiKeyConfigured ? "已保存，留空则不修改" : "输入 API Key"}
+              placeholder={apiKeyConfigured ? "已保存" : "输入访问密钥"}
               type="password"
             />
           </label>
@@ -418,7 +417,7 @@ export function HermesRuntimeSettingsPanel(props: {
 
         <div className="inline-actions hermes-connect-actions">
           <button className="primary-button" type="submit" disabled={isRuntimeBusy}>
-            保存配置
+            保存
           </button>
           <button
             className="ghost-button"
@@ -426,7 +425,7 @@ export function HermesRuntimeSettingsPanel(props: {
             disabled={isRuntimeBusy}
             onClick={() => void testConnection()}
           >
-            测试连接
+            检查连接
           </button>
           {apiKeyConfigured ? (
             <button
@@ -435,7 +434,7 @@ export function HermesRuntimeSettingsPanel(props: {
               disabled={isRuntimeBusy}
               onClick={() => void clearApiKey()}
             >
-              清除 API Key
+              清除密钥
             </button>
           ) : null}
         </div>

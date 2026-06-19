@@ -21,7 +21,7 @@ describe("HermesNotice", () => {
   it("does not expose skill settings for internal Hermes notices", () => {
     render(
       <HermesNotice
-        notice="Hermes 搜索问答暂时不可用，请稍后再试。"
+        notice="Hermes 搜索问答暂时不可用。"
         compact
       />,
     );
@@ -38,12 +38,12 @@ describe("HermesNotice", () => {
     render(
       <HermesNotice
         notice="Hermes 尚未配置模型接口。"
-        actionLabel="打开 Hermes 配置"
+        actionLabel="设置 Hermes"
         onAction={onAction}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "设置 Hermes" }));
 
     expect(onAction).toHaveBeenCalledTimes(1);
   });

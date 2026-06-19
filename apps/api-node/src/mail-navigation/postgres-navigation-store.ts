@@ -1,4 +1,5 @@
 import type {
+  FolderCount,
   MailNavigationStore,
   ProviderCount,
   QuickCategoryCount,
@@ -50,6 +51,73 @@ export function createPostgresMailNavigationStore(
         provider: String(row.provider ?? ""),
         count: readCount(row.count),
       })) satisfies ProviderCount[];
+    },
+
+    async listFolderCounts() {
+      const result = await client.query<CountRow>(
+        `
+          WITH visible_messages AS (
+            SELECT
+              messages.id,
+              COALESCE(message_state.starred, FALSE) AS starred,
+              message_state.snoozed_until,
+              COUNT(DISTINCT attachments.id) AS attachment_count
+            FROM messages
+            LEFT JOIN message_state
+              ON message_state.message_id = messages.id
+            LEFT JOIN attachments
+              ON attachments.message_id = messages.id
+            WHERE message_state.deleted_at IS NULL
+               OR message_state.message_id IS NULL
+            GROUP BY
+              messages.id,
+              message_state.starred,
+              message_state.snoozed_until
+          ),
+          role_counts AS (
+            SELECT mailboxes.role AS id, COUNT(DISTINCT messages.id) AS count
+            FROM messages
+            LEFT JOIN message_state
+              ON message_state.message_id = messages.id
+            JOIN message_locations
+              ON message_locations.message_id = messages.id
+            JOIN mailboxes
+              ON mailboxes.id = message_locations.mailbox_id
+            WHERE message_state.deleted_at IS NULL
+               OR message_state.message_id IS NULL
+            GROUP BY mailboxes.role
+          ),
+          fact_counts AS (
+            SELECT 'all' AS id, COUNT(*) AS count
+            FROM visible_messages
+            UNION ALL
+            SELECT 'flagged' AS id, COUNT(*) AS count
+            FROM visible_messages
+            WHERE starred = TRUE
+            UNION ALL
+            SELECT 'snoozed' AS id, COUNT(*) AS count
+            FROM visible_messages
+            WHERE snoozed_until > now()
+            UNION ALL
+            SELECT 'attachments' AS id, COUNT(*) AS count
+            FROM visible_messages
+            WHERE attachment_count > 0
+          )
+          SELECT id, SUM(count) AS count
+          FROM (
+            SELECT id, count FROM role_counts
+            UNION ALL
+            SELECT id, count FROM fact_counts
+          ) folder_counts
+          GROUP BY id
+          ORDER BY id ASC
+        `,
+      );
+
+      return result.rows.map((row) => ({
+        id: String(row.id ?? ""),
+        count: readCount(row.count),
+      })) satisfies FolderCount[];
     },
 
     async listQuickCategoryCounts() {

@@ -12,6 +12,11 @@ export interface QuickCategoryCount {
   count: number;
 }
 
+export interface FolderCount {
+  id: string;
+  count: number;
+}
+
 export interface QuickCategoryDefinition {
   id: string;
   label: string;
@@ -31,13 +36,21 @@ export interface QuickCategorySummary {
   tone: MailNavigationTone;
 }
 
+export interface FolderSummary {
+  id: string;
+  label: string;
+  count: number;
+}
+
 export interface MailNavigationSummary {
+  folders: FolderSummary[];
   providerGroups: ProviderGroupSummary[];
   quickCategories: QuickCategorySummary[];
 }
 
 export interface MailNavigationStore {
   listProviderCounts(): Promise<ProviderCount[]>;
+  listFolderCounts(): Promise<FolderCount[]>;
   listQuickCategoryCounts(): Promise<QuickCategoryCount[]>;
   listQuickCategories?(): Promise<QuickCategoryDefinition[]>;
 }
@@ -82,14 +95,28 @@ const PROVIDER_GROUPS: Array<{
   },
 ];
 
+const FOLDERS: Array<{ id: string; label: string }> = [
+  { id: "inbox", label: "收件箱" },
+  { id: "drafts", label: "草稿" },
+  { id: "sent", label: "已发送" },
+  { id: "trash", label: "已删除" },
+  { id: "junk", label: "垃圾邮件" },
+  { id: "archive", label: "归档" },
+  { id: "all", label: "所有邮件" },
+  { id: "flagged", label: "已标记" },
+  { id: "snoozed", label: "稍后提醒" },
+  { id: "attachments", label: "附件" },
+];
+
 export function createMailNavigationSummaryService(
   store: MailNavigationStore,
 ): MailNavigationSummaryService {
   return {
     async getSummary() {
-      const [providerCounts, quickCategoryCounts, dynamicCategories] =
+      const [providerCounts, folderCounts, quickCategoryCounts, dynamicCategories] =
         await Promise.all([
           store.listProviderCounts(),
+          store.listFolderCounts(),
           store.listQuickCategoryCounts(),
           store.listQuickCategories
             ? store.listQuickCategories()
@@ -98,9 +125,17 @@ export function createMailNavigationSummaryService(
       const quickCountsById = new Map(
         quickCategoryCounts.map((item) => [item.id, item.count]),
       );
+      const folderCountsById = new Map(
+        folderCounts.map((item) => [item.id, item.count]),
+      );
       const quickCategories = mergeQuickCategories(dynamicCategories);
 
       return {
+        folders: FOLDERS.map((folder) => ({
+          id: folder.id,
+          label: folder.label,
+          count: folderCountsById.get(folder.id) ?? 0,
+        })),
         providerGroups: groupProviderCounts(providerCounts),
         quickCategories: quickCategories.map((category) => ({
           id: category.id,

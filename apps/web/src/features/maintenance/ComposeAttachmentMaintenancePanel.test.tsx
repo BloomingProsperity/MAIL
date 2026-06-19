@@ -145,7 +145,7 @@ describe("ComposeAttachmentMaintenancePanel", () => {
       <ComposeAttachmentMaintenancePanel api={api as unknown as EmailHubApi} />,
     );
 
-    const maintenancePanel = await screen.findByLabelText("数据维护面板");
+    const maintenancePanel = await screen.findByLabelText("存储维护面板");
     await waitFor(() => {
       expect(api.getComposeAttachmentMaintenanceStatus).toHaveBeenCalled();
       expect(api.getHermesRetentionMaintenanceStatus).toHaveBeenCalled();
@@ -153,12 +153,13 @@ describe("ComposeAttachmentMaintenancePanel", () => {
     expect(within(maintenancePanel).getByText("未引用附件")).toBeTruthy();
     expect(within(maintenancePanel).getByText("2 MB 可清理")).toBeTruthy();
     expect(within(maintenancePanel).getByText("Hermes 过期记录")).toBeTruthy();
-    expect(within(maintenancePanel).getByText("运行记录")).toBeTruthy();
+    expect(within(maintenancePanel).getByText("执行记录")).toBeTruthy();
+    expect(within(maintenancePanel).queryByText(/受管表|扫描范围|异常元数据|系统记录|运行记录/)).toBeNull();
 
-    fireEvent.change(within(maintenancePanel).getByLabelText("清理最小保留小时"), {
+    fireEvent.change(within(maintenancePanel).getByLabelText("保留小时"), {
       target: { value: "48" },
     });
-    fireEvent.change(within(maintenancePanel).getByLabelText("清理批量上限"), {
+    fireEvent.change(within(maintenancePanel).getByLabelText("附件每次最多清理"), {
       target: { value: "2" },
     });
     fireEvent.click(
@@ -179,14 +180,14 @@ describe("ComposeAttachmentMaintenancePanel", () => {
       target: { value: "14" },
     });
     fireEvent.change(
-      within(maintenancePanel).getByLabelText("Hermes 清理批量上限"),
+      within(maintenancePanel).getByLabelText("Hermes 每次最多清理"),
       {
         target: { value: "25" },
       },
     );
     fireEvent.click(
       within(maintenancePanel).getByRole("button", {
-        name: "清理 Hermes 过期数据",
+        name: "清理 Hermes 历史",
       }),
     );
 
@@ -201,10 +202,10 @@ describe("ComposeAttachmentMaintenancePanel", () => {
     ).toBeTruthy();
   });
 
-  it("shows local preview maintenance data without an api", async () => {
+  it("keeps maintenance data readable without an api", async () => {
     render(<ComposeAttachmentMaintenancePanel />);
 
-    expect(await screen.findByText("本地预览维护状态，连接后会读取真实缓存。")).toBeTruthy();
+    expect(await screen.findByText("存储维护")).toBeTruthy();
     expect(screen.getByText("2 MB 可清理")).toBeTruthy();
     expect(screen.getByText("Hermes 过期记录")).toBeTruthy();
   });

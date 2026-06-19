@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { ApiRequestError } from "./lib/emailHubApi";
 import type {
+  AttachmentDownload,
   ComposeAttachmentMaintenanceCleanupResultDto,
   ComposeAttachmentMaintenanceStatusDto,
   EmailHubApi,
@@ -42,6 +43,7 @@ import type {
   MailEngineHealthDto,
   MessageDetailDto,
   MailProviderCapabilityDto,
+  MailActionResult,
   OAuthStartResult,
   ReauthorizationTaskDto,
   SyncManualResyncResult,
@@ -80,13 +82,7 @@ describe("Email Hub first UI baseline", () => {
 
   function submitCredentialProvider(providerTitle: string) {
     fireEvent.click(
-      screen.getByRole("button", { name: `测试并接入${providerTitle}` }),
-    );
-  }
-
-  function openHermesPage() {
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "Hermes" }),
+      screen.getByRole("button", { name: `接入${providerTitle}` }),
     );
   }
 
@@ -102,7 +98,8 @@ describe("Email Hub first UI baseline", () => {
     expect(navLabels).not.toContain("搜索");
     expect(navLabels).toContain("Hermes");
     expect(navLabels).toContain("配置域名");
-    expect(navLabels).toContain("设置");
+    expect(navLabels).not.toContain("设置");
+    expect(screen.getByRole("button", { name: "设置" })).toBeTruthy();
     expect(navLabels).not.toContain("同步中心");
     expect(navLabels).not.toContain("待办9");
     expect(screen.getByRole("search", { name: "全局邮件搜索" })).toBeTruthy();
@@ -115,6 +112,154 @@ describe("Email Hub first UI baseline", () => {
     expect(within(directory).getByRole("button", { name: /垃圾邮件/ })).toBeTruthy();
     expect(within(directory).getByRole("button", { name: /已删除/ })).toBeTruthy();
     expect(within(directory).getByRole("button", { name: /附件/ })).toBeTruthy();
+  });
+
+  it("does not show preview mailbox counts before backend data loads", () => {
+    const api = createApiFixture();
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    const directory = screen.getByLabelText("邮箱目录栏");
+    expect(within(directory).queryByRole("button", { name: /收件箱\s*128/ })).toBeNull();
+    expect(within(directory).queryByRole("button", { name: /所有邮件\s*912/ })).toBeNull();
+    expect(within(directory).getByRole("button", { name: /收件箱\s*0/ })).toBeTruthy();
+    expect(within(directory).getByRole("button", { name: /所有邮件\s*0/ })).toBeTruthy();
+  });
+
+  it("keeps aggregate navigation counts after aggregate messages finish loading", async () => {
+    const api = createApiFixture();
+    let resolveMessages:
+      | ((value: Awaited<ReturnType<EmailHubApi["listMessages"]>>) => void)
+      | undefined;
+
+    vi.mocked(api.getMailNavigationSummary).mockResolvedValue({
+      folders: [
+        { id: "inbox", label: "收件箱", count: 36 },
+        { id: "all", label: "所有邮件", count: 36 },
+      ],
+      providerGroups: [],
+      quickCategories: [],
+    });
+    vi.mocked(api.listMessages).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMessages = resolve;
+        }),
+    );
+
+    render(<App api={api} />);
+
+    const directory = screen.getByLabelText("邮箱目录栏");
+    expect(
+      await within(directory).findByRole("button", { name: /收件箱\s*36/ }),
+    ).toBeTruthy();
+
+    await act(async () => {
+      resolveMessages?.({
+        items: [
+          {
+            id: "aggregate_message_1",
+            accountId: "account_1",
+            subject: "Aggregate subject",
+            from: { email: "client@example.com", name: "Live Client" },
+            receivedAt: "2026-06-13T10:00:00.000Z",
+            snippet: "Aggregate snippet",
+            unread: true,
+            starred: false,
+            mailboxIds: ["mailbox_inbox"],
+            attachmentCount: 0,
+            classification: {
+              bucket: "P1 Urgent",
+              priorityScore: 96,
+              reasons: ["Direct to you"],
+            },
+          },
+        ],
+      });
+    });
+
+    expect((await screen.findAllByText("Aggregate subject")).length).toBeGreaterThan(0);
+    expect(within(directory).getByRole("button", { name: /收件箱\s*36/ })).toBeTruthy();
+    expect(within(directory).queryByRole("button", { name: /收件箱\s*0/ })).toBeNull();
+    expect(api.listMessages).toHaveBeenCalledWith({
+      limit: 50,
+      sort: "smart",
+    });
+  });
+
+  it("keeps the sidebar mailbox count stable when switching smart views", async () => {
+    const api = createApiFixture();
+
+    vi.mocked(api.getMailNavigationSummary).mockResolvedValue({
+      folders: [
+        { id: "inbox", label: "收件箱", count: 36 },
+        { id: "all", label: "所有邮件", count: 36 },
+      ],
+      providerGroups: [],
+      quickCategories: [
+        { id: "codes", label: "验证码", count: 3, tone: "blue" },
+        { id: "attachments", label: "大附件", count: 5, tone: "purple" },
+      ],
+    });
+    vi.mocked(api.listMessages).mockImplementation(async (input = {}) => ({
+      items:
+        input.savedView === "codes"
+          ? [
+              {
+                id: "code_message_1",
+                accountId: "account_1",
+                subject: "Verification code",
+                from: { email: "login@example.com", name: "Login" },
+                receivedAt: "2026-06-13T10:00:00.000Z",
+                snippet: "123456",
+                unread: true,
+                starred: false,
+                mailboxIds: ["mailbox_inbox"],
+                attachmentCount: 0,
+                classification: {
+                  bucket: "P4 FYI / Updates",
+                  priorityScore: 10,
+                  reasons: ["Verification"],
+                },
+              },
+            ]
+          : [
+              {
+                id: "aggregate_message_1",
+                accountId: "account_1",
+                subject: "Aggregate subject",
+                from: { email: "client@example.com", name: "Live Client" },
+                receivedAt: "2026-06-13T10:00:00.000Z",
+                snippet: "Aggregate snippet",
+                unread: true,
+                starred: false,
+                mailboxIds: ["mailbox_inbox"],
+                attachmentCount: 0,
+                classification: {
+                  bucket: "P1 Urgent",
+                  priorityScore: 96,
+                  reasons: ["Direct to you"],
+                },
+              },
+            ],
+    }));
+
+    render(<App api={api} />);
+
+    const globalNav = screen.getByRole("navigation");
+    await waitFor(() => {
+      expect(globalNav.textContent).toContain("邮箱36");
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: /验证码\s*3/ }));
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenCalledWith(
+        expect.objectContaining({ savedView: "codes" }),
+      );
+    });
+    expect(globalNav.textContent).toContain("邮箱36");
+    expect(globalNav.textContent).not.toContain("邮箱1");
   });
 
   it("lets users resize the sidebar and mailbox panes with accessible separators", () => {
@@ -139,8 +284,7 @@ describe("Email Hub first UI baseline", () => {
     );
   });
 
-  it("keeps Hermes as a blurred compact dock that opens on demand and hides after idle", () => {
-    vi.useFakeTimers();
+  it("keeps Hermes as a blurred compact dock that opens on demand and closes manually", () => {
     render(<App />);
 
     const dock = screen.getByLabelText("Hermes 底部输入");
@@ -153,24 +297,20 @@ describe("Email Hub first UI baseline", () => {
 
     expect(dock.className).toContain("is-open");
     const commandInput = within(dock).getByLabelText("Hermes 指令") as HTMLInputElement;
-    expect(commandInput.placeholder).toBe("搜索邮件、创建规则、整理收件箱...");
+    expect(commandInput.placeholder).toBe("搜索邮件、总结、翻译或整理收件箱...");
     expect(commandInput.value).toBe("");
     expect(within(dock).queryByRole("button", { name: "搜索邮件" })).toBeNull();
 
-    act(() => {
-      vi.advanceTimersByTime(5_000);
-    });
+    fireEvent.click(within(dock).getByRole("button", { name: "收起 Hermes" }));
 
     expect(dock.className).toContain("is-collapsed");
     expect(within(dock).getByRole("button", { name: "打开 Hermes" })).toBeTruthy();
   });
 
-  it("keeps the Hermes command dock short and resets the idle hide timer on activity", () => {
-    vi.useFakeTimers();
+  it("keeps the Hermes command dock open until the user collapses it", () => {
     const { container } = render(<App />);
 
     const dock = container.querySelector(".hermes-dock");
-    expect(dock?.className).toContain("dock-short");
     expect(dock?.className).toContain("is-collapsed");
 
     const launcher = container.querySelector(".dock-launcher");
@@ -178,25 +318,15 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(launcher as HTMLElement);
 
     expect(dock?.className).toContain("is-open");
-    expect(dock?.className).toContain("dock-short");
+    expect(dock?.className).not.toContain("dock-short");
     expect(container.querySelector(".dock-command-input")).toBeTruthy();
 
-    act(() => {
-      vi.advanceTimersByTime(4_000);
-    });
-    expect(dock?.className).toContain("is-open");
-
     fireEvent.mouseMove(dock as HTMLElement);
-    act(() => {
-      vi.advanceTimersByTime(4_000);
-    });
     expect(dock?.className).toContain("is-open");
 
-    act(() => {
-      vi.advanceTimersByTime(1_000);
-    });
+    fireEvent.click(screen.getByRole("button", { name: "收起 Hermes" }));
     expect(dock?.className).toContain("is-collapsed");
-  }, 15_000);
+  });
 
   it("runs Hermes mail search QA from the compact dock and can open the Search workspace", async () => {
     const api = createApiFixture();
@@ -205,10 +335,10 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
-    const context = await screen.findByLabelText("Hermes 邮箱环境");
-    expect(within(context).getByText("1 个账号")).toBeTruthy();
+    const context = await screen.findByLabelText("Hermes 邮箱信息");
+    expect(within(context).getByText("1 个邮箱")).toBeTruthy();
     expect(within(context).getByText("2 个分组")).toBeTruthy();
-    expect(within(context).getByText("规则需确认")).toBeTruthy();
+    expect(within(context).queryByText("规则需确认")).toBeNull();
     fireEvent.change(screen.getByLabelText("Hermes 指令"), {
       target: { value: "客户上次提到的合同是什么" },
     });
@@ -229,7 +359,7 @@ describe("Email Hub first UI baseline", () => {
     expect(within(screen.getByLabelText("Hermes 搜索回答")).getByText("Live subject")).toBeTruthy();
     expect(within(screen.getByLabelText("Hermes 搜索条件")).getByText("有附件")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "同步到搜索页" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开搜索结果" }));
 
     expect(await screen.findByRole("heading", { name: "搜索" })).toBeTruthy();
     await waitFor(() => {
@@ -352,7 +482,9 @@ describe("Email Hub first UI baseline", () => {
     } satisfies HermesEmailSearchQaResult);
 
     render(<App api={api} defaultAccountId="account_1" />);
-    expect(await screen.findByText("当前邮箱还没有已同步邮件。")).toBeTruthy();
+    expect(await screen.findByLabelText("空白邮件阅读区")).toBeTruthy();
+    expect(screen.queryByText("当前邮箱还没有已同步邮件。")).toBeNull();
+    expect(screen.queryByRole("button", { name: "打开同步中心" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
     fireEvent.change(screen.getByLabelText("Hermes 指令"), {
@@ -371,7 +503,7 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(await screen.findByText("没有找到验证码邮件。")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "同步到搜索页" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开搜索结果" }));
 
     expect(await screen.findByRole("heading", { name: "搜索" })).toBeTruthy();
     await waitFor(() => {
@@ -459,13 +591,13 @@ describe("Email Hub first UI baseline", () => {
     expect(api.draftHermesRule).not.toHaveBeenCalled();
     expect(api.simulateHermesRule).not.toHaveBeenCalled();
 
-    const plan = await screen.findByLabelText("Hermes 执行计划");
+    const plan = await screen.findByLabelText("Hermes 整理建议");
     expect(within(plan).getByText("启用验证码智能分组")).toBeTruthy();
     expect(within(plan).queryByText(/audit_plan_1/)).toBeNull();
+    expect(within(plan).queryByText(/执行计划|安全边界|执行步骤/)).toBeNull();
     expect(within(plan).getByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
-    expect(within(plan).getByText(/不写回服务商 · 会处理历史/)).toBeTruthy();
 
-    fireEvent.click(within(plan).getByRole("button", { name: "确认计划" }));
+    fireEvent.click(within(plan).getByRole("button", { name: "确认整理" }));
 
     await waitFor(() => {
       expect(api.confirmHermesActionPlan).toHaveBeenCalledWith({
@@ -478,7 +610,7 @@ describe("Email Hub first UI baseline", () => {
     expect(api.listLabels).toHaveBeenCalledWith({ accountId: "account_1" });
     expect(
       await screen.findByText(
-        "Hermes 执行计划已完成：启用验证码智能分组，已回填 4 封历史邮件。已打开验证码。",
+        "Hermes 已完成整理：启用验证码智能分组，已整理 4 封历史邮件。已打开验证码。",
       ),
     ).toBeTruthy();
     await waitFor(() => {
@@ -489,8 +621,8 @@ describe("Email Hub first UI baseline", () => {
         savedView: "codes",
       });
     });
-    expect(within(plan).getByText(/历史回填：匹配 4 封，新增 4 个标签关联/)).toBeTruthy();
-    expect(within(plan).getByText("用户习惯学习：已写入 procedural_memory")).toBeTruthy();
+    expect(within(plan).getByText("已整理 4 封历史邮件。")).toBeTruthy();
+    expect(within(plan).queryByText(/历史回填|用户习惯学习|procedural_memory/)).toBeNull();
   });
 
   it("ignores a stale Hermes dock action plan after the prompt changes", async () => {
@@ -540,7 +672,7 @@ describe("Email Hub first UI baseline", () => {
       resolveOldPlan(stalePlan);
     });
 
-    expect(screen.queryByLabelText("Hermes 执行计划")).toBeNull();
+    expect(screen.queryByLabelText("Hermes 整理建议")).toBeNull();
     expect(screen.queryByText("启用验证码智能分组")).toBeNull();
     expect(api.confirmHermesActionPlan).not.toHaveBeenCalled();
   });
@@ -566,10 +698,10 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 执行计划暂时不可用，请稍后再试。",
+        "Hermes 整理建议暂时不可用。",
       ),
     ).toBeTruthy();
-    expect(screen.queryByLabelText("Hermes 执行计划")).toBeNull();
+    expect(screen.queryByLabelText("Hermes 整理建议")).toBeNull();
     expect(api.searchMailWithHermes).not.toHaveBeenCalled();
   });
 
@@ -592,15 +724,15 @@ describe("Email Hub first UI baseline", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
 
-    const plan = await screen.findByLabelText("Hermes 执行计划");
-    fireEvent.click(within(plan).getByRole("button", { name: "确认计划" }));
+    const plan = await screen.findByLabelText("Hermes 整理建议");
+    fireEvent.click(within(plan).getByRole("button", { name: "确认整理" }));
 
     expect(
       await screen.findByText(
-        "Hermes 执行计划暂时不可用，请稍后再试。",
+        "Hermes 整理建议暂时不可用。",
       ),
     ).toBeTruthy();
-    expect(within(plan).getByRole("button", { name: "确认计划" })).toBeTruthy();
+    expect(within(plan).getByRole("button", { name: "确认整理" })).toBeTruthy();
   });
 
   it("loads account labels into the directory and filters mail by label", async () => {
@@ -677,7 +809,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。",
+        "Hermes 暂时不可用。",
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
@@ -703,7 +835,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "Hermes 搜索问答暂时不可用，请稍后再试。",
+        "Hermes 搜索问答暂时不可用。",
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText("Hermes 搜索回答")).toBeNull();
@@ -721,7 +853,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to summarize selected message",
+        name: "让 Hermes 总结当前邮件",
       }),
     );
 
@@ -739,7 +871,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to translate selected message",
+        name: "让 Hermes 翻译当前邮件",
       }),
     );
 
@@ -849,7 +981,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to summarize selected message",
+        name: "让 Hermes 总结当前邮件",
       }),
     );
     expect(
@@ -860,7 +992,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to translate selected message",
+        name: "让 Hermes 翻译当前邮件",
       }),
     );
     expect(
@@ -939,7 +1071,7 @@ describe("Email Hub first UI baseline", () => {
     });
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to translate selected message",
+        name: "让 Hermes 翻译当前邮件",
       }),
     );
 
@@ -1026,7 +1158,7 @@ describe("Email Hub first UI baseline", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to translate selected message",
+        name: "让 Hermes 翻译当前邮件",
       }),
     );
 
@@ -1098,7 +1230,7 @@ describe("Email Hub first UI baseline", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to translate selected message",
+        name: "让 Hermes 翻译当前邮件",
       }),
     );
     const translation = await screen.findByLabelText("Hermes 邮件翻译");
@@ -1153,7 +1285,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to organize selected message",
+        name: "让 Hermes 整理当前邮件",
       }),
     );
 
@@ -1176,9 +1308,9 @@ describe("Email Hub first UI baseline", () => {
     expect(api.cleanupNewsletterWithHermes).not.toHaveBeenCalled();
     expect(api.extractActionItemsWithHermes).not.toHaveBeenCalled();
     const result = await screen.findByLabelText("Hermes 整理建议");
-    expect(within(result).getByText(/P1 Urgent · 分数 94/)).toBeTruthy();
+    expect(within(result).getByText(/优先级：优先/)).toBeTruthy();
     expect(within(result).getByText(/标签： 客户/)).toBeTruthy();
-    expect(within(result).getByText(/订阅判断：personal · 88%/)).toBeTruthy();
+    expect(within(result).getByText(/订阅判断：个人邮件/)).toBeTruthy();
     expect(within(result).getByText(/Confirm launch schedule/)).toBeTruthy();
   }, 10_000);
 
@@ -1235,29 +1367,29 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to organize selected message",
+        name: "让 Hermes 整理当前邮件",
       }),
     );
 
     const result = await screen.findByLabelText("Hermes 整理建议");
     expect(
       within(result).getByRole("button", {
-        name: "Apply Hermes organization action 标为重要",
+        name: "执行 Hermes 整理动作：标为重要",
       }),
     ).toBeTruthy();
     expect(
       within(result).getByRole("button", {
-        name: "Apply Hermes organization action 移到 Feed",
+        name: "执行 Hermes 整理动作：移到动态",
       }),
     ).toBeTruthy();
     expect(
       within(result).getByRole("button", {
-        name: "Apply Hermes organization action 应用标签 客户",
+        name: "执行 Hermes 整理动作：应用标签 客户",
       }),
     ).toBeTruthy();
     expect(
       within(result).getByRole("button", {
-        name: "Create Hermes action item follow-up Confirm launch schedule",
+        name: "创建 Hermes 跟进提醒：Confirm launch schedule",
       }),
     ).toBeTruthy();
     expect(within(result).getByText(/还有 1 条建议/)).toBeTruthy();
@@ -1265,6 +1397,97 @@ describe("Email Hub first UI baseline", () => {
     expect(api.upsertLabel).not.toHaveBeenCalled();
     expect(api.recordSmartInboxFeedback).not.toHaveBeenCalled();
     expect(api.createFollowUp).not.toHaveBeenCalled();
+    expect(screen.queryByText(/正在|应用中|创建中/)).toBeNull();
+  }, 10_000);
+
+  it("keeps stale Hermes organization label results off a newly selected message", async () => {
+    const api = createApiFixture();
+    let resolveApplyLabel: MailActionResult | undefined;
+    let completeApplyLabel: (value: MailActionResult) => void = () => {};
+
+    mockTwoMessageReader(api);
+    vi.mocked(api.organizeMessage).mockResolvedValueOnce(
+      hermesOrganizationResult({
+        labels: {
+          skillRunId: "run_labels_stale",
+          skillId: "label_suggest",
+          labels: [],
+          actions: [
+            { type: "apply_label", label: "客户", reason: "high confidence" },
+          ],
+        },
+      }),
+    );
+    vi.mocked(api.applyMailAction).mockImplementationOnce(
+      (input) =>
+        new Promise<MailActionResult>((resolve) => {
+          completeApplyLabel = resolve;
+          resolveApplyLabel = {
+            accountId: input.accountId,
+            messageId: input.messageId,
+            action: input.action,
+            state: {
+              unread: false,
+              starred: false,
+              archived: false,
+              deleted: false,
+              mailboxIds: ["mailbox_inbox"],
+              labelIds: input.labelIds ?? [],
+              doneAt: null,
+              undoToken: null,
+              undoExpiresAt: null,
+            },
+            command: {
+              id: "cmd_stale_label",
+              commandType: "apply_labels",
+              accountId: input.accountId,
+              messageId: input.messageId,
+              idempotencyKey: "mail-action",
+              status: "queued",
+            },
+          };
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "First subject" });
+    await screen.findByText("First backend body");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "让 Hermes 整理当前邮件",
+      }),
+    );
+    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 10_000 });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "执行 Hermes 整理动作：应用标签 客户",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.applyMailAction).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        action: "apply_labels",
+        labelIds: ["label_customer"],
+      });
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "邮件列表" })).getByRole(
+        "button",
+        { name: /Second subject/ },
+      ),
+    );
+    await screen.findByRole("heading", { name: "Second subject" });
+    await screen.findByText("Second backend body");
+
+    await act(async () => {
+      completeApplyLabel(resolveApplyLabel!);
+    });
+
+    expect(screen.queryByText(/Hermes 建议已应用：应用标签 客户/)).toBeNull();
+    expect(screen.getByText("Second backend body")).toBeTruthy();
   }, 10_000);
 
   it("applies safe Hermes organization suggestions through existing backend actions", async () => {
@@ -1302,7 +1525,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to organize selected message",
+        name: "让 Hermes 整理当前邮件",
       }),
     );
     await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 10_000 });
@@ -1310,7 +1533,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Apply Hermes organization action 标为重要",
+        name: "执行 Hermes 整理动作：标为重要",
       }),
     );
     await waitFor(() => {
@@ -1324,7 +1547,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Apply Hermes organization action 应用标签 客户",
+        name: "执行 Hermes 整理动作：应用标签 客户",
       }),
     );
     await waitFor(() => {
@@ -1342,7 +1565,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Apply Hermes organization action 应用标签 项目",
+        name: "执行 Hermes 整理动作：应用标签 项目",
       }),
     );
     await waitFor(() => {
@@ -1364,7 +1587,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Apply Hermes organization action 归档",
+        name: "执行 Hermes 整理动作：归档",
       }),
     );
     await waitFor(() => {
@@ -1403,14 +1626,14 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to organize selected message",
+        name: "让 Hermes 整理当前邮件",
       }),
     );
     await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 10_000 });
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Create Hermes action item follow-up Confirm launch schedule",
+        name: "创建 Hermes 跟进提醒：Confirm launch schedule",
       }),
     );
 
@@ -1421,12 +1644,87 @@ describe("Email Hub first UI baseline", () => {
         dueAt: "2026-06-14T09:00:00.000Z",
         kind: "manual",
         title: "Confirm launch schedule",
-        note: expect.stringContaining("Owner: me"),
+        note: expect.stringContaining("负责人：me"),
         source: "hermes_followup",
         hermesSkillRunId: "run_actions_due",
       });
     });
   }, 15_000);
+
+  it("keeps stale Hermes follow-up results off a newly selected message", async () => {
+    const api = createApiFixture();
+    let resolveFollowUp: (value: FollowUpDto) => void = () => {};
+
+    mockTwoMessageReader(api);
+    vi.mocked(api.organizeMessage).mockResolvedValueOnce(
+      hermesOrganizationResult({
+        actionItems: {
+          skillRunId: "run_actions_stale",
+          skillId: "action_item_extract",
+          items: [
+            {
+              title: "Confirm launch schedule",
+              owner: "me",
+              dueAt: "2026-06-14T09:00:00.000Z",
+              priority: "high",
+              status: "open",
+              sourceQuote: "please confirm today",
+            },
+          ],
+        },
+      }),
+    );
+    vi.mocked(api.createFollowUp).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFollowUp = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "First subject" });
+    await screen.findByText("First backend body");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "让 Hermes 整理当前邮件",
+      }),
+    );
+    await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 10_000 });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "创建 Hermes 跟进提醒：Confirm launch schedule",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.createFollowUp).toHaveBeenCalledWith({
+        accountId: "account_1",
+        messageId: "message_1",
+        dueAt: "2026-06-14T09:00:00.000Z",
+        kind: "manual",
+        title: "Confirm launch schedule",
+        note: expect.stringContaining("负责人：me"),
+        source: "hermes_followup",
+        hermesSkillRunId: "run_actions_stale",
+      });
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "邮件列表" })).getByRole(
+        "button",
+        { name: /Second subject/ },
+      ),
+    );
+    await screen.findByRole("heading", { name: "Second subject" });
+    await screen.findByText("Second backend body");
+
+    await act(async () => {
+      resolveFollowUp(followUpFixture({ title: "Confirm launch schedule" }));
+    });
+
+    expect(screen.queryByText(/Hermes 待办提醒已创建/)).toBeNull();
+    expect(screen.getByText("Second backend body")).toBeTruthy();
+  }, 10_000);
 
   it("shows a safe Hermes organization apply failure without leaking backend details", async () => {
     const api = createApiFixture();
@@ -1476,14 +1774,14 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to organize selected message",
+        name: "让 Hermes 整理当前邮件",
       }),
     );
     await screen.findByLabelText("Hermes 整理建议", {}, { timeout: 10_000 });
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Apply Hermes organization action 降低优先级",
+        name: "执行 Hermes 整理动作：降低优先级",
       }),
     );
 
@@ -1503,7 +1801,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to summarize selected message",
+        name: "让 Hermes 总结当前邮件",
       }),
     );
 
@@ -1526,13 +1824,13 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to summarize selected message",
+        name: "让 Hermes 总结当前邮件",
       }),
     );
 
     expect(
       await screen.findByText(
-        "Hermes 暂时不可用，请到 Hermes 配置检查 AI 服务连接。",
+        "Hermes 暂时不可用。",
       ),
     ).toBeTruthy();
     expect(screen.getByText("Live body from backend")).toBeTruthy();
@@ -1562,13 +1860,13 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to summarize selected message",
+        name: "让 Hermes 总结当前邮件",
       }),
     );
 
     expect(
       await screen.findByText(
-        "Hermes 邮件总结暂时不可用，系统正在自动调整读取权限。",
+        "Hermes 邮件总结暂时不可用。",
       ),
     ).toBeTruthy();
     expect(screen.getByText("Live body from backend")).toBeTruthy();
@@ -1593,7 +1891,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to summarize selected message",
+        name: "让 Hermes 总结当前邮件",
       }),
     );
     await waitFor(() => {
@@ -1649,7 +1947,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Ask Hermes to translate selected message",
+        name: "让 Hermes 翻译当前邮件",
       }),
     );
     await waitFor(() => {
@@ -1780,11 +2078,15 @@ describe("Email Hub first UI baseline", () => {
     expect(within(globalNav).getByRole("button", { name: "配置域名" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "邮箱待办" })).toBeNull();
 
+    fireEvent.click(within(globalNav).getByRole("button", { name: "Hermes" }));
+    expect(screen.getByRole("heading", { name: "Hermes", level: 1 })).toBeTruthy();
+    expect(screen.getByLabelText("助手名称")).toBeTruthy();
+
     fireEvent.click(within(globalNav).getByRole("button", { name: "配置域名" }));
     expect(screen.getByRole("heading", { name: "配置域名" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "域名管理" })).toBeTruthy();
 
-    fireEvent.click(within(globalNav).getByRole("button", { name: "设置" }));
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
 
     expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
     expect(screen.queryByLabelText("设置目录")).toBeNull();
@@ -1792,37 +2094,59 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.queryByRole("button", { name: "新发件人处理" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "域名管理" })).toBeNull();
 
-    expect(screen.getByRole("heading", { name: "高级维护" })).toBeTruthy();
-    expect(await screen.findByLabelText("数据维护面板")).toBeTruthy();
+    const settingsNav = screen.getByLabelText("设置分类");
+    const accountSettings = screen.getByRole("region", { name: "邮箱账号设置" });
+    expect(accountSettings).toBeTruthy();
+    expect(within(accountSettings).getByText("已连接邮箱")).toBeTruthy();
+    expect(within(accountSettings).getByText("添加邮箱")).toBeTruthy();
+    fireEvent.click(within(settingsNav).getByRole("button", { name: /收件箱/ }));
+    expect(screen.getByRole("region", { name: "收件箱设置" })).toBeTruthy();
+    expect(screen.getByText("收件箱布局")).toBeTruthy();
+    fireEvent.click(within(settingsNav).getByRole("button", { name: /撰写与阅读/ }));
+    expect(screen.getByRole("region", { name: "撰写与阅读设置" })).toBeTruthy();
+    expect(screen.getByText("撰写窗口")).toBeTruthy();
+    fireEvent.click(within(settingsNav).getByRole("button", { name: /连接/ }));
+    const connectionSettings = screen.getByRole("region", { name: "连接设置" });
+    expect(connectionSettings).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "服务设置" })).toBeNull();
+    expect(within(connectionSettings).getByText("Hermes")).toBeTruthy();
+    expect(within(connectionSettings).getByText("配置域名")).toBeTruthy();
+    expect(within(connectionSettings).getByRole("button", { name: "配置" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "邮箱顶部" })).toBeNull();
+
+    fireEvent.click(within(settingsNav).getByRole("button", { name: /状态与维护/ }));
+    expect(screen.getByRole("region", { name: "维护项目" })).toBeTruthy();
+    expect(screen.queryByLabelText("存储维护面板")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /维护项目/ }));
+    expect(await screen.findByLabelText("存储维护面板")).toBeTruthy();
   });
 
-  it("loads, saves, and tests Hermes connection from its sidebar page", async () => {
+  it("loads, saves, and tests Hermes connection from its settings page", async () => {
     const api = createApiFixture();
 
-    render(<App api={api} defaultAccountId="account_1" />);
+    render(<App api={api} defaultAccountId="account_1" initialView="hermes" />);
 
-    openHermesPage();
-
-    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
+    expect(await screen.findByText("连接已保存。")).toBeTruthy();
     expect((screen.getByLabelText("助手名称") as HTMLInputElement).value).toBe(
       "Hermes",
     );
-    expect(screen.getByLabelText("LLM 服务商")).toBeTruthy();
-    expect(screen.getByLabelText("API Key")).toBeTruthy();
+    expect(screen.getByLabelText("服务商")).toBeTruthy();
+    expect(screen.getByLabelText("访问密钥")).toBeTruthy();
+    expect(screen.queryByText(/选择 AI 服务商|API Key|LLM 服务商/)).toBeNull();
     expect(screen.queryByLabelText("服务地址")).toBeNull();
     expect(screen.queryByLabelText("模型名称")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("助手名称"), {
       target: { value: "Mail Copilot" },
     });
-    fireEvent.change(screen.getByLabelText("LLM 服务商"), {
+    fireEvent.change(screen.getByLabelText("服务商"), {
       target: { value: "nvidia" },
     });
-    fireEvent.change(screen.getByLabelText("API Key"), {
+    fireEvent.change(screen.getByLabelText("访问密钥"), {
       target: { value: "runtime-secret" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查连接" }));
     await waitFor(() => {
       expect(api.probeHermesProvider).toHaveBeenCalledWith({
         providerKey: "nvidia",
@@ -1832,7 +2156,7 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(await screen.findByText("连接成功。")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => {
       expect(api.updateHermesRuntimeSettings).toHaveBeenCalledWith({
         enabled: true,
@@ -1851,12 +2175,10 @@ describe("Email Hub first UI baseline", () => {
   it("tests the saved Hermes runtime secret when the key field is blank", async () => {
     const api = createApiFixture();
 
-    render(<App api={api} defaultAccountId="account_1" />);
+    render(<App api={api} defaultAccountId="account_1" initialView="hermes" />);
 
-    openHermesPage();
-
-    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+    expect(await screen.findByText("连接已保存。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "检查连接" }));
 
     await waitFor(() => {
       expect(api.testHermesRuntimeConnection).toHaveBeenCalledTimes(1);
@@ -1868,11 +2190,9 @@ describe("Email Hub first UI baseline", () => {
   it("does not expose Hermes ability, rule, memory, or audit controls to users", async () => {
     const api = createApiFixture();
 
-    render(<App api={api} defaultAccountId="account_1" />);
+    render(<App api={api} defaultAccountId="account_1" initialView="hermes" />);
 
-    openHermesPage();
-
-    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
+    expect(await screen.findByText("连接已保存。")).toBeTruthy();
     expect(screen.queryByText("能力选项")).toBeNull();
     expect(screen.queryByText("规则")).toBeNull();
     expect(screen.queryByText("学习记录")).toBeNull();
@@ -1887,27 +2207,27 @@ describe("Email Hub first UI baseline", () => {
     expect(api.listHermesAuditLog).not.toHaveBeenCalled();
   });
 
-  it("shows data maintenance directly in Settings", async () => {
+  it("keeps data maintenance inside the Settings advanced drawer", async () => {
     render(<App />);
 
-    fireEvent.click(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "设置" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
 
-    expect(screen.getByRole("heading", { name: "高级维护" })).toBeTruthy();
-    expect(await screen.findByLabelText("数据维护面板")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "数据维护" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "状态与维护按需查看" }));
+
+    expect(screen.getByRole("heading", { name: "维护项目" })).toBeTruthy();
+    expect(screen.queryByLabelText("存储维护面板")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /维护项目/ }));
+    expect(await screen.findByLabelText("存储维护面板")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "存储维护" })).toBeTruthy();
   });
 
   it("clears the saved Hermes API key from the Hermes page", async () => {
     const api = createApiFixture();
 
-    render(<App api={api} defaultAccountId="account_1" />);
+    render(<App api={api} defaultAccountId="account_1" initialView="hermes" />);
 
-    openHermesPage();
-
-    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "清除 API Key" }));
+    expect(await screen.findByText("连接已保存。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "清除密钥" }));
 
     await waitFor(() => {
       expect(api.clearHermesRuntimeApiKey).toHaveBeenCalledWith({
@@ -1921,18 +2241,16 @@ describe("Email Hub first UI baseline", () => {
         updateChannel: "stable",
       });
     });
-    expect(await screen.findByText("API Key 已清除。")).toBeTruthy();
+    expect(await screen.findByText("访问密钥已清除。")).toBeTruthy();
   });
 
   it("keeps Hermes provider choices user-facing and hides operational providers", async () => {
     const api = createApiFixture();
 
-    render(<App api={api} defaultAccountId="account_1" />);
+    render(<App api={api} defaultAccountId="account_1" initialView="hermes" />);
 
-    openHermesPage();
-
-    expect(await screen.findByText("AI 连接已保存。")).toBeTruthy();
-    const providerSelect = screen.getByLabelText("LLM 服务商");
+    expect(await screen.findByText("连接已保存。")).toBeTruthy();
+    const providerSelect = screen.getByLabelText("服务商");
     expect(within(providerSelect).getByRole("option", { name: "OpenAI" })).toBeTruthy();
     expect(within(providerSelect).getByRole("option", { name: "NVIDIA Build" })).toBeTruthy();
     expect(
@@ -1944,7 +2262,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("自定义服务地址"), {
       target: { value: "https://llm.example.com/v1/chat/completions" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       expect(api.updateHermesRuntimeSettings).toHaveBeenCalledWith(
@@ -1965,7 +2283,7 @@ describe("Email Hub first UI baseline", () => {
 
     const reader = screen.getByRole("article");
     expect(within(reader).getByRole("heading", { name: "新品发布会排期确认" })).toBeTruthy();
-    expect(within(reader).getByText(/P2 Important/)).toBeTruthy();
+    expect(within(reader).getByText(/重要，直接发给你/)).toBeTruthy();
   });
 
   it("loads mailboxes, smart messages, and selected message detail from the backend api", async () => {
@@ -2163,7 +2481,8 @@ describe("Email Hub first UI baseline", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     expect(await screen.findByRole("heading", { name: "Live subject" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /Sent/ }));
+    const directory = screen.getByLabelText("邮箱目录栏");
+    fireEvent.click(within(directory).getByRole("button", { name: /Sent/ }));
 
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
@@ -2176,6 +2495,243 @@ describe("Email Hub first UI baseline", () => {
       expect(await screen.findByRole("heading", { name: "Sent subject from backend" })).toBeTruthy();
       expect(await screen.findByText("Sent body from backend")).toBeTruthy();
     });
+
+  it("clears stale reader details while a newly selected message loads", async () => {
+    const api = createApiFixture();
+    let resolveSecondDetail: (
+      value: Awaited<ReturnType<EmailHubApi["getMessage"]>>,
+    ) => void = () => {};
+    vi.mocked(api.listMessages).mockResolvedValue({
+      items: [
+        {
+          id: "message_1",
+          accountId: "account_1",
+          subject: "First subject",
+          from: { email: "first@example.com", name: "First Sender" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "First snippet",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 96,
+            reasons: ["First reason"],
+          },
+        },
+        {
+          id: "message_2",
+          accountId: "account_1",
+          subject: "Second subject",
+          from: { email: "second@example.com", name: "Second Sender" },
+          receivedAt: "2026-06-13T11:00:00.000Z",
+          snippet: "Second snippet",
+          unread: false,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P2 Important",
+            priorityScore: 82,
+            reasons: ["Second reason"],
+          },
+        },
+      ],
+    });
+    vi.mocked(api.getMessage).mockImplementation((input) => {
+      if (input.messageId === "message_2") {
+        return new Promise((resolve) => {
+          resolveSecondDetail = resolve;
+        });
+      }
+
+      return Promise.resolve({
+        id: "message_1",
+        accountId: "account_1",
+        subject: "First subject",
+        from: { email: "first@example.com", name: "First Sender" },
+        receivedAt: "2026-06-13T10:00:00.000Z",
+        snippet: "First snippet",
+        unread: true,
+        starred: false,
+        mailboxIds: ["mailbox_inbox"],
+        attachmentCount: 0,
+        classification: {
+          bucket: "P1 Urgent",
+          priorityScore: 96,
+          reasons: ["First reason"],
+        },
+        to: ["me@example.com"],
+        cc: [],
+        bodyText: "First backend body",
+        attachments: [],
+      });
+    });
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    expect(await screen.findByText("First backend body")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Second subject/ }));
+
+    expect(await screen.findByRole("heading", { name: "Second subject" })).toBeTruthy();
+    expect(screen.queryByText("First backend body")).toBeNull();
+    expect(within(screen.getByRole("article")).getByText("Second snippet")).toBeTruthy();
+
+    resolveSecondDetail({
+      id: "message_2",
+      accountId: "account_1",
+      subject: "Second subject",
+      from: { email: "second@example.com", name: "Second Sender" },
+      receivedAt: "2026-06-13T11:00:00.000Z",
+      snippet: "Second snippet",
+      unread: false,
+      starred: false,
+      mailboxIds: ["mailbox_inbox"],
+      attachmentCount: 0,
+      classification: {
+        bucket: "P2 Important",
+        priorityScore: 82,
+        reasons: ["Second reason"],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText: "Second backend body",
+      attachments: [],
+    });
+    expect(await screen.findByText("Second backend body")).toBeTruthy();
+  });
+
+  it("ignores stale folder loads when the user changes folders quickly", async () => {
+    const api = createApiFixture();
+    let resolveSentMessages: (
+      value: Awaited<ReturnType<EmailHubApi["listMessages"]>>,
+    ) => void = () => {};
+    vi.mocked(api.listMailboxes).mockResolvedValue({
+      items: [
+        {
+          id: "mailbox_inbox",
+          accountId: "account_1",
+          name: "Inbox",
+          role: "inbox",
+          messageCount: 1,
+          unreadCount: 1,
+        },
+        {
+          id: "mailbox_sent",
+          accountId: "account_1",
+          name: "Sent",
+          role: "sent",
+          messageCount: 1,
+          unreadCount: 0,
+        },
+      ],
+    });
+    vi.mocked(api.listMessages).mockImplementation((input) => {
+      if (input.mailboxId === "mailbox_sent") {
+        return new Promise((resolve) => {
+          resolveSentMessages = resolve;
+        });
+      }
+
+      return Promise.resolve({
+        items: [
+          {
+            id: "message_inbox",
+            accountId: "account_1",
+            subject: "Inbox current subject",
+            from: { email: "client@example.com", name: "Live Client" },
+            receivedAt: "2026-06-13T10:00:00.000Z",
+            snippet: "Inbox current snippet",
+            unread: true,
+            starred: false,
+            mailboxIds: ["mailbox_inbox"],
+            attachmentCount: 0,
+            classification: {
+              bucket: "P1 Urgent",
+              priorityScore: 96,
+              reasons: ["Inbox"],
+            },
+          },
+        ],
+      });
+    });
+    vi.mocked(api.getMessage).mockImplementation(async (input) => ({
+      id: input.messageId,
+      accountId: input.accountId,
+      subject:
+        input.messageId === "message_sent"
+          ? "Sent stale subject"
+          : "Inbox current subject",
+      from: { email: "client@example.com", name: "Live Client" },
+      receivedAt: "2026-06-13T10:00:00.000Z",
+      snippet:
+        input.messageId === "message_sent"
+          ? "Sent stale snippet"
+          : "Inbox current snippet",
+      unread: false,
+      starred: false,
+      mailboxIds: [
+        input.messageId === "message_sent" ? "mailbox_sent" : "mailbox_inbox",
+      ],
+      attachmentCount: 0,
+      classification: {
+        bucket: "P2 Important",
+        priorityScore: 70,
+        reasons: ["Loaded"],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText:
+        input.messageId === "message_sent"
+          ? "Sent stale body"
+          : "Inbox current body",
+      attachments: [],
+    }));
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    expect(await screen.findByRole("heading", { name: "Inbox current subject" })).toBeTruthy();
+
+    const directory = screen.getByLabelText("邮箱目录栏");
+    fireEvent.click(within(directory).getByRole("button", { name: /Sent/ }));
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        mailboxId: "mailbox_sent",
+        limit: 50,
+        sort: "smart",
+      });
+    });
+    fireEvent.click(within(directory).getByRole("button", { name: /Inbox/ }));
+    expect(await screen.findByRole("heading", { name: "Inbox current subject" })).toBeTruthy();
+
+    resolveSentMessages({
+      items: [
+        {
+          id: "message_sent",
+          accountId: "account_1",
+          subject: "Sent stale subject",
+          from: { email: "client@example.com", name: "Live Client" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "Sent stale snippet",
+          unread: false,
+          starred: false,
+          mailboxIds: ["mailbox_sent"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P2 Important",
+            priorityScore: 70,
+            reasons: ["Sent"],
+          },
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Sent stale subject")).toBeNull();
+    });
+    expect(screen.getByRole("heading", { name: "Inbox current subject" })).toBeTruthy();
+  });
 
   it("wires mailbox shell count, refresh, sort, and label creation to backend state", async () => {
     const api = createApiFixture();
@@ -2351,7 +2907,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "signed contract" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Filter attachments" }));
+    fireEvent.click(screen.getByRole("button", { name: "只看有附件" }));
     fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
 
     await waitFor(() => {
@@ -2365,6 +2921,62 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(await screen.findByText("Signed contract found")).toBeTruthy();
     expect(await screen.findByText(/Indexed body hit: signed contract/)).toBeTruthy();
+  });
+
+  it("keeps the search workspace free of guide and loading copy", async () => {
+    const api = createApiFixture();
+    let resolveHermesSearch: (value: HermesEmailSearchQaResult) => void = () => {};
+    vi.mocked(api.searchMailWithHermes).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveHermesSearch = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    await screen.findByRole("heading", { name: "Live subject" });
+
+    openSearchPageFromTopbar();
+
+    expect(screen.queryByText(/输入关键词后搜索/)).toBeNull();
+    expect(screen.queryByText(/关键词、附件、自然语言/)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
+      target: { value: "找客户合同" },
+    });
+    fireEvent.submit(
+      screen.getByRole("form", { name: "Hermes 自然语言搜索" }),
+    );
+
+    await waitFor(() => {
+      expect(api.searchMailWithHermes).toHaveBeenCalledWith({
+        question: "找客户合同",
+        language: "zh-CN",
+        limit: 10,
+        memoryScope: "global",
+      });
+    });
+    expect(screen.queryByText(/正在理解问题|正在搜索/)).toBeNull();
+
+    resolveHermesSearch({
+      skillRunId: "run_quiet_search",
+      skillId: "email_search_qa",
+      answerText: "没有找到。",
+      searchQuery: "客户合同",
+      searchPlan: {
+        searchQuery: "客户合同",
+        quickFilters: [],
+        qScopes: ["sender", "recipients", "subject", "body"],
+        filters: [],
+        listMessagesInput: {
+          q: "客户合同",
+          qScopes: ["sender", "recipients", "subject", "body"],
+        },
+        explanation: [],
+      },
+      matches: [],
+      citations: [],
+    });
   });
 
   it("sends advanced search filters to the backend message search route", async () => {
@@ -2666,7 +3278,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "Q3 invoice" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Search all accounts" }));
+    fireEvent.click(screen.getByRole("button", { name: "搜索全部账号" }));
     fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
 
     const result = await screen.findByRole("button", {
@@ -2695,7 +3307,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "billing contact" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Search recipients scope" }));
+    fireEvent.click(screen.getByRole("button", { name: "搜索收件人范围" }));
     fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
 
     await waitFor(() => {
@@ -2850,7 +3462,7 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("Scoped search result")).toBeTruthy();
     expect(
       (screen.getByRole("button", {
-        name: "Search all accounts",
+        name: "搜索全部账号",
       }) as HTMLButtonElement).disabled,
     ).toBe(true);
 
@@ -3066,7 +3678,7 @@ describe("Email Hub first UI baseline", () => {
       expect(screen.getAllByText("Account one urgent").length).toBeGreaterThan(0);
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Smart Inbox done P1 Urgent" }),
+      screen.getByRole("button", { name: "完成当前智能分类 优先" }),
     );
 
     await waitFor(() => {
@@ -3084,7 +3696,7 @@ describe("Email Hub first UI baseline", () => {
       action: "done",
       messageIds: ["urgent_2"],
     });
-    expect(await screen.findByText("Smart Inbox 已完成 2 封优先邮件。")).toBeTruthy();
+    expect(await screen.findByText("智能收件箱已完成 2 封优先邮件。")).toBeTruthy();
     expect(screen.queryByText("Account one urgent")).toBeNull();
     expect(screen.queryByText("Account two urgent")).toBeNull();
     expect(screen.getAllByText("Account two important").length).toBeGreaterThan(0);
@@ -3154,7 +3766,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByLabelText("Select message Selected urgent"));
     fireEvent.click(screen.getByLabelText("Select message Selected important"));
     fireEvent.click(
-      screen.getByRole("button", { name: "Smart Inbox done selected messages" }),
+      screen.getByRole("button", { name: "完成选中邮件" }),
     );
 
     await waitFor(() => {
@@ -3172,10 +3784,167 @@ describe("Email Hub first UI baseline", () => {
       action: "done",
       messageIds: ["important_1"],
     });
-    expect(await screen.findByText("Smart Inbox 已完成 2 封选中邮件。")).toBeTruthy();
+    expect(await screen.findByText("智能收件箱已完成 2 封选中邮件。")).toBeTruthy();
     expect(within(messageList).queryByText("Selected urgent")).toBeNull();
     expect(within(messageList).queryByText("Selected important")).toBeNull();
     expect(within(messageList).getAllByText("Unselected urgent").length).toBeGreaterThan(0);
+  });
+
+  it("does not let a stale bulk Done result overwrite a newly opened folder", async () => {
+    const api = createApiFixture();
+    let resolveBulkDone: (
+      value: Awaited<ReturnType<EmailHubApi["applySmartInboxCardBulkAction"]>>,
+    ) => void = () => {};
+    vi.mocked(api.listMailboxes).mockResolvedValue({
+      items: [
+        {
+          id: "mailbox_inbox",
+          accountId: "account_1",
+          name: "Inbox",
+          role: "inbox",
+          messageCount: 2,
+          unreadCount: 2,
+        },
+        {
+          id: "mailbox_sent",
+          accountId: "account_1",
+          name: "Sent",
+          role: "sent",
+          messageCount: 1,
+          unreadCount: 0,
+        },
+      ],
+    });
+    vi.mocked(api.listMessages).mockImplementation(async (input) => ({
+      items:
+        input.mailboxId === "mailbox_sent"
+          ? [
+              {
+                id: "sent_1",
+                accountId: "account_1",
+                subject: "Sent folder survives",
+                from: { email: "sent@example.com", name: "Sent Sender" },
+                receivedAt: "2026-06-13T10:10:00.000Z",
+                snippet: "sent snippet",
+                unread: false,
+                starred: false,
+                mailboxIds: ["mailbox_sent"],
+                attachmentCount: 0,
+                classification: {
+                  bucket: "P2 Important",
+                  priorityScore: 70,
+                  reasons: ["Sent"],
+                },
+              },
+            ]
+          : [
+              {
+                id: "bulk_1",
+                accountId: "account_1",
+                subject: "Bulk selected stale",
+                from: { email: "bulk@example.com", name: "Bulk Sender" },
+                receivedAt: "2026-06-13T10:00:00.000Z",
+                snippet: "bulk selected",
+                unread: true,
+                starred: false,
+                mailboxIds: ["mailbox_inbox"],
+                attachmentCount: 0,
+                classification: {
+                  bucket: "P1 Urgent",
+                  priorityScore: 96,
+                  reasons: ["Selected"],
+                },
+              },
+              {
+                id: "bulk_2",
+                accountId: "account_1",
+                subject: "Bulk unselected stale",
+                from: { email: "bulk2@example.com", name: "Bulk Sender 2" },
+                receivedAt: "2026-06-13T09:55:00.000Z",
+                snippet: "bulk unselected",
+                unread: true,
+                starred: false,
+                mailboxIds: ["mailbox_inbox"],
+                attachmentCount: 0,
+                classification: {
+                  bucket: "P1 Urgent",
+                  priorityScore: 82,
+                  reasons: ["Unselected"],
+                },
+              },
+            ],
+    }));
+    vi.mocked(api.getMessage).mockImplementation(async (input) => ({
+      id: input.messageId,
+      accountId: input.accountId,
+      subject:
+        input.messageId === "sent_1"
+          ? "Sent folder survives"
+          : input.messageId === "bulk_2"
+            ? "Bulk unselected stale"
+            : "Bulk selected stale",
+      from: { email: "sender@example.com", name: "Sender" },
+      receivedAt: "2026-06-13T10:00:00.000Z",
+      snippet: "detail snippet",
+      unread: false,
+      starred: false,
+      mailboxIds: [input.messageId === "sent_1" ? "mailbox_sent" : "mailbox_inbox"],
+      attachmentCount: 0,
+      classification: {
+        bucket: "P2 Important",
+        priorityScore: 70,
+        reasons: ["Loaded"],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText:
+        input.messageId === "sent_1"
+          ? "Sent body survives"
+          : "Bulk body should not return",
+      attachments: [],
+    }));
+    vi.mocked(api.applySmartInboxCardBulkAction).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveBulkDone = resolve;
+        }),
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+    const messageList = await screen.findByLabelText("邮件列表");
+    await within(messageList).findByText("Bulk selected stale");
+    fireEvent.click(screen.getByLabelText("Select message Bulk selected stale"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "完成选中邮件" }),
+    );
+
+    const directory = screen.getByLabelText("邮箱目录栏");
+    fireEvent.click(within(directory).getByRole("button", { name: /Sent/ }));
+    expect(await screen.findByRole("heading", { name: "Sent folder survives" })).toBeTruthy();
+
+    await act(async () => {
+      resolveBulkDone({
+        accountId: "account_1",
+        bucket: "P1 Urgent",
+        action: "done",
+        requestedCount: 1,
+        attemptedCount: 1,
+        succeededCount: 1,
+        failedCount: 0,
+        succeeded: [
+          {
+            messageId: "bulk_1",
+            commandId: "command_bulk_1",
+            undoToken: "undo_bulk_1",
+            undoExpiresAt: "2026-06-13T10:10:00.000Z",
+          },
+        ],
+        failed: [],
+      });
+    });
+
+    expect(screen.getByRole("heading", { name: "Sent folder survives" })).toBeTruthy();
+    expect(screen.queryByText("Bulk unselected stale")).toBeNull();
   });
 
   it("records Smart Inbox feedback and updates the selected card classification", async () => {
@@ -3186,7 +3955,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Smart Inbox move selected to newsletters",
+        name: "将选中邮件移到订阅",
       }),
     );
 
@@ -3197,8 +3966,8 @@ describe("Email Hub first UI baseline", () => {
         action: "move_to_newsletters",
       });
     });
-    expect(await screen.findByText("Smart Inbox 已学习：移到订阅。")).toBeTruthy();
-    expect(screen.getByText("User moved sender to Newsletters")).toBeTruthy();
+    expect(await screen.findByText("智能收件箱已学习：移到订阅。")).toBeTruthy();
+    expect(screen.getByText("已归入订阅")).toBeTruthy();
   });
 
   it("records Smart Inbox feedback for checked messages only", async () => {
@@ -3276,7 +4045,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.click(screen.getByLabelText("Select message Selected feedback two"));
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Smart Inbox move selected to newsletters",
+        name: "将选中邮件移到订阅",
       }),
     );
 
@@ -3298,9 +4067,8 @@ describe("Email Hub first UI baseline", () => {
       messageId: "feedback_3",
       action: "move_to_newsletters",
     });
-    expect(await screen.findByText("Smart Inbox 已学习 2 封：移到订阅。")).toBeTruthy();
-    expect(screen.getByText("User moved feedback_1 to Feed")).toBeTruthy();
-    expect(screen.getByText("User moved feedback_2 to Feed")).toBeTruthy();
+    expect(await screen.findByText("智能收件箱已学习 2 封：移到订阅。")).toBeTruthy();
+    expect(screen.getAllByText("已归入动态").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("Unselected feedback").length).toBeGreaterThan(0);
   });
 
@@ -3318,11 +4086,11 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Smart Inbox mark selected important",
+        name: "将选中邮件标为重要",
       }),
     );
 
-    expect(await screen.findByText("Smart Inbox 反馈暂时不可用。")).toBeTruthy();
+    expect(await screen.findByText("智能收件箱反馈暂时不可用。")).toBeTruthy();
     const pageText = document.body.textContent ?? "";
     expect(pageText).not.toContain("internal_error");
     expect(pageText).not.toContain("smart-secret");
@@ -3336,7 +4104,7 @@ describe("Email Hub first UI baseline", () => {
     const initialMessageList = await screen.findByLabelText("邮件列表");
     expect(within(initialMessageList).getByText("Live subject")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Done selected message" }));
+    fireEvent.click(screen.getByRole("button", { name: "完成当前邮件" }));
 
     await waitFor(() => {
       expect(api.applyMailAction).toHaveBeenCalledWith({
@@ -3348,9 +4116,9 @@ describe("Email Hub first UI baseline", () => {
     await waitFor(() => {
       expect(screen.queryByText("Live subject")).toBeNull();
     });
-    expect(screen.getByRole("button", { name: "Undo done" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "撤销完成" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Undo done" }));
+    fireEvent.click(screen.getByRole("button", { name: "撤销完成" }));
 
     await waitFor(() => {
       expect(api.applyMailAction).toHaveBeenCalledWith({
@@ -3402,7 +4170,7 @@ describe("Email Hub first UI baseline", () => {
         sourceMessageId: "message_1",
       });
     });
-    expect(await screen.findByText(/草稿已保存：draft_1/)).toBeTruthy();
+    expect(await screen.findByText(/草稿已保存。/)).toBeTruthy();
   });
 
   it("creates then sends a reply draft through the unified compose panel", async () => {
@@ -3439,7 +4207,7 @@ describe("Email Hub first UI baseline", () => {
     expect(vi.mocked(api.createMailDraft).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(api.sendMailDraft).mock.invocationCallOrder[0],
     );
-    expect(await screen.findByText(/邮件已进入发送队列：draft_1/)).toBeTruthy();
+    expect(await screen.findByText(/邮件已进入发送队列。/)).toBeTruthy();
   });
 
   it("downloads message attachments through the backend blob route", async () => {
@@ -3516,6 +4284,142 @@ describe("Email Hub first UI baseline", () => {
     }
   });
 
+  it("does not show stale attachment download notices after switching messages", async () => {
+    const api = createApiFixture();
+    let resolveDownload: (value: AttachmentDownload) => void = () => {};
+    vi.mocked(api.listMessages).mockResolvedValue({
+      items: [
+        {
+          id: "message_1",
+          accountId: "account_1",
+          subject: "First subject",
+          from: { email: "first@example.com", name: "First Sender" },
+          receivedAt: "2026-06-13T10:00:00.000Z",
+          snippet: "First snippet",
+          unread: true,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 1,
+          classification: {
+            bucket: "P1 Urgent",
+            priorityScore: 96,
+            reasons: ["First reason"],
+          },
+        },
+        {
+          id: "message_2",
+          accountId: "account_1",
+          subject: "Second subject",
+          from: { email: "second@example.com", name: "Second Sender" },
+          receivedAt: "2026-06-13T10:05:00.000Z",
+          snippet: "Second snippet",
+          unread: false,
+          starred: false,
+          mailboxIds: ["mailbox_inbox"],
+          attachmentCount: 0,
+          classification: {
+            bucket: "P2 Important",
+            priorityScore: 88,
+            reasons: ["Second reason"],
+          },
+        },
+      ],
+    });
+    vi.mocked(api.getMessage).mockImplementation(async (input) => ({
+      id: input.messageId,
+      accountId: "account_1",
+      subject: input.messageId === "message_2" ? "Second subject" : "First subject",
+      from:
+        input.messageId === "message_2"
+          ? { email: "second@example.com", name: "Second Sender" }
+          : { email: "first@example.com", name: "First Sender" },
+      receivedAt: "2026-06-13T10:00:00.000Z",
+      snippet: input.messageId === "message_2" ? "Second snippet" : "First snippet",
+      unread: false,
+      starred: false,
+      mailboxIds: ["mailbox_inbox"],
+      attachmentCount: input.messageId === "message_2" ? 0 : 1,
+      classification: {
+        bucket: input.messageId === "message_2" ? "P2 Important" : "P1 Urgent",
+        priorityScore: input.messageId === "message_2" ? 88 : 96,
+        reasons: ["Loaded detail"],
+      },
+      to: ["me@example.com"],
+      cc: [],
+      bodyText:
+        input.messageId === "message_2" ? "Second backend body" : "First backend body",
+      attachments:
+        input.messageId === "message_2"
+          ? []
+          : [
+              {
+                id: "attachment_1",
+                filename: "proposal.pdf",
+                contentType: "application/pdf",
+                byteSize: 2048,
+                embedded: false,
+                inline: false,
+              },
+            ],
+    }));
+    vi.mocked(api.downloadAttachment).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveDownload = resolve;
+        }),
+    );
+
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    const createObjectUrl = vi.fn(() => "blob:attachment_1");
+    const revokeObjectUrl = vi.fn();
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectUrl,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectUrl,
+    });
+
+    try {
+      render(<App api={api} defaultAccountId="account_1" />);
+      await screen.findByText("proposal.pdf");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Download attachment proposal.pdf" }),
+      );
+      await waitFor(() => {
+        expect(api.downloadAttachment).toHaveBeenCalledWith({
+          accountId: "account_1",
+          attachmentId: "attachment_1",
+        });
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /Second subject/ }));
+      expect(await screen.findByRole("heading", { name: "Second subject" })).toBeTruthy();
+
+      await act(async () => {
+        resolveDownload({
+          filename: "proposal.pdf",
+          contentType: "application/pdf",
+          blob: new Blob(["proposal"], { type: "application/pdf" }),
+        });
+      });
+
+      expect(createObjectUrl).toHaveBeenCalledWith(expect.any(Blob));
+      expect(click).toHaveBeenCalled();
+      expect(screen.queryByText(/附件已开始下载：proposal.pdf/)).toBeNull();
+    } finally {
+      click.mockRestore();
+      restoreUrlDownloadMethod("createObjectURL", originalCreateObjectUrl);
+      restoreUrlDownloadMethod("revokeObjectURL", originalRevokeObjectUrl);
+    }
+  });
+
   it("uses Hermes to draft a reply into the unified compose panel", async () => {
     const api = createApiFixture();
 
@@ -3523,7 +4427,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
     await screen.findByText("Live body from backend");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    fireEvent.click(screen.getByRole("button", { name: "让 Hermes 写回复" }));
 
     await waitFor(() => {
       expect(api.createComposeSeed).toHaveBeenCalledWith({
@@ -3576,7 +4480,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "First subject" });
     await screen.findByText("First backend body");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    fireEvent.click(screen.getByRole("button", { name: "让 Hermes 写回复" }));
     await waitFor(() => {
       expect(api.draftMessageReply).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -3597,7 +4501,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByText("Second backend body");
     expect(
       (screen.getByRole("button", {
-        name: "Ask Hermes to draft reply",
+        name: "让 Hermes 写回复",
       }) as HTMLButtonElement).disabled,
     ).toBe(false);
 
@@ -3628,7 +4532,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByText("Live body from backend");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Ask Hermes quick reply thanks" }),
+      screen.getByRole("button", { name: "让 Hermes 快速回复 感谢" }),
     );
 
     await waitFor(() => {
@@ -3684,7 +4588,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
     await screen.findByText("Live body from backend");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    fireEvent.click(screen.getByRole("button", { name: "让 Hermes 写回复" }));
     await screen.findByText(/Hermes 已生成回复草稿/);
     fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
 
@@ -3710,7 +4614,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
     await screen.findByText("Live body from backend");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    fireEvent.click(screen.getByRole("button", { name: "让 Hermes 写回复" }));
     await screen.findByText(/Hermes 已生成回复草稿/);
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Hi,\n\nI edited this before sending." },
@@ -3739,7 +4643,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
     await screen.findByText("Live body from backend");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    fireEvent.click(screen.getByRole("button", { name: "让 Hermes 写回复" }));
     await screen.findByText(/Hermes 已生成回复草稿/);
     fireEvent.click(screen.getByRole("button", { name: "Send composed draft now" }));
 
@@ -3775,7 +4679,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Compose from identity"), {
       target: { value: "alias:alias_1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    fireEvent.click(screen.getByRole("button", { name: "让 Hermes 写回复" }));
 
     await waitFor(() => {
       expect(api.createComposeSeed).toHaveBeenCalledWith({
@@ -3845,9 +4749,9 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
     await screen.findByText("Live body from backend");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ask Hermes to draft reply" }));
+    fireEvent.click(screen.getByRole("button", { name: "让 Hermes 写回复" }));
     await screen.findByText(/Hermes 已生成回复草稿/);
-    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "预览草稿" }));
 
     await waitFor(() => {
       expect(api.previewMailDraft).toHaveBeenCalledWith({
@@ -3864,13 +4768,13 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("adds a Sync Center module backed by backend account status", async () => {
+  it("adds an email connection module backed by backend account status", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
 
     expect(await screen.findByText("sync@example.com")).toBeTruthy();
-    expect(await screen.findByText(/正在同步/)).toBeTruthy();
+    expect(await screen.findByText(/同步中/)).toBeTruthy();
     expect(api.listSyncCenterAccounts).toHaveBeenCalled();
     expect(api.listSyncCenterReauthorizations).toHaveBeenCalled();
     const reauthorizationPanel = screen.getByRole("region", {
@@ -3886,30 +4790,92 @@ describe("Email Hub first UI baseline", () => {
     ).toBeTruthy();
   });
 
-  it("keeps operations diagnostics out of Sync Center and opens them from Settings", async () => {
+  it("keeps operations diagnostics out of email connection and opens them from Settings", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
 
     expect(await screen.findByText("sync@example.com")).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "服务运行体检" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "运行状态" })).toBeNull();
     expect(
-      screen.queryByRole("region", { name: "邮箱接入体检" }),
+      screen.queryByRole("region", { name: "邮箱接入状态" }),
     ).toBeNull();
     expect(
-      screen.queryByRole("region", { name: "邮箱同步运行记录" }),
+      screen.queryByRole("region", { name: "同步记录" }),
     ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
 
-    expect(screen.getByRole("heading", { name: "高级维护" })).toBeTruthy();
-    expect(await screen.findByRole("region", { name: "服务运行体检" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /状态与维护/ }));
+    fireEvent.click(screen.getByRole("button", { name: /维护项目/ }));
+    expect(await screen.findByRole("region", { name: "运行状态" })).toBeTruthy();
     expect(
-      await screen.findByRole("region", { name: "邮箱接入体检" }),
+      await screen.findByRole("region", { name: "邮箱接入状态" }),
     ).toBeTruthy();
   });
 
-  it("starts OAuth reauthorization from Sync Center", async () => {
+  it("shows reauthorization tasks directly from Add Mail", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listSyncCenterReauthorizations).mockResolvedValueOnce({
+      items: [
+        reauthorizationTaskFixture({
+          source: "emailengine_account_state",
+          errorMessage: "EMAILENGINE_ACCESS_TOKEN is not configured",
+        }),
+        reauthorizationTaskFixture({
+          taskId: "task_old_csv",
+          email: "old-csv@example.com",
+          source: "csv_import",
+          reauthRequired: false,
+        }),
+      ],
+    });
+
+    render(<App api={api} defaultAccountId="account_1" initialView="add-mail" />);
+
+    const reauthorizationPanel = await screen.findByRole("region", {
+      name: "需要重新授权",
+    });
+    expect(within(reauthorizationPanel).getByText("reauth@example.com")).toBeTruthy();
+    expect(within(reauthorizationPanel).queryByText("old-csv@example.com")).toBeNull();
+    expect(within(reauthorizationPanel).queryByText(/emailengine/i)).toBeNull();
+    expect(within(reauthorizationPanel).queryByText(/ACCESS_TOKEN/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "邮箱连接" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /邮箱连接/ })).toBeNull();
+  });
+
+  it("starts OAuth reauthorization from Add Mail", async () => {
+    const api = createApiFixture();
+    const oauthRedirect = vi.fn();
+
+    render(
+      <App
+        api={api}
+        defaultAccountId="account_1"
+        initialView="add-mail"
+        oauthRedirect={oauthRedirect}
+      />,
+    );
+    expect(await screen.findByText("reauth@example.com")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "重新登录 reauth@example.com",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.startSyncCenterOAuthReauthorization).toHaveBeenCalledWith({
+        taskId: "task_reauth_1",
+        redirectUri: "http://localhost:3000/oauth/callback",
+      });
+    });
+    expect(oauthRedirect).toHaveBeenCalledWith(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
+  });
+
+  it("starts OAuth reauthorization from email connection", async () => {
     const api = createApiFixture();
     const oauthRedirect = vi.fn();
 
@@ -3925,7 +4891,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Start reauthorization for reauth@example.com",
+        name: "重新登录 reauth@example.com",
       }),
     );
 
@@ -3946,7 +4912,7 @@ describe("Email Hub first UI baseline", () => {
     );
   });
 
-  it("completes password reauthorization from Sync Center", async () => {
+  it("completes password reauthorization from email connection", async () => {
     const api = createApiFixture();
     vi.mocked(api.listSyncCenterReauthorizations).mockResolvedValueOnce({
       items: [
@@ -3965,12 +4931,12 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("password-reauth@qq.com")).toBeTruthy();
 
     fireEvent.change(
-      screen.getByLabelText("Reauthorization secret for password-reauth@qq.com"),
+      screen.getByLabelText("授权码或专用密码 password-reauth@qq.com"),
       { target: { value: "new-auth-code" } },
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Complete reauthorization for password-reauth@qq.com",
+        name: "提交重新授权 password-reauth@qq.com",
       }),
     );
 
@@ -4020,25 +4986,23 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("password-reauth@qq.com")).toBeTruthy();
 
     fireEvent.change(
-      screen.getByLabelText("Reauthorization secret for password-reauth@qq.com"),
+      screen.getByLabelText("授权码或专用密码 password-reauth@qq.com"),
       { target: { value: "qq-auth-code-secret" } },
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Complete reauthorization for password-reauth@qq.com",
+        name: "提交重新授权 password-reauth@qq.com",
       }),
     );
 
-    expect(await screen.findByText("需要 QQ 邮箱授权码")).toBeTruthy();
+    expect(await screen.findByText("QQ 邮箱授权码")).toBeTruthy();
+    expect(screen.getByText("QQ 邮箱授权码不可用。")).toBeTruthy();
     expect(
-      screen.getByText("请在 QQ 邮箱设置里开启服务并使用生成的授权码。"),
-    ).toBeTruthy();
-    expect(
-      await screen.findByText("password-reauth@qq.com 重新授权没有通过，请按提示处理。"),
+      await screen.findByText("password-reauth@qq.com 重新授权未通过。"),
     ).toBeTruthy();
 
     const secretInput = screen.getByLabelText(
-      "Reauthorization secret for password-reauth@qq.com",
+      "授权码或专用密码 password-reauth@qq.com",
     ) as HTMLInputElement;
     await waitFor(() => {
       expect(secretInput.value).toBe("");
@@ -4067,25 +5031,25 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("custom@example.com")).toBeTruthy();
 
     fireEvent.click(
-      screen.getByLabelText("Use custom receiving and sending settings for custom@example.com"),
+      screen.getByLabelText("使用自定义收发信服务 custom@example.com"),
     );
     fireEvent.change(
-      screen.getByLabelText("Reauthorization secret for custom@example.com"),
+      screen.getByLabelText("授权码或专用密码 custom@example.com"),
       { target: { value: "domain-app-password" } },
     );
-    fireEvent.change(screen.getByLabelText("Receiving host for custom@example.com"), {
+    fireEvent.change(screen.getByLabelText("收信主机 custom@example.com"), {
       target: { value: "imap.example.com" },
     });
-    fireEvent.change(screen.getByLabelText("Sending host for custom@example.com"), {
+    fireEvent.change(screen.getByLabelText("发信主机 custom@example.com"), {
       target: { value: "smtp.example.com" },
     });
-    fireEvent.change(screen.getByLabelText("Sending port for custom@example.com"), {
+    fireEvent.change(screen.getByLabelText("发信端口 custom@example.com"), {
       target: { value: "587" },
     });
-    fireEvent.click(screen.getByLabelText("Sending secure connection for custom@example.com"));
+    fireEvent.click(screen.getByLabelText("发信安全连接 custom@example.com"));
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Complete reauthorization for custom@example.com",
+        name: "提交重新授权 custom@example.com",
       }),
     );
 
@@ -4112,7 +5076,7 @@ describe("Email Hub first UI baseline", () => {
     });
   });
 
-  it("wires Sync Center account controls to backend actions", async () => {
+  it("wires email connection account controls to backend actions", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
@@ -4120,7 +5084,7 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("sync@example.com")).toBeTruthy();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Request resync for sync@example.com" }),
+      screen.getByRole("button", { name: "重新同步 sync@example.com" }),
     );
     await waitFor(() => {
       expect(api.requestSyncCenterResync).toHaveBeenCalledWith({
@@ -4129,7 +5093,7 @@ describe("Email Hub first UI baseline", () => {
     });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Pause sync for sync@example.com" }),
+      screen.getByRole("button", { name: "暂停同步 sync@example.com" }),
     );
     await waitFor(() => {
       expect(api.pauseSyncCenterAccount).toHaveBeenCalledWith({
@@ -4139,7 +5103,7 @@ describe("Email Hub first UI baseline", () => {
     expect((await screen.findAllByText(/已暂停/)).length).toBeGreaterThan(0);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Resume sync for sync@example.com" }),
+      screen.getByRole("button", { name: "恢复同步 sync@example.com" }),
     );
     await waitFor(() => {
       expect(api.resumeSyncCenterAccount).toHaveBeenCalledWith({
@@ -4149,7 +5113,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Retry failed sync jobs for sync@example.com",
+        name: "重试同步 sync@example.com",
       }),
     );
     await waitFor(() => {
@@ -4160,7 +5124,7 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.getByRole("status").textContent).toContain("1");
   });
 
-  it("opens Sync Center account diagnostics from backend operational events", async () => {
+  it("opens email connection account diagnostics from backend operational events", async () => {
     const api = createApiFixture();
 
     render(<App api={api} defaultAccountId="account_1" initialView="sync" />);
@@ -4169,7 +5133,7 @@ describe("Email Hub first UI baseline", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "View sync diagnostics for sync@example.com",
+        name: "检查同步 sync@example.com",
       }),
     );
 
@@ -4183,14 +5147,10 @@ describe("Email Hub first UI baseline", () => {
       name: "同步诊断",
     });
     expect(within(diagnosticsPanel).getByText("邮箱服务状态已更新")).toBeTruthy();
-    expect(
-      within(diagnosticsPanel).getByText(
-        "系统已收到邮箱服务回调，正在按本地同步状态处理。",
-      ),
-    ).toBeTruthy();
+    expect(within(diagnosticsPanel).getByText("已收到邮箱更新。")).toBeTruthy();
   });
 
-  it("switches the active mailbox account from Sync Center before loading mail and search", async () => {
+  it("switches the active mailbox account from email connection before loading mail and search", async () => {
     const api = createApiFixture();
     vi.mocked(api.listSyncCenterAccounts).mockResolvedValue({
       items: [
@@ -4240,7 +5200,7 @@ describe("Email Hub first UI baseline", () => {
     expect(await screen.findByText("outlook@example.com")).toBeTruthy();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Use account outlook@example.com" }),
+      screen.getByRole("button", { name: "使用邮箱 outlook@example.com" }),
     );
 
     await waitFor(() => {
@@ -4256,7 +5216,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("搜索邮件"), {
       target: { value: "contract" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Search current account" }));
+    fireEvent.click(screen.getByRole("button", { name: "搜索当前账号" }));
     fireEvent.click(screen.getByRole("button", { name: "执行搜索" }));
 
     await waitFor(() => {
@@ -4302,7 +5262,7 @@ describe("Email Hub first UI baseline", () => {
     expect(screen.getByText("iCloud Mail")).toBeTruthy();
   });
 
-  it("keeps Gmail on official web login when provider capabilities omit web login", async () => {
+  it("falls back to Gmail app-password setup when provider capabilities omit web login", async () => {
     const api = createApiFixture();
     const oauthRedirect = vi.fn();
     vi.mocked(api.getMailProviderCapabilities).mockResolvedValueOnce({
@@ -4334,20 +5294,17 @@ describe("Email Hub first UI baseline", () => {
       target: { value: "owner@gmail.com" },
     });
     expect(screen.queryByLabelText("Add mail secret")).toBeNull();
-    expect(await screen.findByText("使用 Google 官方网页登录授权")).toBeTruthy();
-    fireEvent.click(await screen.findByRole("button", { name: "连接 Gmail" }));
+    expect(await screen.findByText("输入 Google 应用专用密码")).toBeTruthy();
+    expect(screen.queryByText("使用 Google 官方网页登录授权")).toBeNull();
+    fireEvent.click(await screen.findByLabelText("Gmail 接入卡片"));
 
     await waitFor(() => {
-      expect(api.startOAuthAccount).toHaveBeenCalledWith({
-        provider: "gmail",
-        redirectUri: expect.stringMatching(/\/oauth\/callback$/),
-      });
+      expect(screen.getByLabelText("Add mail secret")).toBeTruthy();
     });
+    expect(api.startOAuthAccount).not.toHaveBeenCalled();
     expect(api.testImapSmtpConnection).not.toHaveBeenCalled();
     expect(api.onboardImapSmtpAccount).not.toHaveBeenCalled();
-    expect(oauthRedirect).toHaveBeenCalledWith(
-      "https://accounts.google.com/o/oauth2/v2/auth",
-    );
+    expect(oauthRedirect).not.toHaveBeenCalled();
   });
 
   it("completes an OAuth callback from the provider and clears pending state", async () => {
@@ -4371,11 +5328,79 @@ describe("Email Hub first UI baseline", () => {
         code: "code_1",
       });
     });
-    expect(await screen.findByText(/me@gmail.com/)).toBeTruthy();
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+    });
+    expect(screen.getByRole("navigation")).toBeTruthy();
     expect(sessionStorage.getItem("email-hub:oauth:state_1")).toBeNull();
   });
 
-  it("completes a Sync Center OAuth reauthorization callback and clears pending state", async () => {
+  it("rejects a Gmail OAuth callback when browser session state was lost", async () => {
+    const api = createApiFixture();
+    window.history.replaceState(
+      {},
+      "",
+      "/oauth/callback?state=state_1&iss=https%3A%2F%2Faccounts.google.com&code=code_1",
+    );
+
+    render(<App api={api} defaultAccountId="account_1" />);
+
+    expect(await screen.findByText("登录已过期。")).toBeTruthy();
+    expect(api.completeOAuthCallback).not.toHaveBeenCalled();
+  });
+
+  it("returns home after OAuth success without waiting for mailbox refresh", async () => {
+    const api = createApiFixture();
+    let resolveAccounts: (page: Awaited<ReturnType<EmailHubApi["listSyncCenterAccounts"]>>) => void =
+      () => {};
+    const slowAccountRefresh = new Promise<
+      Awaited<ReturnType<EmailHubApi["listSyncCenterAccounts"]>>
+    >((resolve) => {
+      resolveAccounts = resolve;
+    });
+    vi.mocked(api.listSyncCenterAccounts).mockReturnValue(slowAccountRefresh);
+    sessionStorage.setItem(
+      "email-hub:oauth:state_1",
+      JSON.stringify({ provider: "gmail", returnTo: "add-mail" }),
+    );
+    window.history.replaceState(
+      {},
+      "",
+      "/oauth/callback?state=state_1&code=code_1",
+    );
+
+    render(<App api={api} />);
+
+    await waitFor(() => {
+      expect(api.completeOAuthCallback).toHaveBeenCalledWith({
+        provider: "gmail",
+        state: "state_1",
+        code: "code_1",
+      });
+    });
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+    });
+    expect(screen.getByRole("navigation")).toBeTruthy();
+    resolveAccounts({
+      items: [
+        {
+          accountId: "account_gmail",
+          email: "me@gmail.com",
+          provider: "gmail",
+          syncState: "syncing",
+        },
+      ],
+    });
+    await act(async () => {
+      await slowAccountRefresh;
+    });
+    expect(sessionStorage.getItem("email-hub:selected-account-id")).toBe(
+      "account_gmail",
+    );
+  });
+
+  it("completes an email connection OAuth reauthorization callback and clears pending state", async () => {
     const api = createApiFixture();
     sessionStorage.setItem(
       "email-hub:oauth:state_1",
@@ -4402,7 +5427,10 @@ describe("Email Hub first UI baseline", () => {
       );
     });
     expect(api.completeOAuthCallback).not.toHaveBeenCalled();
-    expect(await screen.findByText(/已重新授权/)).toBeTruthy();
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+    });
+    expect(screen.getByRole("navigation")).toBeTruthy();
     expect(sessionStorage.getItem("email-hub:oauth:state_1")).toBeNull();
   });
 
@@ -4619,6 +5647,33 @@ describe("Email Hub first UI baseline", () => {
     expect(sessionStorage.getItem("email-hub:selected-account-id")).toBeNull();
   });
 
+  it("does not load compose resources for the preview account in an empty aggregated inbox", async () => {
+    const api = createApiFixture();
+    vi.mocked(api.listSyncCenterAccounts).mockResolvedValue({
+      items: [
+        {
+          accountId: "55555555-5555-4555-8555-555555555555",
+          email: "empty-real@example.com",
+          provider: "gmail",
+          syncState: "syncing",
+        },
+      ],
+    });
+    vi.mocked(api.listMessages).mockResolvedValue({ items: [] });
+
+    render(<App api={api} />);
+
+    await waitFor(() => {
+      expect(api.listMessages).toHaveBeenCalledWith({
+        limit: 50,
+        sort: "smart",
+      });
+    });
+    expect(api.listSendIdentities).not.toHaveBeenCalled();
+    expect(api.listMailDrafts).not.toHaveBeenCalled();
+    expect(api.listOutbox).not.toHaveBeenCalled();
+  });
+
   it("clears a missing session account before loading aggregated mail", async () => {
     const api = createApiFixture();
     sessionStorage.setItem("email-hub:selected-account-id", "deleted-account");
@@ -4721,9 +5776,10 @@ describe("Email Hub first UI baseline", () => {
       within(screen.getByRole("navigation")).getByRole("button", { name: "添加邮箱" }),
     );
 
-    expect(await screen.findByText("邮箱接入服务还没准备好，请稍后再试。")).toBeTruthy();
+    await screen.findByRole("button", { name: "连接 QQ 邮箱" });
+    expect(screen.queryByText("邮箱接入服务暂时不可用。")).toBeNull();
     expect(
-      screen.queryByRole("region", { name: "邮箱接入体检" }),
+      screen.queryByRole("region", { name: "邮箱接入状态" }),
     ).toBeNull();
     expect(document.body.textContent ?? "").not.toContain("EMAILENGINE_ACCESS_TOKEN");
     expect(document.body.textContent ?? "").not.toContain(
@@ -4732,8 +5788,9 @@ describe("Email Hub first UI baseline", () => {
     expect(document.body.textContent ?? "").not.toContain("super-secret-token");
 
     const qqConnect = await screen.findByRole("button", { name: "连接 QQ 邮箱" });
-    expect((qqConnect as HTMLButtonElement).disabled).toBe(true);
+    expect((qqConnect as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(qqConnect);
+    expect(await screen.findByText("邮箱接入服务暂时不可用。")).toBeTruthy();
     expect(api.testImapSmtpConnection).not.toHaveBeenCalled();
     expect(api.onboardImapSmtpAccount).not.toHaveBeenCalled();
 
@@ -4743,9 +5800,9 @@ describe("Email Hub first UI baseline", () => {
     expect(customConnect.disabled).toBe(false);
     fireEvent.click(customConnect);
     const manualSubmit = await screen.findByRole("button", {
-      name: "测试并接入个人域名邮箱",
+      name: "接入个人域名邮箱",
     });
-    expect((manualSubmit as HTMLButtonElement).disabled).toBe(true);
+    expect((manualSubmit as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(manualSubmit);
     expect(api.testImapSmtpConnection).not.toHaveBeenCalled();
   });
@@ -4780,7 +5837,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Custom send port"), {
       target: { value: "465" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "测试并接入个人域名邮箱" }));
+    fireEvent.click(screen.getByRole("button", { name: "接入个人域名邮箱" }));
 
     await waitFor(() => {
       expect(api.testImapSmtpConnection).toHaveBeenCalledWith({
@@ -4913,12 +5970,10 @@ describe("Email Hub first UI baseline", () => {
       limit: 3,
     });
     expect(
-      await screen.findByText("163 邮箱 连接检查没有通过，请按提示处理。"),
+      await screen.findByText("163 邮箱 连接检查未通过。"),
     ).toBeTruthy();
-    expect(await screen.findByText("需要 163 邮箱授权码")).toBeTruthy();
-    expect(
-      screen.getByText("请在 163 邮箱设置里开启客户端授权并使用生成的授权码。"),
-    ).toBeTruthy();
+    expect(await screen.findByText("163 邮箱授权码")).toBeTruthy();
+    expect(screen.getByText("163 邮箱授权码不可用。")).toBeTruthy();
 
     const pageText = document.body.textContent ?? "";
     expect(pageText).not.toContain("EAUTH");
@@ -4964,11 +6019,11 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Custom send host"), {
       target: { value: "smtp.example.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "测试并接入个人域名邮箱" }));
+    fireEvent.click(screen.getByRole("button", { name: "接入个人域名邮箱" }));
 
     expect(
       await screen.findByText(
-        "个人域名邮箱 连接检查没有通过，请检查邮箱地址、授权码和收发信服务器。",
+        "个人域名邮箱 连接检查未通过。",
       ),
     ).toBeTruthy();
     expect(api.onboardImapSmtpAccount).not.toHaveBeenCalled();
@@ -5028,9 +6083,7 @@ describe("Email Hub first UI baseline", () => {
     submitCredentialProvider("Proton Mail");
 
     expect(await screen.findByText("Proton Bridge 未连接")).toBeTruthy();
-    expect(
-      screen.getByText("请启动 Proton Bridge 并保持登录后重试。"),
-    ).toBeTruthy();
+    expect(screen.getByText("Proton Bridge 未连接。")).toBeTruthy();
     expect(api.onboardImapSmtpAccount).not.toHaveBeenCalled();
 
     const pageText = document.body.textContent ?? "";
@@ -5058,16 +6111,12 @@ describe("Email Hub first UI baseline", () => {
     });
     submitCredentialProvider("Proton Mail");
 
-    expect(
-      await screen.findByText(
-        "Proton Mail 需要先填写邮箱、Bridge 用户名和 Bridge 密码。",
-      ),
-    ).toBeTruthy();
+    expect(await screen.findByText("Proton Mail 接入信息不完整。")).toBeTruthy();
     expect(screen.getByText("Bridge 用户名")).toBeTruthy();
     expect(screen.getByText("Bridge 密码")).toBeTruthy();
-    expect(screen.getByText("先启动 Proton Bridge 并保持登录。")).toBeTruthy();
-    expect(screen.getByPlaceholderText("Proton Bridge 中显示的用户名")).toBeTruthy();
-    expect(screen.getByPlaceholderText("Proton Bridge 中显示的密码")).toBeTruthy();
+    expect(screen.queryByText("先启动 Proton Bridge 并保持登录。")).toBeNull();
+    expect(screen.getByPlaceholderText("me@proton.me")).toBeTruthy();
+    expect(screen.getByPlaceholderText("授权信息")).toBeTruthy();
     expect(api.testImapSmtpConnection).not.toHaveBeenCalled();
     expect(api.onboardImapSmtpAccount).not.toHaveBeenCalled();
   });
@@ -5153,12 +6202,10 @@ describe("Email Hub first UI baseline", () => {
     submitCredentialProvider("QQ 邮箱");
 
     expect(
-      await screen.findByText("QQ 邮箱 暂时无法接入，请按恢复建议处理后重试。"),
+      await screen.findByText("QQ 邮箱 暂时无法接入。"),
     ).toBeTruthy();
-    expect(await screen.findByText("需要 QQ 邮箱授权码")).toBeTruthy();
-    expect(
-      screen.getByText("请在 QQ 邮箱设置里开启服务并使用生成的授权码。"),
-    ).toBeTruthy();
+    expect(await screen.findByText("QQ 邮箱授权码")).toBeTruthy();
+    expect(screen.getByText("QQ 邮箱授权码不可用。")).toBeTruthy();
     expect(api.listOperationalEvents).toHaveBeenCalledWith({
       service: "email-hub-api",
       lane: "account_onboarding",
@@ -5214,7 +6261,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(
       await screen.findByText(
-        "QQ 邮箱 暂时无法接入，连接信息未保存。请重新检查授权码或稍后再试。",
+        "QQ 邮箱 暂时无法接入。",
       ),
     ).toBeTruthy();
     expect(api.onboardImapSmtpAccount).toHaveBeenCalled();
@@ -5235,7 +6282,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByText("Live body from backend");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Ask Hermes to track follow-up" }),
+      screen.getByRole("button", { name: "让 Hermes 跟进当前邮件" }),
     );
 
     expect(await screen.findByText("Check whether Lina replied")).toBeTruthy();
@@ -5254,7 +6301,7 @@ describe("Email Hub first UI baseline", () => {
     expect(api.trackFollowup).not.toHaveBeenCalled();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Confirm Hermes follow-up" }),
+      screen.getByRole("button", { name: "确认 Hermes 跟进" }),
     );
 
     await waitFor(() => {
@@ -5284,7 +6331,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByText("Live body from backend");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Ask Hermes to track follow-up" }),
+      screen.getByRole("button", { name: "让 Hermes 跟进当前邮件" }),
     );
 
     const suggestionTitle = await screen.findByText("Hermes 跟进建议");
@@ -5292,12 +6339,12 @@ describe("Email Hub first UI baseline", () => {
       "Check whether Lina replied",
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Confirm Hermes follow-up" }),
+      screen.getByRole("button", { name: "确认 Hermes 跟进" }),
     );
 
     expect(
       await screen.findByText(
-        "Hermes 跟进保存服务暂时不可用，请联系管理员检查服务配置。",
+        "Hermes 跟进保存失败。",
       ),
     ).toBeTruthy();
     expect(
@@ -5342,7 +6389,7 @@ describe("Email Hub first UI baseline", () => {
         draftId: "draft_1",
       });
     });
-    expect(await screen.findByText(/邮件已进入发送队列：draft_1/)).toBeTruthy();
+    expect(await screen.findByText(/邮件已进入发送队列。/)).toBeTruthy();
   });
 
   it("adds and verifies an Outlook shared sender candidate from compose", async () => {
@@ -5429,6 +6476,8 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
 
     await openComposeWindow();
+    expect(screen.queryByText("Outlook 共享发件人")).toBeNull();
+    await openAdvancedSenderPanel();
 
     fireEvent.change(screen.getByLabelText("Outlook shared sender address"), {
       target: { value: "shared@example.com" },
@@ -5566,6 +6615,8 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
 
     await openComposeWindow();
+    expect(screen.queryByText("Outlook 共享发件人")).toBeNull();
+    await openAdvancedSenderPanel();
 
     fireEvent.click(
       await screen.findByRole("button", {
@@ -5610,8 +6661,8 @@ describe("Email Hub first UI baseline", () => {
       target: { value: "Initial draft body." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
-    expect(await screen.findByText(/草稿已保存：draft_1/)).toBeTruthy();
-    expect(await screen.findByText(/草稿：draft_1/)).toBeTruthy();
+    expect(await screen.findByText(/草稿已保存。/)).toBeTruthy();
+    expect(await screen.findByText(/已保存草稿/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Updated draft body." },
@@ -5630,7 +6681,7 @@ describe("Email Hub first UI baseline", () => {
       });
     });
     expect(api.createMailDraft).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText(/草稿已更新：draft_1/)).toBeTruthy();
+    expect(await screen.findByText(/草稿已更新。/)).toBeTruthy();
   });
 
   it("sends a saved composed draft after updating the same draft id", async () => {
@@ -5651,7 +6702,7 @@ describe("Email Hub first UI baseline", () => {
       target: { value: "Initial draft body." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
-    await screen.findByText(/草稿已保存：draft_1/);
+    await screen.findByText(/草稿已保存。/);
 
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Ready to send body." },
@@ -5699,7 +6750,7 @@ describe("Email Hub first UI baseline", () => {
       target: { value: "Initial draft body." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
-    await screen.findByText(/草稿已保存：draft_1/);
+    await screen.findByText(/草稿已保存。/);
 
     vi.mocked(api.updateMailDraft).mockRejectedValueOnce(new Error("conflict"));
     fireEvent.change(screen.getByLabelText("Compose body"), {
@@ -5720,7 +6771,7 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(api.createMailDraft).toHaveBeenCalledTimes(1);
     expect(api.sendMailDraft).not.toHaveBeenCalled();
-    expect(await screen.findByText("写信操作失败，请稍后再试。")).toBeTruthy();
+    expect(await screen.findByText("写信操作失败。")).toBeTruthy();
   });
 
   it("sends Cc and Bcc from the compose panel through the draft payload", async () => {
@@ -5820,7 +6871,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(body.value).toBe("**Launch** plan");
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "预览草稿" }));
     await waitFor(() => {
       expect(api.previewMailDraft).toHaveBeenCalledWith({
         accountId: "account_1",
@@ -5873,7 +6924,7 @@ describe("Email Hub first UI baseline", () => {
 
     expect(body.value).toBe("> Please review this line");
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "预览草稿" }));
     await waitFor(() => {
       expect(api.previewMailDraft).toHaveBeenCalledWith({
         accountId: "account_1",
@@ -5906,7 +6957,7 @@ describe("Email Hub first UI baseline", () => {
       target: { value: "你好，请确认发布计划。" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Translate composed draft with Hermes" }),
+      screen.getByRole("button", { name: "让 Hermes 翻译草稿" }),
     );
 
     await waitFor(() => {
@@ -5960,7 +7011,7 @@ describe("Email Hub first UI baseline", () => {
       target: { value: "你好，请确认发布计划。" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Translate composed draft with Hermes" }),
+      screen.getByRole("button", { name: "让 Hermes 翻译草稿" }),
     );
 
     await waitFor(() => {
@@ -6007,12 +7058,12 @@ describe("Email Hub first UI baseline", () => {
       target: { value: "你好，请确认发布计划。" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Translate composed draft with Hermes" }),
+      screen.getByRole("button", { name: "让 Hermes 翻译草稿" }),
     );
 
     expect(
       await screen.findByText(
-        "Hermes 邮件翻译暂时不可用，请稍后再试。",
+        "Hermes 邮件翻译暂时不可用。",
       ),
     ).toBeTruthy();
     expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
@@ -6149,7 +7200,7 @@ describe("Email Hub first UI baseline", () => {
     });
 
     expect(
-      await screen.findByText("附件上传失败，请重新选择文件。"),
+      await screen.findByText("附件上传失败。"),
     ).toBeTruthy();
     expect(screen.getByText("brief.txt")).toBeTruthy();
     expect(screen.queryByText("later.txt")).toBeNull();
@@ -6343,7 +7394,7 @@ describe("Email Hub first UI baseline", () => {
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Please review the launch plan." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Preview composed draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "预览草稿" }));
 
     await waitFor(() => {
       expect(api.previewMailDraft).toHaveBeenCalledWith({
@@ -6387,7 +7438,7 @@ describe("Email Hub first UI baseline", () => {
     });
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Polish composed draft with Hermes",
+        name: "让 Hermes 润色草稿",
       }),
     );
 
@@ -6441,7 +7492,7 @@ describe("Email Hub first UI baseline", () => {
     });
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Polish composed draft with Hermes",
+        name: "让 Hermes 润色草稿",
       }),
     );
 
@@ -6491,7 +7542,7 @@ describe("Email Hub first UI baseline", () => {
     });
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Polish composed draft with Hermes",
+        name: "让 Hermes 润色草稿",
       }),
     );
     await waitFor(() => {
@@ -6535,7 +7586,7 @@ describe("Email Hub first UI baseline", () => {
     });
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Polish composed draft with Hermes",
+        name: "让 Hermes 润色草稿",
       }),
     );
     await waitFor(() => {
@@ -6603,7 +7654,7 @@ describe("Email Hub first UI baseline", () => {
     expect(
       vi.mocked(api.sendMailDraft).mock.invocationCallOrder[0],
     ).toBeLessThan(vi.mocked(api.listOutbox).mock.invocationCallOrder[0]);
-    expect(await screen.findByText(/邮件已进入发送队列：draft_1/)).toBeTruthy();
+    expect(await screen.findByText(/邮件已进入发送队列。/)).toBeTruthy();
   });
 
   it("schedules composed drafts and refreshes the outbox", async () => {
@@ -6665,7 +7716,7 @@ describe("Email Hub first UI baseline", () => {
       target: { value: "Initial scheduled body." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save composed draft" }));
-    await screen.findByText(/草稿已保存：draft_1/);
+    await screen.findByText(/草稿已保存。/);
 
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Updated scheduled body." },
@@ -6760,7 +7811,7 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByText("Saved subject");
     vi.useFakeTimers();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit saved draft draft_saved" }),
+      screen.getByRole("button", { name: "编辑草稿 Saved subject" }),
     );
 
     await act(async () => {
@@ -6801,11 +7852,11 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await openComposeWindow();
-    await screen.findByText("draft_1");
+    await screen.findByText("定时邮件");
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+      screen.getByRole("button", { name: "编辑待发邮件" }),
     );
-    await screen.findByText(/待发草稿已载入：schedule_1/);
+    await screen.findByText(/待发草稿已打开。/);
     vi.useFakeTimers();
 
     fireEvent.change(screen.getByLabelText("Compose body"), {
@@ -6880,9 +7931,10 @@ describe("Email Hub first UI baseline", () => {
     await screen.findByRole("heading", { name: "Live subject" });
     await openComposeWindow();
     await screen.findByText("Saved subject");
+    expect(document.body.textContent).not.toContain("draft_saved");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit saved draft draft_saved" }),
+      screen.getByRole("button", { name: "编辑草稿 Saved subject" }),
     );
 
     expect((screen.getByLabelText("Compose subject") as HTMLInputElement).value).toBe(
@@ -6891,7 +7943,7 @@ describe("Email Hub first UI baseline", () => {
     expect((screen.getByLabelText("Compose body") as HTMLTextAreaElement).value).toBe(
       "Saved body.",
     );
-    expect(screen.getAllByText(/草稿：draft_saved/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/已保存草稿/).length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Edited saved body." },
@@ -6933,7 +7985,7 @@ describe("Email Hub first UI baseline", () => {
     await openComposeWindow();
     await screen.findByText("Saved subject");
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit saved draft draft_saved" }),
+      screen.getByRole("button", { name: "编辑草稿 Saved subject" }),
     );
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Send edited saved body." },
@@ -6966,13 +8018,13 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await openComposeWindow();
-    await screen.findByText("draft_1");
+    await screen.findByText("定时邮件");
 
-    fireEvent.change(screen.getByLabelText("Reschedule schedule_1"), {
+    fireEvent.change(screen.getByLabelText("调整发送时间"), {
       target: { value: "2026-06-14T12:30" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Reschedule scheduled send schedule_1" }),
+      screen.getByRole("button", { name: "调整待发时间" }),
     );
 
     await waitFor(() => {
@@ -6984,7 +8036,7 @@ describe("Email Hub first UI baseline", () => {
     });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Send scheduled send schedule_1 now" }),
+      screen.getByRole("button", { name: "立即发送待发邮件" }),
     );
     await waitFor(() => {
       expect(api.sendScheduledNow).toHaveBeenCalledWith({
@@ -6994,7 +8046,7 @@ describe("Email Hub first UI baseline", () => {
     });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Cancel scheduled send schedule_1" }),
+      screen.getByRole("button", { name: "取消待发邮件" }),
     );
     await waitFor(() => {
       expect(api.cancelScheduledSend).toHaveBeenCalledWith({
@@ -7009,10 +8061,12 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await openComposeWindow();
-    await screen.findByText("draft_1");
+    await screen.findByText("定时邮件");
+    expect(document.body.textContent).not.toContain("draft_1");
+    expect(document.body.textContent).not.toContain("schedule_1");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+      screen.getByRole("button", { name: "编辑待发邮件" }),
     );
 
     await waitFor(() => {
@@ -7030,7 +8084,7 @@ describe("Email Hub first UI baseline", () => {
     expect((screen.getByLabelText("Compose recipients") as HTMLInputElement).value).toBe(
       "Client <client@example.com>",
     );
-    expect(screen.getByText(/待发：schedule_1/)).toBeTruthy();
+    expect(screen.getByText(/已加入待发/)).toBeTruthy();
     expect(screen.getByText("plan.pdf")).toBeTruthy();
   });
 
@@ -7039,11 +8093,11 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await openComposeWindow();
-    await screen.findByText("draft_1");
+    await screen.findByText("定时邮件");
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+      screen.getByRole("button", { name: "编辑待发邮件" }),
     );
-    await screen.findByText(/待发草稿已载入：schedule_1/);
+    await screen.findByText(/待发草稿已打开。/);
 
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Edited scheduled body." },
@@ -7074,7 +8128,7 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(api.createMailDraft).not.toHaveBeenCalled();
     expect(api.updateMailDraft).not.toHaveBeenCalled();
-    expect(await screen.findByText(/待发草稿已更新：draft_1/)).toBeTruthy();
+    expect(await screen.findByText(/待发草稿已更新。/)).toBeTruthy();
   });
 
   it("clears attachments from an edited outbox draft", async () => {
@@ -7082,11 +8136,11 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await openComposeWindow();
-    await screen.findByText("draft_1");
+    await screen.findByText("定时邮件");
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+      screen.getByRole("button", { name: "编辑待发邮件" }),
     );
-    await screen.findByText(/待发草稿已载入：schedule_1/);
+    await screen.findByText(/待发草稿已打开。/);
     expect(screen.getByText("plan.pdf")).toBeTruthy();
 
     fireEvent.click(
@@ -7114,11 +8168,11 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await openComposeWindow();
-    await screen.findByText("draft_1");
+    await screen.findByText("定时邮件");
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+      screen.getByRole("button", { name: "编辑待发邮件" }),
     );
-    await screen.findByText(/待发草稿已载入：schedule_1/);
+    await screen.findByText(/待发草稿已打开。/);
 
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Send the edited scheduled body now." },
@@ -7149,11 +8203,11 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await openComposeWindow();
-    await screen.findByText("draft_1");
+    await screen.findByText("定时邮件");
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+      screen.getByRole("button", { name: "编辑待发邮件" }),
     );
-    await screen.findByText(/待发草稿已载入：schedule_1/);
+    await screen.findByText(/待发草稿已打开。/);
 
     fireEvent.change(screen.getByLabelText("Compose body"), {
       target: { value: "Edited then rescheduled body." },
@@ -7188,11 +8242,11 @@ describe("Email Hub first UI baseline", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
     await openComposeWindow();
-    await screen.findByText("draft_1");
+    await screen.findByText("定时邮件");
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit scheduled draft schedule_1" }),
+      screen.getByRole("button", { name: "编辑待发邮件" }),
     );
-    await screen.findByText(/待发草稿已载入：schedule_1/);
+    await screen.findByText(/待发草稿已打开。/);
 
     vi.mocked(api.updateScheduledDraft).mockRejectedValueOnce(
       new Error("scheduled draft was claimed"),
@@ -7207,7 +8261,7 @@ describe("Email Hub first UI baseline", () => {
     });
     expect(api.sendScheduledNow).not.toHaveBeenCalled();
     expect(api.sendMailDraft).not.toHaveBeenCalled();
-    expect(await screen.findByText("写信操作失败，请稍后再试。")).toBeTruthy();
+    expect(await screen.findByText("写信操作失败。")).toBeTruthy();
   });
 });
 
@@ -8170,6 +9224,7 @@ function createApiFixture(): EmailHubApi {
     ),
     getMailNavigationSummary: vi.fn(async () =>
       ({
+        folders: [],
         providerGroups: [
           { id: "gmail", label: "Gmail", count: 7 },
           { id: "outlook", label: "Outlook", count: 1 },
@@ -8221,7 +9276,7 @@ function createApiFixture(): EmailHubApi {
         mailProviderCapabilityFixture({
           provider: "163",
           label: "163 邮箱",
-          connectionLabel: "按提示完成邮箱授权",
+          connectionLabel: "邮箱授权",
           accountGroup: "domestic",
           supportsAppPassword: true,
           supportsMailboxPassword: true,
@@ -8229,7 +9284,7 @@ function createApiFixture(): EmailHubApi {
         mailProviderCapabilityFixture({
           provider: "qq",
           label: "QQ 邮箱",
-          connectionLabel: "按提示完成邮箱授权",
+          connectionLabel: "邮箱授权",
           accountGroup: "domestic",
           supportsAppPassword: true,
           supportsMailboxPassword: true,
@@ -8606,6 +9661,7 @@ function createApiFixture(): EmailHubApi {
         },
       ],
       navigation: {
+        folders: [],
         providerGroups: [{ id: "gmail", label: "Gmail", count: 7 }],
         quickCategories: [
           { id: "codes", label: "验证码", count: 4, tone: "blue" },
@@ -8762,7 +9818,7 @@ function createApiFixture(): EmailHubApi {
       steps: [
         {
           id: "read_workspace_context",
-          title: "读取邮箱环境",
+          title: "读取邮箱信息",
           mode: "read_only",
           status: "completed",
           detail: "Hermes 已读取账号、左侧分组、标签、规则和能力边界。",
@@ -9460,6 +10516,13 @@ async function openComposeWindow() {
   });
   fireEvent.click(composeButton);
   await screen.findByLabelText("Compose body");
+}
+
+async function openAdvancedSenderPanel() {
+  fireEvent.click(
+    await screen.findByRole("button", { name: "管理发件身份" }),
+  );
+  await screen.findByLabelText("Outlook shared sender candidates");
 }
 
 function restoreUrlDownloadMethod(

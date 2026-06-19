@@ -9,7 +9,7 @@ describe("SyncCenterLatestJobSummary", () => {
   it("keeps accounts without job summaries quiet", () => {
     render(<SyncCenterLatestJobSummary account={{}} />);
 
-    expect(screen.queryByText(/最近任务/)).toBeNull();
+    expect(screen.queryByText(/最近同步/)).toBeNull();
   });
 
   it("shows running sync progress without raw job ids", () => {
@@ -30,7 +30,7 @@ describe("SyncCenterLatestJobSummary", () => {
     );
 
     expect(
-      screen.getByText("最近任务：账号同步 · 正在同步 · 尝试 2/8 · 更新 06-13 08:02"),
+      screen.getByText("最近同步：邮箱同步 · 同步中 · 第 2/8 次 · 更新 06-13 08:02"),
     ).toBeTruthy();
     expect(screen.queryByText("job_private_1")).toBeNull();
   });
@@ -48,7 +48,7 @@ describe("SyncCenterLatestJobSummary", () => {
           updatedAt: "2026-06-13T08:00:00.000Z",
         },
       }),
-    ).toBe("账号同步 · 排队中 · 尝试 0/8 · 下次处理 06-13 08:01");
+    ).toBe("邮箱同步 · 排队中 · 第 0/8 次 · 稍后 06-13 08:01");
   });
 
   it("routes failed jobs to diagnostics without exposing provider errors", () => {
@@ -71,7 +71,7 @@ describe("SyncCenterLatestJobSummary", () => {
 
     expect(
       screen.getByText(
-        "最近任务：账号同步 · 多次失败已停止 · 尝试 8/8 · 更新 06-13 07:31 · 查看诊断获取恢复建议",
+        "最近同步：邮箱同步 · 多次失败已停止 · 第 8/8 次 · 更新 06-13 07:31 · 可检查",
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/invalid_grant/)).toBeNull();
@@ -90,7 +90,7 @@ describe("SyncCenterLatestJobSummary", () => {
           updatedAt: "2026-06-13T09:00:00.000Z",
         },
       }),
-    ).toBe("同步任务 · 最近已完成 · 尝试 1/8 · 更新 06-13 09:00");
+    ).toBe("邮箱同步 · 最近已完成 · 第 1/8 次 · 更新 06-13 09:00");
   });
 
   it("ignores malformed job payloads", () => {

@@ -59,7 +59,7 @@ export function getHermesSkills(): HermesSkill[] {
     {
       id: "priority_triage",
       title: "优先级判断",
-      description: "给出高、中、低优先级和可解释理由。",
+      description: "给出高、中、低优先级和判断依据。",
       mode: "classify"
     },
     {
@@ -82,20 +82,20 @@ export function getHermesSkills(): HermesSkill[] {
     },
     {
       id: "action_plan",
-      title: "执行计划",
-      description: "把自然语言邮箱操作转成可确认计划。",
+      title: "整理建议",
+      description: "把邮箱整理请求转成可确认建议。",
       mode: "learn"
     },
     {
       id: "rule_suggest",
-      title: "规则建议",
-      description: "从重复行为中生成候选规则并影子运行。",
+      title: "整理建议",
+      description: "根据重复行为给出整理建议。",
       mode: "learn"
     },
     {
       id: "memory_review",
-      title: "记忆管理",
-      description: "查看、修改和删除学习到的偏好。",
+      title: "偏好管理",
+      description: "查看、修改和删除已保存的偏好。",
       mode: "learn"
     }
   ];

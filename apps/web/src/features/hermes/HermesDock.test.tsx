@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("HermesDock", () => {
-  it("shows action-plan progress without raw run or audit identifiers", () => {
+  it("shows mail organization progress without raw run, audit, or internal labels", () => {
     render(
       <HermesDock
         {...dockHandlers()}
@@ -29,12 +29,17 @@ describe("HermesDock", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
 
     const dock = screen.getByLabelText("Hermes 底部输入");
-    expect(within(dock).getByText("邮件同步服务正常")).toBeTruthy();
+    expect(within(dock).getByText("2 个邮箱")).toBeTruthy();
+    expect(within(dock).getByLabelText("Hermes 整理建议")).toBeTruthy();
     expect(within(dock).getByText(/影响预览：命中 4 封邮件/)).toBeTruthy();
-    expect(within(dock).queryByText(/audit_plan_1|EmailEngine ready/)).toBeNull();
+    expect(
+      within(dock).queryByText(
+        /audit_plan_1|EmailEngine ready|邮件同步服务|执行计划|执行步骤|安全边界|用户习惯学习|规则需确认/,
+      ),
+    ).toBeNull();
   });
 
-  it("keeps degraded sync status user-facing", () => {
+  it("keeps degraded sync status out of the ordinary dock", () => {
     render(
       <HermesDock
         {...dockHandlers()}
@@ -47,8 +52,47 @@ describe("HermesDock", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
 
     const dock = screen.getByLabelText("Hermes 底部输入");
-    expect(within(dock).getByText("邮件同步服务需检查")).toBeTruthy();
-    expect(within(dock).queryByText(/EmailEngine degraded/)).toBeNull();
+    expect(within(dock).getByText("2 个邮箱")).toBeTruthy();
+    expect(within(dock).queryByText(/邮件同步服务|EmailEngine degraded/)).toBeNull();
+  });
+
+  it("opens into a dedicated bottom panel body", () => {
+    render(
+      <HermesDock
+        {...dockHandlers()}
+        prompt=""
+        workspaceContext={workspaceContextFixture("ready")}
+        busy={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+
+    const dock = screen.getByLabelText("Hermes 底部输入");
+    const body = within(dock).getByLabelText("Hermes 内容");
+    expect(body.className).toBe("dock-body");
+    expect(within(body).getByLabelText("Hermes 邮箱信息")).toBeTruthy();
+    expect(within(body).getByLabelText("Hermes 快捷问题")).toBeTruthy();
+    expect(within(body).getByText("总结今天最重要的邮件")).toBeTruthy();
+  });
+
+  it("runs a suggested prompt from the expanded dock", () => {
+    const handlers = dockHandlers();
+
+    render(
+      <HermesDock
+        {...handlers}
+        prompt=""
+        workspaceContext={workspaceContextFixture("ready")}
+        busy={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.click(screen.getByRole("button", { name: "找最近收到的验证码" }));
+
+    expect(handlers.onPromptChange).toHaveBeenCalledWith("找最近收到的验证码");
+    expect(handlers.onSubmit).toHaveBeenCalledWith("找最近收到的验证码");
   });
 
   it("routes a dock recovery action", () => {
@@ -59,14 +103,14 @@ describe("HermesDock", () => {
         {...dockHandlers()}
         prompt=""
         notice="Hermes 尚未配置模型接口。"
-        noticeActionLabel="打开 Hermes 配置"
+        noticeActionLabel="设置 Hermes"
         onNoticeAction={onNoticeAction}
         busy={false}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
-    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes 配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "设置 Hermes" }));
 
     expect(onNoticeAction).toHaveBeenCalledTimes(1);
   });
@@ -164,7 +208,24 @@ function workspaceContextFixture(
       requestedAccountId: "account_1",
       availableAccountIds: ["account_1"],
     },
-    accounts: [],
+    accounts: [
+      {
+        accountId: "account_1",
+        email: "lina@example.com",
+        provider: "gmail",
+        authMethod: "oauth",
+        displayName: "Lina",
+        syncState: "connected",
+      },
+      {
+        accountId: "account_2",
+        email: "ops@example.com",
+        provider: "outlook",
+        authMethod: "oauth",
+        displayName: "Ops",
+        syncState: "connected",
+      },
+    ],
     labels: [],
     rules: [],
     pendingRuleCandidates: [],

@@ -29,7 +29,7 @@ describe("OAuth provider registry", () => {
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("state")).toBe("state_1");
     expect(url.searchParams.get("access_type")).toBe("offline");
-    expect(url.searchParams.get("prompt")).toBe("consent");
+    expect(url.searchParams.get("prompt")).toBe("consent select_account");
     expect(url.searchParams.get("login_hint")).toBe("me@gmail.com");
     expect(url.searchParams.get("scope")).toContain(
       "https://www.googleapis.com/auth/gmail.modify",

@@ -9,7 +9,7 @@ import {
 } from "./connectionDiagnostics";
 
 describe("connection diagnostics", () => {
-  it("formats Tencent Exmail admin and member recovery guidance", () => {
+  it("formats Tencent Exmail admin and member status", () => {
     const diagnostic = {
       code: "tencent_exmail_client_access_required",
       provider: "tencent_exmail",
@@ -20,10 +20,10 @@ describe("connection diagnostics", () => {
     };
 
     expect(formatConnectionDiagnosticTitle(diagnostic)).toBe(
-      "需要开启企业邮箱客户端服务",
+      "企业邮箱客户端服务",
     );
     expect(formatConnectionDiagnosticAction(diagnostic)).toBe(
-      "请先让管理员在企业后台开启第三方客户端服务，再在成员邮箱中开启服务并使用授权码。",
+      "企业邮箱客户端服务未开启。",
     );
     expect(formatConnectionDiagnosticScope(diagnostic)).toBe("账号");
   });

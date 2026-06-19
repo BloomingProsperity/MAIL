@@ -19,7 +19,7 @@ describe("hermesRules helpers", () => {
         }),
         "create",
       ),
-    ).toBe("Hermes 执行计划暂时不可用，系统正在自动调整学习权限。");
+    ).toBe("Hermes 整理建议暂时不可用。");
 
     expect(
       hermesActionPlanErrorNotice(
@@ -30,7 +30,7 @@ describe("hermesRules helpers", () => {
         }),
         "create",
       ),
-    ).toBe("Hermes 执行计划暂时不可用，系统正在自动调整读取权限。");
+    ).toBe("Hermes 整理建议暂时不可用。");
 
     expect(
       hermesActionPlanErrorNotice(
@@ -39,7 +39,7 @@ describe("hermesRules helpers", () => {
         }),
         "confirm",
       ),
-    ).toBe("Hermes 执行计划存储暂时不可用，请联系管理员检查服务配置。");
+    ).toBe("Hermes 整理暂时不可用。");
 
     expect(
       hermesActionPlanErrorNotice(
@@ -48,7 +48,7 @@ describe("hermesRules helpers", () => {
         }),
         "create",
       ),
-    ).toBe("Hermes 还没连接 AI 服务，请到 Hermes 页面选择服务商并填写 API Key。");
+    ).toBe("Hermes AI 服务未连接。");
   });
 
   it("prefers saved views but falls back to provider labels for rule navigation", () => {

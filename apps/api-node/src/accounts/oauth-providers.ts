@@ -93,7 +93,7 @@ function gmailProvider(options: OAuthProviderRegistryOptions): OAuthProvider {
       url.searchParams.set("scope", provider.scopes.join(" "));
       url.searchParams.set("state", input.state);
       url.searchParams.set("access_type", "offline");
-      url.searchParams.set("prompt", "consent");
+      url.searchParams.set("prompt", "consent select_account");
       url.searchParams.set("include_granted_scopes", "true");
       if (input.loginHint) {
         url.searchParams.set("login_hint", input.loginHint);

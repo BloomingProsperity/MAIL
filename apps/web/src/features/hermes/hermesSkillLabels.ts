@@ -5,7 +5,7 @@ export function formatHermesAuditSkillId(skillId: string | undefined) {
 
   const labels: Record<string, string> = {
     action_item_extract: "待办提取",
-    action_plan: "执行计划",
+    action_plan: "整理建议",
     email_search_qa: "搜索问答",
     followup_tracker: "跟进识别",
     label_suggest: "标签建议",
@@ -14,8 +14,8 @@ export function formatHermesAuditSkillId(skillId: string | undefined) {
     quick_reply: "快速回复",
     reply_draft: "写回复",
     rewrite_polish: "改写润色",
-    memory_review: "记忆管理",
-    rule_suggest: "规则建议",
+    memory_review: "学习管理",
+    rule_suggest: "整理建议",
     thread_summarize: "邮件总结",
     translate_text: "邮件翻译",
   };

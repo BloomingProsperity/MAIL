@@ -274,6 +274,11 @@ export function dockerHealthEnvInvariants(
     },
     {
       service: "api",
+      name: "EMAILHUB_SESSION_COOKIE_SECURE",
+      expected: "true",
+    },
+    {
+      service: "api",
       name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
       expected: { kind: "absent" },
     },
@@ -472,11 +477,10 @@ function assertProductionApiTokenConfigured(env: CliEnv): void {
 }
 
 function assertCompatibleWebApiToken(env: CliEnv): void {
-  const apiToken = env.EMAILHUB_API_TOKEN?.trim();
   const webToken = env.VITE_EMAILHUB_API_TOKEN?.trim();
-  if (apiToken && webToken && apiToken !== webToken) {
+  if (webToken) {
     throw new Error(
-      "VITE_EMAILHUB_API_TOKEN must match EMAILHUB_API_TOKEN for the protected self-hosted web build.",
+      "VITE_EMAILHUB_API_TOKEN must not be set for the protected self-hosted web build; browsers authenticate with an HttpOnly session cookie after login.",
     );
   }
 }

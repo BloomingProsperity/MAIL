@@ -153,7 +153,8 @@ describe("postgres account provider settings store", () => {
     expect(queries[0].text).toMatch(/engine_provider = 'emailengine'/i);
     expect(queries[0].text).toMatch(/INSERT INTO onboarding_tasks/i);
     expect(queries[0].text).toMatch(/existing_task/i);
-    expect(queries[0].text).toMatch(/payload ->> 'accountId' = \$1/i);
+    expect(queries[0].text).toMatch(/payload ->> 'accountId' = \$1::text/i);
+    expect(queries[0].text).toMatch(/'reason', \$4::text/i);
     expect(queries[0].text).toMatch(/emailengine_account_state/i);
     expect(queries[0].text).toMatch(/LEFT JOIN account_provider_settings/i);
     expect(queries[0].text).not.toMatch(

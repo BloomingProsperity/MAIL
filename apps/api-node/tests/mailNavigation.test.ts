@@ -17,6 +17,9 @@ describe("mail navigation summary", () => {
           { provider: "custom_domain", count: 4 },
         ];
       },
+      async listFolderCounts() {
+        return [];
+      },
       async listQuickCategoryCounts() {
         return [];
       },
@@ -34,9 +37,46 @@ describe("mail navigation summary", () => {
     });
   });
 
+  it("returns stable mail folder summaries with backend counts", async () => {
+    const service = createMailNavigationSummaryService({
+      async listProviderCounts() {
+        return [];
+      },
+      async listFolderCounts() {
+        return [
+          { id: "inbox", count: 36 },
+          { id: "all", count: 36 },
+          { id: "attachments", count: 5 },
+          { id: "flagged", count: 1 },
+        ];
+      },
+      async listQuickCategoryCounts() {
+        return [];
+      },
+    });
+
+    const summary = await service.getSummary();
+
+    expect(summary.folders).toEqual([
+      { id: "inbox", label: "收件箱", count: 36 },
+      { id: "drafts", label: "草稿", count: 0 },
+      { id: "sent", label: "已发送", count: 0 },
+      { id: "trash", label: "已删除", count: 0 },
+      { id: "junk", label: "垃圾邮件", count: 0 },
+      { id: "archive", label: "归档", count: 0 },
+      { id: "all", label: "所有邮件", count: 36 },
+      { id: "flagged", label: "已标记", count: 1 },
+      { id: "snoozed", label: "稍后提醒", count: 0 },
+      { id: "attachments", label: "附件", count: 5 },
+    ]);
+  });
+
   it("keeps built-in saved views stable while filling backend counts", async () => {
     const service = createMailNavigationSummaryService({
       async listProviderCounts() {
+        return [];
+      },
+      async listFolderCounts() {
         return [];
       },
       async listQuickCategoryCounts() {
@@ -80,6 +120,9 @@ describe("mail navigation summary", () => {
   it("appends dynamic Hermes saved views after built-in categories", async () => {
     const service = createMailNavigationSummaryService({
       async listProviderCounts() {
+        return [];
+      },
+      async listFolderCounts() {
         return [];
       },
       async listQuickCategoryCounts() {

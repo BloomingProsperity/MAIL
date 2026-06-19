@@ -2,11 +2,11 @@ import type { SyncCenterAccountDto } from "../../lib/emailHubApi";
 
 const nextActionCopy: Record<string, string> = {
   none: "",
-  wait_for_sync: "等待本轮同步完成",
-  fix_sync_error: "打开诊断并处理同步失败",
+  wait_for_sync: "本轮同步快完成了",
+  fix_sync_error: "检查同步问题",
   reauthorize: "重新授权这个邮箱",
   resume_sync: "恢复同步后继续收信",
-  connect_backend: "等待邮箱服务连接",
+  connect_backend: "账号状态稍后恢复",
 };
 
 const providerRecoveryCopy: Record<string, string> = {
@@ -37,7 +37,7 @@ export function syncCenterNextActionLabel(
     return nextActionCopy.resume_sync;
   }
 
-  return nextActionCopy[nextAction] ?? "查看诊断并按提示处理";
+  return nextActionCopy[nextAction] ?? "检查";
 }
 
 export function SyncCenterAccountNextAction(props: {

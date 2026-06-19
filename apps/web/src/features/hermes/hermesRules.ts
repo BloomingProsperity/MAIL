@@ -10,7 +10,7 @@ export function formatHermesRuleType(ruleType: string) {
   const labels: Record<string, string> = {
     content_label: "内容标签",
     sender_priority: "发件人优先级",
-    sender_feed: "Feed 分类",
+    sender_feed: "动态分类",
   };
   return labels[ruleType] ?? ruleType;
 }
@@ -113,16 +113,16 @@ export function hermesActionPlanErrorNotice(
       );
     }
     if (error.code === "hermes_action_plans_unavailable") {
-      return "Hermes 执行计划存储暂时不可用，请联系管理员检查服务配置。";
+      return "Hermes 整理暂时不可用。";
     }
     if (error.code === "hermes_runtime_not_configured") {
-      return "Hermes 还没连接 AI 服务，请到 Hermes 页面选择服务商并填写 API Key。";
+      return "Hermes AI 服务未连接。";
     }
   }
 
   return action === "create"
-    ? "Hermes 执行计划暂时不可用。"
-    : "Hermes 执行计划确认失败。";
+    ? "Hermes 整理暂时不可用。"
+    : "Hermes 整理失败。";
 }
 
 export function hermesDisabledSkillIdFromError(
@@ -145,13 +145,13 @@ export function hermesSkillDisabledNotice(
 ): string {
   const skillLabel = formatHermesAuditSkillId(skillId);
   if (requiredPermission === "body_read") {
-    return `Hermes ${skillLabel}暂时不可用，系统正在自动调整读取权限。`;
+    return `Hermes ${skillLabel}暂时不可用。`;
   }
   if (requiredPermission === "memory_write") {
-    return `Hermes ${skillLabel}暂时不可用，系统正在自动调整学习权限。`;
+    return `Hermes ${skillLabel}暂时不可用。`;
   }
 
-  return `Hermes ${skillLabel}暂时不可用，请稍后再试。`;
+  return `Hermes ${skillLabel}暂时不可用。`;
 }
 
 export function hermesRulePreview(

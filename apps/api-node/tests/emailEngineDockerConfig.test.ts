@@ -146,6 +146,7 @@ describe("EmailEngine Docker configuration", () => {
 
     const config = readApiConfig({
       NODE_ENV: "production",
+      EMAILHUB_DISABLE_WEB_AUTH: "true",
       EMAILHUB_API_TOKEN: "prod-api-token",
       EMAILENGINE_WEBHOOK_SECRET: "prod-webhook-secret",
       EMAILENGINE_AUTH_SERVER_SECRET: "prod-auth-secret",
@@ -157,6 +158,9 @@ describe("EmailEngine Docker configuration", () => {
     expect(config.emailEngineWebhookSecretUsesDefault).toBe(false);
     expect(config.emailEngineAuthServerSecretUsesDefault).toBe(false);
     expect(config.emailEngineServiceSecretUsesDefault).toBe(false);
+    expect(config.webSessionCookieSecure).toBe(true);
+    expect(config.webSessionMaxAgeSeconds).toBe(12 * 60 * 60);
+    expect(config.webAuthDisabled).toBe(false);
     expect(config.maxAttachmentDownloadBytes).toBe(25 * 1024 * 1024);
     expect(config.emailEngineWebhookMaxSkewMs).toBe(10 * 60 * 1000);
     expect(JSON.stringify(config)).not.toContain("prod-api-token");
@@ -183,8 +187,11 @@ describe("EmailEngine Docker configuration", () => {
     expect(envExample).toContain("EMAILHUB_API_TOKEN_ACCOUNT_IDS=");
     expect(envExample).toContain("EMAILHUB_REQUIRE_API_TOKEN=false");
     expect(envExample).toContain("EMAILHUB_ALLOW_DEV_SECRETS=true");
+    expect(envExample).toContain("EMAILHUB_SESSION_COOKIE_SECURE=false");
+    expect(envExample).toContain("EMAILHUB_SESSION_MAX_AGE_SECONDS=43200");
+    expect(envExample).toContain("EMAILHUB_DISABLE_WEB_AUTH=false");
     expect(envExample).toContain("NODE_ENV=development");
-    expect(envExample).toContain("VITE_EMAILHUB_API_TOKEN=");
+    expect(envExample).not.toContain("VITE_EMAILHUB_API_TOKEN=");
     expect(envExample).toContain("VITE_EMAILHUB_DEFAULT_ACCOUNT_ID=");
     expect(envExample).toContain("EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES=26214400");
     expect(envExample).toContain("EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS=600");
@@ -200,23 +207,31 @@ describe("EmailEngine Docker configuration", () => {
       "EMAILHUB_REQUIRE_API_TOKEN: ${EMAILHUB_REQUIRE_API_TOKEN:-false}",
     );
     expect(api).toContain(
+      "EMAILHUB_SESSION_COOKIE_SECURE: ${EMAILHUB_SESSION_COOKIE_SECURE:-}",
+    );
+    expect(api).toContain(
+      "EMAILHUB_SESSION_MAX_AGE_SECONDS: ${EMAILHUB_SESSION_MAX_AGE_SECONDS:-43200}",
+    );
+    expect(api).toContain(
+      "EMAILHUB_DISABLE_WEB_AUTH: ${EMAILHUB_DISABLE_WEB_AUTH:-false}",
+    );
+    expect(api).toContain(
       "EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES: ${EMAILHUB_ATTACHMENT_DOWNLOAD_MAX_BYTES:-26214400}",
     );
     expect(api).toContain("EENGINE_SECRET: ${EENGINE_SECRET:-dev-emailhub-secret}");
     expect(api).toContain(
       "EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS: ${EMAILENGINE_WEBHOOK_MAX_SKEW_SECONDS:-600}",
     );
-    expect(web).toContain(
-      "VITE_EMAILHUB_API_TOKEN: ${VITE_EMAILHUB_API_TOKEN:-${EMAILHUB_API_TOKEN:-}}",
-    );
+    expect(web).not.toContain("VITE_EMAILHUB_API_TOKEN");
     expect(web).toContain(
       "VITE_EMAILHUB_DEFAULT_ACCOUNT_ID: ${VITE_EMAILHUB_DEFAULT_ACCOUNT_ID:-}",
     );
-    expect(webDockerfile).toContain("ARG VITE_EMAILHUB_API_TOKEN=");
+    expect(webDockerfile).not.toContain("VITE_EMAILHUB_API_TOKEN");
     expect(webDockerfile).toContain("ARG VITE_EMAILHUB_DEFAULT_ACCOUNT_ID=");
     expect(prodCompose).toContain("NODE_ENV: production");
     expect(prodCompose).toContain('EMAILHUB_ALLOW_DEV_SECRETS: "false"');
     expect(prodCompose).toContain('EMAILHUB_REQUIRE_API_TOKEN: "true"');
+    expect(prodCompose).toContain('EMAILHUB_SESSION_COOKIE_SECURE: "true"');
     expect(prodCompose).toContain("authorization:'Bearer '+token");
   });
 

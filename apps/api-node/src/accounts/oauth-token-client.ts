@@ -3,6 +3,7 @@ import type { OAuthProvider } from "./oauth-providers.js";
 export interface OAuthTokenSet {
   accessToken: string;
   refreshToken?: string;
+  idToken?: string;
   expiresIn?: number;
   scope?: string;
   tokenType?: string;
@@ -80,6 +81,7 @@ function tokenSet(value: unknown): OAuthTokenSet {
     ...(readString(record.refresh_token)
       ? { refreshToken: readString(record.refresh_token) }
       : {}),
+    ...(readString(record.id_token) ? { idToken: readString(record.id_token) } : {}),
     ...(readNumber(record.expires_in) !== undefined
       ? { expiresIn: readNumber(record.expires_in) }
       : {}),

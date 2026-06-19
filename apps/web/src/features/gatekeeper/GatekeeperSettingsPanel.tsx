@@ -33,7 +33,7 @@ export function GatekeeperSettingsPanel(props: {
   accountId: string;
 }) {
   const [mode, setMode] = useState<GatekeeperMode>("off_accept_all");
-  const [notice, setNotice] = useState("正在读取当前设置...");
+  const [notice, setNotice] = useState("");
   const [senders, setSenders] = useState<GatekeeperSenderDto[]>([]);
   const [senderBusy, setSenderBusy] = useState("");
 
@@ -70,7 +70,7 @@ export function GatekeeperSettingsPanel(props: {
 
     if (!props.api) {
       setMode("inside_email");
-      setNotice("本地预览设置。连接后会保存到当前邮箱账号。");
+      setNotice("");
       void loadSenders();
       return () => {
         alive = false;
@@ -82,12 +82,12 @@ export function GatekeeperSettingsPanel(props: {
       .then((settings) => {
         if (!alive) return;
         setMode(settings.mode);
-        setNotice("设置已同步。");
+        setNotice("");
         void loadSenders();
       })
       .catch(() => {
         if (!alive) return;
-        setNotice("暂时无法读取设置，稍后可重试。");
+        setNotice("设置不可用。");
       });
 
     return () => {
@@ -103,7 +103,7 @@ export function GatekeeperSettingsPanel(props: {
       return;
     }
 
-    setNotice("正在保存...");
+    setNotice("");
     try {
       const saved = await props.api.updateGatekeeperSettings({
         accountId: props.accountId,
@@ -113,7 +113,7 @@ export function GatekeeperSettingsPanel(props: {
       setNotice(`当前：${gatekeeperModeLabel(saved.mode)}`);
       await loadSenders();
     } catch {
-      setNotice("保存失败，请稍后重试。");
+      setNotice("保存失败。");
     }
   }
 
@@ -157,7 +157,7 @@ export function GatekeeperSettingsPanel(props: {
       }
       await loadSenders();
     } catch {
-      setNotice("新发件人处理失败，请稍后重试。");
+      setNotice("新发件人处理失败。");
     } finally {
       setSenderBusy("");
     }
@@ -217,7 +217,9 @@ export function GatekeeperSettingsPanel(props: {
       <div className="backend-notice" role="status">
         {notice.startsWith("当前：")
           ? notice
-          : `当前：${gatekeeperModeLabel(mode)} · ${notice}`}
+          : notice
+            ? `当前：${gatekeeperModeLabel(mode)} · ${notice}`
+            : `当前：${gatekeeperModeLabel(mode)}`}
       </div>
       <section className="settings-module gatekeeper-senders">
         <div className="sync-diagnostics-header">

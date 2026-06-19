@@ -83,7 +83,7 @@ export function SystemStatusSettingsPanel(props: { api?: EmailHubApi }) {
     }
 
     let alive = true;
-    setMailEngineLaunchNotice("正在读取最近运行事件...");
+    setMailEngineLaunchNotice("");
     void Promise.all([
       props.api.listOperationalEvents({
         service: "email-hub-api",
@@ -106,14 +106,12 @@ export function SystemStatusSettingsPanel(props: { api?: EmailHubApi }) {
           5,
         );
         setMailEngineLaunchEvents(events);
-        setMailEngineLaunchNotice(
-          events.length > 0 ? "" : "还没有最近运行事件。",
-        );
+        setMailEngineLaunchNotice(events.length > 0 ? "" : "暂无最近同步。");
       })
       .catch(() => {
         if (alive) {
           setMailEngineLaunchEvents([]);
-          setMailEngineLaunchNotice("最近运行事件暂时不可用。");
+          setMailEngineLaunchNotice("最近同步暂时不可用。");
         }
       });
 
@@ -124,9 +122,9 @@ export function SystemStatusSettingsPanel(props: { api?: EmailHubApi }) {
 
   if (!props.api) {
     return (
-      <section className="page-panel" aria-label="系统状态">
-        <h2>系统状态</h2>
-        <p>连接服务后可查看系统状态。</p>
+      <section className="page-panel" aria-label="运行状态">
+        <h2>运行状态</h2>
+        <p>暂时不可用。</p>
       </section>
     );
   }
@@ -154,16 +152,16 @@ function ApiHealthPanel(props: { health?: ApiHealthDto; unavailable?: boolean })
       className={`page-panel api-health-panel ${
         degraded ? "is-degraded" : "is-ready"
       }`}
-      aria-label="服务运行体检"
+      aria-label="运行状态"
     >
       <div>
-        <strong>{degraded ? "服务运行需要检查" : "服务运行正常"}</strong>
+        <strong>{degraded ? "运行需要处理" : "运行正常"}</strong>
         <span>
           {props.unavailable
-            ? "无法读取服务状态，请检查后端进程、网络和访问配置。"
+            ? "暂时不可用。"
             : props.health?.ok
-              ? "服务正常响应，数据库探测结果如下。"
-              : "服务已响应，但依赖探测未全部通过。"}
+              ? "连接正常。"
+              : "连接可用，部分项目需要处理。"}
         </span>
       </div>
       <div className="api-health-grid">
@@ -171,11 +169,11 @@ function ApiHealthPanel(props: { health?: ApiHealthDto; unavailable?: boolean })
           <strong>
             {props.health?.ok ? "可用" : props.unavailable ? "未知" : "异常"}
           </strong>
-          <span>服务</span>
+          <span>连接</span>
         </p>
         <p>
           <strong>{formatApiDatabaseHealth(databaseStatus)}</strong>
-          <span>数据库</span>
+          <span>数据存储</span>
         </p>
       </div>
     </section>
@@ -204,21 +202,24 @@ function MailEngineReadinessPanel(props: {
       className={`page-panel mail-engine-readiness ${
         degraded ? "is-degraded" : "is-ready"
       }`}
-      aria-label="邮箱接入体检"
+      aria-label="邮箱接入状态"
     >
       <div>
         <strong>
           {props.unavailable
-            ? "邮箱接入体检暂时不可用"
+            ? "邮箱接入暂时不可用"
             : degraded
-              ? "邮箱接入还差配置"
-              : "邮箱接入服务就绪"}
+              ? "邮箱接入需要处理"
+              : "邮箱接入就绪"}
         </strong>
         <span>
-          {friendlyMailEngineCopy(
-            health?.readiness.summary ??
-              "无法读取接入体检，请检查服务状态和访问配置。",
-          )}
+          {props.unavailable
+            ? "邮箱接入暂时不可用。"
+            : !degraded
+              ? "邮箱接入已就绪。"
+              : friendlyMailEngineCopy(
+                  health?.readiness.summary ?? "邮箱接入暂时不可用。",
+                )}
         </span>
       </div>
       <div className="mail-engine-readiness-grid">
@@ -231,20 +232,20 @@ function MailEngineReadinessPanel(props: {
       </div>
       {health && hasAdminDetails ? (
         <details className="mail-engine-admin-details">
-          <summary>管理员配置明细</summary>
+          <summary>详细状态</summary>
           {health.missing.length > 0 ? (
-            <div className="mail-engine-status-notes" aria-label="邮箱接入缺失">
+            <div className="mail-engine-status-notes" aria-label="邮箱接入需补充">
               <p>
-                <strong>缺失</strong>
-                <span>{health.missing.join(" / ")}</span>
+                <strong>需补充</strong>
+                <span>{friendlyMailEngineIssueList(health.missing)}</span>
               </p>
             </div>
           ) : null}
           {health.warnings.length > 0 ? (
-            <div className="mail-engine-status-notes" aria-label="邮箱接入警告">
+            <div className="mail-engine-status-notes" aria-label="邮箱接入提醒">
               <p>
-                <strong>警告</strong>
-                <span>{health.warnings.join(" / ")}</span>
+                <strong>提醒</strong>
+                <span>{friendlyMailEngineIssueList(health.warnings)}</span>
               </p>
             </div>
           ) : null}
@@ -253,7 +254,7 @@ function MailEngineReadinessPanel(props: {
               {health.readiness.setupActions.map((action) => (
                 <div key={action.code}>
                   <strong>{friendlyMailEngineCopy(action.label)}</strong>
-                  <span>{action.env.join(" / ")}</span>
+                  <span>{friendlyMailEngineEnvList(action.env)}</span>
                   <p>{friendlyMailEngineCopy(action.effect)}</p>
                 </div>
               ))}
@@ -270,23 +271,23 @@ function mailEngineReadinessRows(
 ): Array<{ label: string; value: string }> {
   return [
     {
-      label: "运行探测",
+      label: "连接",
       value: formatMailEngineHttpStatus(health.checks?.http),
     },
     {
-      label: "访问令牌",
-      value: health.capabilities.accessTokenConfigured ? "已配置" : "缺少",
+      label: "访问权限",
+      value: health.capabilities.accessTokenConfigured ? "已设置" : "待设置",
     },
     {
-      label: "认证探测",
+      label: "授权",
       value: formatMailEngineApiAuthStatus(health.checks?.apiAuth),
     },
     {
-      label: "预置令牌",
+      label: "接入凭据",
       value: formatMailEngineConfiguredStatus(health.checks?.preparedToken),
     },
     {
-      label: "回调密钥",
+      label: "回调保护",
       value: formatMailEngineWebhookSecretStatus(health.checks?.webhookSecret),
     },
     {
@@ -306,17 +307,17 @@ function mailEngineReadinessRows(
 
 function mailEngineUnavailableRows(): Array<{ label: string; value: string }> {
   return [
-    "运行探测",
-    "访问令牌",
-    "认证探测",
-    "预置令牌",
-    "回调密钥",
+    "连接",
+    "访问权限",
+    "授权",
+    "接入凭据",
+    "回调保护",
     "邮箱接入",
     "附件下载",
     "发信链路",
   ].map((label) => ({
     label,
-    value: label === "运行探测" || label === "认证探测" ? "未探测" : "未知",
+    value: label === "连接" || label === "授权" ? "未检查" : "未知",
   }));
 }
 
@@ -327,12 +328,12 @@ function MailEngineLaunchActivityPanel(props: {
   return (
     <section
       className="page-panel sync-diagnostics-panel"
-      aria-label="邮箱同步运行记录"
+      aria-label="同步记录"
     >
       <div className="sync-diagnostics-header">
         <div>
-          <h2>邮箱同步运行记录</h2>
-          <p>最近收信回调、同步任务和重试活动。</p>
+          <h2>同步记录</h2>
+          <p>最近同步活动。</p>
         </div>
       </div>
       {props.notice ? (
@@ -447,21 +448,52 @@ function formatMailEngineWebhookSecretStatus(
 
 function friendlyMailEngineCopy(value: string): string {
   return value
-    .replace(/更新 EmailEngine 访问令牌/g, "更新邮箱接入访问令牌")
-    .replace(/设置 EmailEngine 访问令牌/g, "设置邮箱接入访问令牌")
+    .replace(/更新 EmailEngine 访问令牌/g, "更新邮箱接入权限")
+    .replace(/设置 EmailEngine 访问令牌/g, "设置邮箱接入权限")
     .replace(/EmailEngine/g, "邮箱接入服务")
+    .replace(/邮箱接入服务\s*已具备\s*接入配置。/g, "邮箱接入已就绪。")
+    .replace(/上线能力/g, "接入能力")
     .replace(/上线/g, "接入")
+    .replace(/同步任务/g, "同步")
     .replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/g, "$1$2");
+}
+
+function friendlyMailEngineIssueList(values: string[]): string {
+  return values.map(friendlyMailEngineIssue).join(" / ");
+}
+
+function friendlyMailEngineIssue(value: string): string {
+  const labels: Record<string, string> = {
+    EMAILENGINE_ACCESS_TOKEN_REJECTED: "访问权限未通过",
+    EMAILENGINE_ACCESS_TOKEN_MISSING: "访问权限待设置",
+    EENGINE_PREPARED_TOKEN_MISSING: "接入凭据待设置",
+    EMAILENGINE_WEBHOOK_SECRET_MISSING: "回调保护待设置",
+  };
+  return labels[value] ?? friendlyMailEngineCopy(value);
+}
+
+function friendlyMailEngineEnvList(values: string[]): string {
+  return values.map(friendlyMailEngineEnvName).join(" / ");
+}
+
+function friendlyMailEngineEnvName(value: string): string {
+  const labels: Record<string, string> = {
+    EMAILENGINE_ACCESS_TOKEN: "访问权限",
+    EENGINE_PREPARED_TOKEN: "接入凭据",
+    EMAILENGINE_WEBHOOK_SECRET: "回调保护",
+    EMAILENGINE_URL: "连接地址",
+  };
+  return labels[value] ?? friendlyMailEngineCopy(value);
 }
 
 function friendlySyncDiagnosticTitle(event: OperationalEventDto): string {
   const labels: Record<string, string> = {
     emailengine_webhook_ingested: "邮箱服务状态已更新",
-    worker_result: "同步任务已处理",
-    sync_account_failed: "同步任务没有完成",
-    sync_account_dead_lettered: "同步任务多次失败",
-    sync_job_retry_scheduled: "同步任务等待重试",
-    sync_job_dead_lettered: "同步任务多次失败",
+    worker_result: "同步已处理",
+    sync_account_failed: "同步没有完成",
+    sync_account_dead_lettered: "同步多次失败",
+    sync_job_retry_scheduled: "同步稍后重试",
+    sync_job_dead_lettered: "同步多次失败",
     reauthorization_imap_smtp_failed: "重新授权没有通过",
     native_send_reauthorization_required: "发信权限需要重新授权",
     smtp_send_reauthorization_required: "发信权限需要重新提交授权码",
@@ -471,16 +503,16 @@ function friendlySyncDiagnosticTitle(event: OperationalEventDto): string {
 
 function friendlySyncDiagnosticDetail(event: OperationalEventDto): string | undefined {
   if (event.event === "emailengine_webhook_ingested") {
-    return "系统已收到邮箱服务回调，正在按本地同步状态处理。";
+    return "已收到邮箱更新。";
   }
   if (event.event === "worker_result") {
-    return "后台已处理一条同步任务，邮箱镜像链路有最近活动。";
+    return "邮箱内容已同步。";
   }
   if (event.event === "sync_job_retry_scheduled") {
-    return "同步任务会自动重试；如果持续出现，请打开账号诊断查看恢复建议。";
+    return "稍后会自动重试；如果持续出现，请检查账号。";
   }
   if (event.event === "sync_job_dead_lettered") {
-    return "同步任务多次失败后已停止重试，请打开账号诊断处理。";
+    return "多次失败后已暂停重试，请检查账号。";
   }
   if (event.event === "reauthorization_imap_smtp_failed") {
     return "请检查授权码、专用密码和自定义服务器设置后重新提交。";
@@ -506,12 +538,12 @@ function latestOperationalEvents(
 
 function formatOperationalEventSource(event: OperationalEventDto): string {
   if (event.event === "emailengine_webhook_ingested") {
-    return "收信回调";
+    return "邮箱更新";
   }
 
   const labels: Record<string, string> = {
-    "email-hub-api": "服务",
-    "email-hub-worker": "同步任务",
+    "email-hub-api": "连接",
+    "email-hub-worker": "同步",
   };
 
   return labels[event.service] ?? event.service;
@@ -519,7 +551,7 @@ function formatOperationalEventSource(event: OperationalEventDto): string {
 
 function formatOperationalEventLevel(level: OperationalEventDto["level"]) {
   const labels: Record<OperationalEventDto["level"], string> = {
-    debug: "调试",
+    debug: "记录",
     info: "信息",
     warn: "提醒",
     error: "错误",

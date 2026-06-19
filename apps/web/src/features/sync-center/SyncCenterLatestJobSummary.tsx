@@ -12,7 +12,7 @@ interface SyncCenterJobSummary {
 
 const jobStatusCopy: Record<SyncCenterJobStatus, string> = {
   queued: "排队中",
-  running: "正在同步",
+  running: "同步中",
   done: "最近已完成",
   failed: "最近失败",
   dead_letter: "多次失败已停止",
@@ -34,13 +34,13 @@ export function syncCenterLatestJobSummary(
   }
 
   if (job.status === "queued" && job.notBefore) {
-    parts.push(`下次处理 ${formatShortDateTime(job.notBefore)}`);
+    parts.push(`稍后 ${formatShortDateTime(job.notBefore)}`);
   } else if (job.updatedAt) {
     parts.push(`更新 ${formatShortDateTime(job.updatedAt)}`);
   }
 
   if (job.status === "failed" || job.status === "dead_letter") {
-    parts.push("查看诊断获取恢复建议");
+    parts.push("可检查");
   }
 
   return parts.join(" · ");
@@ -55,7 +55,7 @@ export function SyncCenterLatestJobSummary(props: {
     return null;
   }
 
-  return <span>最近任务：{summary}</span>;
+  return <span>最近同步：{summary}</span>;
 }
 
 function readLatestSyncJob(value: unknown): SyncCenterJobSummary | undefined {
@@ -85,10 +85,10 @@ function isJobStatus(value: unknown): value is SyncCenterJobStatus {
 
 function jobTypeLabel(jobType: string | undefined): string {
   if (jobType === "sync_account") {
-    return "账号同步";
+    return "邮箱同步";
   }
 
-  return "同步任务";
+  return "邮箱同步";
 }
 
 function attemptsLabel(job: SyncCenterJobSummary): string {
@@ -97,10 +97,10 @@ function attemptsLabel(job: SyncCenterJobSummary): string {
   }
 
   if (typeof job.maxAttempts === "number" && job.maxAttempts > 0) {
-    return `尝试 ${job.attempts}/${job.maxAttempts}`;
+    return `第 ${job.attempts}/${job.maxAttempts} 次`;
   }
 
-  return `尝试 ${job.attempts}`;
+  return `第 ${job.attempts} 次`;
 }
 
 function formatShortDateTime(value: string): string {

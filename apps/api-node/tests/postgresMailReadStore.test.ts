@@ -81,8 +81,8 @@ describe("postgres mail read store", () => {
     });
 
     expect(queries[0].text).toMatch(/FROM messages/i);
-    expect(queries[0].text).toMatch(/JOIN message_locations/i);
-    expect(queries[0].text).toMatch(/JOIN mailboxes/i);
+    expect(queries[0].text).toMatch(/LEFT JOIN message_locations/i);
+    expect(queries[0].text).toMatch(/LEFT JOIN mailboxes/i);
     expect(queries[0].text).toMatch(/LEFT JOIN message_classification/i);
     expect(queries[0].text).toMatch(/message_state.deleted_at IS NULL/i);
     expect(queries[0].text).not.toMatch(/provider_message_id/i);
@@ -525,6 +525,7 @@ describe("postgres mail read store", () => {
     await store.listMessages({
       accountId: "account_1",
       limit: 10,
+      mailboxRole: "inbox",
       quickFilters: ["unread", "starred", "attachments"],
     });
 
@@ -537,10 +538,12 @@ describe("postgres mail read store", () => {
     expect(queries[0].text).toMatch(
       /HAVING COUNT\(DISTINCT attachments\.id\) > 0/i,
     );
+    expect(queries[0].text).toMatch(/role_mailboxes\.role = \$4/i);
     expect(queries[0].values).toEqual([
       "account_1",
       null,
       null,
+      "inbox",
       null,
       null,
       11,
@@ -824,6 +827,7 @@ describe("postgres mail read store", () => {
     expect(queries[0].text).toMatch(/WHERE messages.account_id = \$1/i);
     expect(queries[0].text).toMatch(/AND messages.id = \$2/i);
     expect(queries[0].text).toMatch(/message_state.deleted_at IS NULL/i);
+    expect(queries[0].text).not.toMatch(/visible_locations/i);
     expect(queries[0].values).toEqual(["account_1", "message_1"]);
     expect(result).toMatchObject({
       id: "message_1",
@@ -943,8 +947,7 @@ describe("postgres mail read store", () => {
     expect(queries[0].text).toMatch(/JOIN messages/i);
     expect(queries[0].text).toMatch(/JOIN message_state/i);
     expect(queries[0].text).toMatch(/message_state.deleted_at IS NULL/i);
-    expect(queries[0].text).toMatch(/EXISTS/i);
-    expect(queries[0].text).toMatch(/FROM message_locations/i);
+    expect(queries[0].text).not.toMatch(/FROM message_locations/i);
     expect(queries[0].values).toEqual(["account_1", "attachment_1"]);
     expect(result).toEqual({
       id: "attachment_1",

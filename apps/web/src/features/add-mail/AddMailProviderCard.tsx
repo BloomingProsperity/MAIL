@@ -20,9 +20,21 @@ export function AddMailProviderCard(props: {
   onConnect: () => void;
 }) {
   const provider = props.provider;
-  const idleLabel = providerActionLabel(provider.action);
+  const idleLabel = providerActionLabel(provider);
+  const disabled = Boolean(props.busy || props.disabled);
+
+  function handleConnect() {
+    if (!disabled) {
+      props.onConnect();
+    }
+  }
+
   return (
-    <article className="provider-card">
+    <article
+      aria-label={`${provider.title} 接入卡片`}
+      className={`provider-card${disabled ? " is-disabled" : ""}`}
+      onClick={handleConnect}
+    >
       <ProviderIcon
         mark={provider.mark}
         provider={provider.provider}
@@ -41,22 +53,15 @@ export function AddMailProviderCard(props: {
             ))}
           </div>
         ) : null}
-        {provider.setupHints.length > 0 ? (
-          <ul
-            className="provider-card-hints"
-            aria-label={`${provider.title} 准备事项`}
-          >
-            {provider.setupHints.slice(0, 3).map((hint) => (
-              <li key={hint}>{hint}</li>
-            ))}
-          </ul>
-        ) : null}
       </div>
       <button
         type="button"
         aria-label={`连接 ${provider.title}`}
-        disabled={props.busy || props.disabled}
-        onClick={props.onConnect}
+        disabled={disabled}
+        onClick={(event) => {
+          event.stopPropagation();
+          handleConnect();
+        }}
       >
         {props.busy ? "连接中" : idleLabel}
       </button>
@@ -64,15 +69,24 @@ export function AddMailProviderCard(props: {
   );
 }
 
-function providerActionLabel(action: AddMailProviderOption["action"]) {
-  if (action === "oauth") {
+function providerActionLabel(provider: AddMailProviderOption) {
+  if (provider.action === "oauth") {
     return "网页登录";
   }
-  if (action === "manual") {
+  if (provider.action === "manual") {
     return "手动设置";
   }
-  if (action === "bridge") {
+  if (provider.action === "bridge") {
     return "填写 Bridge";
+  }
+  if (
+    provider.badges.includes("专用密码") &&
+    !provider.badges.includes("授权码")
+  ) {
+    return "填写专用密码";
+  }
+  if (provider.badges.includes("专用密码")) {
+    return "填写授权信息";
   }
 
   return "填写授权码";

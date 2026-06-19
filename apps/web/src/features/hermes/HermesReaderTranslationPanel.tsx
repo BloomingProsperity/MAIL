@@ -49,7 +49,7 @@ export function HermesReaderTranslationControls(props: {
       <button
         className="toolbar-button"
         type="button"
-        aria-label="Ask Hermes to translate selected message"
+        aria-label="让 Hermes 翻译当前邮件"
         disabled={props.busy || sameExplicitLanguage}
         title={
           sameExplicitLanguage ? "源语言和目标语言相同，无需翻译" : undefined

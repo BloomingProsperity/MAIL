@@ -192,6 +192,73 @@ describe("OAuth onboarding service", () => {
     ]);
   });
 
+  it("uses the Google id token profile when Gmail profile lookup is unavailable", async () => {
+    const store = createInMemoryOAuthOnboardingStore();
+    const emailEngineRegistrations: unknown[] = [];
+    const providers = createOAuthProviderRegistry({
+      googleClientId: "google-client-id",
+      googleClientSecret: "google-client-secret",
+    });
+    const service = createOAuthOnboardingService({
+      store,
+      providers,
+      tokenClient: {
+        async exchangeCode() {
+          return {
+            accessToken: "access-token",
+            refreshToken: "refresh-token-secret",
+            idToken: googleIdToken({
+              aud: "google-client-id",
+              email: "id-token@gmail.com",
+              name: "ID Token User",
+            }),
+            expiresIn: 3600,
+            tokenType: "Bearer",
+          };
+        },
+      },
+      profileClient: {
+        async getProfile() {
+          throw new Error("OAuth profile lookup failed: 403 gmail");
+        },
+      },
+      emailEngineAccounts: {
+        async registerOAuthAccount(input: unknown) {
+          emailEngineRegistrations.push(input);
+          return { account: "acc_1", state: "syncing" };
+        },
+      },
+      createId: (() => {
+        const ids = ["task_1", "state_1", "acc_1", "secret_1"];
+        return () => ids.shift() ?? "extra";
+      })(),
+    });
+
+    await service.createAuthSession({
+      provider: "gmail",
+      redirectUri: "https://app.example.com/oauth/callback",
+    });
+    const result = await service.completeAuthCallback({
+      state: "state_1",
+      code: "code_1",
+    });
+
+    expect(result.account).toMatchObject({
+      id: "acc_1",
+      email: "id-token@gmail.com",
+      displayName: "ID Token User",
+      provider: "gmail",
+    });
+    expect(emailEngineRegistrations).toEqual([
+      {
+        accountId: "acc_1",
+        email: "id-token@gmail.com",
+        displayName: "ID Token User",
+        provider: "gmail",
+      },
+    ]);
+  });
+
   it("reuses the canonical account id when the same OAuth mailbox is connected again", async () => {
     const store = createInMemoryOAuthOnboardingStore();
     const bootstrapJobs: unknown[] = [];
@@ -418,3 +485,19 @@ describe("OAuth onboarding service", () => {
     expect(store.listAccounts()).toEqual([]);
   });
 });
+
+function googleIdToken(payload: Record<string, unknown>): string {
+  return [
+    encodeJwtPart({ alg: "none", typ: "JWT" }),
+    encodeJwtPart({
+      iss: "https://accounts.google.com",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      ...payload,
+    }),
+    "signature",
+  ].join(".");
+}
+
+function encodeJwtPart(value: Record<string, unknown>): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}

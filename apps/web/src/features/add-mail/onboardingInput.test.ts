@@ -132,8 +132,7 @@ describe("Add Mail onboarding input", () => {
       }),
     ).toEqual({
       ok: false,
-      notice:
-        "Proton Mail 的 Bridge 收信和发信地址需要一起填写，或都留空使用服务器默认配置。",
+      notice: "Proton Mail Bridge 地址不完整。",
     });
   });
 });

@@ -35,7 +35,7 @@ describe("Add Mail OAuth diagnostics", () => {
 
     expect(
       await screen.findByText(
-        "Gmail 网页登录配置还没完成，请让管理员配置服务商登录凭据后再试。",
+        "Gmail 网页登录暂时不可用。",
       ),
     ).toBeTruthy();
     expect(oauthRedirect).not.toHaveBeenCalled();
@@ -77,7 +77,7 @@ describe("Add Mail OAuth diagnostics", () => {
     });
     expect(
       await screen.findByText(
-        "授权没有返回长期同步权限，请重新登录并同意离线访问。",
+        "授权没有返回长期同步权限。",
       ),
     ).toBeTruthy();
     expect(document.body.textContent ?? "").not.toContain("refresh token");
@@ -102,9 +102,7 @@ describe("Add Mail OAuth diagnostics", () => {
 
     render(<App api={api} defaultAccountId="account_1" />);
 
-    expect(
-      await screen.findByText("登录授权被取消，请回到添加邮箱重新开始。"),
-    ).toBeTruthy();
+    expect(await screen.findByText("登录授权已取消。")).toBeTruthy();
     expect(api.completeOAuthCallback).not.toHaveBeenCalled();
     expect(document.body.textContent ?? "").not.toContain("access_denied");
   });

@@ -170,7 +170,7 @@ describe("emailHubApi", () => {
     );
   });
 
-  it("loads API health for Sync Center launch guidance", async () => {
+  it("loads API health for email connection availability", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         service: "email-hub-api",
@@ -1916,6 +1916,7 @@ describe("emailHubApi", () => {
   it("loads provider groups and quick categories for the left navigation", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
+        folders: [{ id: "inbox", label: "收件箱", count: 36 }],
         providerGroups: [
           { id: "gmail", label: "Gmail", count: 2 },
           { id: "outlook", label: "Outlook", count: 1 },
@@ -1934,11 +1935,8 @@ describe("emailHubApi", () => {
       "/api/mail-navigation/summary",
       expect.objectContaining({ method: "GET" }),
     );
-    expect(summary.providerGroups[0]).toEqual({
-      id: "gmail",
-      label: "Gmail",
-      count: 2,
-    });
+    expect(summary.providerGroups[0]).toEqual({ id: "gmail", label: "Gmail", count: 2 });
+    expect(summary.folders[0]).toEqual({ id: "inbox", label: "收件箱", count: 36 });
     expect(summary.quickCategories[0]).toEqual({
       id: "codes",
       label: "验证码",
@@ -2031,7 +2029,7 @@ describe("emailHubApi", () => {
     );
   });
 
-  it("loads Sync Center account diagnostics with filter parameters", async () => {
+  it("loads email connection account diagnostics with filter parameters", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         items: [
@@ -2070,7 +2068,7 @@ describe("emailHubApi", () => {
     });
   });
 
-  it("lists and completes Sync Center reauthorization tasks", async () => {
+  it("lists and completes email connection reauthorization tasks", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url === "/api/sync-center/reauthorizations") {
         return jsonResponse({

@@ -65,16 +65,14 @@ describe("FollowUpTodoPanel", () => {
         status: "done",
       });
     });
-    expect(await screen.findByText(/marked done/)).toBeTruthy();
+    expect(await screen.findByText("Check whether Lina replied 已完成。")).toBeTruthy();
   });
 
   it("shows a local preview when no backend api is attached", async () => {
     render(<FollowUpTodoPanel accountId="account_1" embedded />);
 
     expect(await screen.findByText("今天 17:00 前确认 Q2 合作方案")).toBeTruthy();
-    expect(
-      screen.getByText("连接服务后会显示同步后的待办。"),
-    ).toBeTruthy();
+    expect(screen.queryByText(/连接服务后/)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Mark follow-up done" }));
     expect(screen.queryByText("今天 17:00 前确认 Q2 合作方案")).toBeNull();

@@ -75,9 +75,6 @@ export function ProtonBridgeServerFieldsPanel(props: {
         />
         <span>发信使用加密连接</span>
       </label>
-      <div className="bridge-field-help" aria-label="Proton Bridge 网络位置提示">
-        自托管部署时，请填写 Email Hub 服务器能访问的 Bridge 地址。
-      </div>
     </div>
   );
 }

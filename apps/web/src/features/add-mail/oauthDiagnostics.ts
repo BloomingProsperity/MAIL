@@ -8,16 +8,16 @@ export function formatOAuthStartError(
 ): string {
   const profile = oauthErrorProfile(error);
   if (profile.unavailable) {
-    return `${providerTitle} 网页登录服务暂时不可用，请稍后重试。`;
+    return `${providerTitle} 网页登录服务暂时不可用。`;
   }
   if (profile.missingProviderConfig) {
-    return `${providerTitle} 网页登录配置还没完成，请让管理员配置服务商登录凭据后再试。`;
+    return `${providerTitle} 网页登录暂时不可用。`;
   }
   if (profile.redirectMismatch) {
-    return `${providerTitle} 登录回调地址不匹配，请确认当前访问域名已加入服务商登录回调地址。`;
+    return `${providerTitle} 登录地址不匹配。`;
   }
 
-  return `${providerTitle} 暂时无法开始连接，请检查网页登录配置后重试。`;
+  return `${providerTitle} 暂时无法开始连接。`;
 }
 
 export function formatOAuthCallbackError(input: {
@@ -26,34 +26,31 @@ export function formatOAuthCallbackError(input: {
 }): string {
   const profile = oauthErrorProfile(input.error);
   if (profile.sessionExpired) {
-    return input.flow === "reauthorization"
-      ? "登录会话已过期，请回到同步中心重新登录。"
-      : "登录会话已过期，请回到添加邮箱重新开始。";
+    return "登录会话已过期。";
   }
   if (profile.codeExpired) {
-    return input.flow === "reauthorization"
-      ? "授权码已失效，请回到同步中心重新登录。"
-      : "授权码已失效，请回到添加邮箱重新开始。";
+    return "授权码已失效。";
   }
   if (profile.missingRefreshToken) {
-    return "授权没有返回长期同步权限，请重新登录并同意离线访问。";
+    return "授权没有返回长期同步权限。";
   }
   if (profile.missingProviderConfig) {
-    return "网页登录配置还没完成，请让管理员配置服务商登录凭据后再试。";
+    return "网页登录暂时不可用。";
+  }
+  if (profile.profileLookupFailed) {
+    return "Gmail 资料读取被 Google 拒绝。";
   }
   if (profile.redirectMismatch) {
-    return "登录回调地址不匹配，请确认当前访问域名已加入服务商登录回调地址。";
+    return "登录地址不匹配。";
   }
 
   return input.flow === "reauthorization"
-    ? "重新登录没有完成，请回到同步中心重试。"
-    : "邮箱连接没有完成，请回到添加邮箱重试。";
+    ? "重新登录没有完成。"
+    : "添加邮箱没有完成。";
 }
 
 export function formatOAuthProviderDeniedError(flow: OAuthFlow): string {
-  return flow === "reauthorization"
-    ? "登录授权被取消，请回到同步中心重新登录。"
-    : "登录授权被取消，请回到添加邮箱重新开始。";
+  return flow === "reauthorization" ? "重新登录已取消。" : "登录授权已取消。";
 }
 
 function oauthErrorProfile(error: unknown): {
@@ -63,6 +60,7 @@ function oauthErrorProfile(error: unknown): {
   missingRefreshToken: boolean;
   sessionExpired: boolean;
   codeExpired: boolean;
+  profileLookupFailed: boolean;
 } {
   const code = error instanceof ApiRequestError ? error.code : "";
   const status = error instanceof ApiRequestError ? error.status : 0;
@@ -78,6 +76,9 @@ function oauthErrorProfile(error: unknown): {
     missingRefreshToken: /refresh token/i.test(message),
     sessionExpired: /state (was )?not found|session/i.test(message),
     codeExpired: /invalid_grant|expired|authorization code|oauth code/i.test(
+      message,
+    ),
+    profileLookupFailed: /profile lookup failed.*gmail|gmail profile/i.test(
       message,
     ),
   };

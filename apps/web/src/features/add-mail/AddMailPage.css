@@ -1,0 +1,361 @@
+.add-mail-page {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: calc(100vh - 96px);
+}
+
+.add-mail-topbar {
+  min-height: 68px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 12px;
+}
+
+.add-mail-topbar > div {
+  max-width: none;
+}
+
+.add-mail-topbar p {
+  max-width: 760px;
+  font-size: 16px;
+}
+
+.add-mail-page .page-panel {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.add-mail-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 0;
+  padding: 16px;
+}
+
+.add-mail-form label {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.add-mail-form input {
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 0 14px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font: inherit;
+  outline: 0;
+}
+
+.add-mail-form input:focus {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.add-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.add-grid .provider-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 140px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 20px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 18px rgba(31, 41, 51, 0.045);
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.add-grid .provider-card:hover {
+  border-color: var(--primary-border);
+  box-shadow: 0 12px 26px rgba(31, 41, 51, 0.075);
+  transform: translateY(-1px);
+}
+
+.add-grid .provider-card.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  transform: none;
+}
+
+.add-grid .provider-card > div:nth-child(2) {
+  min-width: 0;
+}
+
+.add-grid .provider-card strong {
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.add-grid .provider-card span {
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.add-grid .provider-card button {
+  min-height: 44px;
+  padding: 0 18px;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.add-grid .provider-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(229, 233, 229, 0.6);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-main);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.add-grid .provider-icon img {
+  display: block;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.add-grid .provider-icon.custom-icon {
+  background: var(--mint-soft);
+  color: var(--mint-text);
+}
+
+.credential-submit-row {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg-soft);
+}
+
+.credential-submit-row strong,
+.credential-submit-row span {
+  display: block;
+}
+
+.credential-submit-row span {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.bridge-field-help {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--blue-soft);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.bridge-field-help strong {
+  color: var(--text-main);
+}
+
+.custom-server-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.custom-server-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.custom-server-heading h2,
+.custom-server-heading p {
+  margin: 0;
+}
+
+.custom-server-heading h2 {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.custom-server-heading p {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.custom-server-heading button {
+  flex: 0 0 auto;
+  border: 1px solid var(--primary-border);
+  border-radius: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 900;
+}
+
+.custom-server-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.custom-server-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.custom-server-grid input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font: inherit;
+  outline: 0;
+}
+
+.custom-server-grid input:focus {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.custom-server-grid .server-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.custom-server-grid .server-toggle input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
+.import-transfer-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.import-transfer-panel summary {
+  cursor: pointer;
+  color: var(--text-main);
+  font-weight: 800;
+}
+
+.import-transfer-panel[open] summary {
+  margin-bottom: 4px;
+}
+
+.import-transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.import-transfer-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.import-transfer-grid textarea {
+  width: 100%;
+  min-height: 118px;
+  resize: vertical;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font: inherit;
+  outline: 0;
+}
+
+.import-transfer-grid textarea:focus {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.transfer-account-picker,
+.migration-result-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg-soft);
+}
+
+.transfer-account-picker > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .add-grid .provider-card {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .add-grid .provider-card button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .custom-server-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .transfer-account-picker > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

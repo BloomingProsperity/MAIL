@@ -218,6 +218,19 @@ import {
   type OperationalEventRecordInput,
   type OperationalEventLogService,
 } from "../logging/operational-events.js";
+import {
+  DEFAULT_WEB_SESSION_MAX_AGE_SECONDS,
+  handleWebSessionRoute,
+  isWebSessionRoute,
+  type WebSession,
+} from "./web-session.js";
+import type { WebAuthStore } from "./web-auth.js";
+import {
+  isAccountAccessAllowed,
+  isApiAccessAccountScoped,
+  readApiAccessToken,
+  resolveApiRequestAccess,
+} from "./api-access.js";
 
 const DEFAULT_MAX_REQUEST_BODY_BYTES = 1_048_576;
 const DEFAULT_MAX_COMPOSE_REQUEST_BODY_BYTES = 40 * 1024 * 1024;
@@ -430,6 +443,11 @@ export interface ApiConfig {
   apiAccessTokenConfigured?: boolean;
   apiAccessTokenRequired?: boolean;
   apiAccessAccountIds?: string[];
+  webAuthDisabled?: boolean;
+  webAuthStore?: WebAuthStore;
+  createWebAuthUserId?: () => string;
+  webSessionCookieSecure?: boolean;
+  webSessionMaxAgeSeconds?: number;
   emailEngineUrl: string;
   emailEngineWebhookSecret: string;
   emailEngineAccessTokenConfigured?: boolean;
@@ -512,6 +530,10 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
     DEFAULT_MAX_COMPOSE_ATTACHMENT_UPLOAD_BYTES;
   const maxAttachmentDownloadBytes =
     config.maxAttachmentDownloadBytes ?? DEFAULT_MAX_ATTACHMENT_DOWNLOAD_BYTES;
+  const webSessions = new Map<string, WebSession>();
+  const webSessionMaxAgeSeconds =
+    config.webSessionMaxAgeSeconds ?? DEFAULT_WEB_SESSION_MAX_AGE_SECONDS;
+  const nowMs = () => (config.now ?? (() => new Date()))().getTime();
 
   return async (request, response) => {
     const requestId =
@@ -544,7 +566,28 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
       readBodyBuffer(request, maxComposeAttachmentUploadBytes);
 
     try {
-      if (!isApiRequestAuthorized(request, config)) {
+      if (
+        isWebSessionRoute(request.url) &&
+        (await handleWebSessionRoute({
+          request,
+          response,
+          config,
+          sessions: webSessions,
+          readRequestBody,
+          nowMs,
+          maxAgeSeconds: webSessionMaxAgeSeconds,
+        }))
+      ) {
+        return;
+      }
+
+      const apiAccess = resolveApiRequestAccess(
+        request,
+        config,
+        webSessions,
+        nowMs,
+      );
+      if (!apiAccess.authorized) {
         config.logger?.warn("api_request_unauthorized", {
           requestId,
           method: request.method,
@@ -554,7 +597,7 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
         writeJson(response, 401, { error: "api_unauthorized" });
         return;
       }
-      const apiAccessContext = createApiAccessContext(config);
+      const apiAccessContext = apiAccess.context;
       const scopedAccountId = readScopedRouteAccountId(request.url);
       if (
         scopedAccountId &&
@@ -2502,6 +2545,9 @@ export function createApiHandler(config: ApiConfig): ApiHandler {
             ...(mailReadRoute.mailboxId
               ? { mailboxId: mailReadRoute.mailboxId }
               : {}),
+            ...(mailReadRoute.mailboxRole
+              ? { mailboxRole: mailReadRoute.mailboxRole }
+              : {}),
             limit: mailReadRoute.limit,
             ...(mailReadRoute.cursor ? { cursor: mailReadRoute.cursor } : {}),
             ...(mailReadRoute.q ? { q: mailReadRoute.q } : {}),
@@ -3940,61 +3986,6 @@ function parseRequestId(
   return trimmed.slice(0, 128);
 }
 
-function isApiRequestAuthorized(
-  request: IncomingMessage,
-  config: ApiConfig,
-): boolean {
-  const path = getRequestPathname(request.url);
-  if (!path.startsWith("/api/")) {
-    return true;
-  }
-  if (isApiAuthExemptPath(path)) {
-    return true;
-  }
-
-  const expectedToken = config.apiAccessToken?.trim();
-  if (!expectedToken) {
-    return !config.apiAccessTokenRequired;
-  }
-
-  const suppliedToken = readApiAccessToken(request);
-  return suppliedToken ? safeEqual(suppliedToken, expectedToken) : false;
-}
-
-interface ApiAccessContext {
-  accountIds?: Set<string>;
-}
-
-function createApiAccessContext(config: ApiConfig): ApiAccessContext {
-  const accountIds = normalizeApiAccessAccountIds(config.apiAccessAccountIds);
-  return accountIds.length > 0 ? { accountIds: new Set(accountIds) } : {};
-}
-
-function normalizeApiAccessAccountIds(value: string[] | undefined): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      value
-        .map((accountId) => accountId.trim())
-        .filter((accountId) => accountId.length > 0),
-    ),
-  );
-}
-
-function isApiAccessAccountScoped(context: ApiAccessContext): boolean {
-  return Boolean(context.accountIds && context.accountIds.size > 0);
-}
-
-function isAccountAccessAllowed(
-  context: ApiAccessContext,
-  accountId: string,
-): boolean {
-  return !context.accountIds || context.accountIds.has(accountId);
-}
-
 function isRequestPath(
   requestUrl: string | undefined,
   expectedPathname: string,
@@ -4220,6 +4211,10 @@ function isDiagnosticsReadAuthorized(
   request: IncomingMessage,
   config: ApiConfig,
 ): boolean {
+  if (config.webAuthDisabled) {
+    return true;
+  }
+
   const expectedToken = config.apiAccessToken?.trim();
   if (!expectedToken) {
     return false;
@@ -4243,26 +4238,6 @@ function rejectDiagnosticsRead(
   });
   response.setHeader("www-authenticate", 'Bearer realm="email-hub"');
   writeJson(response, 401, { error: "api_unauthorized" });
-}
-
-function isApiAuthExemptPath(path: string): boolean {
-  return (
-    path === "/api/webhooks/emailengine" ||
-    path === "/api/mail-engine/auth-server"
-  );
-}
-
-function readApiAccessToken(request: IncomingMessage): string | undefined {
-  const authorization = request.headers.authorization;
-  if (authorization?.startsWith("Bearer ")) {
-    const bearerToken = authorization.slice("Bearer ".length).trim();
-    return bearerToken || undefined;
-  }
-
-  const header = request.headers["x-emailhub-api-token"];
-  const rawToken = Array.isArray(header) ? header[0] : header;
-  const token = rawToken?.trim();
-  return token || undefined;
 }
 
 function getRequestPathname(requestUrl: string | undefined): string {
@@ -5902,6 +5877,7 @@ function parseMailReadRoute(
       action: "list_messages";
       accountId?: string;
       mailboxId?: string;
+      mailboxRole?: string;
       limit: number;
       cursor?: string;
       q?: string;
@@ -5953,6 +5929,9 @@ function parseMailReadRoute(
   }
 
   const mailboxId = url.searchParams.get("mailboxId");
+  const mailboxRole = parseMailMailboxRole(
+    url.searchParams.get("mailboxRole") ?? url.searchParams.get("folderRole"),
+  );
   const sort = parseMailSort(url.searchParams.get("sort"));
   const cursor = parseMailReadCursor(url.searchParams.get("cursor"), sort);
   const q = parseMailSearchQuery(url.searchParams.get("q"));
@@ -5984,6 +5963,7 @@ function parseMailReadRoute(
     action: "list_messages",
     ...(accountId ? { accountId } : {}),
     ...(isNonEmptyString(mailboxId) ? { mailboxId } : {}),
+    ...(mailboxRole ? { mailboxRole } : {}),
     limit: parseLimit(url.searchParams.get("limit")),
     ...(cursor ? { cursor } : {}),
     ...(q ? { q } : {}),
@@ -6188,6 +6168,29 @@ function parseMailQuickFilters(params: URLSearchParams): MailQuickFilter[] {
 
     throw new InvalidMailReadRequestError();
   });
+}
+
+function parseMailMailboxRole(value: string | null): string | undefined {
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+
+  const mailboxRole = value.trim().toLowerCase();
+  if (
+    mailboxRole === "inbox" ||
+    mailboxRole === "drafts" ||
+    mailboxRole === "sent" ||
+    mailboxRole === "archive" ||
+    mailboxRole === "junk" ||
+    mailboxRole === "trash" ||
+    mailboxRole === "label" ||
+    mailboxRole === "feed" ||
+    mailboxRole === "important"
+  ) {
+    return mailboxRole;
+  }
+
+  throw new InvalidMailReadRequestError();
 }
 
 function parseMailSearchScopes(params: URLSearchParams): MailSearchScope[] {

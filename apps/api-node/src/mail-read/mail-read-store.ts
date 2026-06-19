@@ -75,6 +75,7 @@ export interface ListMailboxesInput {
 export interface ListMessagesInput {
   accountId?: string;
   mailboxId?: string;
+  mailboxRole?: string;
   limit: number;
   cursor?: string;
   q?: string;

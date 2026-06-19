@@ -16,9 +16,7 @@ describe("OAuth diagnostics", () => {
           detail: "gmail OAuth client is not configured",
         }),
       ),
-    ).toBe(
-      "Gmail 网页登录配置还没完成，请让管理员配置服务商登录凭据后再试。",
-    );
+    ).toBe("Gmail 网页登录暂时不可用。");
   });
 
   it("maps redirect mismatch to a domain callback message", () => {
@@ -29,9 +27,7 @@ describe("OAuth diagnostics", () => {
           detail: "OAuth provider rejected redirect",
         }),
       ),
-    ).toBe(
-      "Outlook 登录回调地址不匹配，请确认当前访问域名已加入服务商登录回调地址。",
-    );
+    ).toBe("Outlook 登录地址不匹配。");
   });
 
   it("maps callback token failures without exposing raw OAuth details", () => {
@@ -42,12 +38,12 @@ describe("OAuth diagnostics", () => {
           detail: "OAuth callback did not return a refresh token",
         }),
       }),
-    ).toBe("授权没有返回长期同步权限，请重新登录并同意离线访问。");
+    ).toBe("授权没有返回长期同步权限。");
   });
 
   it("uses the correct retry surface when the provider denies authorization", () => {
     expect(formatOAuthProviderDeniedError("reauthorization")).toBe(
-      "登录授权被取消，请回到同步中心重新登录。",
+      "重新登录已取消。",
     );
   });
 });

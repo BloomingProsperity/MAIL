@@ -273,18 +273,17 @@ function bundledPostgresPasswordIssues(
 function checkWebApiTokenCompatibility(
   env: Record<string, string | undefined>,
 ): PreflightCheck {
-  const apiToken = env.EMAILHUB_API_TOKEN?.trim();
   const webToken = env.VITE_EMAILHUB_API_TOKEN?.trim();
-  if (apiToken && webToken && apiToken !== webToken) {
+  if (webToken) {
     return {
       ok: false,
       issues: [
         {
-          code: "vite_emailhub_api_token_mismatch",
+          code: "vite_emailhub_api_token_configured",
           severity: "error",
-          env: ["EMAILHUB_API_TOKEN", "VITE_EMAILHUB_API_TOKEN"],
+          env: ["VITE_EMAILHUB_API_TOKEN"],
           detail:
-            "VITE_EMAILHUB_API_TOKEN must match EMAILHUB_API_TOKEN for the bundled protected web app.",
+            "VITE_EMAILHUB_API_TOKEN must not be set for the production web build; browsers authenticate with an HttpOnly session cookie after login.",
         },
       ],
     };

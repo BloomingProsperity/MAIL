@@ -52,9 +52,9 @@ export function HermesComposeDraftTools(props: {
 
   return (
     <div className="composer-tool-row">
-      <div className="compose-translate-controls" aria-label="Compose translation controls">
+      <div className="compose-translate-controls" aria-label="Hermes 草稿翻译">
         <select
-          aria-label="Compose translation source language"
+          aria-label="草稿源语言"
           value={props.sourceLanguage}
           disabled={props.busy}
           onChange={(event) => props.onSourceLanguageChange(event.target.value)}
@@ -66,7 +66,7 @@ export function HermesComposeDraftTools(props: {
           ))}
         </select>
         <select
-          aria-label="Compose translation target language"
+          aria-label="草稿目标语言"
           value={props.targetLanguage}
           disabled={props.busy}
           onChange={(event) => props.onTargetLanguageChange(event.target.value)}
@@ -80,7 +80,7 @@ export function HermesComposeDraftTools(props: {
         <button
           className="tiny-button"
           type="button"
-          aria-label="Translate composed draft with Hermes"
+          aria-label="让 Hermes 翻译草稿"
           disabled={props.busy || sameExplicitLanguage}
           title={
             sameExplicitLanguage ? "源语言和目标语言相同，无需翻译" : undefined
@@ -94,7 +94,7 @@ export function HermesComposeDraftTools(props: {
       <button
         className="tiny-button"
         type="button"
-        aria-label="Polish composed draft with Hermes"
+        aria-label="让 Hermes 润色草稿"
         disabled={props.busy}
         onClick={props.onPolish}
       >
@@ -104,7 +104,7 @@ export function HermesComposeDraftTools(props: {
       <button
         className="tiny-button"
         type="button"
-        aria-label="Preview composed draft"
+        aria-label="预览草稿"
         disabled={props.busy}
         onClick={props.onPreview}
       >
@@ -127,7 +127,7 @@ export function HermesReplyAssistantPanel(props: {
         <span>From: {props.fromLabel}</span>
         <button
           type="button"
-          aria-label="Ask Hermes to draft reply"
+          aria-label="让 Hermes 写回复"
           disabled={props.busy}
           onClick={props.onDraftReply}
         >
@@ -139,7 +139,7 @@ export function HermesReplyAssistantPanel(props: {
           <button
             key={action.scenario}
             type="button"
-            aria-label={`Ask Hermes quick reply ${action.scenario}`}
+            aria-label={`让 Hermes 快速回复 ${action.label}`}
             disabled={props.busy}
             onClick={() => props.onQuickReply(action)}
           >

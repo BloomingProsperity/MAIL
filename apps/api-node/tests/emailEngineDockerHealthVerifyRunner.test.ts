@@ -92,6 +92,11 @@ describe("EmailEngine Docker health verify CLI runner", () => {
         },
         {
           service: "api",
+          name: "EMAILHUB_SESSION_COOKIE_SECURE",
+          expected: "true",
+        },
+        {
+          service: "api",
           name: "EMAILHUB_NATIVE_ENGINE_ENABLED",
           expected: { kind: "absent" },
         },
@@ -368,7 +373,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
     expect(JSON.stringify(stdout)).not.toContain("file-token");
   });
 
-  it("fails before Docker checks when the built web token would not match the API token", async () => {
+  it("fails before Docker checks when a browser-bundled web token is configured", async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];
     const verifyHealth = vi.fn() as unknown as typeof verifyDockerComposeHealth;
@@ -382,7 +387,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
       readEnvFile: () =>
         [
           "EMAILHUB_API_TOKEN=api-token",
-          "VITE_EMAILHUB_API_TOKEN=wrong-web-token",
+          "VITE_EMAILHUB_API_TOKEN=browser-token",
           "EMAILENGINE_ACCESS_TOKEN=engine-token",
           "EENGINE_PREPARED_TOKEN=prepared-token",
           "EENGINE_SECRET=service-secret",
@@ -406,7 +411,7 @@ describe("EmailEngine Docker health verify CLI runner", () => {
     });
     expect(JSON.stringify(parsed)).toContain("VITE_EMAILHUB_API_TOKEN");
     expect(JSON.stringify(parsed)).not.toContain("api-token");
-    expect(JSON.stringify(parsed)).not.toContain("wrong-web-token");
+    expect(JSON.stringify(parsed)).not.toContain("browser-token");
   });
 
   it.each([
@@ -619,6 +624,11 @@ describe("EmailEngine Docker health verify CLI runner", () => {
       }),
     ).toEqual(
       expect.arrayContaining([
+        {
+          service: "api",
+          name: "EMAILHUB_SESSION_COOKIE_SECURE",
+          expected: "true",
+        },
         {
           service: "emailengine",
           name: "EENGINE_PREPARED_TOKEN",

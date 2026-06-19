@@ -42,7 +42,7 @@ describe("Add Mail Proton Bridge", () => {
     fireEvent.change(screen.getByLabelText("Proton Bridge send host"), {
       target: { value: "host.docker.internal" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "测试并接入Proton Mail" }));
+    fireEvent.click(screen.getByRole("button", { name: "接入Proton Mail" }));
 
     const expectedInput = {
       email: "me@proton.me",
@@ -66,9 +66,7 @@ describe("Add Mail Proton Bridge", () => {
       expect(api.testImapSmtpConnection).toHaveBeenCalledWith(expectedInput);
       expect(api.onboardImapSmtpAccount).toHaveBeenCalledWith(expectedInput);
     });
-    expect(
-      screen.getByLabelText("Proton Bridge 网络位置提示").textContent,
-    ).toContain("Email Hub 服务器能访问");
+    expect(screen.queryByLabelText("Proton Bridge 网络位置提示")).toBeNull();
   });
 
   it("stops Proton Bridge testing when only one Bridge host is filled", async () => {
@@ -100,11 +98,11 @@ describe("Add Mail Proton Bridge", () => {
     fireEvent.change(screen.getByLabelText("Proton Bridge receive host"), {
       target: { value: "host.docker.internal" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "测试并接入Proton Mail" }));
+    fireEvent.click(screen.getByRole("button", { name: "接入Proton Mail" }));
 
     expect(
       await screen.findByText(
-        "Proton Mail 的 Bridge 收信和发信地址需要一起填写，或都留空使用服务器默认配置。",
+        "Proton Mail Bridge 地址不完整。",
       ),
     ).toBeTruthy();
     expect(api.testImapSmtpConnection).not.toHaveBeenCalled();

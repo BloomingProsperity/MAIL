@@ -192,6 +192,39 @@ describe("mail engine runtime migration", () => {
     expect(sql).toMatch(/char_length\(custom_instructions\) <= 2000/i);
   });
 
+  it("adds idempotent web auth user storage for first-run admin setup", async () => {
+    const sql = await readMigrationFile("0052_web_auth_users.sql");
+
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS web_auth_users/i);
+    expect(sql).toMatch(/email_normalized TEXT NOT NULL/i);
+    expect(sql).toMatch(/password_hash TEXT NOT NULL/i);
+    expect(sql).toMatch(/role TEXT NOT NULL DEFAULT 'owner'/i);
+    expect(sql).toMatch(
+      /CREATE UNIQUE INDEX IF NOT EXISTS web_auth_users_email_normalized_idx/i,
+    );
+    expect(sql).toMatch(
+      /CREATE UNIQUE INDEX IF NOT EXISTS web_auth_users_single_owner_idx/i,
+    );
+  });
+
+  it("backfills missing message locations from provider refs and inbox fallback", async () => {
+    const sql = await readMigrationFile("0053_backfill_message_locations.sql");
+
+    expect(sql).toMatch(/INSERT INTO message_locations/i);
+    expect(sql).toMatch(/provider_message_refs\.raw_ref->>'path'/i);
+    expect(sql).toMatch(/provider_message_refs\.raw_ref->>'mailboxPath'/i);
+    expect(sql).toMatch(/jsonb_array_elements_text/i);
+    expect(sql).toMatch(/provider_message_refs\.raw_ref->'labelIds'/i);
+    expect(sql).toMatch(/mailboxes\.provider_mailbox_id/i);
+    expect(sql).toMatch(/INSERT INTO mailboxes/i);
+    expect(sql).toMatch(/gen_random_uuid\(\)/i);
+    expect(sql).toMatch(/'INBOX'/i);
+    expect(sql).toMatch(/inbox_mailboxes\.role = 'inbox'/i);
+    expect(sql).toMatch(/message_state\.deleted_at IS NULL/i);
+    expect(sql).toMatch(/NOT EXISTS \([\s\S]*FROM message_locations/i);
+    expect(sql).toMatch(/ON CONFLICT \(message_id, mailbox_id\) DO NOTHING/i);
+  });
+
   it("adds provider capability and saved view tables for mail navigation", async () => {
     const sql = await readMigrationFile("0031_provider_capabilities_saved_views.sql");
 

@@ -4,7 +4,7 @@ import { AddMailProviderCard } from "./AddMailProviderCard";
 import type { AddMailProviderOption } from "./providerCapabilities";
 
 describe("AddMailProviderCard", () => {
-  it("shows connection badges and setup hints without raw implementation copy", () => {
+  it("shows connection badges without setup guidance or raw implementation copy", () => {
     render(
       <AddMailProviderCard
         provider={providerOption({
@@ -25,11 +25,8 @@ describe("AddMailProviderCard", () => {
         "本地 Bridge",
       ),
     ).toBeTruthy();
-    expect(
-      within(screen.getByLabelText("Proton Mail 准备事项")).getByText(
-        "先启动 Proton Bridge 并使用 Bridge 用户名和 Bridge 密码",
-      ),
-    ).toBeTruthy();
+    expect(screen.queryByLabelText("Proton Mail 准备事项")).toBeNull();
+    expect(screen.queryByText("先启动 Proton Bridge 并使用 Bridge 用户名和 Bridge 密码")).toBeNull();
     expect(document.body.textContent).not.toMatch(
       /OAuth|IMAP|SMTP|providerSpecificActions|recall_unread_internal/i,
     );
@@ -57,6 +54,29 @@ describe("AddMailProviderCard", () => {
     expect(button.textContent).toBe("连接中");
     fireEvent.click(button);
     expect(onConnect).not.toHaveBeenCalled();
+  });
+
+  it("lets the whole provider card start the connection once", () => {
+    const onConnect = vi.fn();
+    render(
+      <AddMailProviderCard
+        provider={providerOption({
+          title: "Gmail",
+          subtitle: "登录 Google 账号",
+          provider: "gmail",
+          action: "oauth",
+          badges: ["网页登录"],
+          setupHints: ["登录后自动同步邮件"],
+        })}
+        onConnect={onConnect}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Gmail 接入卡片"));
+    expect(onConnect).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "连接 Gmail" }));
+    expect(onConnect).toHaveBeenCalledTimes(2);
   });
 });
 

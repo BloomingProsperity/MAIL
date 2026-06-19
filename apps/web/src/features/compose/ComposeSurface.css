@@ -6,7 +6,7 @@
   width: 100%;
 }
 
-.compose-surface-floating {
+.compose-outbox-band.compose-surface-floating {
   position: fixed;
   right: clamp(12px, 2vw, 24px);
   bottom: clamp(12px, 2vw, 24px);

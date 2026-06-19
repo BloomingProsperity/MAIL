@@ -73,7 +73,7 @@ describe("buildProtonBridgeOnboardingInput", () => {
       }),
     ).toEqual({
       ok: false,
-      notice: "Proton Mail 的 Bridge 收信端口需要是 1 到 65535 的数字。",
+      notice: "Proton Mail Bridge 收信端口无效。",
     });
   });
 });

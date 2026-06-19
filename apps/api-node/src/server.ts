@@ -55,6 +55,7 @@ import { getHermesSkills } from "./hermes/skills.js";
 import { createHermesSkillSettingsService } from "./hermes/skill-settings.js";
 import { createHermesWorkspaceContextService } from "./hermes/workspace-context.js";
 import { createApiHandler } from "./http/router.js";
+import { createPostgresWebAuthStore } from "./http/web-auth.js";
 import { createLabelService } from "./labels/labels.js";
 import { createPostgresLabelStore } from "./labels/postgres-label-store.js";
 import { createJsonLogger } from "./logging/logger.js";
@@ -162,6 +163,9 @@ logger.info("api_configuration_loaded", {
 });
 
 if (pool) {
+  config.webAuthStore = createPostgresWebAuthStore(pool);
+  config.createWebAuthUserId = randomUUID;
+
   const hermesRetentionPolicy = config.hermesRetentionPolicy ?? {};
   const composeAttachmentBlobDir =
     process.env.COMPOSE_ATTACHMENT_BLOB_DIR ??

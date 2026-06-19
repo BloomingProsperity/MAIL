@@ -18,7 +18,7 @@ export function DomainAliasSettingsPanel(props: {
   const [destinations, setDestinations] = useState<DomainDestinationDto[]>([]);
   const [aliases, setAliases] = useState<DomainAliasDto[]>([]);
   const [logs, setLogs] = useState<DomainDeliveryLogDto[]>([]);
-  const [notice, setNotice] = useState("正在加载域名设置...");
+  const [notice, setNotice] = useState("");
   const [domainInput, setDomainInput] = useState("");
   const [destinationEmail, setDestinationEmail] = useState("");
   const [aliasLocalPart, setAliasLocalPart] = useState("");
@@ -37,17 +37,17 @@ export function DomainAliasSettingsPanel(props: {
       setDomains([
         {
           id: previewDomainId,
-          domain: "demo.site",
+          domain: "example.com",
           verificationStatus: "pending",
           dnsRecords: {
             ownershipTxt: {
               type: "TXT",
-              name: "_emailhub.demo.site",
+              name: "_emailhub.example.com",
               value: "emailhub-domain-verification=preview_domain",
             },
             mx: {
               type: "MX",
-              name: "demo.site",
+              name: "example.com",
               value: "10 mx.emailhub.local",
             },
           },
@@ -68,7 +68,7 @@ export function DomainAliasSettingsPanel(props: {
         {
           id: "preview_alias",
           domainId: previewDomainId,
-          address: "support@demo.site",
+          address: "support@example.com",
           localPart: "support",
           enabled: true,
           destinationIds: [previewDestinationId],
@@ -79,7 +79,7 @@ export function DomainAliasSettingsPanel(props: {
         {
           id: "preview_log",
           domainId: previewDomainId,
-          recipient: "support@demo.site",
+          recipient: "support@example.com",
           status: "delivered",
           createdAt: "2026-06-13T09:00:00.000Z",
         },
@@ -87,12 +87,12 @@ export function DomainAliasSettingsPanel(props: {
       setAliasDestinationId(previewDestinationId);
       setCatchAllDestinationId(previewDestinationId);
       setLastCatchAll(undefined);
-      setNotice("正在显示本地预览，连接服务后会同步真实域名设置。");
+      setNotice("");
       return;
     }
 
     let alive = true;
-    setNotice("正在加载域名设置...");
+    setNotice("");
     void props.api
       .listDomains()
       .then((domainPage) => {
@@ -196,7 +196,7 @@ export function DomainAliasSettingsPanel(props: {
 
   async function createDomain() {
     if (!props.api) {
-      setNotice("连接服务后才能添加域名。");
+      setNotice("域名暂时无法添加。");
       return;
     }
     const domain = domainInput.trim();
@@ -220,7 +220,7 @@ export function DomainAliasSettingsPanel(props: {
 
   async function createDestination() {
     if (!props.api) {
-      setNotice("连接服务后才能添加目标邮箱。");
+      setNotice("目标邮箱暂时无法添加。");
       return;
     }
     if (!selectedDomainId) {
@@ -253,7 +253,7 @@ export function DomainAliasSettingsPanel(props: {
 
   async function createAlias() {
     if (!props.api) {
-      setNotice("连接服务后才能添加别名。");
+      setNotice("别名暂时无法添加。");
       return;
     }
     if (!selectedDomainId) {
@@ -289,7 +289,7 @@ export function DomainAliasSettingsPanel(props: {
 
   async function setCatchAll() {
     if (!props.api) {
-      setNotice("连接服务后才能设置 catch-all。");
+      setNotice("默认收件地址暂时无法设置。");
       return;
     }
     if (!selectedDomainId) {
@@ -322,15 +322,11 @@ export function DomainAliasSettingsPanel(props: {
   async function selectDomain(domainId: string) {
     setSelectedDomainId(domainId);
     setLastCatchAll(undefined);
-    setNotice("正在加载域名详情...");
+    setNotice("");
     await loadDomainDetail(domainId);
   }
 
   const title = props.mode === "domains" ? "域名管理" : "别名转发";
-  const description =
-    props.mode === "domains"
-      ? "集中管理个人域名、DNS 验证、目标邮箱和 catch-all。"
-      : "集中管理别名地址、转发目标、catch-all 和最近投递状态。";
   const selectedDomain = domains.find((domain) => domain.id === selectedDomainId);
   const dnsRecords = selectedDomain
     ? domainDnsRecordRows(selectedDomain.dnsRecords)
@@ -341,7 +337,6 @@ export function DomainAliasSettingsPanel(props: {
       <header className="settings-panel-head">
         <div>
           <h2>{title}</h2>
-          <p>{description}</p>
         </div>
       </header>
       {notice ? (
@@ -353,7 +348,6 @@ export function DomainAliasSettingsPanel(props: {
         <article className="settings-module domain-command">
           <div>
             <h3>添加个人域名</h3>
-            <p>新增后会生成 TXT、MX、SPF 和 DMARC 记录。</p>
           </div>
           <label>
             <span>域名</span>
@@ -370,7 +364,7 @@ export function DomainAliasSettingsPanel(props: {
             disabled={busyAction === "domain"}
             onClick={() => void createDomain()}
           >
-            {busyAction === "domain" ? "添加中" : "添加域名"}
+            添加域名
           </button>
         </article>
         <article className="settings-module domain-command">
@@ -412,7 +406,7 @@ export function DomainAliasSettingsPanel(props: {
                 </p>
               ))
             ) : (
-              <p>创建域名后会显示 DNS 记录。</p>
+              <p>暂无 DNS 记录。</p>
             )}
           </div>
         </article>
@@ -421,7 +415,6 @@ export function DomainAliasSettingsPanel(props: {
         <article className="settings-module domain-command">
           <div>
             <h3>目标邮箱</h3>
-            <p>目标邮箱会接收别名和 catch-all 转发。</p>
           </div>
           <label>
             <span>邮箱地址</span>
@@ -440,7 +433,7 @@ export function DomainAliasSettingsPanel(props: {
             disabled={busyAction === "destination" || !selectedDomainId}
             onClick={() => void createDestination()}
           >
-            {busyAction === "destination" ? "添加中" : "添加目标邮箱"}
+            添加目标邮箱
           </button>
           <div className="domain-item-list">
             {destinations.length > 0 ? (
@@ -458,7 +451,6 @@ export function DomainAliasSettingsPanel(props: {
         <article className="settings-module domain-command">
           <div>
             <h3>别名地址</h3>
-            <p>每个别名绑定一个当前域名下的转发目标。</p>
           </div>
           <div className="alias-form-grid">
             <label>
@@ -499,7 +491,7 @@ export function DomainAliasSettingsPanel(props: {
             disabled={busyAction === "alias" || !selectedDomainId}
             onClick={() => void createAlias()}
           >
-            {busyAction === "alias" ? "创建中" : "创建别名"}
+            创建别名
           </button>
           <div className="domain-item-list">
             {aliases.length > 0 ? (
@@ -568,7 +560,7 @@ export function DomainAliasSettingsPanel(props: {
             disabled={busyAction === "catch-all" || !selectedDomainId}
             onClick={() => void setCatchAll()}
           >
-            {busyAction === "catch-all" ? "保存中" : "保存 Catch-all"}
+            保存 Catch-all
           </button>
         </article>
         <article className="settings-module">

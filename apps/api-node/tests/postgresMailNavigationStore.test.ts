@@ -64,6 +64,35 @@ describe("Postgres mail navigation store", () => {
     ]);
   });
 
+  it("counts aggregate folder summaries from visible messages", async () => {
+    const queries: string[] = [];
+    const store = createPostgresMailNavigationStore({
+      async query(text: string) {
+        queries.push(text);
+        return {
+          rows: [
+            { id: "inbox", count: "36" },
+            { id: "all", count: "36" },
+            { id: "attachments", count: "5" },
+            { id: "flagged", count: "1" },
+          ],
+        };
+      },
+    });
+
+    await expect(store.listFolderCounts()).resolves.toEqual([
+      { id: "inbox", count: 36 },
+      { id: "all", count: 36 },
+      { id: "attachments", count: 5 },
+      { id: "flagged", count: 1 },
+    ]);
+    expect(queries[0]).toMatch(/WITH visible_messages AS/i);
+    expect(queries[0]).toMatch(/JOIN message_locations/i);
+    expect(queries[0]).toMatch(/mailboxes\.role/i);
+    expect(queries[0]).toMatch(/'all' AS id/i);
+    expect(queries[0]).toMatch(/'attachments' AS id/i);
+  });
+
   it("lists dynamic saved views for navigation", async () => {
     const store = createPostgresMailNavigationStore({
       async query() {

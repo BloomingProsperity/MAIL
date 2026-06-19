@@ -111,6 +111,6 @@ describe("SyncCenterAccountNextAction", () => {
         syncState: "syncing",
         nextAction: "server_mismatch",
       }),
-    ).toBe("查看诊断并按提示处理");
+    ).toBe("检查");
   });
 });

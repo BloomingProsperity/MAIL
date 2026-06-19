@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, X } from "lucide-react";
 import type {
   HermesActionPlanDto,
   HermesEmailSearchQaResult,
@@ -40,28 +40,12 @@ export function HermesDock(props: {
   onOpenSearch: (query: string, options?: HermesSearchLaunchOptions) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activityVersion, setActivityVersion] = useState(0);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setIsOpen(false);
-    }, 5_000);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [activityVersion, isOpen, props.prompt]);
 
   function showDock() {
     if (!isOpen) {
       props.onOpen();
     }
     setIsOpen(true);
-    setActivityVersion((version) => version + 1);
   }
 
   function submitPrompt(event: FormEvent<HTMLFormElement>) {
@@ -79,10 +63,130 @@ export function HermesDock(props: {
   const searchLaunchOptions = result
     ? searchLaunchFromHermesResult(result, props.searchAccountId)
     : undefined;
+  const hasAssistantOutput = Boolean(props.notice || result || ruleCandidate);
+
+  function submitSuggestedPrompt(prompt: string) {
+    showDock();
+    props.onPromptChange(prompt);
+    props.onSubmit(prompt);
+  }
+
+  const dockBody = (
+    <div className="dock-body" aria-label="Hermes 内容">
+      <HermesWorkspaceContextBar
+        context={props.workspaceContext}
+        loading={props.workspaceContextLoading}
+      />
+      {props.notice ? (
+        <HermesNotice
+          className="dock-result-status"
+          notice={props.notice}
+          actionLabel={props.noticeActionLabel}
+          onAction={props.onNoticeAction}
+        />
+      ) : null}
+      {result ? (
+        <div className="dock-result" aria-label="Hermes 搜索回答">
+          <div className="dock-result-head">
+            <strong>Hermes 搜索回答</strong>
+            <span>{result.searchQuery}</span>
+          </div>
+          {result.searchPlan.filters.length > 0 ? (
+            <div className="dock-plan-steps" aria-label="Hermes 搜索条件">
+              {result.searchPlan.filters.slice(0, 4).map((filter) => (
+                <span key={`${filter.field}-${filter.label}`}>
+                  {filter.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <p>{result.answerText}</p>
+          {result.citations.length > 0 ? (
+            <div className="dock-citations" aria-label="Hermes 引用邮件">
+              {result.citations.slice(0, 3).map((citation) => (
+                <button
+                  className="dock-citation"
+                  type="button"
+                  key={`${citation.messageId}-${citation.resultIndex}`}
+                  aria-label={`打开引用邮件 ${citation.subject}`}
+                  onClick={() =>
+                    props.onOpenSearch(
+                      result.searchQuery,
+                      searchLaunchOptions,
+                    )
+                  }
+                >
+                  <span>{citation.subject}</span>
+                  <small>
+                    {citation.from.name ?? citation.from.email} ·{" "}
+                    {props.formatDate(citation.receivedAt)} · {citation.bucket}
+                  </small>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <button
+            className="dock-action"
+            type="button"
+            aria-label="打开搜索结果"
+            onClick={() =>
+              props.onOpenSearch(result.searchQuery, searchLaunchOptions)
+            }
+          >
+            打开搜索结果
+          </button>
+        </div>
+      ) : null}
+      {ruleCandidate ? (
+        <div className="dock-result" aria-label="Hermes 整理建议">
+          <div className="dock-result-head">
+            <strong>Hermes 整理建议</strong>
+            <span>
+              {actionPlan?.status === "completed" ||
+              ruleCandidate.status === "approved"
+                ? "已完成"
+                : "待确认"}
+            </span>
+          </div>
+          <p>{ruleCandidate.title}</p>
+          {rulePreview ? (
+            <p>
+              整理到：{rulePreview.label} · 依据{" "}
+              {rulePreview.keywords.slice(0, 5).join("，")}
+            </p>
+          ) : null}
+          {props.ruleSimulation ? (
+            <p>影响预览：命中 {props.ruleSimulation.matchedCount} 封邮件</p>
+          ) : null}
+          {props.historyBackfill ? (
+            <p>已整理 {props.historyBackfill.appliedCount} 封历史邮件。</p>
+          ) : null}
+          <button
+            className="dock-action"
+            type="button"
+            disabled={
+              props.busy ||
+              ruleCandidate.status === "approved" ||
+              actionPlan?.status === "completed"
+            }
+            onClick={props.onApproveRule}
+          >
+            {actionPlan?.status === "completed" ||
+            ruleCandidate.status === "approved"
+              ? "已完成"
+              : "确认整理"}
+          </button>
+        </div>
+      ) : null}
+      {!hasAssistantOutput ? (
+        <HermesDockEmptyState onPrompt={submitSuggestedPrompt} />
+      ) : null}
+    </div>
+  );
 
   return (
     <section
-      className={`hermes-dock dock-short is-blurred ${isOpen ? "is-open" : "is-collapsed"}`}
+      className={`hermes-dock is-blurred ${isOpen ? "is-open" : "is-collapsed"}`}
       aria-label="Hermes 底部输入"
       onFocus={showDock}
       onMouseMove={isOpen ? showDock : undefined}
@@ -108,7 +212,7 @@ export function HermesDock(props: {
               className="dock-command-input"
               aria-label="Hermes 指令"
               value={props.prompt}
-              placeholder="搜索邮件、创建规则、整理收件箱..."
+              placeholder="搜索邮件、总结、翻译或整理收件箱..."
               onChange={(event) => {
                 props.onPromptChange(event.target.value);
                 showDock();
@@ -123,139 +227,16 @@ export function HermesDock(props: {
             >
               <Send size={18} />
             </button>
+            <button
+              className="dock-close"
+              type="button"
+              aria-label="收起 Hermes"
+              onClick={() => setIsOpen(false)}
+            >
+              <X size={18} />
+            </button>
           </form>
-          <HermesWorkspaceContextBar
-            context={props.workspaceContext}
-            loading={props.workspaceContextLoading}
-          />
-          {props.notice ? (
-            <HermesNotice
-              className="dock-result-status"
-              notice={props.notice}
-              actionLabel={props.noticeActionLabel}
-              onAction={props.onNoticeAction}
-            />
-          ) : null}
-          {result ? (
-            <div className="dock-result" aria-label="Hermes 搜索回答">
-              <div className="dock-result-head">
-                <strong>Hermes 搜索回答</strong>
-                <span>{result.searchQuery}</span>
-              </div>
-              {result.searchPlan.filters.length > 0 ? (
-                <div className="dock-plan-steps" aria-label="Hermes 搜索条件">
-                  {result.searchPlan.filters.slice(0, 4).map((filter) => (
-                    <span key={`${filter.field}-${filter.label}`}>
-                      {filter.label}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              <p>{result.answerText}</p>
-              {result.citations.length > 0 ? (
-                <div className="dock-citations" aria-label="Hermes 引用邮件">
-                  {result.citations.slice(0, 3).map((citation) => (
-                    <button
-                      className="dock-citation"
-                      type="button"
-                      key={`${citation.messageId}-${citation.resultIndex}`}
-                      aria-label={`Hermes citation ${citation.subject}`}
-                      onClick={() =>
-                        props.onOpenSearch(
-                          result.searchQuery,
-                          searchLaunchOptions,
-                        )
-                      }
-                    >
-                      <span>{citation.subject}</span>
-                      <small>
-                        {citation.from.name ?? citation.from.email} ·{" "}
-                        {props.formatDate(citation.receivedAt)} ·{" "}
-                        {citation.bucket}
-                      </small>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              <button
-                className="dock-action"
-                type="button"
-                onClick={() =>
-                  props.onOpenSearch(result.searchQuery, searchLaunchOptions)
-                }
-              >
-                同步到搜索页
-              </button>
-            </div>
-          ) : null}
-          {ruleCandidate ? (
-            <div className="dock-result" aria-label="Hermes 执行计划">
-              <div className="dock-result-head">
-                <strong>Hermes 执行计划</strong>
-                <span>
-                  {actionPlan?.status === "completed" ||
-                  ruleCandidate.status === "approved"
-                    ? "已完成"
-                    : "待确认"}
-                </span>
-              </div>
-              <p>{ruleCandidate.title}</p>
-              {rulePreview ? (
-                <p>
-                  左侧分组：{rulePreview.label} · 关键词{" "}
-                  {rulePreview.keywords.slice(0, 5).join("，")}
-                </p>
-              ) : null}
-              {actionPlan ? (
-                <div className="dock-plan-steps" aria-label="Hermes 执行步骤">
-                  {actionPlan.steps.slice(0, 4).map((step) => (
-                    <span key={step.id}>
-                      {step.status === "completed" ? "✓" : "·"} {step.title}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {props.ruleSimulation ? (
-                <p>
-                  影响预览：命中 {props.ruleSimulation.matchedCount} 封邮件
-                </p>
-              ) : null}
-              {props.historyBackfill ? (
-                <p>
-                  历史回填：匹配 {props.historyBackfill.matchedCount} 封，新增{" "}
-                  {props.historyBackfill.appliedCount} 个标签关联
-                </p>
-              ) : null}
-              {props.learnedMemory ? (
-                <p>用户习惯学习：已写入 {props.learnedMemory.layer}</p>
-              ) : null}
-              {actionPlan ? (
-                <p>
-                  安全边界：
-                  {actionPlan.safety.providerWriteback ? "会写回服务商" : "不写回服务商"}
-                  {" · "}
-                  {actionPlan.safety.appliesToHistory
-                    ? "会处理历史邮件"
-                    : "不回填历史"}
-                </p>
-              ) : null}
-              <button
-                className="dock-action"
-                type="button"
-                disabled={
-                  props.busy ||
-                  ruleCandidate.status === "approved" ||
-                  actionPlan?.status === "completed"
-                }
-                onClick={props.onApproveRule}
-              >
-                {actionPlan?.status === "completed" ||
-                ruleCandidate.status === "approved"
-                  ? "已完成"
-                  : "确认计划"}
-              </button>
-            </div>
-          ) : null}
+          {dockBody}
         </>
       )}
     </section>
@@ -267,33 +248,57 @@ function HermesWorkspaceContextBar(props: {
   loading?: boolean;
 }) {
   if (props.loading && !props.context) {
-    return (
-      <div className="dock-context" role="status">
-        <span>正在读取邮箱环境...</span>
-      </div>
-    );
+    return null;
   }
 
   const context = props.context;
   if (!context) {
     return null;
   }
+  const categoryCount = context.navigation?.quickCategories.length ?? 0;
+  const chips = [
+    context.accounts.length > 0 ? `${context.accounts.length} 个邮箱` : "",
+    categoryCount > 0 ? `${categoryCount} 个分组` : "",
+  ].filter(Boolean);
 
-  const confirmationBoundary = context.operationBoundaries.find(
-    (boundary) => boundary.mode === "confirmation_required",
-  );
-  const statusLabel =
-    context.mailEngine?.readiness.status === "ready"
-      ? "邮件同步服务正常"
-      : "邮件同步服务需检查";
+  if (chips.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="dock-context" aria-label="Hermes 邮箱环境">
-      <span>{context.accounts.length} 个账号</span>
-      <span>{context.navigation?.quickCategories.length ?? 0} 个分组</span>
-      <span>{context.rules.length} 条规则</span>
-      <span>{statusLabel}</span>
-      {confirmationBoundary ? <span>规则需确认</span> : null}
+    <div className="dock-context" aria-label="Hermes 邮箱信息">
+      {chips.map((chip) => (
+        <span key={chip}>{chip}</span>
+      ))}
+    </div>
+  );
+}
+
+function HermesDockEmptyState(props: { onPrompt: (prompt: string) => void }) {
+  const suggestions = [
+    "总结今天最重要的邮件",
+    "找最近收到的验证码",
+    "整理发票和账单邮件",
+    "帮我写一封跟进回复",
+  ];
+
+  return (
+    <div className="dock-empty" aria-label="Hermes 快捷问题">
+      <div className="dock-empty-head">
+        <strong>想查什么？</strong>
+        <span>直接问 Hermes，它会在邮箱里找答案、总结内容或整理邮件。</span>
+      </div>
+      <div className="dock-quick-prompts">
+        {suggestions.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            onClick={() => props.onPrompt(suggestion)}
+          >
+            {suggestion}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
