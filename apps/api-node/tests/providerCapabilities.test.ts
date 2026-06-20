@@ -24,15 +24,15 @@ describe("mail provider capability catalog", () => {
         expect.objectContaining({
           provider: "gmail",
           label: "Gmail",
-          connectionLabel: "输入 Google 应用专用密码",
-          supportsWebLogin: false,
-          supportsAppPassword: true,
-          supportsMailboxPassword: true,
+          connectionLabel: "登录 Google 账号",
+          supportsWebLogin: true,
+          supportsAppPassword: false,
+          supportsMailboxPassword: false,
           supportsScanLogin: false,
-          supportsServerSearch: false,
-          supportsLabels: false,
+          supportsServerSearch: true,
+          supportsLabels: true,
           supportsRecall: false,
-          setupHints: ["开启邮箱客户端访问后，使用 Google 应用专用密码"],
+          setupHints: ["登录后自动同步邮件"],
         }),
         expect.objectContaining({
           provider: "proton_bridge",
@@ -49,10 +49,10 @@ describe("mail provider capability catalog", () => {
     );
   });
 
-  it("restores web-login capabilities when OAuth providers are configured", () => {
+  it("keeps official web-login capabilities even before OAuth env is configured", () => {
     expect(
       findProviderCapability("gmail", {
-        oauthProvidersConfigured: { gmail: true },
+        oauthProvidersConfigured: { gmail: false },
       }),
     ).toMatchObject({
       provider: "gmail",
@@ -64,7 +64,7 @@ describe("mail provider capability catalog", () => {
     });
     expect(
       findProviderCapability("outlook", {
-        oauthProvidersConfigured: { outlook: true },
+        oauthProvidersConfigured: { outlook: false },
       }),
     ).toMatchObject({
       provider: "outlook",
@@ -121,9 +121,9 @@ describe("mail provider capability catalog", () => {
     });
     expect(findProviderCapability("outlook")).toMatchObject({
       provider: "outlook",
-      supportsWebLogin: false,
-      supportsAppPassword: true,
-      setupHints: ["无法网页登录时，使用账号专用密码接入"],
+      supportsWebLogin: true,
+      supportsAppPassword: false,
+      setupHints: ["登录后自动同步邮件"],
     });
     expect(findProviderCapability("163")).toMatchObject({
       provider: "163",

@@ -1,0 +1,79 @@
+.settings-module.domain-command {
+  display: grid;
+  align-items: start;
+  justify-content: stretch;
+  gap: 12px;
+}
+
+.settings-card-grid.domain-setup-grid {
+  grid-template-columns: minmax(260px, 0.7fr) minmax(520px, 1.3fr);
+  align-items: stretch;
+}
+
+.settings-module.domain-current-card {
+  grid-template-columns: minmax(180px, 0.48fr) minmax(0, 1fr);
+}
+
+.domain-current-summary,
+.domain-dns-column {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dns-record-list {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.dns-record-list p,
+.domain-item-list p {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--bg-soft);
+}
+
+.dns-record-list strong,
+.domain-item-list strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dns-record-list span,
+.domain-item-list span {
+  overflow-wrap: anywhere;
+}
+
+.dns-record-list code {
+  background: var(--bg-panel);
+}
+
+.cloudflare-dns-form {
+  align-items: end;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.cloudflare-dns-form label span {
+  white-space: nowrap;
+}
+
+.cloudflare-dns-form .ghost-button {
+  width: fit-content;
+  min-height: 36px;
+}
+
+@media (max-width: 1180px) {
+  .settings-card-grid.domain-setup-grid,
+  .settings-module.domain-current-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .dns-record-list,
+  .cloudflare-dns-form,
+  .alias-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

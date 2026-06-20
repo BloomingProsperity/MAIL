@@ -89,6 +89,7 @@ describe("Postgres mail navigation store", () => {
     expect(queries[0]).toMatch(/WITH visible_messages AS/i);
     expect(queries[0]).toMatch(/JOIN message_locations/i);
     expect(queries[0]).toMatch(/mailboxes\.role/i);
+    expect(queries[0]).toMatch(/mailboxes\.account_id = messages\.account_id/i);
     expect(queries[0]).toMatch(/'all' AS id/i);
     expect(queries[0]).toMatch(/'attachments' AS id/i);
   });

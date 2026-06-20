@@ -332,7 +332,7 @@ describe("configured Hermes translation service", () => {
         q: "launch reply",
         qScopes: ["sender", "recipients", "subject", "body"],
         limit: 5,
-        sort: "smart",
+        sort: "time",
       },
     ]);
     expect(calls[0].url).toBe("http://hermes:4000/v1/chat/completions");

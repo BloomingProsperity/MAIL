@@ -869,8 +869,7 @@ describe("Postgres mail compose store", () => {
       now: "2026-06-13T08:00:00.000Z",
     });
     await store.markDraftSent({
-      accountId: "acc_1",
-      draftId: "draft_1",
+      accountId: "acc_1", draftId: "draft_1", leaseOwner: "api-send-draft",
       providerQueueId: "queue_1",
       providerMessageId: "<message@example.com>",
       sentAt: "2026-06-13T08:01:00.000Z",
@@ -886,7 +885,7 @@ describe("Postgres mail compose store", () => {
       "draft_1",
       "queue_1",
       "<message@example.com>",
-      "2026-06-13T08:01:00.000Z",
+      "2026-06-13T08:01:00.000Z", "api-send-draft",
     ]);
   });
 
@@ -1498,7 +1497,7 @@ describe("Postgres mail compose store", () => {
     const result = await store.markScheduledSendFailed({
       accountId: "acc_1",
       scheduledId: "schedule_1",
-      draftId: "draft_1",
+      draftId: "draft_1", leaseOwner: "worker_1",
       errorMessage: "SMTP rejected message",
       now: "2026-06-13T08:03:00.000Z",
     });
@@ -1514,7 +1513,7 @@ describe("Postgres mail compose store", () => {
       "schedule_1",
       "draft_1",
       "SMTP rejected message",
-      "2026-06-13T08:03:00.000Z",
+      "2026-06-13T08:03:00.000Z", "worker_1",
     ]);
     expect(result).toMatchObject({
       id: "schedule_1",

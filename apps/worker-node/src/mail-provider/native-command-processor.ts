@@ -112,6 +112,10 @@ async function dispatchGmail(
       });
       return;
     case "move": {
+      const localMessageId = requiredString(
+        command.target.messageId,
+        "target.messageId",
+      );
       const mailboxId = requiredString(command.target.mailboxId, "target.mailboxId");
       const mailbox = await options.targetResolver.resolveMailboxTarget?.({
         accountId: command.accountId,
@@ -128,7 +132,18 @@ async function dispatchGmail(
         accountId: command.accountId,
         messageId,
         addLabelIds: [mailbox.providerMailboxId],
-        removeLabelIds: ["INBOX"],
+        removeLabelIds: gmailMoveRemoveLabelIds(
+          [
+            ...(await resolveMessageMailboxTargets(
+              options,
+              command.accountId,
+              localMessageId,
+              "gmail",
+            )),
+            { providerMailboxId: "INBOX", role: "inbox" },
+          ],
+          mailbox.providerMailboxId,
+        ),
       });
       return;
     }
@@ -200,26 +215,27 @@ async function dispatchGraph(
       });
       return;
     }
-    case "archive": {
+    case "archive":
+    case "trash": {
+      const role = command.commandType === "trash" ? "trash" : "archive";
       const mailbox = await options.targetResolver.resolveSpecialMailboxTarget?.({
         accountId: command.accountId,
-        role: "archive",
+        role,
         provider: "graph",
       });
+      if (!mailbox?.providerMailboxId) {
+        throw new NonRetryableQueueError(
+          `native Graph ${role} folder ref not found for command ${command.id}`,
+        );
+      }
+
       await graph.moveMessage({
         accountId: command.accountId,
         messageId,
-        destinationId: mailbox?.providerMailboxId ?? "archive",
+        destinationId: mailbox.providerMailboxId,
       });
       return;
     }
-    case "trash":
-      await graph.moveMessage({
-        accountId: command.accountId,
-        messageId,
-        destinationId: "deleteditems",
-      });
-      return;
     case "apply_labels": {
       const labelTargets = await resolveLabelTargets(options, command, "graph");
       const current = await graph.getMessage({
@@ -404,6 +420,76 @@ async function resolveLabelTargets(
   }
 
   return labels;
+}
+
+async function resolveMessageMailboxTargets(
+  options: NativeEngineCommandProcessorOptions,
+  accountId: string,
+  messageId: string,
+  provider: NativeProvider,
+): Promise<Array<{ providerMailboxId: string; role?: string }>> {
+  return (
+    (await options.targetResolver.resolveMessageMailboxTargets?.({
+      accountId,
+      messageId,
+      provider,
+    })) ?? []
+  );
+}
+
+function gmailMoveRemoveLabelIds(
+  targets: Array<{ providerMailboxId: string; role?: string }>,
+  destinationLabelId: string,
+): string[] {
+  const destination = destinationLabelId.toUpperCase();
+  const seen = new Set<string>();
+  const removable: string[] = [];
+
+  for (const target of targets) {
+    const labelId = target.providerMailboxId.trim();
+    const normalized = labelId.toUpperCase();
+    if (
+      !labelId ||
+      normalized === destination ||
+      seen.has(normalized) ||
+      !isGmailMoveSourceLabel(target, normalized)
+    ) {
+      continue;
+    }
+
+    seen.add(normalized);
+    removable.push(labelId);
+  }
+
+  return removable;
+}
+
+function isGmailMoveSourceLabel(
+  target: { providerMailboxId: string; role?: string },
+  normalizedLabelId: string,
+): boolean {
+  if (normalizedLabelId.startsWith("CATEGORY_")) {
+    return false;
+  }
+
+  if (
+    normalizedLabelId === "UNREAD" ||
+    normalizedLabelId === "STARRED" ||
+    normalizedLabelId === "IMPORTANT" ||
+    normalizedLabelId === "SENT" ||
+    normalizedLabelId === "DRAFT"
+  ) {
+    return false;
+  }
+
+  return (
+    !target.role ||
+    target.role === "label" ||
+    target.role === "inbox" ||
+    target.role === "archive" ||
+    target.role === "trash" ||
+    target.role === "junk"
+  );
 }
 
 function requireClient<T>(client: T | undefined, provider: string): T {

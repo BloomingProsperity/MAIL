@@ -11,6 +11,7 @@ import type {
   ProviderMailboxIdentity,
   ProviderMessageIdentity,
 } from "../mail-provider/contract.js";
+import { replaceAuthoritativeMessageLocations } from "./message-location-sync.js";
 import { createPostgresProviderRefStore } from "../provider-ref-store.js";
 import {
   classifySmartInboxMessage,
@@ -193,6 +194,7 @@ export function createPostgresMirrorStore(client: Queryable): MirrorStore {
         `,
         [messageId, message.unread, message.starred],
       );
+      if (message.mailboxPathsAuthoritative) await replaceAuthoritativeMessageLocations(client, input.engineAccountId, messageId, message.mailboxPaths);
 
       for (const mailboxPath of message.mailboxPaths) {
         await upsertMessageLocation(
@@ -379,13 +381,16 @@ async function upsertHermesContentLabelAssignments(
       INSERT INTO label_assignments (message_id, label_id)
       SELECT messages.id, labels.id
       FROM messages
-      JOIN message_state
+      LEFT JOIN message_state
         ON message_state.message_id = messages.id
       JOIN labels
         ON labels.account_id = messages.account_id
       WHERE messages.id = $1
         AND messages.account_id = $2
-        AND message_state.deleted_at IS NULL
+        AND (
+          message_state.message_id IS NULL
+          OR message_state.deleted_at IS NULL
+        )
         AND labels.account_id = $2
         AND labels.id = ANY($3::uuid[])
       ON CONFLICT (message_id, label_id) DO NOTHING
@@ -632,8 +637,8 @@ async function markProviderMessageDeletedIfUnlocated(
       )
       AND NOT EXISTS (
         SELECT 1
-        FROM message_locations
-        WHERE message_locations.message_id = message_state.message_id
+        FROM message_locations JOIN mailboxes ON mailboxes.id = message_locations.mailbox_id
+        WHERE message_locations.message_id = message_state.message_id AND mailboxes.account_id = $1
       )
     `,
     locator.extraValues.length > 0
@@ -843,6 +848,7 @@ interface NormalizedMailbox {
 interface NormalizedMirrorMessage {
   id: string;
   mailboxPaths: string[];
+  mailboxPathsAuthoritative: boolean;
   emailId?: string;
   internetMessageId?: string;
   inReplyToMessageId?: string;
@@ -949,6 +955,7 @@ function normalizeEmailEngineMessage(
       readString(raw.path),
       readString(raw.mailbox),
     ]),
+    mailboxPathsAuthoritative: false,
     emailId: readString(raw.emailId),
     internetMessageId: readString(raw.messageId),
     inReplyToMessageId: firstMessageId(
@@ -998,13 +1005,10 @@ function normalizeGmailMessage(
   const from = parseMailboxAddress(readString(headers.from) ?? readString(raw.from));
   const text = asRecord(raw.text);
   const labelIds = stringArray(raw.labelIds);
-
   return {
     id,
-    mailboxPaths: uniqueStrings([
-      providerMailboxIdFromIdentity(mailboxIdentity),
-      ...labelIds,
-    ]),
+    mailboxPaths: uniqueStrings([providerMailboxIdFromIdentity(mailboxIdentity), ...labelIds]),
+    mailboxPathsAuthoritative: labelIds.length > 0,
     internetMessageId:
       readString(headers["message-id"]) ?? readString(raw.internetMessageId),
     inReplyToMessageId: firstMessageId(headers["in-reply-to"]),
@@ -1050,13 +1054,12 @@ function normalizeGraphMessage(
   const from = graphEmailAddress(raw.from);
   const body = asRecord(raw.body);
   const headers = messageHeaders(raw.internetMessageHeaders);
+  const mailboxPath = providerMailboxIdFromIdentity(mailboxIdentity) ?? readString(raw.parentFolderId);
 
   return {
     id,
-    mailboxPaths: uniqueStrings([
-      providerMailboxIdFromIdentity(mailboxIdentity),
-      readString(raw.parentFolderId),
-    ]),
+    mailboxPaths: uniqueStrings([mailboxPath]),
+    mailboxPathsAuthoritative: Boolean(mailboxPath),
     internetMessageId: readString(raw.internetMessageId),
     inReplyToMessageId: firstMessageId(headers["in-reply-to"]),
     referenceMessageIds: messageIdsFromHeader(headers.references),
@@ -1118,15 +1121,12 @@ function normalizeImapMessage(
     readString(raw.from) ?? readString(envelope.from),
   );
   const flags = flagList(raw.flags);
+  const mailboxPath = identity?.mailbox.path ?? fallbackMailboxPath;
 
   return {
     id,
-    mailboxPaths: uniqueStrings([
-      providerMailboxIdFromIdentity(mailboxIdentity),
-      identity?.mailbox.path,
-      readString(raw.mailboxPath),
-      readString(raw.path),
-    ]),
+    mailboxPaths: uniqueStrings([mailboxPath]),
+    mailboxPathsAuthoritative: Boolean(mailboxPath),
     internetMessageId:
       readString(raw.messageId) ?? readString(envelope.messageId),
     inReplyToMessageId: firstMessageId(

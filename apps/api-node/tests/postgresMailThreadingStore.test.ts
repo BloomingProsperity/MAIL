@@ -40,6 +40,8 @@ describe("Postgres mail threading store", () => {
     expect(queries[0].text).toMatch(/provider = 'gmail'/i);
     expect(queries[0].text).toMatch(/provider = 'graph'/i);
     expect(queries[0].text).toMatch(/EXISTS \(\s*SELECT 1\s*FROM message_locations/i);
+    expect(queries[0].text).toMatch(/JOIN mailboxes/i);
+    expect(queries[0].text).toMatch(/mailboxes\.account_id = messages\.account_id/i);
     expect(queries[0].values).toEqual(["acc_1", "message_1"]);
     expect(threading).toEqual({
       action: "reply_all",

@@ -66,6 +66,31 @@ describe("domain alias routes", () => {
         calls.push(["listDomains"]);
         return { items: [{ id: "domain_1", domain: "example.com" }] };
       },
+      async verifyDomain(input: unknown) {
+        calls.push(["verifyDomain", input]);
+        return {
+          id: "domain_1",
+          domain: "example.com",
+          verificationStatus: "verified",
+          dnsRecords: {},
+          createdAt: "2026-06-13T08:00:00.000Z",
+        };
+      },
+      async configureDomainCloudflare(input: unknown) {
+        calls.push(["configureDomainCloudflare", input]);
+        return {
+          zoneId: "zone_1",
+          zoneName: "example.com",
+          records: [
+            {
+              type: "TXT",
+              name: "_emailhub.example.com",
+              value: "emailhub-domain-verification=domain_1",
+              status: "created",
+            },
+          ],
+        };
+      },
     };
 
     await withApi(
@@ -75,13 +100,37 @@ describe("domain alias routes", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ domain: "Example.COM" }),
         });
+        const verified = await fetch(`${baseUrl}/api/domains/domain_1/verify`, {
+          method: "POST",
+        });
+        const cloudflare = await fetch(
+          `${baseUrl}/api/domains/domain_1/cloudflare/dns-records`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              apiToken: "cf-token",
+              zoneId: "zone_1",
+            }),
+          },
+        );
         const listed = await fetch(`${baseUrl}/api/domains`);
 
         expect(created.status).toBe(201);
+        expect(verified.status).toBe(200);
+        expect(cloudflare.status).toBe(200);
         expect(await created.json()).toMatchObject({
           id: "domain_1",
           domain: "example.com",
           verificationStatus: "pending",
+        });
+        expect(await verified.json()).toMatchObject({
+          id: "domain_1",
+          verificationStatus: "verified",
+        });
+        expect(await cloudflare.json()).toMatchObject({
+          zoneId: "zone_1",
+          records: [{ status: "created" }],
         });
         expect(listed.status).toBe(200);
         expect(await listed.json()).toEqual({
@@ -89,6 +138,11 @@ describe("domain alias routes", () => {
         });
         expect(calls).toEqual([
           ["createDomain", { domain: "Example.COM" }],
+          ["verifyDomain", { domainId: "domain_1" }],
+          [
+            "configureDomainCloudflare",
+            { domainId: "domain_1", apiToken: "cf-token", zoneId: "zone_1" },
+          ],
           ["listDomains"],
         ]);
       },

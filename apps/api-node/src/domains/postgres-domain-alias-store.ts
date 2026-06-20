@@ -106,6 +106,20 @@ export function createPostgresDomainAliasStore(
       return result.rows[0] ? rowToDomain(result.rows[0]) : undefined;
     },
 
+    async updateDomainVerificationStatus(input) {
+      const result = await client.query<DomainRow>(
+        `
+          UPDATE domains
+          SET verification_status = $2
+          WHERE id = $1
+          RETURNING id, domain, verification_status, created_at
+        `,
+        [input.domainId, input.status],
+      );
+
+      return result.rows[0] ? rowToDomain(result.rows[0]) : undefined;
+    },
+
     async createDestination(input) {
       return withTransaction(client, async (tx) => {
         const result = await tx.query<DestinationRow>(
@@ -173,7 +187,7 @@ export function createPostgresDomainAliasStore(
     async createAlias(input) {
       return withTransaction(client, async (tx) => {
         const domain = await loadDomain(tx, input.domainId);
-        await loadDestinations(tx, input.destinationIds);
+        await loadDestinations(tx, input.domainId, input.destinationIds);
         const alias = await upsertAlias(tx, input);
 
         await tx.query(
@@ -309,16 +323,20 @@ async function loadDomain(
 
 async function loadDestinations(
   client: Queryable,
+  domainId: string,
   destinationIds: string[],
 ): Promise<DestinationRow[]> {
   const result = await client.query<DestinationRow>(
     `
-      SELECT id, email, verified, created_at
+      SELECT destinations.id, destinations.email, destinations.verified, destinations.created_at
       FROM destinations
-      WHERE id = ANY($1::uuid[])
-      ORDER BY id ASC
+      JOIN domain_destinations
+        ON domain_destinations.destination_id = destinations.id
+      WHERE domain_destinations.domain_id = $1
+        AND destinations.id = ANY($2::uuid[])
+      ORDER BY destinations.id ASC
     `,
-    [destinationIds],
+    [domainId, destinationIds],
   );
 
   if (result.rows.length !== destinationIds.length) {

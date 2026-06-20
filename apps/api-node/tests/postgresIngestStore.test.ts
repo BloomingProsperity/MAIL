@@ -374,6 +374,82 @@ describe("postgres ingest store", () => {
     });
   });
 
+  it("queues authenticationSuccess events as account_state jobs", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+
+        if (text.includes("INSERT INTO mail_engine_events")) {
+          return {
+            rows: [
+              {
+                id: "event_auth_success",
+                source: "emailengine_webhook",
+                kind: "auth_succeeded",
+                account_id: "acc_1",
+                mailbox_id: null,
+                provider_message_id: null,
+                provider_thread_id: null,
+                provider_email_id: null,
+                rfc_message_id: null,
+                provider_uid: null,
+                provider_path: null,
+                resource_key: null,
+                resource_identity: {},
+                idempotency_key: "emailengine:acc_1:event-id:evt_auth_success",
+                raw_payload: { event: "authenticationSuccess" },
+                received_at: "2026-06-16T02:31:08.000Z",
+              },
+            ],
+          };
+        }
+
+        if (text.includes("INSERT INTO sync_jobs")) {
+          return {
+            rows: [
+              {
+                id: "job_auth_success",
+                job_type: "account_state",
+                account_id: "acc_1",
+                mailbox_id: null,
+                trigger_event_id: "event_auth_success",
+                status: "queued",
+                idempotency_key: "job:emailengine:acc_1:event-id:evt_auth_success",
+                created_at: "2026-06-16T02:31:08.000Z",
+              },
+            ],
+          };
+        }
+
+        return { rows: [] };
+      },
+    };
+
+    const store = createPostgresMailEngineIngestStore(client);
+    const result = await store.ingestWebhook({
+      events: [
+        {
+          source: "emailengine_webhook",
+          kind: "auth_succeeded",
+          accountId: "acc_1",
+          idempotencyKey: "emailengine:acc_1:event-id:evt_auth_success",
+        },
+      ],
+      rawPayload: { event: "authenticationSuccess" },
+    });
+
+    expect(queries[1].values?.[1]).toBe("account_state");
+    expect(queries[1].values?.[6]).toMatchObject({
+      kind: "auth_succeeded",
+    });
+    expect(result.syncJobs[0]).toMatchObject({
+      id: "job_auth_success",
+      jobType: "account_state",
+      accountId: "acc_1",
+    });
+  });
+
   it("repairs a missing sync job when EmailEngine retries an already stored event", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {

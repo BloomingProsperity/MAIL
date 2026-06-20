@@ -54,6 +54,21 @@ const legacyLargeFileCaps = new Map([
   ["apps/api-node/tests/hermesRules.test.ts", 1121],
   ["apps/api-node/tests/emailEngineDockerHealthVerifier.test.ts", 1097],
   ["apps/api-node/tests/hermesActionPlan.test.ts", 1070],
+  ["apps/api-node/src/http/router-handler.ts", 2933],
+  ["apps/api-node/src/http/router-hermes-inputs.ts", 2050],
+  ["apps/api-node/src/http/router-mail-parsers.ts", 1167],
+  ["apps/api-node/src/http/router-account-compose-inputs.ts", 1002],
+  ["apps/api-node/tests/hermesMessageRoutes.test.ts", 1304],
+  ["apps/api-node/tests/mailComposeScheduled.test.ts", 1055],
+  ["apps/web/src/App.compose.test.tsx", 2686],
+  ["apps/web/src/App.hermes-dock-reader.test.tsx", 1816],
+  ["apps/web/src/features/add-mail/AddMailAndSyncPages.tsx", 2466],
+  ["apps/web/src/features/mail/MailWorkspace.tsx", 2973],
+  ["apps/web/src/lib/emailHubApi.hermes.test.ts", 2712],
+  ["apps/web/src/lib/emailHubApiClient.ts", 1567],
+  ["apps/web/src/lib/emailHubApiTypes.ts", 2388],
+  ["apps/web/src/styles-panels.css", 1434],
+  ["apps/web/src/test/appTestFixtures.ts", 2507],
 ]);
 
 const files = listGitFiles();

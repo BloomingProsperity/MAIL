@@ -32,21 +32,15 @@ describe("OAuth provider registry", () => {
     expect(url.searchParams.get("prompt")).toBe("consent select_account");
     expect(url.searchParams.get("login_hint")).toBe("me@gmail.com");
     expect(url.searchParams.get("scope")).toContain(
+      "https://mail.google.com/",
+    );
+    expect(url.searchParams.get("scope")).not.toContain(
       "https://www.googleapis.com/auth/gmail.modify",
-    );
-    expect(url.searchParams.get("scope")).toContain(
-      "https://www.googleapis.com/auth/gmail.readonly",
-    );
-    expect(url.searchParams.get("scope")).toContain(
-      "https://www.googleapis.com/auth/gmail.send",
-    );
-    expect(url.searchParams.get("scope")).toContain(
-      "https://www.googleapis.com/auth/gmail.settings.basic",
     );
     expect(url.toString()).not.toContain("google-client-secret");
   });
 
-  it("builds an Outlook authorization URL with Graph mail and offline scopes", () => {
+  it("builds an Outlook authorization URL with IMAP/SMTP and offline scopes", () => {
     const registry = createOAuthProviderRegistry({
       googleClientId: "google-client-id",
       googleClientSecret: "google-client-secret",
@@ -70,13 +64,13 @@ describe("OAuth provider registry", () => {
     expect(url.searchParams.get("state")).toBe("state_2");
     expect(url.searchParams.get("scope")).toContain("offline_access");
     expect(url.searchParams.get("scope")).toContain(
+      "https://outlook.office.com/IMAP.AccessAsUser.All",
+    );
+    expect(url.searchParams.get("scope")).toContain(
+      "https://outlook.office.com/SMTP.Send",
+    );
+    expect(url.searchParams.get("scope")).not.toContain(
       "https://graph.microsoft.com/Mail.ReadWrite",
-    );
-    expect(url.searchParams.get("scope")).toContain(
-      "https://graph.microsoft.com/Mail.Send",
-    );
-    expect(url.searchParams.get("scope")).toContain(
-      "https://graph.microsoft.com/Mail.Send.Shared",
     );
     expect(url.toString()).not.toContain("microsoft-client-secret");
   });

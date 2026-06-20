@@ -110,8 +110,8 @@ export function createEmailEngineAccountsClient(
         "EmailEngine account verification failed",
       );
     },
-    registerImapSmtpAccount(input) {
-      return request<EmailEngineAccountRegistrationResult>(
+    async registerImapSmtpAccount(input) {
+      const result = await request<EmailEngineAccountRegistrationResult>(
         "/account",
         {
           method: "POST",
@@ -125,13 +125,11 @@ export function createEmailEngineAccountsClient(
         },
         "EmailEngine account registration failed",
       );
+      await reconnectAccount(input.accountId);
+      return result;
     },
     async registerOAuthAccount(input) {
-      const providerId = resolveOAuth2ProviderId(
-        options.oauth2ProviderIds,
-        input.provider,
-      );
-      return request<EmailEngineAccountRegistrationResult>(
+      const result = await request<EmailEngineAccountRegistrationResult>(
         "/account",
         {
           method: "POST",
@@ -139,42 +137,53 @@ export function createEmailEngineAccountsClient(
             account: input.accountId,
             name: input.displayName ?? input.email,
             email: input.email,
-            oauth2: {
-              provider: providerId,
-              auth: {
-                user: input.email,
-              },
-              useAuthServer: true,
-            },
+            imap: oauthAuthServerEndpoint(input.provider, "imap"),
+            smtp: oauthAuthServerEndpoint(input.provider, "smtp"),
           }),
         },
         "EmailEngine OAuth account registration failed",
       );
+      await reconnectAccount(input.accountId);
+      return result;
     },
+  };
+
+  async function reconnectAccount(accountId: string): Promise<void> {
+    await request<{ reconnect: true }>(
+      `/account/${encodeURIComponent(accountId)}/reconnect`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ reconnect: true }),
+      },
+      "EmailEngine account reconnect failed",
+    );
+  }
+}
+
+function oauthAuthServerEndpoint(
+  provider: RegisterOAuthAccountInput["provider"],
+  protocol: "imap" | "smtp",
+): { host: string; port: number; secure: boolean; useAuthServer: true } {
+  const endpoints = oauthAuthServerEndpoints[provider][protocol];
+  return {
+    ...endpoints,
+    useAuthServer: true,
   };
 }
 
-function resolveOAuth2ProviderId(
-  providerIds: EmailEngineAccountsClientOptions["oauth2ProviderIds"],
-  provider: RegisterOAuthAccountInput["provider"],
-): string {
-  const providerId = providerIds?.[provider]?.trim();
-  if (providerId) {
-    return providerId;
-  }
-
-  throw new Error(
-    `${oauth2ProviderIdEnv(provider)} is not configured for EmailEngine OAuth account registration`,
-  );
-}
-
-function oauth2ProviderIdEnv(
-  provider: RegisterOAuthAccountInput["provider"],
-): string {
-  return provider === "gmail"
-    ? "EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID"
-    : "EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID";
-}
+const oauthAuthServerEndpoints: Record<
+  RegisterOAuthAccountInput["provider"],
+  Record<"imap" | "smtp", { host: string; port: number; secure: boolean }>
+> = {
+  gmail: {
+    imap: { host: "imap.gmail.com", port: 993, secure: true },
+    smtp: { host: "smtp.gmail.com", port: 465, secure: true },
+  },
+  outlook: {
+    imap: { host: "outlook.office365.com", port: 993, secure: true },
+    smtp: { host: "smtp.office365.com", port: 587, secure: false },
+  },
+};
 
 function toEmailEngineEndpoint(endpoint: EmailEngineEndpointCredentials) {
   return {

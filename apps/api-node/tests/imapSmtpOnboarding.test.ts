@@ -195,44 +195,58 @@ describe("IMAP/SMTP onboarding service", () => {
     ]);
   });
 
-  it("returns Gmail app-password diagnostics for EmailEngine-first fallback", async () => {
-    const store = createInMemoryAccountOnboardingStore();
-    const service = createImapSmtpOnboardingService({
-      store,
-      createId: () => {
-        throw new Error("test connection must not allocate ids");
-      },
-      emailEngineAccounts: {
-        async registerImapSmtpAccount() {
-          throw new Error("test connection must not register account");
-        },
-        async verifyImapSmtpAccount() {
-          return {
-            imap: { success: false, code: "EAUTH" },
-            smtp: { success: false, code: "EAUTH" },
-          };
-        },
-      },
-    });
-
-    const result = await service.testImapSmtpConnection({
-      email: "owner@gmail.com",
+  it.each([
+    {
       provider: "gmail",
-      secret: "normal-password",
-    });
+      email: "owner@gmail.com",
+      code: "gmail_web_login_required",
+      message: "Use the official Google web login flow to connect this mailbox.",
+      recoveryAction: "start_google_web_login",
+    },
+    {
+      provider: "outlook",
+      email: "owner@outlook.com",
+      code: "outlook_web_login_required",
+      message: "Use the official Microsoft web login flow to connect this mailbox.",
+      recoveryAction: "start_microsoft_web_login",
+    },
+  ])(
+    "returns official $provider web-login diagnostics for password attempts",
+    async ({ provider, email, code, message, recoveryAction }) => {
+      const store = createInMemoryAccountOnboardingStore();
+      const service = createImapSmtpOnboardingService({
+        store,
+        createId: () => {
+          throw new Error("test connection must not allocate ids");
+        },
+        emailEngineAccounts: {
+          async registerImapSmtpAccount() {
+            throw new Error("test connection must not register account");
+          },
+          async verifyImapSmtpAccount() {
+            return {
+              imap: { success: false, code: "EAUTH" },
+              smtp: { success: false, code: "EAUTH" },
+            };
+          },
+        },
+      });
 
-    expect(result.diagnostics).toEqual([
-      {
-        code: "gmail_app_password_required",
-        provider: "gmail",
+      const result = await service.testImapSmtpConnection({
+        email,
+        provider,
+        secret: "normal-password",
+      });
+
+      expect(result.diagnostics).toEqual([{
+        code, provider,
         severity: "action_required",
         affected: "account",
-        message:
-          "Use a Google app password generated for this mailbox. Your normal Google password will not work.",
-        recoveryAction: "create_google_app_password",
-      },
-    ]);
-  });
+        message,
+        recoveryAction,
+      }]);
+    },
+  );
 
   it.each([
     {

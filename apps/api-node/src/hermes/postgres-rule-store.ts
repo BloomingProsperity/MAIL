@@ -484,14 +484,17 @@ export function createPostgresHermesRuleStore(
           WITH matching_messages AS (
             SELECT DISTINCT messages.id, messages.received_at
             FROM messages
-            JOIN message_state
+            LEFT JOIN message_state
               ON message_state.message_id = messages.id
             LEFT JOIN message_classification
               ON message_classification.message_id = messages.id
             LEFT JOIN search_documents
               ON search_documents.message_id = messages.id
             WHERE messages.account_id = $1
-              AND message_state.deleted_at IS NULL
+              AND (
+                message_state.message_id IS NULL
+                OR message_state.deleted_at IS NULL
+              )
               AND EXISTS (
                 SELECT 1
                 FROM unnest($2::text[]) AS keyword

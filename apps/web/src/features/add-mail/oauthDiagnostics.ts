@@ -40,6 +40,9 @@ export function formatOAuthCallbackError(input: {
   if (profile.profileLookupFailed) {
     return "Gmail 资料读取被 Google 拒绝。";
   }
+  if (profile.emailEngineUnavailable) {
+    return "EmailEngine 当前不可用，邮箱没有添加成功。";
+  }
   if (profile.redirectMismatch) {
     return "登录地址不匹配。";
   }
@@ -61,6 +64,7 @@ function oauthErrorProfile(error: unknown): {
   sessionExpired: boolean;
   codeExpired: boolean;
   profileLookupFailed: boolean;
+  emailEngineUnavailable: boolean;
 } {
   const code = error instanceof ApiRequestError ? error.code : "";
   const status = error instanceof ApiRequestError ? error.status : 0;
@@ -81,6 +85,10 @@ function oauthErrorProfile(error: unknown): {
     profileLookupFailed: /profile lookup failed.*gmail|gmail profile/i.test(
       message,
     ),
+    emailEngineUnavailable:
+      /emailengine.*(registration failed|internal server error|api internal)/i.test(
+        message,
+      ),
   };
 }
 

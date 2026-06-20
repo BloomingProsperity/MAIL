@@ -6,6 +6,8 @@ import type {
 } from "../../lib/emailHubApi";
 
 export interface HermesSearchLaunchOptions {
+  mailboxId?: string;
+  mailboxRole?: string;
   quickFilters?: MailQuickFilter[];
   qScopes?: MailSearchScope[];
   senderQuery?: string;
@@ -25,10 +27,14 @@ export function searchLaunchFromHermesResult(
 ): HermesSearchLaunchOptions {
   const planInput = result.searchPlan.listMessagesInput as
     typeof result.searchPlan.listMessagesInput & {
+      mailboxId?: string;
+      mailboxRole?: string;
       savedView?: string;
     };
   return {
     ...(accountId ? { accountId } : {}),
+    ...(planInput.mailboxId ? { mailboxId: planInput.mailboxId } : {}),
+    ...(planInput.mailboxRole ? { mailboxRole: planInput.mailboxRole } : {}),
     ...(planInput.quickFilters ? { quickFilters: planInput.quickFilters } : {}),
     ...(planInput.qScopes ? { qScopes: planInput.qScopes } : {}),
     ...(planInput.senderQuery ? { senderQuery: planInput.senderQuery } : {}),

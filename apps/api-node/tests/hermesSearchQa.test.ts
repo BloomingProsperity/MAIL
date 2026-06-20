@@ -109,7 +109,7 @@ describe("Hermes email search QA service", () => {
         q: "launch reply",
         qScopes: ["sender", "recipients", "subject", "body"],
         limit: 3,
-        sort: "smart",
+        sort: "time",
       },
     ]);
     expect(memoryQueries).toEqual([
@@ -369,7 +369,7 @@ describe("Hermes email search QA service", () => {
         receivedBefore: "2026-06-15T00:00:00.000Z",
         hasAttachment: true,
         limit: 5,
-        sort: "smart",
+        sort: "time",
       },
     ]);
     expect(result.searchPlan).toMatchObject({
@@ -478,7 +478,7 @@ describe("Hermes email search QA service", () => {
         q: "contract",
         qScopes: ["sender", "recipients", "subject", "body"],
         limit: 2,
-        sort: "smart",
+        sort: "time",
       },
     ]);
     expect(memoryQueries).toEqual([
@@ -560,14 +560,14 @@ describe("Hermes email search QA service", () => {
     );
   });
 
-  it("returns an empty citation list when no local messages match", async () => {
+  it("asks Hermes for a helpful answer when no local messages match", async () => {
     const providerCalls: unknown[] = [];
     const service = createHermesEmailSearchQaService({
       createId: () => "run_empty",
       textProvider: {
         async complete(input) {
           providerCalls.push(input);
-          return "should not be used";
+          return "没有找到匹配邮件。可以换成更具体的发件人或主题再试。";
         },
       },
       mailReadStore: {
@@ -594,11 +594,14 @@ describe("Hermes email search QA service", () => {
     ).resolves.toMatchObject({
       skillRunId: "run_empty",
       skillId: "email_search_qa",
-      answerText: "No matching emails found.",
+      answerText: "没有找到匹配邮件。可以换成更具体的发件人或主题再试。",
       citations: [],
       matches: [],
     });
-    expect(providerCalls).toEqual([]);
+    expect(providerCalls).toHaveLength(1);
+    expect(JSON.stringify(providerCalls[0])).toContain(
+      "No local email messages matched this search plan.",
+    );
   });
 
   it("rejects empty questions before searching mail or calling Hermes", async () => {

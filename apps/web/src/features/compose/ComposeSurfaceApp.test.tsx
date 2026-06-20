@@ -21,7 +21,7 @@ describe("Compose surface", () => {
     expect(within(composeWindow).getByLabelText("写邮件面板")).toBeTruthy();
     expect(within(composeWindow).queryByText(/account_1/)).toBeNull();
     expect(within(reader).queryByLabelText("写邮件面板")).toBeNull();
-    expect(within(reader).getByText("优先级")).toBeTruthy();
+    expect(within(reader).queryByText("优先级")).toBeNull();
 
     fireEvent.keyDown(composeWindow, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "写邮件窗口" })).toBeNull();

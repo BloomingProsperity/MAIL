@@ -8,6 +8,7 @@ export interface AddMailProviderOption {
   action: "oauth" | "password" | "bridge" | "manual";
   badges: string[];
   setupHints: string[];
+  disabled?: boolean;
 }
 
 export const fallbackAddMailProviderOptions: AddMailProviderOption[] = [
@@ -72,9 +73,7 @@ export const fallbackAddMailProviderOptions: AddMailProviderOption[] = [
 export function providerCapabilityToOption(
   capability: MailProviderCapabilityDto,
 ): AddMailProviderOption {
-  const officialWebLoginCopy = capability.supportsWebLogin
-    ? officialWebLoginProviderCopy[capability.provider]
-    : undefined;
+  const officialWebLoginCopy = officialWebLoginProviderCopy[capability.provider];
   const passwordSetupCopy =
     !officialWebLoginCopy && capability.supportsAppPassword
       ? passwordProviderCopy[capability.provider]
@@ -90,6 +89,8 @@ export function providerCapabilityToOption(
     action: providerAction(capability),
     badges: providerBadges(capability),
     setupHints: officialWebLoginCopy?.setupHints ?? passwordSetupCopy?.setupHints ?? [],
+    disabled:
+      Boolean(officialWebLoginCopy) && capability.supportsWebLogin === false,
   });
 }
 
@@ -107,10 +108,7 @@ function providerOption(
 function providerAction(
   capability: MailProviderCapabilityDto,
 ): AddMailProviderOption["action"] {
-  if (
-    capability.supportsWebLogin &&
-    isOfficialWebLoginProvider(capability.provider)
-  ) {
+  if (isOfficialWebLoginProvider(capability.provider)) {
     return "oauth";
   }
   if (capability.requiresLocalBridge) {
@@ -139,13 +137,16 @@ function providerMark(capability: MailProviderCapabilityDto): string {
 }
 
 function providerBadges(capability: MailProviderCapabilityDto): string[] {
-  const supportsOfficialWebLogin =
-    capability.supportsWebLogin && isOfficialWebLoginProvider(capability.provider);
+  const officialWebLoginProvider = isOfficialWebLoginProvider(capability.provider);
   const badges = [
-    supportsOfficialWebLogin ? "网页登录" : undefined,
+    officialWebLoginProvider ? "网页登录" : undefined,
     capability.requiresLocalBridge ? "本地 Bridge" : undefined,
-    capability.supportsAppPassword ? "专用密码" : undefined,
-    capability.supportsMailboxPassword ? "授权码" : undefined,
+    !officialWebLoginProvider && capability.supportsAppPassword
+      ? "专用密码"
+      : undefined,
+    !officialWebLoginProvider && capability.supportsMailboxPassword
+      ? "授权码"
+      : undefined,
     capability.supportsLabels ? "标签同步" : undefined,
     capability.supportsAliasSync ? "别名同步" : undefined,
     capability.supportsLargeAttachment || capability.supportsCloudAttachment

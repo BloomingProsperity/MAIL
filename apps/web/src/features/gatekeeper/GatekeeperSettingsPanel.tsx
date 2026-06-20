@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import type {
   EmailHubApi,
@@ -36,9 +36,19 @@ export function GatekeeperSettingsPanel(props: {
   const [notice, setNotice] = useState("");
   const [senders, setSenders] = useState<GatekeeperSenderDto[]>([]);
   const [senderBusy, setSenderBusy] = useState("");
+  const latestAccountIdRef = useRef(props.accountId);
+  latestAccountIdRef.current = props.accountId;
 
-  async function loadSenders() {
+  function isCurrentAccount(accountId: string): boolean {
+    return latestAccountIdRef.current === accountId;
+  }
+
+  async function loadSenders(
+    accountId = props.accountId,
+    isAlive = () => isCurrentAccount(accountId),
+  ) {
     if (!props.api) {
+      if (!isAlive()) return;
       setSenders([
         {
           senderId: "preview_sender",
@@ -56,11 +66,13 @@ export function GatekeeperSettingsPanel(props: {
 
     try {
       const page = await props.api.listGatekeeperSenders({
-        accountId: props.accountId,
+        accountId,
         status: "unknown",
       });
+      if (!isAlive()) return;
       setSenders(page.items);
     } catch {
+      if (!isAlive()) return;
       setSenders([]);
     }
   }
@@ -71,7 +83,7 @@ export function GatekeeperSettingsPanel(props: {
     if (!props.api) {
       setMode("inside_email");
       setNotice("");
-      void loadSenders();
+      void loadSenders(props.accountId, () => alive);
       return () => {
         alive = false;
       };
@@ -83,7 +95,7 @@ export function GatekeeperSettingsPanel(props: {
         if (!alive) return;
         setMode(settings.mode);
         setNotice("");
-        void loadSenders();
+        void loadSenders(props.accountId, () => alive);
       })
       .catch(() => {
         if (!alive) return;
@@ -96,9 +108,11 @@ export function GatekeeperSettingsPanel(props: {
   }, [props.accountId, props.api]);
 
   async function chooseMode(nextMode: GatekeeperMode) {
+    const accountId = props.accountId;
     setMode(nextMode);
 
     if (!props.api) {
+      if (!isCurrentAccount(accountId)) return;
       setNotice(`当前：${gatekeeperModeLabel(nextMode)}`);
       return;
     }
@@ -106,13 +120,15 @@ export function GatekeeperSettingsPanel(props: {
     setNotice("");
     try {
       const saved = await props.api.updateGatekeeperSettings({
-        accountId: props.accountId,
+        accountId,
         mode: nextMode,
       });
+      if (!isCurrentAccount(accountId)) return;
       setMode(saved.mode);
       setNotice(`当前：${gatekeeperModeLabel(saved.mode)}`);
-      await loadSenders();
+      await loadSenders(accountId);
     } catch {
+      if (!isCurrentAccount(accountId)) return;
       setNotice("保存失败。");
     }
   }
@@ -133,33 +149,38 @@ export function GatekeeperSettingsPanel(props: {
       return;
     }
 
+    const accountId = props.accountId;
     const actionKey = `${sender.senderId}:${action}`;
     setSenderBusy(actionKey);
     try {
       if (action === "accept") {
         await props.api.acceptGatekeeperSender({
-          accountId: props.accountId,
+          accountId,
           senderId: sender.senderId,
         });
+        if (!isCurrentAccount(accountId)) return;
         setNotice(`${sender.email} 已放行。`);
       } else if (action === "block") {
         await props.api.blockGatekeeperSender({
-          accountId: props.accountId,
+          accountId,
           senderId: sender.senderId,
         });
+        if (!isCurrentAccount(accountId)) return;
         setNotice(`${sender.email} 已阻止。`);
       } else {
         await props.api.blockGatekeeperDomain({
-          accountId: props.accountId,
+          accountId,
           domain: sender.domain,
         });
+        if (!isCurrentAccount(accountId)) return;
         setNotice(`${sender.domain} 已阻止。`);
       }
-      await loadSenders();
+      await loadSenders(accountId);
     } catch {
+      if (!isCurrentAccount(accountId)) return;
       setNotice("新发件人处理失败。");
     } finally {
-      setSenderBusy("");
+      if (isCurrentAccount(accountId)) setSenderBusy("");
     }
   }
 
@@ -174,21 +195,24 @@ export function GatekeeperSettingsPanel(props: {
       return;
     }
 
+    const accountId = props.accountId;
     setSenderBusy("bulk:accept");
     try {
       const result = await props.api.bulkDecideGatekeeperSenders({
-        accountId: props.accountId,
+        accountId,
         senderIds: senders
           .filter((sender) => sender.bulkAvailable)
           .map((sender) => sender.senderId),
         action: "accept",
       });
+      if (!isCurrentAccount(accountId)) return;
       setNotice(`已放行 ${result.items.length} 个发件人。`);
-      await loadSenders();
+      await loadSenders(accountId);
     } catch {
+      if (!isCurrentAccount(accountId)) return;
       setNotice("批量处理失败，确认当前模式是否允许批量操作。");
     } finally {
-      setSenderBusy("");
+      if (isCurrentAccount(accountId)) setSenderBusy("");
     }
   }
 

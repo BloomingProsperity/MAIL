@@ -57,7 +57,7 @@ describe("HermesRuntimeSettingsPanel", () => {
     expect(screen.queryByLabelText("服务地址")).toBeNull();
   });
 
-  it("saves the assistant name, selected provider, and API key", async () => {
+  it("requires a successful provider check before saving the runtime settings", async () => {
     const api = createRuntimeApiFixture();
 
     render(<HermesRuntimeSettingsPanel api={api} />);
@@ -72,7 +72,16 @@ describe("HermesRuntimeSettingsPanel", () => {
     fireEvent.change(screen.getByLabelText("访问密钥"), {
       target: { value: "runtime-secret" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    const saveButton = screen.getByRole("button", { name: "保存" });
+    expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+    expect(api.updateHermesRuntimeSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "检查连接" }));
+    await screen.findByText("连接成功。");
+    expect((saveButton as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(saveButton);
 
     await waitFor(() => {
       expect(api.updateHermesRuntimeSettings).toHaveBeenCalledWith(
@@ -89,6 +98,37 @@ describe("HermesRuntimeSettingsPanel", () => {
         }),
       );
     });
+  });
+
+  it("does not unlock saving when the provider check fails", async () => {
+    const api = createRuntimeApiFixture();
+    vi.mocked(api.probeHermesProvider).mockResolvedValueOnce({
+      ok: false,
+      status: "connection_failed",
+      providerKey: "deepseek",
+      label: "DeepSeek",
+      category: "cloud",
+      authType: "api_key",
+      endpointUrl: "https://api.deepseek.com/v1/chat/completions",
+      model: "deepseek-chat",
+      missing: [],
+      checkedAt: "2026-06-14T08:00:00.000Z",
+    });
+
+    render(<HermesRuntimeSettingsPanel api={api} />);
+
+    await screen.findByText("连接已保存。");
+    fireEvent.change(screen.getByLabelText("服务商"), {
+      target: { value: "deepseek" },
+    });
+    fireEvent.change(screen.getByLabelText("访问密钥"), {
+      target: { value: "bad-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "检查连接" }));
+
+    await screen.findByText("连接失败。");
+    expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.updateHermesRuntimeSettings).not.toHaveBeenCalled();
   });
 
   it("tests unsaved provider input through the provider probe without leaking the key", async () => {

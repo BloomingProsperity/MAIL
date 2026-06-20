@@ -39,6 +39,41 @@ describe("postgres engine command target resolver", () => {
     });
   });
 
+  it("resolves current provider mailbox targets for a local message", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return {
+          rows: [
+            { provider_mailbox_id: "INBOX", role: "inbox" },
+            { provider_mailbox_id: "Label_123", role: "label" },
+          ],
+        };
+      },
+    };
+
+    const resolver = createPostgresEngineCommandTargetResolver(client);
+    const targets = await resolver.resolveMessageMailboxTargets?.({
+      accountId: "account_1",
+      messageId: "message_1",
+      provider: "gmail",
+    });
+
+    expect(queries[0].text).toMatch(/FROM message_locations/i);
+    expect(queries[0].text).toMatch(/JOIN messages/i);
+    expect(queries[0].text).toMatch(/JOIN mailboxes/i);
+    expect(queries[0].text).toMatch(/JOIN provider_mailbox_refs/i);
+    expect(queries[0].text).toMatch(/messages\.account_id = \$1/i);
+    expect(queries[0].text).toMatch(/provider_mailbox_refs\.mailbox_id = mailboxes\.id/i);
+    expect(queries[0].text).toMatch(/provider_mailbox_refs\.provider = \$3/i);
+    expect(queries[0].values).toEqual(["account_1", "message_1", "gmail"]);
+    expect(targets).toEqual([
+      { providerMailboxId: "INBOX", role: "inbox" },
+      { providerMailboxId: "Label_123", role: "label" },
+    ]);
+  });
+
   it("resolves Gmail label targets through account-scoped provider label refs", async () => {
     const labelId = "11111111-1111-4111-8111-111111111111";
     const queries: Array<{ text: string; values?: unknown[] }> = [];

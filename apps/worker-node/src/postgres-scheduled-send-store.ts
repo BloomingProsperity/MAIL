@@ -44,8 +44,10 @@ export function createPostgresScheduledSendStore(
       const result = await client.query<ScheduledSendJobRow>(
         `
           WITH candidate AS (
-            SELECT id
+            SELECT scheduled_sends.id
             FROM scheduled_sends
+            JOIN connected_accounts
+              ON connected_accounts.id = scheduled_sends.account_id
             WHERE (
                 status IN ('scheduled', 'queued', 'failed')
                 OR (
@@ -54,8 +56,12 @@ export function createPostgresScheduledSendStore(
                   AND lease_expires_at <= $1::timestamptz
                 )
               )
+              AND connected_accounts.sync_state = 'syncing'
               AND not_before <= $1::timestamptz
-            ORDER BY not_before ASC, scheduled_at ASC, created_at ASC
+            ORDER BY
+              scheduled_sends.not_before ASC,
+              scheduled_sends.scheduled_at ASC,
+              scheduled_sends.created_at ASC
             FOR UPDATE SKIP LOCKED
             LIMIT 1
           ), claimed AS (

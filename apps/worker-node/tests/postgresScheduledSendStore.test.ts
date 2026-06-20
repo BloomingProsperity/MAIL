@@ -80,7 +80,9 @@ describe("Postgres scheduled send store", () => {
     expect(queries[0].text).toMatch(/WITH candidate AS/i);
     expect(queries[0].text).toMatch(/FOR UPDATE SKIP LOCKED/i);
     expect(queries[0].text).toMatch(/status IN \('scheduled', 'queued', 'failed'\)/i);
+    expect(queries[0].text).toMatch(/connected_accounts\.sync_state = 'syncing'/i);
     expect(queries[0].text).toMatch(/not_before <= \$1::timestamptz/i);
+    expect(queries[0].text).toMatch(/scheduled_sends\.created_at ASC/i);
     expect(queries[0].text).toMatch(/UPDATE email_drafts/i);
     expect(queries[0].text).toMatch(/JOIN connected_accounts/i);
     expect(queries[0].text).toMatch(/LEFT JOIN account_provider_settings/i);
@@ -133,6 +135,26 @@ describe("Postgres scheduled send store", () => {
         },
       ],
     });
+  });
+
+  it("only claims due scheduled sends while the account is actively syncing", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresScheduledSendStore({
+      async query(text, values) {
+        queries.push({ text, values });
+        return { rows: [] };
+      },
+    });
+
+    const job = await store.claimNextScheduledSend({
+      workerId: "worker-paused",
+      now: new Date("2026-06-13T12:30:00.000Z"),
+      leaseSeconds: 30,
+    });
+
+    expect(job).toBeUndefined();
+    expect(queries[0].text).toMatch(/JOIN connected_accounts/i);
+    expect(queries[0].text).toMatch(/connected_accounts\.sync_state = 'syncing'/i);
   });
 
   it("reclaims expired sending leases with sending drafts", async () => {

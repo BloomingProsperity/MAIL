@@ -91,6 +91,116 @@ describe("domain alias service", () => {
     });
   });
 
+  it("verifies domain ownership and MX records through DNS", async () => {
+    const store = createInMemoryDomainAliasStore();
+    const service = createDomainAliasService({
+      store,
+      createId: sequenceIds(["domain_1"]),
+      now: () => "2026-06-13T08:00:00.000Z",
+      dnsResolver: {
+        async resolveTxt(name) {
+          expect(name).toBe("_emailhub.example.com");
+          return [["emailhub-domain-verification=domain_1"]];
+        },
+        async resolveMx(name) {
+          expect(name).toBe("example.com");
+          return [{ exchange: "mx.emailhub.local.", priority: 10 }];
+        },
+      },
+    });
+
+    await service.createDomain({ domain: "example.com" });
+
+    await expect(service.verifyDomain({ domainId: "domain_1" })).resolves.toMatchObject({
+      id: "domain_1",
+      verificationStatus: "verified",
+    });
+    await expect(service.listDomains()).resolves.toMatchObject({
+      items: [{ id: "domain_1", verificationStatus: "verified" }],
+    });
+  });
+
+  it("marks domain verification failed when required DNS records are missing", async () => {
+    const store = createInMemoryDomainAliasStore();
+    const service = createDomainAliasService({
+      store,
+      createId: sequenceIds(["domain_1"]),
+      dnsResolver: {
+        async resolveTxt() {
+          return [["wrong-token"]];
+        },
+        async resolveMx() {
+          return [];
+        },
+      },
+    });
+
+    await service.createDomain({ domain: "example.com" });
+
+    await expect(service.verifyDomain({ domainId: "domain_1" })).resolves.toMatchObject({
+      verificationStatus: "failed",
+    });
+  });
+
+  it("applies Cloudflare DNS setup with the domain guidance records", async () => {
+    const store = createInMemoryDomainAliasStore();
+    const cloudflareCalls: unknown[] = [];
+    const service = createDomainAliasService({
+      store,
+      createId: sequenceIds(["domain_1"]),
+      cloudflareDnsClient: {
+        async setupDomainDns(input) {
+          cloudflareCalls.push(input);
+          return {
+            zoneId: input.zoneId ?? "zone_1",
+            zoneName: input.domain,
+            records: [
+              {
+                type: "TXT",
+                name: input.dnsRecords.ownershipTxt.name,
+                value: input.dnsRecords.ownershipTxt.value,
+                status: "created",
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    await service.createDomain({ domain: "example.com" });
+    const result = await service.configureDomainCloudflare({
+      domainId: "domain_1",
+      apiToken: " cf-token ",
+      zoneId: " zone_1 ",
+    });
+
+    expect(result).toMatchObject({
+      zoneId: "zone_1",
+      zoneName: "example.com",
+      records: [{ status: "created" }],
+    });
+    expect(cloudflareCalls).toMatchObject([
+      {
+        apiToken: "cf-token",
+        domain: "example.com",
+        zoneId: "zone_1",
+        dnsRecords: {
+          ownershipTxt: {
+            name: "_emailhub.example.com",
+            value: "emailhub-domain-verification=domain_1",
+          },
+          mx: {
+            name: "example.com",
+            value: "10 mx.emailhub.local",
+          },
+        },
+      },
+    ]);
+    await expect(service.listDomains()).resolves.toMatchObject({
+      items: [{ id: "domain_1", verificationStatus: "pending" }],
+    });
+  });
+
   it("updates catch-all routing without creating a full mail server", async () => {
     const store = createInMemoryDomainAliasStore();
     const service = createDomainAliasService({

@@ -53,10 +53,10 @@ describe("mail provider capability routes", () => {
           expect.objectContaining({
             provider: "gmail",
             label: "Gmail",
-            connectionLabel: "输入 Google 应用专用密码",
-            supportsWebLogin: false,
-            supportsAppPassword: true,
-            setupHints: ["开启邮箱客户端访问后，使用 Google 应用专用密码"],
+            connectionLabel: "登录 Google 账号",
+            supportsWebLogin: true,
+            supportsAppPassword: false,
+            setupHints: ["登录后自动同步邮件"],
           }),
           expect.objectContaining({
             provider: "proton_bridge",
@@ -77,7 +77,7 @@ describe("mail provider capability routes", () => {
     });
   });
 
-  it("returns web-login provider capabilities when OAuth setup is configured", async () => {
+  it("returns official web-login provider capabilities by default", async () => {
     await withApi(
       async (baseUrl) => {
         const response = await fetch(
@@ -93,9 +93,7 @@ describe("mail provider capability routes", () => {
           setupHints: ["登录后自动同步邮件"],
         });
       },
-      {
-        oauthProvidersConfigured: { gmail: true },
-      },
+      { oauthProvidersConfigured: { gmail: false } },
     );
   });
 

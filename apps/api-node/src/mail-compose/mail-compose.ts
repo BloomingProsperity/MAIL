@@ -426,15 +426,13 @@ export interface MailComposeStore {
     now: string;
   }): Promise<DraftWithAccount | undefined>;
   markDraftSent(input: {
-    accountId: string;
-    draftId: string;
+    accountId: string; draftId: string; leaseOwner: string;
     providerQueueId?: string;
     providerMessageId?: string;
     sentAt: string;
-  }): Promise<MailDraft>;
+  }): Promise<MailDraft | undefined>;
   markDraftFailed(input: {
-    accountId: string;
-    draftId: string;
+    accountId: string; draftId: string; leaseOwner: string;
     errorMessage: string;
   }): Promise<MailDraft | undefined>;
   createScheduledSend(input: {
@@ -502,17 +500,13 @@ export interface MailComposeStore {
     now: string;
   }): Promise<ScheduledSendWithDraft | undefined>;
   markScheduledSendSent(input: {
-    accountId: string;
-    scheduledId: string;
-    draftId: string;
+    accountId: string; scheduledId: string; draftId: string; leaseOwner: string;
     providerQueueId?: string;
     providerMessageId?: string;
     sentAt: string;
-  }): Promise<ScheduledSend>;
+  }): Promise<ScheduledSend | undefined>;
   markScheduledSendFailed(input: {
-    accountId: string;
-    scheduledId: string;
-    draftId: string;
+    accountId: string; scheduledId: string; draftId: string; leaseOwner: string;
     errorMessage: string;
     now: string;
   }): Promise<ScheduledSend | undefined>;

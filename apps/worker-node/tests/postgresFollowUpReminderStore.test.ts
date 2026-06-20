@@ -49,11 +49,13 @@ describe("Postgres follow-up reminder store", () => {
     await store.promoteDueFollowUp({
       followUpId: "fu_1",
       messageId: "msg_1",
+      workerId: "worker-a",
       now: new Date("2026-06-13T12:30:00.000Z"),
     });
 
     expect(queries[0].text).toMatch(/UPDATE follow_up_reminders/i);
     expect(queries[0].text).toMatch(/status = 'due'/i);
+    expect(queries[0].text).toMatch(/lease_owner = \$4/i);
     expect(queries[0].text).toMatch(/INSERT INTO message_classification/i);
     expect(queries[0].text).toMatch(/P3 Needs Action/i);
     expect(queries[0].text).toMatch(/priority_score/i);
@@ -65,6 +67,7 @@ describe("Postgres follow-up reminder store", () => {
       "fu_1",
       "msg_1",
       "2026-06-13T12:30:00.000Z",
+      "worker-a",
     ]);
   });
 });

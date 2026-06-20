@@ -143,6 +143,7 @@ describe("postgres sender screening store", () => {
     );
     expect(hermesMemoryQuery?.values).toEqual([
       "memory_1",
+      "account_1",
       "contact_memory",
       "sender:new@example.com",
       {
@@ -210,6 +211,23 @@ describe("postgres sender screening store", () => {
       null,
       "example.com",
       "blocked",
+    ]);
+    const hermesMemoryQuery = queries.find((query) =>
+      query.text.includes("INSERT INTO hermes_memories"),
+    );
+    expect(hermesMemoryQuery?.values).toEqual([
+      "memory_1",
+      "account_1",
+      "contact_memory",
+      "domain:example.com",
+      {
+        source: "sender_screening",
+        eventId: "event_1",
+        action: "block_domain",
+        domain: "example.com",
+        preference: "Keep future mail from this domain in Gatekeeper Screen.",
+      },
+      0.95,
     ]);
     expect(result).toEqual({
       senderId: "domain_rule_1",

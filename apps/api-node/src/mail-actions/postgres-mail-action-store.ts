@@ -63,7 +63,7 @@ export function createPostgresMailActionStore(
           applied.command,
           options.createId(),
         );
-        const snapshot = await loadSnapshot(tx, input.messageId);
+        const snapshot = await loadSnapshot(tx, input.accountId, input.messageId);
 
         return {
           accountId: input.accountId,
@@ -167,7 +167,10 @@ async function updateMessageState(
         AND EXISTS (
           SELECT 1
           FROM message_locations
+          JOIN mailboxes
+            ON mailboxes.id = message_locations.mailbox_id
           WHERE message_locations.message_id = messages.id
+            AND mailboxes.account_id = messages.account_id
         )
       RETURNING
         messages.id,
@@ -374,6 +377,15 @@ async function moveMessage(
     return undefined;
   }
 
+  const targetMailboxId = await loadOwnedMailboxId(
+    client,
+    input.accountId,
+    input.mailboxId,
+  );
+  if (!targetMailboxId) {
+    throw new InvalidMailActionRequestError("mailboxId is invalid");
+  }
+
   await client.query(
     `
       DELETE FROM message_locations
@@ -393,10 +405,33 @@ async function moveMessage(
         AND mailboxes.account_id = $3
       ON CONFLICT DO NOTHING
     `,
-    [input.messageId, input.mailboxId, input.accountId],
+    [input.messageId, targetMailboxId, input.accountId],
   );
 
   return state;
+}
+
+async function loadOwnedMailboxId(
+  client: Queryable,
+  accountId: string,
+  mailboxId: string | undefined,
+): Promise<string | undefined> {
+  if (!mailboxId) {
+    return undefined;
+  }
+
+  const result = await client.query<{ id: string }>(
+    `
+      SELECT id
+      FROM mailboxes
+      WHERE account_id = $1
+        AND id = $2
+      LIMIT 1
+    `,
+    [accountId, mailboxId],
+  );
+
+  return result.rows[0]?.id;
 }
 
 async function applyLabels(
@@ -474,7 +509,10 @@ async function loadVisibleState(
         AND EXISTS (
           SELECT 1
           FROM message_locations
+          JOIN mailboxes
+            ON mailboxes.id = message_locations.mailbox_id
           WHERE message_locations.message_id = messages.id
+            AND mailboxes.account_id = messages.account_id
         )
       LIMIT 1
     `,
@@ -528,6 +566,7 @@ async function enqueueCommand(
 
 async function loadSnapshot(
   client: Queryable,
+  accountId: string,
   messageId: string,
 ): Promise<{ mailboxIds: string[]; labelIds: string[] }> {
   const result = await client.query<SnapshotRow>(
@@ -537,7 +576,10 @@ async function loadSnapshot(
           (
             SELECT ARRAY_AGG(DISTINCT message_locations.mailbox_id)
             FROM message_locations
+            JOIN mailboxes
+              ON mailboxes.id = message_locations.mailbox_id
             WHERE message_locations.message_id = $1
+              AND mailboxes.account_id = $2
           ),
           '{}'
         ) AS mailbox_ids,
@@ -545,12 +587,15 @@ async function loadSnapshot(
           (
             SELECT ARRAY_AGG(DISTINCT label_assignments.label_id)
             FROM label_assignments
+            JOIN labels
+              ON labels.id = label_assignments.label_id
             WHERE label_assignments.message_id = $1
+              AND labels.account_id = $2
           ),
           '{}'
         ) AS label_ids
     `,
-    [messageId],
+    [messageId, accountId],
   );
 
   const row = result.rows[0];

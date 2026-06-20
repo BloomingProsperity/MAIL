@@ -1,3 +1,13 @@
+import {
+  type DomainDnsResolver,
+  verifyDomainDnsRecords,
+} from "./domain-dns-verification.js";
+import {
+  createCloudflareDnsClient,
+  type DomainCloudflareDnsClient,
+  type DomainCloudflareSetupResult,
+} from "./domain-cloudflare.js";
+
 export class InvalidDomainAliasRequestError extends Error {
   readonly code = "invalid_domain_alias_request";
 
@@ -86,6 +96,10 @@ export interface DomainAliasStore {
   }): Promise<DomainRecord>;
   listDomains(): Promise<DomainRecord[]>;
   getDomain(domainId: string): Promise<DomainRecord | undefined>;
+  updateDomainVerificationStatus(input: {
+    domainId: string;
+    status: DomainVerificationStatus;
+  }): Promise<DomainRecord | undefined>;
   createDestination(input: {
     id: string;
     domainId: string;
@@ -124,6 +138,12 @@ export interface InMemoryDomainAliasStore extends DomainAliasStore {
 export interface DomainAliasService {
   createDomain(input: { domain: string }): Promise<DomainRecord>;
   listDomains(): Promise<{ items: DomainRecord[] }>;
+  verifyDomain(input: { domainId: string }): Promise<DomainRecord>;
+  configureDomainCloudflare(input: {
+    domainId: string;
+    apiToken: string;
+    zoneId?: string;
+  }): Promise<DomainCloudflareSetupResult>;
   createDestination(input: {
     domainId: string;
     email: string;
@@ -155,12 +175,16 @@ export interface DomainAliasServiceOptions {
   store: DomainAliasStore;
   createId: () => string;
   now?: () => string;
+  dnsResolver?: DomainDnsResolver;
+  cloudflareDnsClient?: DomainCloudflareDnsClient;
 }
 
 export function createDomainAliasService(
   options: DomainAliasServiceOptions,
 ): DomainAliasService {
   const now = () => options.now?.() ?? new Date().toISOString();
+  const cloudflareDnsClient =
+    options.cloudflareDnsClient ?? createCloudflareDnsClient();
 
   return {
     async createDomain(input) {
@@ -174,6 +198,32 @@ export function createDomainAliasService(
 
     async listDomains() {
       return { items: await options.store.listDomains() };
+    },
+
+    async verifyDomain(input) {
+      const domain = await requireDomain(options.store, input.domainId);
+      const verified = await verifyDomainDnsRecords(
+        domain.dnsRecords,
+        options.dnsResolver,
+      );
+      const updated = await options.store.updateDomainVerificationStatus({
+        domainId: domain.id,
+        status: verified ? "verified" : "failed",
+      });
+      if (!updated) {
+        throw new InvalidDomainAliasRequestError("domain was not found");
+      }
+      return updated;
+    },
+
+    async configureDomainCloudflare(input) {
+      const domain = await requireDomain(options.store, input.domainId);
+      return cloudflareDnsClient.setupDomainDns({
+        domain: domain.domain,
+        dnsRecords: domain.dnsRecords,
+        apiToken: normalizeCloudflareToken(input.apiToken),
+        zoneId: normalizeOptionalText(input.zoneId),
+      });
     },
 
     async createDestination(input) {
@@ -302,6 +352,16 @@ export function createInMemoryDomainAliasStore(): InMemoryDomainAliasStore {
     async getDomain(domainId) {
       const domain = domains.get(domainId);
       return domain ? { ...domain } : undefined;
+    },
+
+    async updateDomainVerificationStatus(input) {
+      const domain = domains.get(input.domainId);
+      if (!domain) {
+        return undefined;
+      }
+      const updated = { ...domain, verificationStatus: input.status };
+      domains.set(input.domainId, updated);
+      return { ...updated };
     },
 
     async createDestination(input) {
@@ -453,6 +513,19 @@ function normalizeDomain(value: string): string {
   }
 
   return domain;
+}
+
+function normalizeCloudflareToken(value: string): string {
+  const token = value.trim();
+  if (!token) {
+    throw new InvalidDomainAliasRequestError("cloudflare api token is required");
+  }
+  return token;
+}
+
+function normalizeOptionalText(value: string | undefined): string | undefined {
+  const text = value?.trim();
+  return text ? text : undefined;
 }
 
 function normalizeEmail(value: string): string {

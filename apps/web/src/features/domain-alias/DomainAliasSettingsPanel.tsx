@@ -20,6 +20,8 @@ export function DomainAliasSettingsPanel(props: {
   const [logs, setLogs] = useState<DomainDeliveryLogDto[]>([]);
   const [notice, setNotice] = useState("");
   const [domainInput, setDomainInput] = useState("");
+  const [cloudflareApiToken, setCloudflareApiToken] = useState("");
+  const [cloudflareZoneId, setCloudflareZoneId] = useState("");
   const [destinationEmail, setDestinationEmail] = useState("");
   const [aliasLocalPart, setAliasLocalPart] = useState("");
   const [aliasDestinationId, setAliasDestinationId] = useState("");
@@ -113,7 +115,7 @@ export function DomainAliasSettingsPanel(props: {
           setNotice("还没有添加个人域名。");
           return undefined;
         }
-        return loadDomainDetail(nextDomainId, alive);
+        return loadDomainDetail(nextDomainId, () => alive);
       })
       .catch(() => {
         if (!alive) return;
@@ -130,7 +132,7 @@ export function DomainAliasSettingsPanel(props: {
     };
   }, [props.api]);
 
-  async function loadDomainDetail(domainId: string, alive = true) {
+  async function loadDomainDetail(domainId: string, isAlive = () => true) {
     if (!props.api || !domainId) {
       return;
     }
@@ -146,7 +148,7 @@ export function DomainAliasSettingsPanel(props: {
             limit: 20,
           }),
         ]);
-      if (!alive) {
+      if (!isAlive()) {
         return;
       }
       setDestinations(destinationPage.items);
@@ -162,7 +164,7 @@ export function DomainAliasSettingsPanel(props: {
       setCatchAllDestinationId(preferredCatchAllDestinationId);
       setNotice("");
     } catch {
-      if (!alive) {
+      if (!isAlive()) {
         return;
       }
       setDestinations([]);
@@ -214,6 +216,75 @@ export function DomainAliasSettingsPanel(props: {
     } catch {
       setNotice("域名添加失败，请检查域名格式或是否已存在。");
     } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function verifySelectedDomain() {
+    if (!props.api) {
+      setNotice("域名验证暂时不可用。");
+      return;
+    }
+    if (!selectedDomainId) {
+      setNotice("请先选择域名。");
+      return;
+    }
+
+    setBusyAction("verify-domain");
+    try {
+      const verifiedDomain = await props.api.verifyDomain({
+        domainId: selectedDomainId,
+      });
+      setDomains((current) =>
+        current.map((domain) =>
+          domain.id === verifiedDomain.id ? verifiedDomain : domain,
+        ),
+      );
+      setNotice(
+        verifiedDomain.verificationStatus === "verified"
+          ? `${verifiedDomain.domain} DNS 验证通过。`
+          : "DNS 尚未验证通过，请检查 TXT 与 MX 记录。",
+      );
+    } catch {
+      setNotice("DNS 验证失败，请稍后重试。");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function configureCloudflareDns() {
+    if (!props.api) {
+      setNotice("Cloudflare 自动配置暂时不可用。");
+      return;
+    }
+    if (!selectedDomainId) {
+      setNotice("请先选择域名。");
+      return;
+    }
+    const apiToken = cloudflareApiToken.trim();
+    if (!apiToken) {
+      setNotice("请先填写 Cloudflare API Token。");
+      return;
+    }
+
+    setBusyAction("cloudflare");
+    try {
+      const result = await props.api.configureDomainCloudflare({
+        domainId: selectedDomainId,
+        apiToken,
+        zoneId: cloudflareZoneId.trim() || undefined,
+      });
+      const createdCount = result.records.filter(
+        (record) => record.status === "created",
+      ).length;
+      const existingCount = result.records.length - createdCount;
+      setNotice(
+        `Cloudflare 已处理 ${result.records.length} 条 DNS 记录（新增 ${createdCount}，已存在 ${existingCount}），请等待生效后验证 DNS。`,
+      );
+    } catch {
+      setNotice("Cloudflare 自动配置失败，请检查 Token 权限或改用手动记录。");
+    } finally {
+      setCloudflareApiToken("");
       setBusyAction("");
     }
   }
@@ -322,6 +393,8 @@ export function DomainAliasSettingsPanel(props: {
   async function selectDomain(domainId: string) {
     setSelectedDomainId(domainId);
     setLastCatchAll(undefined);
+    setCloudflareApiToken("");
+    setCloudflareZoneId("");
     setNotice("");
     await loadDomainDetail(domainId);
   }
@@ -344,7 +417,7 @@ export function DomainAliasSettingsPanel(props: {
           {notice}
         </div>
       ) : null}
-      <div className="settings-card-grid">
+      <div className="settings-card-grid domain-setup-grid">
         <article className="settings-module domain-command">
           <div>
             <h3>添加个人域名</h3>
@@ -367,47 +440,96 @@ export function DomainAliasSettingsPanel(props: {
             添加域名
           </button>
         </article>
-        <article className="settings-module domain-command">
-          <div>
-            <h3>当前域名</h3>
-            <p>
-              {selectedDomain
-                ? `${selectedDomain.domain} · ${formatDomainStatus(
-                    selectedDomain.verificationStatus,
-                  )}`
-                : "还没有域名。"}
-            </p>
-          </div>
-          <label>
-            <span>选择域名</span>
-            <select
-              aria-label="Domain selector"
-              value={selectedDomainId}
-              disabled={domains.length === 0}
-              onChange={(event) => void selectDomain(event.currentTarget.value)}
+        <article className="settings-module domain-command domain-current-card">
+          <div className="domain-current-summary">
+            <div>
+              <h3>当前域名</h3>
+              <p>
+                {selectedDomain
+                  ? `${selectedDomain.domain} · ${formatDomainStatus(
+                      selectedDomain.verificationStatus,
+                    )}`
+                  : "还没有域名。"}
+              </p>
+            </div>
+            <label>
+              <span>选择域名</span>
+              <select
+                aria-label="Domain selector"
+                value={selectedDomainId}
+                disabled={domains.length === 0}
+                onChange={(event) => void selectDomain(event.currentTarget.value)}
+              >
+                {domains.length === 0 ? <option value="">无域名</option> : null}
+                {domains.map((domain) => (
+                  <option key={domain.id} value={domain.id}>
+                    {domain.domain} · {formatDomainStatus(domain.verificationStatus)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={busyAction === "verify-domain" || !selectedDomainId}
+              onClick={() => void verifySelectedDomain()}
             >
-              {domains.length === 0 ? <option value="">无域名</option> : null}
-              {domains.map((domain) => (
-                <option key={domain.id} value={domain.id}>
-                  {domain.domain} · {formatDomainStatus(domain.verificationStatus)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="dns-record-list" aria-label="Domain DNS records">
-            {dnsRecords.length > 0 ? (
-              dnsRecords.map((record) => (
-                <p key={`${record.label}-${record.name}-${record.value}`}>
-                  <strong>{record.label}</strong>
-                  <span>
-                    {record.type} · {record.name}
-                  </span>
-                  <code>{record.value}</code>
-                </p>
-              ))
-            ) : (
-              <p>暂无 DNS 记录。</p>
-            )}
+              验证 DNS
+            </button>
+          </div>
+          <div className="domain-dns-column">
+            <div className="dns-record-list" aria-label="Domain DNS records">
+              {dnsRecords.length > 0 ? (
+                dnsRecords.map((record) => (
+                  <p key={`${record.label}-${record.name}-${record.value}`}>
+                    <strong>{record.label}</strong>
+                    <span>
+                      {record.type} · {record.name}
+                    </span>
+                    <code>{record.value}</code>
+                  </p>
+                ))
+              ) : (
+                <p>暂无 DNS 记录。</p>
+              )}
+            </div>
+            <div className="cloudflare-dns-form">
+              <label>
+                <span>Cloudflare API Token</span>
+                <input
+                  aria-label="Cloudflare API token"
+                  autoComplete="off"
+                  type="password"
+                  value={cloudflareApiToken}
+                  placeholder="Zone DNS Edit token"
+                  onChange={(event) =>
+                    setCloudflareApiToken(event.currentTarget.value)
+                  }
+                />
+              </label>
+              <label>
+                <span>Zone ID（可选）</span>
+                <input
+                  aria-label="Cloudflare zone id"
+                  value={cloudflareZoneId}
+                  placeholder="留空自动查找"
+                  onChange={(event) =>
+                    setCloudflareZoneId(event.currentTarget.value)
+                  }
+                />
+              </label>
+              <button
+                className="ghost-button"
+                type="button"
+                disabled={busyAction === "cloudflare" || !selectedDomainId}
+                onClick={() => void configureCloudflareDns()}
+              >
+                Cloudflare 自动配置
+              </button>
+              <p className="domain-help-text">
+                Token 仅本次使用，需要 Zone DNS Read 与 DNS Edit 权限。
+              </p>
+            </div>
           </div>
         </article>
       </div>

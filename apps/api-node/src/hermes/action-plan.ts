@@ -370,7 +370,7 @@ export function createHermesActionPlanService(
           },
         });
 
-        await options.planStore.completePlan({
+        const completedPlan = await options.planStore.completePlan({
           planId,
           accountId,
           candidateId,
@@ -379,6 +379,19 @@ export function createHermesActionPlanService(
           confirmedAt,
           ...(auditEventId ? { confirmationAuditEventId: auditEventId } : {}),
         });
+        if (!completedPlan) {
+          await disableRuleAfterFailedConfirmation(options.ruleService, {
+            accountId,
+            ruleId: rule.id,
+          });
+          await failActionPlanConfirmation(options.planStore, {
+            planId,
+            accountId,
+            candidateId,
+            failureMessage: "action_plan_confirmation_lost",
+          });
+          return undefined;
+        }
 
         return auditEventId
           ? { ...confirmation, auditEventId }

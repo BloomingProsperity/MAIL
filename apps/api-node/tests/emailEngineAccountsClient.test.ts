@@ -166,6 +166,13 @@ describe("EmailEngine accounts client", () => {
         },
       },
     });
+    expect(calls[1].url).toBe(
+      "http://emailengine:3000/v1/account/acc_1/reconnect",
+    );
+    expect(calls[1].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      reconnect: true,
+    });
     expect(result).toEqual({ account: "acc_1", state: "syncing" });
   });
 
@@ -174,9 +181,6 @@ describe("EmailEngine accounts client", () => {
     const client = createEmailEngineAccountsClient({
       baseUrl: "http://emailengine:3000",
       accessToken: "secret-token",
-      oauth2ProviderIds: {
-        gmail: "ee_gmail_oauth_app",
-      },
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
         return Response.json({
@@ -203,38 +207,66 @@ describe("EmailEngine accounts client", () => {
       account: "acc_1",
       name: "Me",
       email: "me@gmail.com",
-      oauth2: {
-        provider: "ee_gmail_oauth_app",
-        auth: {
-          user: "me@gmail.com",
-        },
+      imap: {
+        host: "imap.gmail.com",
+        port: 993,
+        secure: true,
         useAuthServer: true,
       },
+      smtp: {
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        useAuthServer: true,
+      },
+    });
+    expect(calls[1].url).toBe(
+      "http://emailengine:3000/v1/account/acc_1/reconnect",
+    );
+    expect(calls[1].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      reconnect: true,
     });
     expect(result).toEqual({ account: "acc_1", state: "syncing" });
   });
 
-  it("rejects OAuth account registration without an EmailEngine OAuth2 app id", async () => {
+  it("uses Outlook IMAP and SMTP auth server endpoints for Outlook OAuth accounts", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const client = createEmailEngineAccountsClient({
       baseUrl: "http://emailengine:3000",
       accessToken: "secret-token",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init });
-        return Response.json({ account: "acc_1" });
+        return Response.json({ account: "acc_1", state: "syncing" });
       },
     });
 
-    await expect(
-      client.registerOAuthAccount({
-        accountId: "acc_1",
-        email: "me@outlook.com",
-        provider: "outlook",
-      }),
-    ).rejects.toThrow(
-      "EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID is not configured",
+    await client.registerOAuthAccount({
+      accountId: "acc_1",
+      email: "me@outlook.com",
+      provider: "outlook",
+    });
+
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      account: "acc_1",
+      email: "me@outlook.com",
+      imap: {
+        host: "outlook.office365.com",
+        port: 993,
+        secure: true,
+        useAuthServer: true,
+      },
+      smtp: {
+        host: "smtp.office365.com",
+        port: 587,
+        secure: false,
+        useAuthServer: true,
+      },
+    });
+    expect(calls[1].url).toBe(
+      "http://emailengine:3000/v1/account/acc_1/reconnect",
     );
-    expect(calls).toEqual([]);
+    expect(calls[1].init?.method).toBe("PUT");
   });
 
   it("throws a useful error when account registration fails", async () => {

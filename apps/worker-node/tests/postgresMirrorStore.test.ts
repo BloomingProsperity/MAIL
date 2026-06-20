@@ -1831,7 +1831,7 @@ describe("postgres mirror store", () => {
     });
 
     const deleteLocationQuery = queries.find((query) =>
-      query.text.includes("DELETE FROM message_locations"),
+      query.text.includes("DELETE FROM message_locations") && query.text.includes("imap_mailbox_id"),
     );
     expect(deleteLocationQuery?.text).toMatch(/imap_mailbox_id = \$4/i);
     expect(deleteLocationQuery?.text).toMatch(/imap_uidvalidity = \$5/i);

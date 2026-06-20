@@ -132,6 +132,7 @@ function safeExportAccount(
   account: AccountTransferAccount,
 ): AccountTransferAccount {
   return compactObject({
+    id: isNonEmptyString(account.id) ? account.id : undefined,
     email: account.email,
     provider: account.provider,
     authMethod: normalizeAuthMethod(account.authMethod),
@@ -152,6 +153,7 @@ function buildReauthPayload(
     source: "account_transfer_import",
     transferVersion: 1,
     reauthRequired: true,
+    accountId: account.id,
     displayName: account.displayName,
     engineProvider: normalizeEngineProvider(account.engineProvider),
     providerPreset: account.providerPreset,
@@ -170,6 +172,9 @@ function isValidTransferAccount(value: unknown): value is AccountTransferAccount
 
   const account = value as Partial<AccountTransferAccount>;
   if (!isNonEmptyString(account.email) || !isNonEmptyString(account.provider)) {
+    return false;
+  }
+  if (account.id !== undefined && !isNonEmptyString(account.id)) {
     return false;
   }
   if (account.authMethod !== "password" && account.authMethod !== "oauth") {

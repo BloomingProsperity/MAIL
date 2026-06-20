@@ -70,6 +70,7 @@ export function createPostgresFollowUpReminderStore(
             WHERE id = $1
               AND message_id = $2
               AND status = 'open'
+              AND lease_owner = $4
             RETURNING message_id
           )
           INSERT INTO message_classification (
@@ -103,7 +104,12 @@ export function createPostgresFollowUpReminderStore(
               classified_by = 'follow_up_reminder',
               updated_at = $3::timestamptz
         `,
-        [input.followUpId, input.messageId, input.now.toISOString()],
+        [
+          input.followUpId,
+          input.messageId,
+          input.now.toISOString(),
+          input.workerId,
+        ],
       );
     },
   };

@@ -11,6 +11,7 @@ export type MailEngineEventKind =
   | "labels_changed"
   | "mailbox_changed"
   | "auth_failed"
+  | "auth_succeeded"
   | "sync_failed"
   | "send_completed"
   | "unknown_notification";
@@ -86,6 +87,7 @@ const eventKindByName: Record<string, MailEngineEventKind> = {
   mailboxNew: "mailbox_changed",
   mailboxDeleted: "mailbox_changed",
   authenticationError: "auth_failed",
+  authenticationSuccess: "auth_succeeded",
   accountError: "sync_failed",
   messageSent: "send_completed",
 };

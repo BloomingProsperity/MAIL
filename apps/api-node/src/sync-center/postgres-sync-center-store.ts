@@ -124,7 +124,17 @@ export function createPostgresSyncCenterStore(
           WHERE status IN ('pending', 'failed')
             AND (
               payload ->> 'reauthRequired' = 'true'
-              OR auth_method = 'oauth'
+              OR payload ->> 'source' IN (
+                'csv_import',
+                'account_transfer_import'
+              )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM connected_accounts active_accounts
+              WHERE lower(active_accounts.email) = lower(onboarding_tasks.email)
+                AND lower(active_accounts.provider) = lower(onboarding_tasks.provider)
+                AND active_accounts.sync_state IN ('syncing', 'paused')
             )
           ORDER BY created_at DESC, id DESC
         `,

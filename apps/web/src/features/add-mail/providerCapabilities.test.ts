@@ -95,13 +95,13 @@ describe("providerCapabilityToOption", () => {
     expect(JSON.stringify(option)).not.toMatch(/send_on_behalf|large_attachment/);
   });
 
-  it("uses app-password setup when Gmail and Outlook web login is not configured", () => {
+  it("keeps Gmail and Outlook on official web login without falling back", () => {
     expect(
       providerCapabilityToOption(
         capabilityFixture({
           provider: "gmail",
           label: "Gmail",
-          connectionLabel: "输入 Google 应用专用密码",
+          connectionLabel: "旧的错误连接方式",
           accountGroup: "global",
           supportsWebLogin: false,
           supportsAppPassword: true,
@@ -109,10 +109,11 @@ describe("providerCapabilityToOption", () => {
         }),
       ),
     ).toMatchObject({
-      action: "password",
-      subtitle: "输入 Google 应用专用密码",
-      badges: ["专用密码", "授权码"],
+      action: "oauth",
+      subtitle: "Google 账号",
+      badges: ["网页登录"],
       setupHints: [],
+      disabled: true,
     });
 
     expect(
@@ -120,7 +121,7 @@ describe("providerCapabilityToOption", () => {
         capabilityFixture({
           provider: "outlook",
           label: "Outlook",
-          connectionLabel: "输入 Outlook 应用专用密码",
+          connectionLabel: "旧的错误连接方式",
           accountGroup: "global",
           supportsWebLogin: false,
           supportsAppPassword: true,
@@ -128,14 +129,15 @@ describe("providerCapabilityToOption", () => {
         }),
       ),
     ).toMatchObject({
-      action: "password",
-      subtitle: "输入 Outlook 应用专用密码",
-      badges: ["专用密码", "授权码"],
+      action: "oauth",
+      subtitle: "Microsoft 账号",
+      badges: ["网页登录"],
       setupHints: [],
+      disabled: true,
     });
   });
 
-  it("uses official web login only when the provider capability is configured", () => {
+  it("uses official web login for configured provider capabilities", () => {
     expect(
       providerCapabilityToOption(
         capabilityFixture({
@@ -154,6 +156,7 @@ describe("providerCapabilityToOption", () => {
       subtitle: "Google 账号",
       badges: ["网页登录"],
       setupHints: [],
+      disabled: false,
     });
   });
 

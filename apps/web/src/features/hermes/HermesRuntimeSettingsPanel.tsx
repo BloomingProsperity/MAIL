@@ -10,6 +10,21 @@ import "./HermesRuntimeSettingsPanel.css";
 
 type HermesRuntimeBusyAction = "save" | "test" | "clear-key";
 
+interface TestedHermesConnection {
+  providerKey: string;
+  endpointUrl: string;
+  model: string;
+  apiKeyVersion: number;
+  usesTypedApiKey: boolean;
+  usesSavedApiKey: boolean;
+}
+
+interface HermesConnectionShape {
+  providerKey: string;
+  endpointUrl: string;
+  model: string;
+}
+
 const fallbackHermesProviders: HermesProviderCatalogItem[] = [
   {
     key: "openai-api",
@@ -126,6 +141,39 @@ function formatHermesMissingFields(fields: HermesProviderProbeMissing[]): string
   return fields.map((field) => labels[field]).join("、");
 }
 
+function isSameTestedConnection(
+  tested: TestedHermesConnection | undefined,
+  current: TestedHermesConnection,
+): boolean {
+  if (!tested) {
+    return false;
+  }
+
+  return (
+    tested.providerKey === current.providerKey &&
+    tested.endpointUrl === current.endpointUrl &&
+    tested.model === current.model &&
+    tested.apiKeyVersion === current.apiKeyVersion &&
+    tested.usesTypedApiKey === current.usesTypedApiKey &&
+    tested.usesSavedApiKey === current.usesSavedApiKey
+  );
+}
+
+function isSameConnectionShape(
+  saved: HermesConnectionShape | undefined,
+  current: HermesConnectionShape,
+): boolean {
+  if (!saved) {
+    return false;
+  }
+
+  return (
+    saved.providerKey === current.providerKey &&
+    saved.endpointUrl === current.endpointUrl &&
+    saved.model === current.model
+  );
+}
+
 export function HermesRuntimeSettingsPanel(props: {
   api?: EmailHubApi;
 }) {
@@ -134,12 +182,14 @@ export function HermesRuntimeSettingsPanel(props: {
   const [endpointUrl, setEndpointUrl] = useState("");
   const [model, setModel] = useState("gpt-5.2");
   const [apiKey, setApiKey] = useState("");
+  const [apiKeyVersion, setApiKeyVersion] = useState(0);
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [hermesProviders, setHermesProviders] = useState<
     HermesProviderCatalogItem[]
   >(fallbackHermesProviders);
   const [notice, setNotice] = useState("未连接。");
   const [busyAction, setBusyAction] = useState<HermesRuntimeBusyAction>();
+  const [savedConnection, setSavedConnection] = useState<HermesConnectionShape>();
 
   const providerOptions = useMemo(() => {
     const catalog = hermesProviders.filter(isUserSelectableProvider);
@@ -172,6 +222,12 @@ export function HermesRuntimeSettingsPanel(props: {
   );
   const customProviderSelected = providerKey === "custom";
   const isRuntimeBusy = busyAction !== undefined;
+  const [testedConnection, setTestedConnection] =
+    useState<TestedHermesConnection>();
+  const connectionVerified = isSameTestedConnection(
+    testedConnection,
+    currentConnectionProof(),
+  );
 
   useEffect(() => {
     let alive = true;
@@ -207,9 +263,17 @@ export function HermesRuntimeSettingsPanel(props: {
         );
         setAssistantName(settings.assistantName || "Hermes");
         setProviderKey(nextProviderKey);
-        setEndpointUrl(settings.endpointUrl ?? providerDefaultEndpoint(provider) ?? "");
-        setModel(settings.model || providerDefaultModel(provider));
+        const nextEndpointUrl =
+          settings.endpointUrl ?? providerDefaultEndpoint(provider) ?? "";
+        const nextModel = settings.model || providerDefaultModel(provider);
+        setEndpointUrl(nextEndpointUrl);
+        setModel(nextModel);
         setApiKeyConfigured(settings.apiKeyConfigured);
+        setSavedConnection({
+          providerKey: nextProviderKey,
+          endpointUrl: nextEndpointUrl,
+          model: nextModel,
+        });
         setNotice(
           settings.apiKeyConfigured
             ? "连接已保存。"
@@ -231,6 +295,7 @@ export function HermesRuntimeSettingsPanel(props: {
     setProviderKey(nextProviderKey);
     setModel(providerDefaultModel(provider));
     setEndpointUrl(providerDefaultEndpoint(provider) ?? "");
+    setTestedConnection(undefined);
   }
 
   function runtimePayload() {
@@ -251,6 +316,26 @@ export function HermesRuntimeSettingsPanel(props: {
     };
   }
 
+  function currentConnectionProof(): TestedHermesConnection {
+    const typedApiKey = apiKey.trim();
+
+    return {
+      ...currentConnectionShape(),
+      apiKeyVersion,
+      usesTypedApiKey: Boolean(typedApiKey),
+      usesSavedApiKey: !typedApiKey && apiKeyConfigured,
+    };
+  }
+
+  function currentConnectionShape(): HermesConnectionShape {
+    const payload = runtimePayload();
+    return {
+      providerKey: payload.providerKey,
+      endpointUrl: payload.endpointUrl ?? "",
+      model: payload.model,
+    };
+  }
+
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busyAction) {
@@ -258,6 +343,10 @@ export function HermesRuntimeSettingsPanel(props: {
     }
     if (customProviderSelected && !endpointUrl.trim()) {
       setNotice("自定义服务地址为空。");
+      return;
+    }
+    if (!connectionVerified) {
+      setNotice("请先检查连接，确认服务商有返回后再保存。");
       return;
     }
     if (!props.api) {
@@ -274,11 +363,25 @@ export function HermesRuntimeSettingsPanel(props: {
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
       });
       setAssistantName(saved.assistantName || assistantName || "Hermes");
-      setProviderKey(saved.providerKey === "hermes" ? "openai-api" : saved.providerKey);
+      const nextProviderKey =
+        saved.providerKey === "hermes" ? "openai-api" : saved.providerKey;
+      setProviderKey(nextProviderKey);
       setEndpointUrl(saved.endpointUrl ?? "");
       setModel(saved.model);
       setApiKey("");
       setApiKeyConfigured(saved.apiKeyConfigured);
+      const nextSavedConnection = {
+        providerKey: nextProviderKey,
+        endpointUrl: saved.endpointUrl ?? "",
+        model: saved.model,
+      };
+      setSavedConnection(nextSavedConnection);
+      setTestedConnection({
+        ...nextSavedConnection,
+        apiKeyVersion,
+        usesTypedApiKey: false,
+        usesSavedApiKey: saved.apiKeyConfigured,
+      });
       setNotice("连接已保存。");
     } catch {
       setNotice("保存失败。");
@@ -304,6 +407,11 @@ export function HermesRuntimeSettingsPanel(props: {
     setNotice("");
     try {
       const typedApiKey = apiKey.trim();
+      if (!typedApiKey && !isSameConnectionShape(savedConnection, currentConnectionShape())) {
+        setTestedConnection(undefined);
+        setNotice("请输入访问密钥后再检查新服务商。");
+        return;
+      }
       const result = typedApiKey
         ? await props.api.probeHermesProvider({
             providerKey,
@@ -314,9 +422,11 @@ export function HermesRuntimeSettingsPanel(props: {
         : await props.api.testHermesRuntimeConnection();
 
       if (result.ok) {
+        setTestedConnection(currentConnectionProof());
         setNotice("连接成功。");
         return;
       }
+      setTestedConnection(undefined);
       if ("status" in result && result.status === "missing_configuration") {
         setNotice(`缺少：${formatHermesMissingFields(result.missing)}`);
         return;
@@ -346,6 +456,12 @@ export function HermesRuntimeSettingsPanel(props: {
       const saved = await props.api.clearHermesRuntimeApiKey(runtimePayload());
       setApiKey("");
       setApiKeyConfigured(saved.apiKeyConfigured);
+      setSavedConnection({
+        providerKey: saved.providerKey === "hermes" ? "openai-api" : saved.providerKey,
+        endpointUrl: saved.endpointUrl ?? "",
+        model: saved.model,
+      });
+      setTestedConnection(undefined);
       setNotice("访问密钥已清除。");
     } catch {
       setNotice("清除失败。");
@@ -408,7 +524,10 @@ export function HermesRuntimeSettingsPanel(props: {
               aria-label="访问密钥"
               value={apiKey}
               disabled={isRuntimeBusy}
-              onChange={(event) => setApiKey(event.target.value)}
+              onChange={(event) => {
+                setApiKey(event.target.value);
+                setApiKeyVersion((current) => current + 1);
+              }}
               placeholder={apiKeyConfigured ? "已保存" : "输入访问密钥"}
               type="password"
             />
@@ -416,7 +535,11 @@ export function HermesRuntimeSettingsPanel(props: {
         </article>
 
         <div className="inline-actions hermes-connect-actions">
-          <button className="primary-button" type="submit" disabled={isRuntimeBusy}>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={isRuntimeBusy || !connectionVerified}
+          >
             保存
           </button>
           <button

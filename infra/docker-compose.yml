@@ -129,6 +129,7 @@ services:
       MICROSOFT_GRAPH_PROFILE_URL: ${MICROSOFT_GRAPH_PROFILE_URL:-https://graph.microsoft.com/v1.0/me}
       MICROSOFT_GRAPH_BASE_URL: ${MICROSOFT_GRAPH_BASE_URL:-https://graph.microsoft.com/v1.0}
       MICROSOFT_GRAPH_SCOPE: ${MICROSOFT_GRAPH_SCOPE:-offline_access https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Send.Shared}
+      MICROSOFT_EMAILENGINE_SCOPE: ${MICROSOFT_EMAILENGINE_SCOPE:-offline_access https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send}
       EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID: ${EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID:-}
     volumes:
       - emailhub-compose-attachments:/data/email-hub/compose-attachments
@@ -210,7 +211,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "${WEB_BIND:-127.0.0.1:5173}:80"
+      - "${WEB_BIND:-127.0.0.1:5176}:80"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
       interval: 10s

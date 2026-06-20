@@ -83,6 +83,7 @@ export function createPostgresMailNavigationStore(
               ON message_locations.message_id = messages.id
             JOIN mailboxes
               ON mailboxes.id = message_locations.mailbox_id
+             AND mailboxes.account_id = messages.account_id
             WHERE message_state.deleted_at IS NULL
                OR message_state.message_id IS NULL
             GROUP BY mailboxes.role
@@ -126,6 +127,7 @@ export function createPostgresMailNavigationStore(
           WITH visible_messages AS (
             SELECT
               messages.id,
+              messages.account_id,
               lower(concat_ws(
                 ' ',
                 messages.subject,
@@ -147,6 +149,7 @@ export function createPostgresMailNavigationStore(
                OR message_state.message_id IS NULL
             GROUP BY
               messages.id,
+              messages.account_id,
               messages.subject,
               messages.snippet,
               messages.body_text,
@@ -168,6 +171,24 @@ export function createPostgresMailNavigationStore(
               )
             GROUP BY category.id
           ),
+          custom_label_counts AS (
+            SELECT saved_views.id, COUNT(DISTINCT visible_messages.id) AS count
+            FROM saved_views
+            JOIN hermes_rules
+              ON hermes_rules.enabled = TRUE
+             AND hermes_rules.rule_type = 'content_label'
+             AND hermes_rules.action->>'type' = 'apply_label'
+             AND hermes_rules.action->'savedView'->>'id' = saved_views.id
+            JOIN label_assignments
+              ON label_assignments.label_id::text = hermes_rules.action->>'labelId'
+            JOIN visible_messages
+              ON visible_messages.id = label_assignments.message_id
+             AND visible_messages.account_id = hermes_rules.account_id
+            WHERE saved_views.enabled = TRUE
+              AND saved_views.kind = 'keyword'
+              AND saved_views.id <> ALL($1::text[])
+            GROUP BY saved_views.id
+          ),
           custom_keyword_counts AS (
             SELECT saved_views.id, COUNT(DISTINCT visible_messages.id) AS count
             FROM visible_messages
@@ -175,6 +196,11 @@ export function createPostgresMailNavigationStore(
               ON saved_views.enabled = TRUE
              AND saved_views.kind = 'keyword'
              AND saved_views.id <> ALL($1::text[])
+             AND NOT EXISTS (
+                SELECT 1
+                FROM custom_label_counts
+                WHERE custom_label_counts.id = saved_views.id
+             )
              AND EXISTS (
                 SELECT 1
                 FROM unnest(saved_views.keywords) AS keyword
@@ -190,6 +216,8 @@ export function createPostgresMailNavigationStore(
           SELECT id, SUM(count) AS count
           FROM (
             SELECT id, count FROM keyword_counts
+            UNION ALL
+            SELECT id, count FROM custom_label_counts
             UNION ALL
             SELECT id, count FROM custom_keyword_counts
             UNION ALL

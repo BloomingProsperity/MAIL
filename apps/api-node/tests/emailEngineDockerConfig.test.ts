@@ -2,7 +2,10 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { MICROSOFT_GRAPH_MAIL_SCOPE } from "../src/accounts/oauth-scopes";
+import {
+  MICROSOFT_GRAPH_MAIL_SCOPE,
+  MICROSOFT_OUTLOOK_IMAP_SMTP_SCOPE,
+} from "../src/accounts/oauth-scopes";
 import { readApiConfig } from "../src/config";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
@@ -245,7 +248,10 @@ describe("EmailEngine Docker configuration", () => {
       "Leave empty so Docker compose derives this from POSTGRES_USER/PASSWORD/DB.",
     );
     expect(envExample).toContain("DATABASE_URL=");
-    for (const section of [api, worker]) {
+    for (const [service, section] of [
+      ["api", api],
+      ["worker", worker],
+    ] as const) {
       expect(section).toContain(
         "DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-emailhub}:${POSTGRES_PASSWORD:-emailhub_dev}@postgres:5432/${POSTGRES_DB:-emailhub}}",
       );
@@ -464,7 +470,10 @@ describe("EmailEngine Docker configuration", () => {
     const api = serviceSection(compose, "api");
     const worker = serviceSection(compose, "worker");
 
-    for (const section of [api, worker]) {
+    for (const [service, section] of [
+      ["api", api],
+      ["worker", worker],
+    ] as const) {
       expect(section).toContain(
         "GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}",
       );
@@ -495,10 +504,18 @@ describe("EmailEngine Docker configuration", () => {
       expect(section).toContain(
         `MICROSOFT_GRAPH_SCOPE: \${MICROSOFT_GRAPH_SCOPE:-${MICROSOFT_GRAPH_MAIL_SCOPE}}`,
       );
+      if (service === "api") {
+        expect(section).toContain(
+          `MICROSOFT_EMAILENGINE_SCOPE: \${MICROSOFT_EMAILENGINE_SCOPE:-${MICROSOFT_OUTLOOK_IMAP_SMTP_SCOPE}}`,
+        );
+      }
     }
 
     expect(envExample).toContain(
       `MICROSOFT_GRAPH_SCOPE=${MICROSOFT_GRAPH_MAIL_SCOPE}`,
+    );
+    expect(envExample).toContain(
+      `MICROSOFT_EMAILENGINE_SCOPE=${MICROSOFT_OUTLOOK_IMAP_SMTP_SCOPE}`,
     );
     expect(envExample).toContain("EMAILENGINE_GMAIL_OAUTH2_PROVIDER_ID=");
     expect(envExample).toContain("EMAILENGINE_OUTLOOK_OAUTH2_PROVIDER_ID=");

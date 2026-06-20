@@ -296,6 +296,7 @@ function jobTypeForEvent(kind: MailEngineEventKind): SyncJobType {
 
 function isAccountStateEvent(kind: MailEngineEventKind): boolean {
   return (
+    kind === "auth_succeeded" ||
     kind === "auth_failed" ||
     kind === "sync_failed" ||
     kind === "account_deleted"

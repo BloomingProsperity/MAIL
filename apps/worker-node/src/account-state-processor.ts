@@ -8,6 +8,10 @@ export interface AccountStateStore {
     reason: AccountRecoveryReason;
     at: string;
   }): Promise<{ taskId?: string }>;
+  markAccountSyncing(input: {
+    accountId: string;
+    at: string;
+  }): Promise<void>;
 }
 
 export interface CreateAccountStateJobHandlerInput {
@@ -21,6 +25,8 @@ export type AccountStateJobHandler = (job: SyncJobRecord) => Promise<void>;
 type AccountStatePayload = {
   kind?: string;
 };
+
+export type AccountStateSuccessReason = "auth_succeeded";
 
 export type AccountRecoveryReason =
   | "auth_failed"
@@ -41,7 +47,31 @@ export function createAccountStateJobHandler(
       );
     }
 
-    const reason = reauthReason(asPayload(job.payload));
+    const payload = asPayload(job.payload);
+    const successReason = syncReason(payload);
+    if (successReason) {
+      await input.store.markAccountSyncing({
+        accountId: job.accountId,
+        at: (input.now?.() ?? new Date()).toISOString(),
+      });
+
+      await input.diagnostics?.record({
+        service: "email-hub-worker",
+        level: "info",
+        event: "account_reauthorization_cleared",
+        message: `Account ${job.accountId} returned to syncing after ${successReason}`,
+        accountId: job.accountId,
+        lane: "sync",
+        jobId: job.id,
+        context: {
+          reason: successReason,
+          ...(job.triggerEventId ? { triggerEventId: job.triggerEventId } : {}),
+        },
+      });
+      return;
+    }
+
+    const reason = reauthReason(payload);
     if (!reason) {
       return;
     }
@@ -73,6 +103,12 @@ function reauthReason(payload: AccountStatePayload): AccountRecoveryReason | und
   return isAccountRecoveryReason(payload.kind)
     ? payload.kind
     : undefined;
+}
+
+function syncReason(
+  payload: AccountStatePayload,
+): AccountStateSuccessReason | undefined {
+  return payload.kind === "auth_succeeded" ? "auth_succeeded" : undefined;
 }
 
 function isAccountRecoveryReason(kind: unknown): kind is AccountRecoveryReason {

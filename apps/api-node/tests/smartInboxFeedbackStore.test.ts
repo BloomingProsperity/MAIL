@@ -125,6 +125,7 @@ describe("postgres Smart Inbox feedback store", () => {
     );
     expect(hermesMemoryQuery?.values).toEqual([
       "memory_2",
+      "account_1",
       "contact_memory",
       "sender:client@example.com",
       {
@@ -187,6 +188,7 @@ describe("postgres Smart Inbox feedback store", () => {
     );
     expect(hermesMemoryQuery?.values).toEqual([
       "memory_4",
+      "account_1",
       "contact_memory",
       "sender:newsletter@example.com",
       {
@@ -260,7 +262,16 @@ describe("postgres Smart Inbox feedback store", () => {
       query.text.includes("pg_advisory_xact_lock"),
     );
     expect(advisoryLock?.values).toEqual([
-      "contact_memory:sender:newsletter@example.com:move_to_feed",
+      "account_1:contact_memory:sender:newsletter@example.com:move_to_feed",
+    ]);
+    const existingMemoryQuery = queries.find((query) =>
+      query.text.includes("FROM hermes_memories"),
+    );
+    expect(existingMemoryQuery?.values).toEqual([
+      "account_1",
+      "contact_memory",
+      "sender:newsletter@example.com",
+      "move_to_feed",
     ]);
     expect(
       queries.some((query) => query.text.includes("INSERT INTO hermes_memories")),
@@ -287,6 +298,7 @@ describe("postgres Smart Inbox feedback store", () => {
         },
       },
       0.73,
+      "account_1",
     ]);
   });
 
@@ -348,6 +360,7 @@ describe("postgres Smart Inbox feedback store", () => {
     );
     expect(hermesMemoryQuery?.values).toEqual([
       "memory_newsletters",
+      "account_1",
       "contact_memory",
       "sender:newsletter@example.com",
       {

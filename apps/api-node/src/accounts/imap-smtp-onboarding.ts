@@ -399,25 +399,25 @@ function authenticationDiagnostic(
 
   if (provider === "gmail") {
     return {
-      code: "gmail_app_password_required",
+      code: "gmail_web_login_required",
       provider,
       severity: "action_required",
       affected: "account",
       message:
-        "Use a Google app password generated for this mailbox. Your normal Google password will not work.",
-      recoveryAction: "create_google_app_password",
+        "Use the official Google web login flow to connect this mailbox.",
+      recoveryAction: "start_google_web_login",
     };
   }
 
   if (provider === "outlook") {
     return {
-      code: "outlook_app_password_or_web_login_required",
+      code: "outlook_web_login_required",
       provider,
       severity: "action_required",
       affected: "account",
       message:
-        "Use a Microsoft app password when your account allows it, or configure web login before retrying this mailbox.",
-      recoveryAction: "create_microsoft_app_password_or_enable_web_login",
+        "Use the official Microsoft web login flow to connect this mailbox.",
+      recoveryAction: "start_microsoft_web_login",
     };
   }
 

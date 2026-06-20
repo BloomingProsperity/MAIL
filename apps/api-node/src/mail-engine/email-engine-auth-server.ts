@@ -8,6 +8,7 @@ import {
   createMicrosoftOAuthRefreshClient,
   type OAuthRefreshClient,
 } from "../accounts/oauth-token-clients.js";
+import { MICROSOFT_OUTLOOK_IMAP_SMTP_SCOPE } from "../accounts/oauth-scopes.js";
 
 export type EmailEngineAuthServerProto = "imap" | "smtp" | "api";
 
@@ -121,7 +122,9 @@ export function createConfiguredEmailEngineAuthServerService(input: {
           clientId: microsoftClientId,
           clientSecret: optionalEnv(env.MICROSOFT_OAUTH_CLIENT_SECRET),
           tokenUrl: optionalEnv(env.MICROSOFT_OAUTH_TOKEN_URL),
-          scope: optionalEnv(env.MICROSOFT_GRAPH_SCOPE),
+          scope:
+            optionalEnv(env.MICROSOFT_EMAILENGINE_SCOPE) ??
+            MICROSOFT_OUTLOOK_IMAP_SMTP_SCOPE,
           fetchImpl,
         })
       : missingOAuthRefreshClient(

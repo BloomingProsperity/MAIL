@@ -148,6 +148,10 @@ describe("postgres sync center store", () => {
 
     expect(queries[0].text).toMatch(/FROM onboarding_tasks/i);
     expect(queries[0].text).toMatch(/reauthRequired/i);
+    expect(queries[0].text).toMatch(/account_transfer_import/i);
+    expect(queries[0].text).toMatch(/NOT EXISTS/i);
+    expect(queries[0].text).toMatch(/active_accounts\.sync_state IN \('syncing', 'paused'\)/i);
+    expect(queries[0].text).not.toMatch(/OR auth_method = 'oauth'/i);
     expect(queries[0].text).not.toMatch(/stored_secrets|account_credentials/i);
     expect(result).toEqual({
       items: [

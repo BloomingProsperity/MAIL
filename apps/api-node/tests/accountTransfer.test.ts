@@ -57,6 +57,7 @@ describe("account transfer service", () => {
       exportedAt: "2026-06-13T08:00:00.000Z",
       accounts: [
         {
+          id: "acc_1",
           email: "support@qq.com",
           provider: "qq",
           authMethod: "password",
@@ -67,6 +68,7 @@ describe("account transfer service", () => {
           notes: "primary support",
         },
         {
+          id: "acc_2",
           email: "boss@gmail.com",
           provider: "gmail",
           authMethod: "oauth",
@@ -106,6 +108,7 @@ describe("account transfer service", () => {
         exportedAt: "2026-06-12T10:00:00.000Z",
         accounts: [
           {
+            id: "acc_import_password",
             email: "support@qq.com",
             provider: "qq",
             authMethod: "password",
@@ -117,6 +120,7 @@ describe("account transfer service", () => {
             group: "ops",
           },
           {
+            id: "acc_import_oauth",
             email: "boss@gmail.com",
             provider: "gmail",
             authMethod: "oauth",
@@ -141,6 +145,7 @@ describe("account transfer service", () => {
             source: "account_transfer_import",
             transferVersion: 1,
             reauthRequired: true,
+            accountId: "acc_import_password",
             displayName: "Support",
             engineProvider: "emailengine",
             providerPreset: "qq",
@@ -159,6 +164,7 @@ describe("account transfer service", () => {
             source: "account_transfer_import",
             transferVersion: 1,
             reauthRequired: true,
+            accountId: "acc_import_oauth",
             displayName: "Boss",
             engineProvider: "native",
             loginHint: "boss@gmail.com",

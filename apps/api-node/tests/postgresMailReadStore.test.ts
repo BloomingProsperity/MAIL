@@ -32,6 +32,9 @@ describe("postgres mail read store", () => {
     expect(queries[0].text).toMatch(/LEFT JOIN message_state/i);
     expect(queries[0].text).toMatch(/message_state.deleted_at IS NULL/i);
     expect(queries[0].text).toMatch(/message_state\.message_id IS NOT NULL/i);
+    expect(queries[0].text).toMatch(
+      /WHEN 'drafts' THEN 1[\s\S]*WHEN 'sent' THEN 2[\s\S]*WHEN 'trash' THEN 3[\s\S]*WHEN 'junk' THEN 4[\s\S]*WHEN 'archive' THEN 5/i,
+    );
     expect(queries[0].values).toEqual(["account_1"]);
     expect(result.items).toEqual([
       {
@@ -136,21 +139,9 @@ describe("postgres mail read store", () => {
       limit: 2,
     });
 
-    expect(queries[0].text).toMatch(
-      /ORDER BY messages.received_at DESC, messages.id DESC/i,
-    );
-    expect(queries[0].values).toEqual([
-      "account_1",
-      null,
-      null,
-      null,
-      null,
-      3,
-    ]);
-    expect(result.items.map((item) => item.id)).toEqual([
-      "message_3",
-      "message_2",
-    ]);
+    expect(queries[0].text).toMatch(/ORDER BY messages.received_at DESC, messages.id DESC/i);
+    expect(queries[0].values).toEqual(["account_1", null, null, null, null, 3]);
+    expect(result.items.map((item) => item.id)).toEqual(["message_3", "message_2"]);
     expect(decodeCursorPayload(result.nextCursor)).toEqual({
       v: 1,
       receivedAt: "2026-06-12T10:00:00.000Z",
@@ -158,7 +149,7 @@ describe("postgres mail read store", () => {
     });
   });
 
-  it("sorts messages by Smart Inbox priority when requested", async () => {
+  it("keeps classification metadata while sorting messages by time", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {
       async query(text: string, values?: unknown[]) {
@@ -180,13 +171,14 @@ describe("postgres mail read store", () => {
     const result = await store.listMessages({
       accountId: "account_1",
       limit: 10,
-      sort: "smart",
+      sort: "time",
     });
 
     expect(queries[0].text).toMatch(/LEFT JOIN message_classification/i);
     expect(queries[0].text).toMatch(
-      /ORDER BY\s+COALESCE\(message_classification\.priority_score, 0\) DESC,\s+messages\.received_at DESC,\s+messages\.id DESC/i,
+      /ORDER BY messages\.received_at DESC, messages\.id DESC/i,
     );
+    expect(queries[0].text).not.toMatch(/ORDER BY\s+COALESCE\(message_classification\.priority_score/i);
     expect(result.items[0].classification).toEqual({
       bucket: "P1 Urgent",
       priorityScore: 95,
@@ -236,7 +228,7 @@ describe("postgres mail read store", () => {
     ]);
   });
 
-  it("lists Smart Inbox messages across all accounts when account id is omitted", async () => {
+  it("lists messages across all accounts when account id is omitted", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {
       async query(text: string, values?: unknown[]) {
@@ -261,14 +253,13 @@ describe("postgres mail read store", () => {
     const store = createPostgresMailReadStore(client);
     const result = await store.listMessages({
       limit: 10,
-      sort: "smart",
+      sort: "time",
     } as any);
 
     expect(queries[0].text).toMatch(
       /\(\$1::text IS NULL OR messages\.account_id::text = \$1::text\)/i,
     );
     expect(queries[0].values).toEqual([
-      null,
       null,
       null,
       null,
@@ -282,7 +273,7 @@ describe("postgres mail read store", () => {
     ]);
   });
 
-  it("includes priority score in the Smart Inbox pagination cursor", async () => {
+  it("omits priority score from the time pagination cursor", async () => {
     const client = {
       async query() {
         return {
@@ -308,7 +299,7 @@ describe("postgres mail read store", () => {
     const result = await store.listMessages({
       accountId: "account_1",
       limit: 2,
-      sort: "smart",
+      sort: "time",
     });
 
     expect(result.items.map((item) => item.id)).toEqual([
@@ -319,11 +310,10 @@ describe("postgres mail read store", () => {
       v: 1,
       receivedAt: "2026-06-12T10:00:00.000Z",
       id: "message_important",
-      priorityScore: 80,
     });
   });
 
-  it("applies Smart Inbox cursor using priority score before received time", async () => {
+  it("applies cursors using received time and message id", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {
       async query(text: string, values?: unknown[]) {
@@ -346,24 +336,23 @@ describe("postgres mail read store", () => {
       accountId: "account_1",
       limit: 10,
       cursor,
-      sort: "smart",
+      sort: "time",
     });
 
     expect(queries[0].text).toMatch(
-      /\(COALESCE\(message_classification\.priority_score, 0\),\s+messages\.received_at,\s+messages\.id::text\) < \(\$4::int, \$5::timestamptz, \$6::text\)/i,
+      /\(messages\.received_at, messages\.id::text\) < \(\$4::timestamptz, \$5::text\)/i,
     );
     expect(queries[0].values).toEqual([
       "account_1",
       null,
       null,
-      80,
       "2026-06-12T10:00:00.000Z",
       "message_important",
       11,
     ]);
   });
 
-  it("rejects Smart Inbox cursors that do not include a priority score", async () => {
+  it("accepts time cursors that do not include a priority score", async () => {
     const queries: Array<{ text: string; values?: unknown[] }> = [];
     const client = {
       async query(text: string, values?: unknown[]) {
@@ -378,15 +367,21 @@ describe("postgres mail read store", () => {
     });
     const store = createPostgresMailReadStore(client);
 
-    await expect(
-      store.listMessages({
-        accountId: "account_1",
-        limit: 10,
-        cursor,
-        sort: "smart",
-      }),
-    ).rejects.toThrow(/invalid mail read cursor/i);
-    expect(queries).toEqual([]);
+    await store.listMessages({
+      accountId: "account_1",
+      limit: 10,
+      cursor,
+      sort: "time",
+    });
+
+    expect(queries[0].values).toEqual([
+      "account_1",
+      null,
+      null,
+      "2026-06-12T10:00:00.000Z",
+      "message_important",
+      11,
+    ]);
   });
 
   it("applies cursor and q search without provider-specific fields", async () => {
@@ -526,7 +521,7 @@ describe("postgres mail read store", () => {
       accountId: "account_1",
       limit: 10,
       mailboxRole: "inbox",
-      quickFilters: ["unread", "starred", "attachments"],
+      quickFilters: ["unread", "starred", "snoozed", "attachments"],
     });
 
     expect(queries[0].text).toMatch(
@@ -535,10 +530,14 @@ describe("postgres mail read store", () => {
     expect(queries[0].text).toMatch(
       /COALESCE\(message_state\.starred, FALSE\) = TRUE/i,
     );
+    expect(queries[0].text).toMatch(/message_state\.snoozed_until > now\(\)/i);
     expect(queries[0].text).toMatch(
       /HAVING COUNT\(DISTINCT attachments\.id\) > 0/i,
     );
     expect(queries[0].text).toMatch(/role_mailboxes\.role = \$4/i);
+    expect(queries[0].text).toMatch(
+      /role_mailboxes\.account_id = messages\.account_id/i,
+    );
     expect(queries[0].values).toEqual([
       "account_1",
       null,
@@ -576,6 +575,10 @@ describe("postgres mail read store", () => {
     });
 
     expect(queries[0].text).toMatch(/FROM label_assignments/i);
+    expect(queries[0].text).toMatch(/JOIN labels selected_label_defs/i);
+    expect(queries[0].text).toMatch(
+      /selected_label_defs\.account_id = messages\.account_id/i,
+    );
     expect(queries[0].text).toMatch(/COUNT\(DISTINCT selected_labels\.label_id\)/i);
     expect(queries[0].text).toMatch(/cardinality\(\$4::uuid\[\]\)/i);
     expect(queries[0].text).not.toMatch(/provider_message_id/i);
@@ -643,7 +646,7 @@ describe("postgres mail read store", () => {
       savedViewId: "codes",
     });
 
-    expect(queries[0].text).toMatch(/unnest\(\$4::text\[\]\)/i);
+    expect(queries[0].text).toMatch(/unnest\(\$5::text\[\]\)/i);
     expect(queries[0].text).toMatch(/messages\.subject ILIKE/i);
     expect(queries[0].text).toMatch(/messages\.from_email ILIKE/i);
     expect(queries[0].text).toMatch(/search_documents\.raw_text/i);
@@ -652,6 +655,7 @@ describe("postgres mail read store", () => {
       "account_1",
       null,
       null,
+      "codes",
       expect.arrayContaining(["验证码", "verification", "otp"]),
       null,
       null,
@@ -732,11 +736,12 @@ describe("postgres mail read store", () => {
 
     expect(queries[0].text).toMatch(/FROM saved_views/i);
     expect(queries[0].values).toEqual(["hermes_contract"]);
-    expect(queries[1].text).toMatch(/unnest\(\$4::text\[\]\)/i);
+    expect(queries[1].text).toMatch(/unnest\(\$5::text\[\]\)/i);
     expect(queries[1].values).toEqual([
       "account_1",
       null,
       null,
+      "hermes_contract",
       ["合同", "contract"],
       null,
       null,

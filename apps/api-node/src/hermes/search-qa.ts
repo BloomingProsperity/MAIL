@@ -92,6 +92,9 @@ export interface HermesEmailSearchQaServiceOptions {
 const EMAIL_SEARCH_QA_SYSTEM_PROMPT =
   "You are Hermes inside Email Hub. You answer questions about email search results. Use only the provided search results and memory context. If the answer is not in the results, say so. Mention the relevant sender, subject, date, priority bucket, and why the user may care. Return only the answer.";
 
+const EMAIL_SEARCH_QA_EMPTY_SYSTEM_PROMPT =
+  "You are Hermes inside Email Hub. The local email search returned zero matching messages. Answer in the user's language. If the user asked for something that requires mailbox evidence, clearly say no matching emails were found and suggest a sharper search. If the request can be handled without mailbox evidence, help normally but do not claim you found email evidence. Return only the answer.";
+
 const DEFAULT_EMAIL_SEARCH_QA_MEMORY_LAYERS = [
   "contact_memory",
   "semantic_profile",
@@ -127,20 +130,20 @@ export function createHermesEmailSearchQaService(
         ...(input.mailboxId ? { mailboxId: input.mailboxId } : {}),
         ...searchPlan.listMessagesInput,
         limit,
-        sort: "smart",
+        sort: "time",
       });
       const matches = page.items.map(toSearchMatch);
       const citations = matches.map(toSearchCitation);
-      const answerText =
-        matches.length === 0
-          ? "No matching emails found."
-          : await options.textProvider.complete({
-              systemPrompt: EMAIL_SEARCH_QA_SYSTEM_PROMPT,
-              userPrompt: limitHermesContextText(
-                emailSearchQaUserPrompt(input, searchPlan, matches, memories),
-                { maxChars: input.maxContextChars },
-              ),
-            });
+      const answerText = await options.textProvider.complete({
+        systemPrompt:
+          matches.length === 0
+            ? EMAIL_SEARCH_QA_EMPTY_SYSTEM_PROMPT
+            : EMAIL_SEARCH_QA_SYSTEM_PROMPT,
+        userPrompt: limitHermesContextText(
+          emailSearchQaUserPrompt(input, searchPlan, matches, memories),
+          { maxChars: input.maxContextChars },
+        ),
+      });
       const skillRunId = options.createId();
       const result: HermesEmailSearchQaResult = {
         skillRunId,
@@ -257,7 +260,11 @@ function emailSearchQaUserPrompt(
   appendHermesCustomInstructionsPromptSection(lines, input);
   appendHermesMemoryPromptSection(lines, memories);
   lines.push("", "Search results:");
-  lines.push(...matches.map(formatSearchResult));
+  lines.push(
+    ...(matches.length > 0
+      ? matches.map(formatSearchResult)
+      : ["No local email messages matched this search plan."]),
+  );
   return lines.join("\n");
 }
 

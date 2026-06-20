@@ -186,6 +186,22 @@ export function createAliasRouter(options: AliasRouterOptions): AliasRouter {
         return { status: "dropped", reason, recipient, jobs: [] };
       }
 
+      const destinations = routeDestinations(route);
+      if (destinations.length === 0) {
+        const reason =
+          route.routeType === "catch_all" ? "catch_all_rejected" : "no_route";
+        await options.store.recordDeliveryLog({
+          id: options.createId(),
+          domainId: route.domainId,
+          ...(route.aliasId ? { aliasId: route.aliasId } : {}),
+          recipient,
+          status: "dropped",
+          detail: "matched route had no delivery destinations",
+          createdAt: now(),
+        });
+        return { status: "dropped", reason, recipient, jobs: [] };
+      }
+
       await options.store.recordDeliveryLog({
         id: options.createId(),
         domainId: route.domainId,
@@ -200,12 +216,7 @@ export function createAliasRouter(options: AliasRouterOptions): AliasRouter {
       });
 
       const jobs: AliasDeliveryJob[] = [];
-      for (const [index, destinationId] of route.destinationIds.entries()) {
-        const destinationEmail = route.destinationEmails[index];
-        if (!destinationEmail) {
-          continue;
-        }
-
+      for (const { destinationId, destinationEmail } of destinations) {
         const job = await options.store.enqueueDeliveryJob({
           id: options.createId(),
           domainId: route.domainId,
@@ -367,6 +378,20 @@ function cloneRoute(route: AliasRouteMatch): AliasRouteMatch {
     destinationIds: [...route.destinationIds],
     destinationEmails: [...route.destinationEmails],
   };
+}
+
+function routeDestinations(
+  route: AliasRouteMatch,
+): Array<{ destinationId: string; destinationEmail: string }> {
+  return route.destinationIds
+    .map((destinationId, index) => ({
+      destinationId,
+      destinationEmail: route.destinationEmails[index]?.trim(),
+    }))
+    .filter(
+      (item): item is { destinationId: string; destinationEmail: string } =>
+        Boolean(item.destinationId && item.destinationEmail),
+    );
 }
 
 function cloneDeliveryJob(job: AliasDeliveryJob): AliasDeliveryJob {

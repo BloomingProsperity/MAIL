@@ -23,6 +23,7 @@ import type {
   OAuthProfileClient,
   OAuthAccountProfile,
 } from "./oauth-profile-client.js";
+import { profileFromIdToken } from "./oauth-id-token-profile.js";
 import type {
   OAuthProvider,
   OAuthProviderName,
@@ -165,10 +166,12 @@ export function createReauthorizationRecoveryService(
         }
         refreshTokenForRedaction = token.refreshToken;
 
-        const profile = await options.profileClient.getProfile({
-          provider,
-          accessToken: token.accessToken,
-        });
+        const profile =
+          profileFromIdToken(provider, token.idToken) ??
+          (await options.profileClient.getProfile({
+            provider,
+            accessToken: token.accessToken,
+          }));
         assertReauthorizationProfileMatchesTask(task, profile);
 
         const payload = task.payload ?? {};
@@ -186,13 +189,6 @@ export function createReauthorizationRecoveryService(
           provider,
           profile,
           displayName: readString(payload.displayName),
-        });
-
-        await options.emailEngineAccounts.registerOAuthAccount({
-          accountId,
-          email: profile.email,
-          displayName: account.displayName,
-          provider: provider.provider,
         });
 
         result = await options.oauthStore.completeOAuthAccount({
@@ -224,6 +220,13 @@ export function createReauthorizationRecoveryService(
             secretValue: token.refreshToken,
           },
         });
+
+        await options.emailEngineAccounts.registerOAuthAccount({
+          accountId: result.account?.id ?? accountId,
+          email: profile.email,
+          displayName: result.account?.displayName ?? account.displayName,
+          provider: provider.provider,
+        });
       } catch (error) {
         const message = sanitizedOAuthError(
           error,
@@ -242,12 +245,15 @@ export function createReauthorizationRecoveryService(
         return result;
       }
 
-      const syncJob = await options.bootstrapSyncJobs?.enqueueInitialSync({
-        accountId: result.account.id,
-        provider: result.account.provider,
-        engineProvider: result.account.engineProvider,
-        sourceTaskId: session.taskId,
-      });
+      const syncJob = await enqueueInitialSyncForCallback(
+        options.bootstrapSyncJobs,
+        {
+          accountId: result.account.id,
+          provider: result.account.provider,
+          engineProvider: result.account.engineProvider,
+          sourceTaskId: session.taskId,
+        },
+      );
 
       return {
         ...result,
@@ -538,4 +544,25 @@ function errorCode(error: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+function enqueueInitialSyncForCallback(
+  store: BootstrapSyncJobStore | undefined,
+  input: Parameters<BootstrapSyncJobStore["enqueueInitialSync"]>[0],
+): Promise<Awaited<ReturnType<BootstrapSyncJobStore["enqueueInitialSync"]>> | undefined> {
+  if (!store) {
+    return Promise.resolve(undefined);
+  }
+
+  const enqueue = store.enqueueInitialSync(input);
+  enqueue.catch(() => {
+    // OAuth callbacks must not strand the browser on /oauth/callback.
+  });
+
+  return Promise.race([
+    enqueue,
+    new Promise<undefined>((resolve) => {
+      setTimeout(() => resolve(undefined), 1000);
+    }),
+  ]);
 }

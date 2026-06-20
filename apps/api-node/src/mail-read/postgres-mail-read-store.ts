@@ -8,6 +8,7 @@ import type {
   MailboxDto,
   MailQuickFilter,
   MailSearchScope,
+  MessageBodyHydrator,
   MessageDetailDto,
   MessageListItemDto,
   Page,
@@ -15,7 +16,6 @@ import type {
 import {
   decodeMailReadCursor,
   encodeMailReadCursor,
-  InvalidMailReadCursorError,
 } from "./cursor.js";
 import {
   findBuiltInSavedView,
@@ -37,6 +37,10 @@ export class InvalidMailSavedViewError extends Error {
   constructor(message = "invalid mail saved view") {
     super(message);
   }
+}
+
+export interface PostgresMailReadStoreOptions {
+  bodyHydrator?: MessageBodyHydrator;
 }
 
 interface MailboxRow extends Record<string, unknown> {
@@ -94,6 +98,7 @@ interface SavedViewRow extends Record<string, unknown> {
 
 export function createPostgresMailReadStore(
   client: Queryable,
+  options: PostgresMailReadStoreOptions = {},
 ): MailReadStore {
   return {
     async listMailboxes(input: ListMailboxesInput) {
@@ -118,6 +123,7 @@ export function createPostgresMailReadStore(
             ON message_locations.mailbox_id = mailboxes.id
           LEFT JOIN messages
             ON messages.id = message_locations.message_id
+           AND messages.account_id = mailboxes.account_id
           LEFT JOIN message_state
             ON message_state.message_id = messages.id
           WHERE mailboxes.account_id = $1
@@ -125,11 +131,12 @@ export function createPostgresMailReadStore(
           ORDER BY
             CASE mailboxes.role
               WHEN 'inbox' THEN 0
-              WHEN 'sent' THEN 1
-              WHEN 'drafts' THEN 2
-              WHEN 'archive' THEN 3
+              WHEN 'drafts' THEN 1
+              WHEN 'sent' THEN 2
+              WHEN 'trash' THEN 3
               WHEN 'junk' THEN 4
-              WHEN 'trash' THEN 5
+              WHEN 'archive' THEN 5
+              WHEN 'all' THEN 6
               ELSE 9
             END,
             mailboxes.name ASC
@@ -144,10 +151,6 @@ export function createPostgresMailReadStore(
       const cursor = input.cursor
         ? decodeMailReadCursor(input.cursor)
         : undefined;
-      const smartSort = input.sort === "smart";
-      if (smartSort && cursor && cursor.priorityScore === undefined) {
-        throw new InvalidMailReadCursorError();
-      }
       const q = input.q?.trim() ? input.q.trim() : null;
       const savedView = await resolveSavedView(client, input.savedViewId);
       const values: unknown[] = [input.accountId ?? null, input.mailboxId ?? null, q];
@@ -171,41 +174,17 @@ export function createPostgresMailReadStore(
         savedViewSql.havingClause,
       ]);
       const cursorStart = values.length + 1;
-      const cursorClause = smartSort
-        ? `
-            AND (
-              $${cursorStart}::int IS NULL
-              OR (COALESCE(message_classification.priority_score, 0), messages.received_at, messages.id::text) < ($${cursorStart}::int, $${cursorStart + 1}::timestamptz, $${cursorStart + 2}::text)
-            )
-          `
-        : `
-            AND (
-              $${cursorStart}::timestamptz IS NULL
-              OR (messages.received_at, messages.id::text) < ($${cursorStart}::timestamptz, $${cursorStart + 1}::text)
-            )
-          `;
-      const orderBy = smartSort
-        ? `
-          ORDER BY
-            COALESCE(message_classification.priority_score, 0) DESC,
-            messages.received_at DESC,
-            messages.id DESC
-          LIMIT $${cursorStart + 3}
-        `
-        : `
-          ORDER BY messages.received_at DESC, messages.id DESC
-          LIMIT $${cursorStart + 2}
+      const cursorClause = `
+          AND (
+            $${cursorStart}::timestamptz IS NULL
+            OR (messages.received_at, messages.id::text) < ($${cursorStart}::timestamptz, $${cursorStart + 1}::text)
+          )
         `;
-      if (smartSort) {
-        values.push(
-          cursor?.priorityScore ?? null,
-          cursor?.receivedAt ?? null,
-          cursor?.id ?? null,
-          input.limit + 1,
-        );
-      } else {
-        values.push(cursor?.receivedAt ?? null, cursor?.id ?? null, input.limit + 1);
-      }
+      const orderBy = `
+        ORDER BY messages.received_at DESC, messages.id DESC
+        LIMIT $${cursorStart + 2}
+      `;
+      values.push(cursor?.receivedAt ?? null, cursor?.id ?? null, input.limit + 1);
       const result = await client.query<MessageListRow>(
         `
           SELECT
@@ -231,6 +210,7 @@ export function createPostgresMailReadStore(
             ON message_locations.message_id = messages.id
           LEFT JOIN mailboxes
             ON mailboxes.id = message_locations.mailbox_id
+           AND mailboxes.account_id = messages.account_id
           LEFT JOIN attachments
             ON attachments.message_id = messages.id
           LEFT JOIN message_classification
@@ -271,9 +251,6 @@ export function createPostgresMailReadStore(
                 v: 1,
                 receivedAt: toIsoString(lastRow.received_at),
                 id: lastRow.id,
-                ...(smartSort
-                  ? { priorityScore: toNumber(lastRow.priority_score ?? 0) }
-                  : {}),
               }),
             }
           : {}),
@@ -281,69 +258,18 @@ export function createPostgresMailReadStore(
     },
 
     async getMessage(input: GetMessageInput) {
-      const result = await client.query<MessageDetailRow>(
-        `
-          SELECT
-            messages.id,
-            messages.account_id,
-            messages.subject,
-            messages.from_email,
-            messages.from_name,
-            messages.to_emails,
-            messages.cc_emails,
-            messages.received_at,
-            messages.snippet,
-            messages.body_text,
-            messages.body_html,
-            COALESCE(message_state.unread, TRUE) AS unread,
-            COALESCE(message_state.starred, FALSE) AS starred,
-            ARRAY_REMOVE(ARRAY_AGG(DISTINCT mailboxes.id), NULL) AS mailbox_ids,
-            COUNT(DISTINCT attachments.id) AS attachment_count,
-            COALESCE(
-              jsonb_agg(
-                DISTINCT jsonb_build_object(
-                  'id', attachments.id,
-                  'filename', attachments.filename,
-                  'contentType', attachments.content_type,
-                  'byteSize', attachments.byte_size,
-                  'contentId', attachments.content_id,
-                  'embedded', attachments.embedded,
-                  'inline', attachments.inline
-                )
-              ) FILTER (WHERE attachments.id IS NOT NULL),
-              '[]'::jsonb
-            ) AS attachments
-          FROM messages
-          JOIN message_state
-            ON message_state.message_id = messages.id
-          LEFT JOIN message_locations
-            ON message_locations.message_id = messages.id
-          LEFT JOIN mailboxes
-            ON mailboxes.id = message_locations.mailbox_id
-          LEFT JOIN attachments
-            ON attachments.message_id = messages.id
-          WHERE messages.account_id = $1
-            AND messages.id = $2
-            AND message_state.deleted_at IS NULL
-          GROUP BY
-            messages.id,
-            messages.account_id,
-            messages.subject,
-            messages.from_email,
-            messages.from_name,
-            messages.to_emails,
-            messages.cc_emails,
-            messages.received_at,
-            messages.snippet,
-            messages.body_text,
-            messages.body_html,
-            message_state.unread,
-            message_state.starred
-        `,
-        [input.accountId, input.messageId],
-      );
+      const message = await getMessageDetail(client, input);
+      if (!message || hasReadableBody(message) || !options.bodyHydrator) {
+        return message;
+      }
 
-      return result.rows[0] ? rowToMessageDetail(result.rows[0]) : undefined;
+      try {
+        await options.bodyHydrator.hydrateMessageBody(input);
+      } catch {
+        return message;
+      }
+
+      return (await getMessageDetail(client, input)) ?? message;
     },
 
     async getAttachmentDownload(input) {
@@ -468,6 +394,10 @@ function appendQuickFilters(
     whereClauses.push("AND COALESCE(message_state.starred, FALSE) = TRUE");
   }
 
+  if (quickFilters.has("snoozed")) {
+    whereClauses.push("AND message_state.snoozed_until > now()");
+  }
+
   if (quickFilters.has("attachments")) {
     havingClauses.push("COUNT(DISTINCT attachments.id) > 0");
   }
@@ -499,6 +429,7 @@ function appendMailboxRoleFilter(
       JOIN mailboxes AS role_mailboxes
         ON role_mailboxes.id = role_message_locations.mailbox_id
       WHERE role_message_locations.message_id = messages.id
+        AND role_mailboxes.account_id = messages.account_id
         AND role_mailboxes.role = ${parameter}
     )
   `;
@@ -573,7 +504,10 @@ function appendLabelFilter(
             AND EXISTS (
               SELECT 1
               FROM label_assignments selected_labels
+              JOIN labels selected_label_defs
+                ON selected_label_defs.id = selected_labels.label_id
               WHERE selected_labels.message_id = messages.id
+                AND selected_label_defs.account_id = messages.account_id
             )
     `;
   }
@@ -585,7 +519,10 @@ function appendLabelFilter(
             AND (
               SELECT COUNT(DISTINCT selected_labels.label_id)
               FROM label_assignments selected_labels
+              JOIN labels selected_label_defs
+                ON selected_label_defs.id = selected_labels.label_id
               WHERE selected_labels.message_id = messages.id
+                AND selected_label_defs.account_id = messages.account_id
                 AND selected_labels.label_id = ANY(${parameter}::uuid[])
             ) = cardinality(${parameter}::uuid[])
     `;
@@ -595,7 +532,10 @@ function appendLabelFilter(
             AND EXISTS (
               SELECT 1
               FROM label_assignments selected_labels
+              JOIN labels selected_label_defs
+                ON selected_label_defs.id = selected_labels.label_id
               WHERE selected_labels.message_id = messages.id
+                AND selected_label_defs.account_id = messages.account_id
                 AND selected_labels.label_id = ANY(${parameter}::uuid[])
             )
   `;
@@ -651,8 +591,8 @@ function appendSavedViewFilter(
     return { whereClause: "", havingClause: "" };
   }
 
-  const parameter = `$${values.length + 1}`;
   if (savedView.minAttachmentCount !== undefined) {
+    const parameter = `$${values.length + 1}`;
     values.push(savedView.minAttachmentCount);
     return {
       whereClause: "",
@@ -660,19 +600,47 @@ function appendSavedViewFilter(
     };
   }
 
+  const viewIdParameter = `$${values.length + 1}`;
+  values.push(savedView.id);
+  const keywordParameter = `$${values.length + 1}`;
   values.push(savedView.keywords);
   return {
     whereClause: `
-            AND EXISTS (
-              SELECT 1
-              FROM unnest(${parameter}::text[]) AS saved_view_keyword(keyword)
-              WHERE messages.subject ILIKE '%' || saved_view_keyword.keyword || '%'
-                OR messages.from_email ILIKE '%' || saved_view_keyword.keyword || '%'
-                OR COALESCE(messages.from_name, '') ILIKE '%' || saved_view_keyword.keyword || '%'
-                OR COALESCE(messages.snippet, '') ILIKE '%' || saved_view_keyword.keyword || '%'
-                OR COALESCE(attachments.filename, '') ILIKE '%' || saved_view_keyword.keyword || '%'
-                OR COALESCE(search_documents.raw_text, '') ILIKE '%' || saved_view_keyword.keyword || '%'
-                OR COALESCE(message_classification.reasons::text, '') ILIKE '%' || saved_view_keyword.keyword || '%'
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM hermes_rules saved_view_label_rules
+                JOIN label_assignments saved_view_labels
+                  ON saved_view_labels.message_id = messages.id
+                 AND saved_view_labels.label_id::text = saved_view_label_rules.action->>'labelId'
+                WHERE saved_view_label_rules.account_id = messages.account_id
+                  AND saved_view_label_rules.enabled = TRUE
+                  AND saved_view_label_rules.rule_type = 'content_label'
+                  AND saved_view_label_rules.action->>'type' = 'apply_label'
+                  AND saved_view_label_rules.action->'savedView'->>'id' = ${viewIdParameter}::text
+              )
+              OR (
+                NOT EXISTS (
+                  SELECT 1
+                  FROM hermes_rules saved_view_label_rule_presence
+                  WHERE saved_view_label_rule_presence.account_id = messages.account_id
+                    AND saved_view_label_rule_presence.enabled = TRUE
+                    AND saved_view_label_rule_presence.rule_type = 'content_label'
+                    AND saved_view_label_rule_presence.action->>'type' = 'apply_label'
+                    AND saved_view_label_rule_presence.action->'savedView'->>'id' = ${viewIdParameter}::text
+                )
+                AND EXISTS (
+                  SELECT 1
+                  FROM unnest(${keywordParameter}::text[]) AS saved_view_keyword(keyword)
+                  WHERE messages.subject ILIKE '%' || saved_view_keyword.keyword || '%'
+                    OR messages.from_email ILIKE '%' || saved_view_keyword.keyword || '%'
+                    OR COALESCE(messages.from_name, '') ILIKE '%' || saved_view_keyword.keyword || '%'
+                    OR COALESCE(messages.snippet, '') ILIKE '%' || saved_view_keyword.keyword || '%'
+                    OR COALESCE(attachments.filename, '') ILIKE '%' || saved_view_keyword.keyword || '%'
+                    OR COALESCE(search_documents.raw_text, '') ILIKE '%' || saved_view_keyword.keyword || '%'
+                    OR COALESCE(message_classification.reasons::text, '') ILIKE '%' || saved_view_keyword.keyword || '%'
+                )
+              )
             )
     `,
     havingClause: "",
@@ -709,6 +677,80 @@ function rowToMailbox(row: MailboxRow): MailboxDto {
     messageCount: toNumber(row.message_count),
     unreadCount: toNumber(row.unread_count),
   };
+}
+
+async function getMessageDetail(
+  client: Queryable,
+  input: GetMessageInput,
+): Promise<MessageDetailDto | undefined> {
+  const result = await client.query<MessageDetailRow>(
+    `
+      SELECT
+        messages.id,
+        messages.account_id,
+        messages.subject,
+        messages.from_email,
+        messages.from_name,
+        messages.to_emails,
+        messages.cc_emails,
+        messages.received_at,
+        messages.snippet,
+        messages.body_text,
+        messages.body_html,
+        COALESCE(message_state.unread, TRUE) AS unread,
+        COALESCE(message_state.starred, FALSE) AS starred,
+        ARRAY_REMOVE(ARRAY_AGG(DISTINCT mailboxes.id), NULL) AS mailbox_ids,
+        COUNT(DISTINCT attachments.id) AS attachment_count,
+        COALESCE(
+          jsonb_agg(
+            DISTINCT jsonb_build_object(
+              'id', attachments.id,
+              'filename', attachments.filename,
+              'contentType', attachments.content_type,
+              'byteSize', attachments.byte_size,
+              'contentId', attachments.content_id,
+              'embedded', attachments.embedded,
+              'inline', attachments.inline
+            )
+          ) FILTER (WHERE attachments.id IS NOT NULL),
+          '[]'::jsonb
+        ) AS attachments
+      FROM messages
+      JOIN message_state
+        ON message_state.message_id = messages.id
+      LEFT JOIN message_locations
+        ON message_locations.message_id = messages.id
+      LEFT JOIN mailboxes
+        ON mailboxes.id = message_locations.mailbox_id
+       AND mailboxes.account_id = messages.account_id
+      LEFT JOIN attachments
+        ON attachments.message_id = messages.id
+      WHERE messages.account_id = $1
+        AND messages.id = $2
+        AND message_state.deleted_at IS NULL
+      GROUP BY
+        messages.id,
+        messages.account_id,
+        messages.subject,
+        messages.from_email,
+        messages.from_name,
+        messages.to_emails,
+        messages.cc_emails,
+        messages.received_at,
+        messages.snippet,
+        messages.body_text,
+        messages.body_html,
+        message_state.unread,
+        message_state.starred
+    `,
+    [input.accountId, input.messageId],
+  );
+
+  return result.rows[0] ? rowToMessageDetail(result.rows[0]) : undefined;
+}
+
+function hasReadableBody(message: MessageDetailDto): boolean {
+  return Boolean(message.bodyText?.trim() || message.bodyHtml?.trim());
 }
 
 function rowToMessageListItem(row: MessageListRow): MessageListItemDto {

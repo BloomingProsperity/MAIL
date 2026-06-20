@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createInMemoryOAuthOnboardingStore,
+  InvalidOAuthCallbackError,
   createOAuthOnboardingService,
 } from "../src/accounts/oauth-onboarding";
 import { createOAuthProviderRegistry } from "../src/accounts/oauth-providers";
@@ -62,6 +63,12 @@ describe("OAuth onboarding service", () => {
     const store = createInMemoryOAuthOnboardingStore();
     const bootstrapJobs: unknown[] = [];
     const emailEngineRegistrations: unknown[] = [];
+    const callbackEvents: string[] = [];
+    const completeOAuthAccount = store.completeOAuthAccount.bind(store);
+    store.completeOAuthAccount = async (input) => {
+      callbackEvents.push("store-token");
+      return completeOAuthAccount(input);
+    };
     const providers = createOAuthProviderRegistry({
       googleClientId: "google-client-id",
       googleClientSecret: "google-client-secret",
@@ -77,8 +84,7 @@ describe("OAuth onboarding service", () => {
             accessToken: "access-token",
             refreshToken: "refresh-token-secret",
             expiresIn: 3600,
-            scope:
-              "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.settings.basic openid email",
+            scope: "openid email profile https://mail.google.com/",
             tokenType: "Bearer",
           };
         },
@@ -91,6 +97,7 @@ describe("OAuth onboarding service", () => {
       },
       emailEngineAccounts: {
         async registerOAuthAccount(input: unknown) {
+          callbackEvents.push("register-emailengine");
           emailEngineRegistrations.push(input);
           return { account: "acc_1", state: "syncing" };
         },
@@ -169,6 +176,7 @@ describe("OAuth onboarding service", () => {
         secretValue: "refresh-token-secret",
       },
     ]);
+    expect(callbackEvents).toEqual(["store-token", "register-emailengine"]);
     expect(store.listCredentials()).toEqual([
       {
         accountId: "acc_1",
@@ -183,13 +191,78 @@ describe("OAuth onboarding service", () => {
         nativeProvider: "gmail",
         capabilities: { read: true, send: true, engineProvider: "emailengine" },
         settings: {
-          scopes:
-            "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.settings.basic openid email",
+          scopes: "openid email profile https://mail.google.com/",
           emailEngineOAuthProvider: "gmail",
           tokenSource: "emailengine_auth_server",
         },
       },
     ]);
+  });
+
+  it("does not keep the OAuth callback waiting when initial sync enqueue stalls", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = createInMemoryOAuthOnboardingStore();
+      const service = createOAuthOnboardingService({
+        store,
+        providers: createOAuthProviderRegistry({
+          googleClientId: "google-client-id",
+          googleClientSecret: "google-client-secret",
+        }),
+        tokenClient: {
+          async exchangeCode() {
+            return {
+              accessToken: "access-token",
+              refreshToken: "refresh-token-secret",
+              expiresIn: 3600,
+              tokenType: "Bearer",
+            };
+          },
+        },
+        profileClient: {
+          async getProfile() {
+            return { email: "me@gmail.com", displayName: "Me" };
+          },
+        },
+        emailEngineAccounts: {
+          async registerOAuthAccount() {
+            return { account: "acc_1", state: "syncing" };
+          },
+        },
+        createId: (() => {
+          const ids = ["task_1", "state_1", "acc_1", "secret_1"];
+          return () => ids.shift() ?? "extra";
+        })(),
+        bootstrapSyncJobs: {
+          enqueueInitialSync() {
+            return new Promise<never>(() => {
+              // Simulates a queue/backend stall; callback must still finish.
+            });
+          },
+        },
+      });
+
+      await service.createAuthSession({
+        provider: "gmail",
+        redirectUri: "https://app.example.com/oauth/callback",
+      });
+      const completion = service.completeAuthCallback({
+        state: "state_1",
+        code: "code_1",
+      });
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await expect(completion).resolves.toMatchObject({
+        account: {
+          id: "acc_1",
+          email: "me@gmail.com",
+          syncState: "syncing",
+        },
+      });
+      await expect(completion).resolves.not.toHaveProperty("syncJob");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("uses the Google id token profile when Gmail profile lookup is unavailable", async () => {
@@ -257,6 +330,133 @@ describe("OAuth onboarding service", () => {
         provider: "gmail",
       },
     ]);
+  });
+
+  it("uses the Microsoft id token profile for Outlook IMAP/SMTP OAuth", async () => {
+    const store = createInMemoryOAuthOnboardingStore();
+    const emailEngineRegistrations: unknown[] = [];
+    const providers = createOAuthProviderRegistry({
+      microsoftClientId: "microsoft-client-id",
+      microsoftClientSecret: "microsoft-client-secret",
+    });
+    const service = createOAuthOnboardingService({
+      store,
+      providers,
+      tokenClient: {
+        async exchangeCode() {
+          return {
+            accessToken: "outlook-access-token",
+            refreshToken: "outlook-refresh-token-secret",
+            idToken: microsoftIdToken({
+              aud: "microsoft-client-id",
+              preferred_username: "me@outlook.com",
+              name: "Outlook User",
+            }),
+            expiresIn: 3600,
+            scope:
+              "openid email profile offline_access https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send",
+            tokenType: "Bearer",
+          };
+        },
+      },
+      profileClient: {
+        async getProfile() {
+          throw new Error("should not call Graph profile for IMAP/SMTP OAuth");
+        },
+      },
+      emailEngineAccounts: {
+        async registerOAuthAccount(input: unknown) {
+          emailEngineRegistrations.push(input);
+          return { account: "acc_outlook", state: "syncing" };
+        },
+      },
+      createId: (() => {
+        const ids = ["task_outlook", "state_outlook", "acc_outlook", "secret_1"];
+        return () => ids.shift() ?? "extra";
+      })(),
+    });
+
+    await service.createAuthSession({
+      provider: "outlook",
+      redirectUri: "https://app.example.com/oauth/callback",
+    });
+    const result = await service.completeAuthCallback({
+      state: "state_outlook",
+      code: "code_outlook",
+    });
+
+    expect(result.account).toMatchObject({
+      id: "acc_outlook",
+      email: "me@outlook.com",
+      displayName: "Outlook User",
+      provider: "outlook",
+    });
+    expect(emailEngineRegistrations).toEqual([
+      {
+        accountId: "acc_outlook",
+        email: "me@outlook.com",
+        displayName: "Outlook User",
+        provider: "outlook",
+      },
+    ]);
+    expect(store.listProviderSettings()[0]).toMatchObject({
+      provider: "outlook",
+      settings: {
+        scopes:
+          "openid email profile offline_access https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send",
+        tokenSource: "emailengine_auth_server",
+      },
+    });
+  });
+
+  it("rejects callbacks whose route provider does not match the OAuth state", async () => {
+    const store = createInMemoryOAuthOnboardingStore();
+    const service = createOAuthOnboardingService({
+      store,
+      providers: createOAuthProviderRegistry({
+        googleClientId: "google-client-id",
+        googleClientSecret: "google-client-secret",
+        microsoftClientId: "microsoft-client-id",
+        microsoftClientSecret: "microsoft-client-secret",
+      }),
+      tokenClient: {
+        async exchangeCode() {
+          throw new Error("should not exchange a mismatched provider callback");
+        },
+      },
+      profileClient: {
+        async getProfile() {
+          throw new Error("should not read profile for a mismatched callback");
+        },
+      },
+      emailEngineAccounts: {
+        async registerOAuthAccount() {
+          throw new Error("should not register a mismatched callback");
+        },
+      },
+      createId: (() => {
+        const ids = ["task_1", "state_1"];
+        return () => ids.shift() ?? "extra";
+      })(),
+    });
+
+    await service.createAuthSession({
+      provider: "gmail",
+      redirectUri: "https://app.example.com/oauth/callback",
+    });
+
+    await expect(
+      service.completeAuthCallback({
+        state: "state_1",
+        code: "code_1",
+        expectedProvider: "outlook",
+      }),
+    ).rejects.toBeInstanceOf(InvalidOAuthCallbackError);
+    expect(store.listTasks()[0]).toMatchObject({
+      status: "pending",
+      provider: "gmail",
+    });
+    expect(store.listAccounts()).toEqual([]);
   });
 
   it("reuses the canonical account id when the same OAuth mailbox is connected again", async () => {
@@ -482,7 +682,16 @@ describe("OAuth onboarding service", () => {
       status: "failed",
       errorMessage: "EmailEngine rejected [redacted]",
     });
-    expect(store.listAccounts()).toEqual([]);
+    expect(store.listAccounts()).toMatchObject([
+      {
+        id: "acc_1",
+        email: "me@gmail.com",
+        provider: "gmail",
+        authMethod: "oauth",
+        syncState: "syncing",
+        engineProvider: "emailengine",
+      },
+    ]);
   });
 });
 
@@ -491,6 +700,18 @@ function googleIdToken(payload: Record<string, unknown>): string {
     encodeJwtPart({ alg: "none", typ: "JWT" }),
     encodeJwtPart({
       iss: "https://accounts.google.com",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      ...payload,
+    }),
+    "signature",
+  ].join(".");
+}
+
+function microsoftIdToken(payload: Record<string, unknown>): string {
+  return [
+    encodeJwtPart({ alg: "none", typ: "JWT" }),
+    encodeJwtPart({
+      iss: "https://login.microsoftonline.com/common/v2.0",
       exp: Math.floor(Date.now() / 1000) + 3600,
       ...payload,
     }),

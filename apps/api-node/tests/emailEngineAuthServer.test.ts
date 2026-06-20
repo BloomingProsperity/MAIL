@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createPostgresEmailEngineAuthServerService } from "../src/mail-engine/email-engine-auth-server";
+import {
+  createConfiguredEmailEngineAuthServerService,
+  createPostgresEmailEngineAuthServerService,
+} from "../src/mail-engine/email-engine-auth-server";
 
 describe("EmailEngine auth server service", () => {
   it("resolves Gmail OAuth credentials from stored refresh token refs", async () => {
@@ -120,5 +123,48 @@ describe("EmailEngine auth server service", () => {
     await expect(
       service.resolveCredentials({ accountId: "acc_1", proto: "smtp" }),
     ).rejects.toThrow("Google rejected [redacted]");
+  });
+
+  it("uses Outlook IMAP/SMTP scopes for configured EmailEngine Microsoft token refresh", async () => {
+    const tokenRequests: string[] = [];
+    const service = createConfiguredEmailEngineAuthServerService({
+      env: {
+        MICROSOFT_OAUTH_CLIENT_ID: "microsoft-client-id",
+        MICROSOFT_OAUTH_TOKEN_URL: "https://login.example/token",
+      },
+      fetchImpl: async (_url, init) => {
+        tokenRequests.push(String(init?.body));
+        return Response.json({
+          access_token: "outlook-imap-smtp-access-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+      },
+      client: {
+        async query(text) {
+          if (text.includes("FROM connected_accounts")) {
+            return { rows: [{ email: "me@outlook.com", provider: "outlook" }] };
+          }
+          if (text.includes("FROM account_credentials")) {
+            return { rows: [{ secret_ref: "db:secret_1" }] };
+          }
+          if (text.includes("FROM stored_secrets")) {
+            return { rows: [{ secret_value: "refresh-token-secret" }] };
+          }
+          return { rows: [] };
+        },
+      },
+    });
+
+    await expect(
+      service.resolveCredentials({ accountId: "acc_1", proto: "imap" }),
+    ).resolves.toEqual({
+      user: "me@outlook.com",
+      accessToken: "outlook-imap-smtp-access-token",
+    });
+    expect(tokenRequests[0]).toContain(
+      "scope=offline_access+https%3A%2F%2Foutlook.office.com%2FIMAP.AccessAsUser.All+https%3A%2F%2Foutlook.office.com%2FSMTP.Send",
+    );
+    expect(tokenRequests[0]).not.toContain("graph.microsoft.com");
   });
 });

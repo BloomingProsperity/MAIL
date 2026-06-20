@@ -201,4 +201,31 @@ describe("postgres account provider settings store", () => {
     ]);
     expect(result).toEqual({ taskId: "task_deleted_1" });
   });
+
+  it("clears EmailEngine reauthorization state after successful authentication", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      async query(text: string, values?: unknown[]) {
+        queries.push({ text, values });
+        return { rows: [] };
+      },
+    };
+
+    const store = createPostgresAccountProviderSettingsStore(client);
+
+    await store.markAccountSyncing({
+      accountId: "44444444-4444-4444-4444-444444444444",
+      at: "2026-06-12T09:04:00.000Z",
+    });
+
+    expect(queries[0].text).toMatch(/UPDATE connected_accounts/i);
+    expect(queries[0].text).toMatch(/sync_state = 'syncing'/i);
+    expect(queries[0].text).toMatch(/UPDATE onboarding_tasks/i);
+    expect(queries[0].text).toMatch(/payload ->> 'reauthRequired' = 'true'/i);
+    expect(queries[0].text).toMatch(/payload ->> 'accountId' = \$1::text/i);
+    expect(queries[0].values).toEqual([
+      "44444444-4444-4444-4444-444444444444",
+      "2026-06-12T09:04:00.000Z",
+    ]);
+  });
 });

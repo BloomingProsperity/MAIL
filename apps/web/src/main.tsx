@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import { EmailHubRoot } from "./EmailHubRoot";
 import { createEmailHubApi } from "./lib/emailHubApi";
 import "./styles.css";
+import "./styles-panels.css";
+import "./features/mail/MailMobileLayout.css";
+import "./features/domain-alias/DomainAliasSettingsPanel.css";
 
 const env = (import.meta as ImportMeta & {
   env?: Record<string, string | undefined>;

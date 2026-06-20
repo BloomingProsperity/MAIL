@@ -17,6 +17,7 @@ export interface FollowUpReminderStore {
   promoteDueFollowUp(input: {
     followUpId: string;
     messageId: string;
+    workerId: string;
     now: Date;
   }): Promise<void>;
 }
@@ -53,6 +54,7 @@ export async function runFollowUpReminderOnce(
   await input.store.promoteDueFollowUp({
     followUpId: job.id,
     messageId: job.messageId,
+    workerId: input.workerId,
     now: input.now,
   });
 
@@ -90,6 +92,7 @@ export async function runFollowUpReminderBatch(
       await input.store.promoteDueFollowUp({
         followUpId: job.id,
         messageId: job.messageId,
+        workerId: input.workerId,
         now: input.now,
       });
       return {

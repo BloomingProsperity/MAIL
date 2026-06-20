@@ -27,6 +27,7 @@ describe("follow-up reminder runner", () => {
       {
         followUpId: "fu_1",
         messageId: "msg_1",
+        workerId: "worker-a",
         now: new Date("2026-06-13T12:30:00.000Z"),
       },
     ]);

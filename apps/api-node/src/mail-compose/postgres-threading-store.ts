@@ -80,7 +80,10 @@ export function createPostgresMailThreadingStore(
             AND EXISTS (
               SELECT 1
               FROM message_locations
+              JOIN mailboxes
+                ON mailboxes.id = message_locations.mailbox_id
               WHERE message_locations.message_id = messages.id
+                AND mailboxes.account_id = messages.account_id
             )
           LIMIT 1
         `,

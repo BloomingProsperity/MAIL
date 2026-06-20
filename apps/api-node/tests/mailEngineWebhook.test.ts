@@ -298,6 +298,22 @@ describe("EmailEngine webhook contract", () => {
     expect(events[0]).not.toHaveProperty("providerMessageId");
   });
 
+  it("preserves auth success as an account-state event", () => {
+    const events = normalizeEmailEngineWebhook({
+      event: "authenticationSuccess",
+      account: "acc_2",
+      eventId: "evt_auth_success",
+    });
+
+    expect(events[0]).toMatchObject({
+      source: "emailengine_webhook",
+      kind: "auth_succeeded",
+      accountId: "acc_2",
+      idempotencyKey: "emailengine:acc_2:event-id:evt_auth_success",
+    });
+    expect(events[0]).not.toHaveProperty("providerMessageId");
+  });
+
   it("normalizes EmailEngine account deletion as an account-state event", () => {
     const events = normalizeEmailEngineWebhook({
       event: "accountDeleted",

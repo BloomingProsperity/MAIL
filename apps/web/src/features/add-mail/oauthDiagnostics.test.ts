@@ -41,6 +41,18 @@ describe("OAuth diagnostics", () => {
     ).toBe("授权没有返回长期同步权限。");
   });
 
+  it("maps EmailEngine callback failures to a direct recoverable message", () => {
+    expect(
+      formatOAuthCallbackError({
+        flow: "onboarding",
+        error: new ApiRequestError(400, "oauth_callback_failed", {
+          detail:
+            "EmailEngine OAuth account registration failed: 500 UnknownError Internal Server Error",
+        }),
+      }),
+    ).toBe("EmailEngine 当前不可用，邮箱没有添加成功。");
+  });
+
   it("uses the correct retry surface when the provider denies authorization", () => {
     expect(formatOAuthProviderDeniedError("reauthorization")).toBe(
       "重新登录已取消。",

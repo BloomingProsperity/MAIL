@@ -29,6 +29,8 @@ describe("Postgres mail action store", () => {
       expect.stringMatching(/FROM message_locations/i),
       "COMMIT",
     ]);
+    expect(queries[1].text).toMatch(/JOIN mailboxes/i);
+    expect(queries[1].text).toMatch(/mailboxes\.account_id = messages\.account_id/i);
     expect(queries[1].values).toEqual(["acc_1", "msg_1"]);
     expect(queries[2].values).toEqual([
       "cmd_1",
@@ -38,6 +40,11 @@ describe("Postgres mail action store", () => {
       { action: "mark_read" },
       "mail-action:acc_1:msg_1:mark_read",
     ]);
+    expect(queries[3].text).toMatch(/JOIN mailboxes/i);
+    expect(queries[3].text).toMatch(/JOIN labels/i);
+    expect(queries[3].text).toMatch(/mailboxes\.account_id = \$2/i);
+    expect(queries[3].text).toMatch(/labels\.account_id = \$2/i);
+    expect(queries[3].values).toEqual(["msg_1", "acc_1"]);
     expect(result).toMatchObject({
       accountId: "acc_1",
       messageId: "msg_1",
@@ -63,6 +70,7 @@ describe("Postgres mail action store", () => {
     const pool = poolLike(queries, [
       [],
       [{ id: "msg_1", unread: true, starred: false, archived: false, deleted: false }],
+      [{ id: "mailbox_archive" }],
       [],
       [],
       [{ id: "cmd_1", command_type: "move", account_id: "acc_1", idempotency_key: "mail-action:acc_1:msg_1:move:mailbox_archive", status: "queued" }],
@@ -83,15 +91,17 @@ describe("Postgres mail action store", () => {
     expect(queries.map((query) => query.text)).toEqual([
       "BEGIN",
       expect.stringMatching(/SELECT[\s\S]*FROM messages[\s\S]*JOIN message_state/i),
+      expect.stringMatching(/SELECT[\s\S]*FROM mailboxes[\s\S]*account_id = \$1/i),
       expect.stringMatching(/DELETE FROM message_locations/i),
       expect.stringMatching(/INSERT INTO message_locations/i),
       expect.stringMatching(/INSERT INTO engine_commands/i),
       expect.stringMatching(/FROM message_locations/i),
       "COMMIT",
     ]);
-    expect(queries[2].values).toEqual(["acc_1", "msg_1"]);
-    expect(queries[3].values).toEqual(["msg_1", "mailbox_archive", "acc_1"]);
-    expect(queries[4].values).toEqual([
+    expect(queries[2].values).toEqual(["acc_1", "mailbox_archive"]);
+    expect(queries[3].values).toEqual(["acc_1", "msg_1"]);
+    expect(queries[4].values).toEqual(["msg_1", "mailbox_archive", "acc_1"]);
+    expect(queries[5].values).toEqual([
       "cmd_1",
       "move",
       "acc_1",
@@ -99,6 +109,39 @@ describe("Postgres mail action store", () => {
       { action: "move", mailboxId: "mailbox_archive" },
       "mail-action:acc_1:msg_1:move:mailbox_archive",
     ]);
+  });
+
+  it("rolls back move actions before deleting locations when the target mailbox is missing", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const pool = poolLike(queries, [
+      [],
+      [{ id: "msg_1", unread: true, starred: false, archived: false, deleted: false }],
+      [],
+      [],
+    ]);
+    const store = createPostgresMailActionStore(pool, {
+      createId: () => "cmd_1",
+    });
+
+    await expect(
+      store.applyAction({
+        accountId: "acc_1",
+        messageId: "msg_1",
+        action: "move",
+        mailboxId: "mailbox_other",
+      }),
+    ).rejects.toThrow("mailboxId is invalid");
+
+    expect(queries.map((query) => query.text)).toEqual([
+      "BEGIN",
+      expect.stringMatching(/SELECT[\s\S]*FROM messages[\s\S]*JOIN message_state/i),
+      expect.stringMatching(/SELECT[\s\S]*FROM mailboxes[\s\S]*account_id = \$1/i),
+      "ROLLBACK",
+    ]);
+    expect(queries.some((query) => /DELETE FROM message_locations/i.test(query.text)))
+      .toBe(false);
+    expect(queries.some((query) => /INSERT INTO engine_commands/i.test(query.text)))
+      .toBe(false);
   });
 
   it("marks a message done with a short undo token and queues provider archive", async () => {

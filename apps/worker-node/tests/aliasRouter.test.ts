@@ -143,6 +143,50 @@ describe("alias router", () => {
     });
   });
 
+  it("drops forward catch-all matches that have no live destinations", async () => {
+    const store = createInMemoryAliasRoutingStore({
+      routes: [
+        {
+          routeType: "catch_all",
+          domainId: "domain_1",
+          domain: "example.com",
+          localPart: "*",
+          catchAllMode: "forward",
+          destinationIds: ["dest_stale"],
+          destinationEmails: [],
+        },
+      ],
+    });
+    const router = createAliasRouter({
+      store,
+      createId: sequenceIds(["log_1"]),
+      now: () => "2026-06-13T09:00:00.000Z",
+    });
+
+    const result = await router.routeInbound({
+      recipient: "anything@example.com",
+      messageFingerprint: "sha256:message-stale",
+    });
+
+    expect(result).toEqual({
+      status: "dropped",
+      reason: "catch_all_rejected",
+      recipient: "anything@example.com",
+      jobs: [],
+    });
+    expect(store.listDeliveryJobs()).toEqual([]);
+    expect(store.listDeliveryLogs()).toEqual([
+      {
+        id: "log_1",
+        domainId: "domain_1",
+        recipient: "anything@example.com",
+        status: "dropped",
+        detail: "matched route had no delivery destinations",
+        createdAt: "2026-06-13T09:00:00.000Z",
+      },
+    ]);
+  });
+
   it("drops unroutable or rejecting recipients with an audit log and no jobs", async () => {
     const store = createInMemoryAliasRoutingStore();
     const router = createAliasRouter({

@@ -177,6 +177,7 @@ export function createPostgresSenderScreeningStore(
         await recordDecisionMemory(tx, {
           id: options.createId(),
           eventId,
+          accountId: row.account_id,
           action: "block_domain",
           scope: `domain:${row.domain}`,
           domain: row.domain,
@@ -337,6 +338,7 @@ async function applySenderDecision(
   await recordDecisionMemory(client, {
     id: options.createId(),
     eventId,
+    accountId: rule.account_id,
     action: config.action,
     scope: `sender:${rule.sender_email}`,
     senderEmail: rule.sender_email,
@@ -521,6 +523,7 @@ async function recordDecisionMemory(
   input: {
     id: string;
     eventId: string;
+    accountId: string;
     action: "accept" | "block_sender" | "block_domain";
     scope: string;
     senderEmail?: string;
@@ -532,15 +535,17 @@ async function recordDecisionMemory(
     `
       INSERT INTO hermes_memories (
         id,
+        account_id,
         layer,
         scope,
         content,
         confidence
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `,
     [
       input.id,
+      input.accountId,
       "contact_memory",
       input.scope,
       {

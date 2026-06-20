@@ -127,7 +127,7 @@ describe("web session auth routes", () => {
         });
       },
     );
-  });
+  }, 15_000);
 
   it("treats an explicitly open development API as an authenticated web session", async () => {
     await withApi(

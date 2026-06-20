@@ -34,6 +34,10 @@ export interface AccountProviderSettingsStore {
     reason: AccountRecoveryReason;
     at: string;
   }): Promise<{ taskId?: string }>;
+  markAccountSyncing(input: {
+    accountId: string;
+    at: string;
+  }): Promise<void>;
 }
 
 interface AccountSyncPlanRow extends Record<string, unknown> {
@@ -182,6 +186,29 @@ export function createPostgresAccountProviderSettingsStore(
           ? { taskId: String(result.rows[0].task_id) }
           : {}),
       };
+    },
+
+    async markAccountSyncing(input) {
+      await client.query(
+        `
+          WITH updated_account AS (
+            UPDATE connected_accounts
+            SET sync_state = 'syncing',
+                updated_at = $2
+            WHERE id = $1
+              AND engine_provider = 'emailengine'
+            RETURNING id
+          )
+          UPDATE onboarding_tasks
+          SET status = 'completed',
+              updated_at = $2
+          WHERE status IN ('pending', 'failed')
+            AND payload ->> 'reauthRequired' = 'true'
+            AND payload ->> 'accountId' = $1::text
+            AND EXISTS (SELECT 1 FROM updated_account)
+        `,
+        [input.accountId, input.at],
+      );
     },
   };
 }

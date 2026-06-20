@@ -450,12 +450,11 @@ export function createHermesRuleService(
         approvedAt: options.now(),
         ...(actionOverride ? { actionOverride } : {}),
       });
-      const savedView = rule
-        ? savedViewFromRuleAction(rule.action, rule.condition)
-        : undefined;
-      if (savedView && !findBuiltInSavedView(savedView.id)) {
-        await options.store.upsertSavedView(savedView);
-      }
+      if (!rule) return undefined;
+      try {
+        const savedView = savedViewFromRuleAction(rule.action, rule.condition);
+        if (savedView && !findBuiltInSavedView(savedView.id)) await options.store.upsertSavedView(savedView);
+      } catch (error) { await options.store.updateRule({ accountId, ruleId: rule.id, enabled: false }).catch(() => undefined); throw error; }
 
       return rule;
     },

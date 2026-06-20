@@ -154,7 +154,7 @@ describe("account onboarding diagnostic events", () => {
 
         expect(response.status).toBe(400);
         expect(JSON.parse(bodyText)).toEqual({
-          error: "bad_request",
+          error: "oauth_callback_failed",
           detail: "OAuth code [redacted] expired",
         });
         expect(operationalEvents).toEqual([

@@ -36,8 +36,13 @@ export interface MessageSearchPreviewDto {
   text: string;
 }
 
-export type MessageListSort = "time" | "smart";
-export type MailQuickFilter = "unread" | "starred" | "attachments" | "labels";
+export type MessageListSort = "time";
+export type MailQuickFilter =
+  | "unread"
+  | "starred"
+  | "snoozed"
+  | "attachments"
+  | "labels";
 export type MailSearchScope = "sender" | "recipients" | "subject" | "body";
 export type MailTagMode = "any" | "all";
 
@@ -95,6 +100,10 @@ export interface ListMessagesInput {
 export interface GetMessageInput {
   accountId: string;
   messageId: string;
+}
+
+export interface MessageBodyHydrator {
+  hydrateMessageBody(input: GetMessageInput): Promise<void>;
 }
 
 export interface GetAttachmentDownloadInput {

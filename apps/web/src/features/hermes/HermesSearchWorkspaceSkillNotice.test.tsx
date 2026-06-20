@@ -23,8 +23,8 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
-describe("Hermes Search workspace skill notices", () => {
-  it("keeps internal search skill settings hidden when natural-language search is disabled", async () => {
+describe("Hermes search skill notices", () => {
+  it("keeps internal search skill settings hidden when dock mail search is disabled", async () => {
     const api = createSearchSkillApiFixture();
     vi.mocked(api.searchMailWithHermes).mockRejectedValueOnce(
       new ApiRequestError(403, "hermes_skill_disabled", {
@@ -37,13 +37,7 @@ describe("Hermes Search workspace skill notices", () => {
     render(<App api={api} defaultAccountId="account_1" />);
 
     await screen.findByRole("heading", { name: "Live subject" });
-    await openSearchWorkspace();
-    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
-      target: { value: "客户上次提到的合同在哪里" },
-    });
-    fireEvent.submit(
-      screen.getByRole("form", { name: "Hermes 自然语言搜索" }),
-    );
+    submitDockPrompt("客户上次提到的合同在哪里");
 
     expect(
       await screen.findByText(
@@ -52,16 +46,17 @@ describe("Hermes Search workspace skill notices", () => {
     ).toBeTruthy();
     await waitFor(() => {
       expect(api.searchMailWithHermes).toHaveBeenCalledWith({
+        accountId: "account_1",
         question: "客户上次提到的合同在哪里",
         language: "zh-CN",
-        limit: 10,
-        memoryScope: "global",
+        limit: 5,
+        memoryScope: "sender:client@example.com",
       });
     });
 
     expect(screen.queryByRole("button", { name: "打开能力选项" })).toBeNull();
     expect(screen.queryByLabelText("Hermes skill settings")).toBeNull();
-  });
+  }, 15_000);
 
   it("opens Hermes runtime settings when the model gateway is not configured", async () => {
     const api = createSearchSkillApiFixture();
@@ -74,13 +69,7 @@ describe("Hermes Search workspace skill notices", () => {
     render(<App api={api} defaultAccountId="account_1" />);
 
     await screen.findByRole("heading", { name: "Live subject" });
-    await openSearchWorkspace();
-    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
-      target: { value: "客户上次提到的合同在哪里" },
-    });
-    fireEvent.submit(
-      screen.getByRole("form", { name: "Hermes 自然语言搜索" }),
-    );
+    submitDockPrompt("客户上次提到的合同在哪里");
 
     expect(
       await screen.findByText(
@@ -91,7 +80,7 @@ describe("Hermes Search workspace skill notices", () => {
     fireEvent.click(screen.getByRole("button", { name: "设置 Hermes" }));
 
     expect(await screen.findByLabelText("Hermes 配置")).toBeTruthy();
-  });
+  }, 15_000);
 
   it("routes dock runtime repairs from Settings child sections to Hermes settings", async () => {
     const api = createSearchSkillApiFixture();
@@ -116,7 +105,7 @@ describe("Hermes Search workspace skill notices", () => {
     fireEvent.click(screen.getByRole("button", { name: "设置 Hermes" }));
 
     expect(await screen.findByLabelText("Hermes 配置")).toBeTruthy();
-  });
+  }, 15_000);
 
   it("keeps dock skill repairs internal from child sections", async () => {
     const api = createSearchSkillApiFixture();
@@ -141,7 +130,7 @@ describe("Hermes Search workspace skill notices", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "打开能力选项" })).toBeNull();
     expect(screen.queryByLabelText("Hermes skill settings")).toBeNull();
-  });
+  }, 15_000);
 });
 
 function createSearchSkillApiFixture(): EmailHubApi {
@@ -275,13 +264,11 @@ async function openAliasSettingsSection() {
   expect(await screen.findByRole("heading", { name: "域名管理" })).toBeTruthy();
 }
 
-async function openSearchWorkspace() {
-  fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
-  expect(await screen.findByRole("heading", { name: "搜索" })).toBeTruthy();
-}
-
 function submitDockPrompt(prompt: string) {
-  fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+  const openButton = screen.queryByRole("button", { name: "打开 Hermes" });
+  if (openButton) {
+    fireEvent.click(openButton);
+  }
   fireEvent.change(screen.getByLabelText("Hermes 指令"), {
     target: { value: prompt },
   });

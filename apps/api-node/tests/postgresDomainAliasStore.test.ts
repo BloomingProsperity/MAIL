@@ -54,17 +54,72 @@ describe("Postgres domain alias store", () => {
     expect(queries.map((query) => query.text)).toEqual([
       "BEGIN",
       expect.stringMatching(/SELECT[\s\S]*FROM domains/i),
-      expect.stringMatching(/SELECT[\s\S]*FROM destinations/i),
+      expect.stringMatching(/JOIN domain_destinations/i),
       expect.stringMatching(/INSERT INTO aliases/i),
       expect.stringMatching(/DELETE FROM alias_routes/i),
       expect.stringMatching(/INSERT INTO alias_routes/i),
       expect.stringMatching(/ARRAY_AGG/i),
       "COMMIT",
     ]);
+    expect(queries[2].values).toEqual(["domain_1", ["dest_1"]]);
     expect(result).toMatchObject({
       id: "alias_1",
       address: "sales@example.com",
       destinationIds: ["dest_1"],
+    });
+  });
+
+  it("rejects alias routes to destinations outside the domain", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresDomainAliasStore(poolLike(queries, [
+      [],
+      [{ id: "domain_1", domain: "example.com", verification_status: "pending", created_at: "2026-06-13T08:00:00.000Z" }],
+      [],
+      [],
+    ]));
+
+    await expect(
+      store.createAlias({
+        id: "alias_1",
+        domainId: "domain_1",
+        localPart: "sales",
+        destinationIds: ["dest_other"],
+      }),
+    ).rejects.toThrow("destination was not found");
+
+    expect(queries.map((query) => query.text)).toEqual([
+      "BEGIN",
+      expect.stringMatching(/SELECT[\s\S]*FROM domains/i),
+      expect.stringMatching(/JOIN domain_destinations/i),
+      "ROLLBACK",
+    ]);
+    expect(queries[2].values).toEqual(["domain_1", ["dest_other"]]);
+  });
+
+  it("updates domain verification status", async () => {
+    const queries: Array<{ text: string; values?: unknown[] }> = [];
+    const store = createPostgresDomainAliasStore(queryable(queries, [
+      [
+        {
+          id: "domain_1",
+          domain: "example.com",
+          verification_status: "verified",
+          created_at: "2026-06-13T08:00:00.000Z",
+        },
+      ],
+    ]));
+
+    const result = await store.updateDomainVerificationStatus({
+      domainId: "domain_1",
+      status: "verified",
+    });
+
+    expect(queries[0].text).toMatch(/UPDATE domains/i);
+    expect(queries[0].text).toMatch(/SET verification_status = \$2/i);
+    expect(queries[0].values).toEqual(["domain_1", "verified"]);
+    expect(result).toMatchObject({
+      id: "domain_1",
+      verificationStatus: "verified",
     });
   });
 

@@ -18,6 +18,12 @@ export interface ResolveSpecialMailboxTargetInput {
   provider: string;
 }
 
+export interface ResolveMessageMailboxTargetsInput {
+  accountId: string;
+  messageId: string;
+  provider: string;
+}
+
 export interface ResolveLabelTargetsInput {
   accountId: string;
   provider: string;
@@ -33,6 +39,7 @@ export interface EngineCommandMessageTarget {
 
 export interface EngineCommandMailboxTarget {
   providerMailboxId: string;
+  role?: string;
 }
 
 export interface EngineCommandTargetResolver {
@@ -45,6 +52,9 @@ export interface EngineCommandTargetResolver {
   resolveSpecialMailboxTarget?(
     input: ResolveSpecialMailboxTargetInput,
   ): Promise<EngineCommandMailboxTarget | undefined>;
+  resolveMessageMailboxTargets?(
+    input: ResolveMessageMailboxTargetsInput,
+  ): Promise<EngineCommandMailboxTarget[]>;
   resolveLabelTargets?(input: ResolveLabelTargetsInput): Promise<string[]>;
 }
 
@@ -60,6 +70,7 @@ interface MessageRefRow extends Record<string, unknown> {
 
 interface MailboxRefRow extends Record<string, unknown> {
   provider_mailbox_id: string;
+  role?: string | null;
 }
 
 interface LabelRow extends Record<string, unknown> {
@@ -144,6 +155,35 @@ export function createPostgresEngineCommandTargetResolver(
       return result.rows[0]
         ? { providerMailboxId: result.rows[0].provider_mailbox_id }
         : undefined;
+    },
+
+    async resolveMessageMailboxTargets(input) {
+      const result = await client.query<MailboxRefRow>(
+        `
+          SELECT DISTINCT
+            provider_mailbox_refs.provider_mailbox_id,
+            provider_mailbox_refs.role
+          FROM message_locations
+          JOIN messages
+            ON messages.id = message_locations.message_id
+          JOIN mailboxes
+            ON mailboxes.id = message_locations.mailbox_id
+          JOIN provider_mailbox_refs
+            ON provider_mailbox_refs.account_id = mailboxes.account_id
+           AND provider_mailbox_refs.mailbox_id = mailboxes.id
+           AND provider_mailbox_refs.provider = $3
+          WHERE mailboxes.account_id = $1
+            AND messages.account_id = $1
+            AND message_locations.message_id = $2
+          ORDER BY provider_mailbox_refs.provider_mailbox_id
+        `,
+        [input.accountId, input.messageId, input.provider],
+      );
+
+      return result.rows.map((row) => ({
+        providerMailboxId: row.provider_mailbox_id,
+        ...(row.role ? { role: row.role } : {}),
+      }));
     },
 
     async resolveLabelTargets(input) {

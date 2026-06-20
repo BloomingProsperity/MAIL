@@ -104,13 +104,14 @@ async function recordHermesFeedbackMemory(
   },
 ): Promise<void> {
   const memory = smartInboxFeedbackToMemory(input);
-  const memoryKey = `${memory.layer}:${memory.scope}:${input.action}`;
+  const memoryKey = `${input.accountId}:${memory.layer}:${memory.scope}:${input.action}`;
   await client.query(
     "SELECT pg_advisory_xact_lock(hashtext($1))",
     [memoryKey],
   );
 
   const existing = await loadExistingSmartInboxFeedbackMemory(client, {
+    accountId: input.accountId,
     layer: memory.layer,
     scope: memory.scope,
     action: input.action,
@@ -125,11 +126,13 @@ async function recordHermesFeedbackMemory(
           confidence = $3,
           updated_at = now()
         WHERE id = $1
+          AND account_id = $4
       `,
       [
         existing.id,
         mergeSmartInboxFeedbackMemoryContent(existing.content, memory.content),
         strengthenMemoryConfidence(existing.confidence, memory.confidence),
+        input.accountId,
       ],
     );
     return;
@@ -139,15 +142,17 @@ async function recordHermesFeedbackMemory(
     `
       INSERT INTO hermes_memories (
         id,
+        account_id,
         layer,
         scope,
         content,
         confidence
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `,
     [
       input.createId(),
+      input.accountId,
       memory.layer,
       memory.scope,
       memory.content,
@@ -165,6 +170,7 @@ interface ExistingSmartInboxFeedbackMemoryRow extends Record<string, unknown> {
 async function loadExistingSmartInboxFeedbackMemory(
   client: Queryable,
   input: {
+    accountId: string;
     layer: "contact_memory";
     scope: string;
     action: SmartInboxFeedbackAction;
@@ -184,14 +190,15 @@ async function loadExistingSmartInboxFeedbackMemory(
         content,
         confidence
       FROM hermes_memories
-      WHERE layer = $1
-        AND scope = $2
+      WHERE account_id = $1
+        AND layer = $2
+        AND scope = $3
         AND content->>'source' = 'smart_inbox_feedback'
-        AND content->>'action' = $3
+        AND content->>'action' = $4
       ORDER BY updated_at DESC, id DESC
       LIMIT 1
     `,
-    [input.layer, input.scope, input.action],
+    [input.accountId, input.layer, input.scope, input.action],
   );
   const row = result.rows[0];
   if (!row) {

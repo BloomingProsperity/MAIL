@@ -226,6 +226,20 @@ export function EmailHubRoot({
         </div>
       </header>
 
+      <AuthPanel
+        email={email}
+        password={password}
+        confirmPassword={confirmPassword}
+        setupRequired={sessionState.setupRequired}
+        workspaceHost={workspaceHost}
+        notice={sessionState.notice}
+        submitPending={submitPending}
+        onEmailChange={setEmail}
+        onPasswordChange={setPassword}
+        onConfirmPasswordChange={setConfirmPassword}
+        onSubmit={handleSubmit}
+      />
+
       <section className="auth-hero" aria-label="产品概览">
         <div className="auth-hero-copy">
           <span className="auth-kicker">
@@ -257,20 +271,6 @@ export function EmailHubRoot({
 
         <WorkbenchPreview />
       </section>
-
-      <AuthPanel
-        email={email}
-        password={password}
-        confirmPassword={confirmPassword}
-        setupRequired={sessionState.setupRequired}
-        workspaceHost={workspaceHost}
-        notice={sessionState.notice}
-        submitPending={submitPending}
-        onEmailChange={setEmail}
-        onPasswordChange={setPassword}
-        onConfirmPasswordChange={setConfirmPassword}
-        onSubmit={handleSubmit}
-      />
 
       <footer className="auth-footer">
         <span>© 2026 Email Hub</span>
@@ -463,7 +463,7 @@ function WorkbenchPreview() {
         <div className="auth-message-column">
           <header>
             <strong>收件箱</strong>
-            <button type="button">智能排序</button>
+            <button type="button">按时间排序</button>
           </header>
           {previewMessages.map((message) => (
             <article

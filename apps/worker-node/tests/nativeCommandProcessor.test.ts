@@ -109,6 +109,55 @@ describe("native engine command processor", () => {
     });
   });
 
+  it("removes previous Gmail folder labels during move without dropping state labels", async () => {
+    const modifyMessage = vi.fn().mockResolvedValue({ id: "gm_msg_1" });
+    const resolveMessageMailboxTargets = vi.fn().mockResolvedValue([
+      { providerMailboxId: "Label_old", role: "label" },
+      { providerMailboxId: "STARRED", role: "starred" },
+      { providerMailboxId: "IMPORTANT", role: "important" },
+      { providerMailboxId: "CATEGORY_UPDATES", role: "feed" },
+      { providerMailboxId: "INBOX", role: "inbox" },
+      { providerMailboxId: "Label_123", role: "label" },
+    ]);
+    const processor = createNativeEngineCommandProcessor({
+      targetResolver: {
+        resolveMessageTarget: vi.fn().mockResolvedValue({
+          providerMessageId: "gm_msg_1",
+        }),
+        resolveMailboxTarget: vi.fn().mockResolvedValue({
+          providerMailboxId: "Label_123",
+        }),
+        resolveMessageMailboxTargets,
+      },
+      gmail: {
+        modifyMessage,
+        trashMessage: vi.fn(),
+      },
+    });
+
+    await processor.executeCommand({
+      provider: "gmail",
+      command: {
+        ...baseCommand,
+        commandType: "move",
+        target: { messageId: "msg_local", mailboxId: "mailbox_1" },
+        payload: { action: "move", mailboxId: "mailbox_1" },
+      },
+    });
+
+    expect(resolveMessageMailboxTargets).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      messageId: "msg_local",
+      provider: "gmail",
+    });
+    expect(modifyMessage).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      messageId: "gm_msg_1",
+      addLabelIds: ["Label_123"],
+      removeLabelIds: ["Label_old", "INBOX"],
+    });
+  });
+
   it("trashes Gmail messages through messages.trash", async () => {
     const trashMessage = vi.fn().mockResolvedValue({ id: "gm_msg_1" });
     const processor = createNativeEngineCommandProcessor({
@@ -261,12 +310,18 @@ describe("native engine command processor", () => {
     });
   });
 
-  it("trashes Graph messages by moving them to deleteditems", async () => {
+  it.each([
+    ["archive", "archive"],
+    ["trash", "deleteditems"],
+  ] as const)("moves Graph messages to the resolved %s folder", async (action, destinationId) => {
     const moveMessage = vi.fn().mockResolvedValue({ id: "graph_msg_2" });
     const processor = createNativeEngineCommandProcessor({
       targetResolver: {
         resolveMessageTarget: vi.fn().mockResolvedValue({
           providerMessageId: "graph_msg_1",
+        }),
+        resolveSpecialMailboxTarget: vi.fn().mockResolvedValue({
+          providerMailboxId: destinationId,
         }),
       },
       gmail: {
@@ -282,14 +337,37 @@ describe("native engine command processor", () => {
 
     await processor.executeCommand({
       provider: "graph",
-      command: { ...baseCommand, commandType: "trash" },
+      command: { ...baseCommand, commandType: action },
     });
 
     expect(moveMessage).toHaveBeenCalledWith({
       accountId: "acc_1",
       messageId: "graph_msg_1",
-      destinationId: "deleteditems",
+      destinationId,
     });
+  });
+
+  it("marks missing Graph archive folder refs as non-retryable", async () => {
+    const processor = createNativeEngineCommandProcessor({
+      targetResolver: {
+        resolveMessageTarget: vi.fn().mockResolvedValue({
+          providerMessageId: "graph_msg_1",
+        }),
+        resolveSpecialMailboxTarget: vi.fn().mockResolvedValue(undefined),
+      },
+      graph: {
+        getMessage: vi.fn(),
+        updateMessage: vi.fn(),
+        moveMessage: vi.fn(),
+      },
+    });
+
+    await expect(
+      processor.executeCommand({
+        provider: "graph",
+        command: { ...baseCommand, commandType: "archive" },
+      }),
+    ).rejects.toBeInstanceOf(NonRetryableQueueError);
   });
 
   it("appends Graph categories without dropping existing categories", async () => {

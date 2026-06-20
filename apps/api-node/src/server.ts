@@ -61,6 +61,7 @@ import { createPostgresLabelStore } from "./labels/postgres-label-store.js";
 import { createJsonLogger } from "./logging/logger.js";
 import { createOperationalEventLogService } from "./logging/operational-events.js";
 import { createPostgresOperationalEventStore } from "./logging/postgres-operational-event-store.js";
+import { createEmailEngineMessageBodyHydrator } from "./mail-read/email-engine-message-body-hydrator.js";
 import { createPostgresMailReadStore } from "./mail-read/postgres-mail-read-store.js";
 import { createEmailEngineAccountsClient } from "./mail-engine/email-engine-accounts-client.js";
 import { createEmailEngineAttachmentContentStore } from "./mail-engine/email-engine-attachment-content-store.js";
@@ -260,7 +261,17 @@ if (pool) {
   config.operationalEventLogService = createOperationalEventLogService({
     store: createPostgresOperationalEventStore(pool),
   });
-  config.mailReadStore = createPostgresMailReadStore(pool);
+  config.mailReadStore = createPostgresMailReadStore(pool, {
+    ...(config.emailEngineAccessTokenConfigured
+      ? {
+          bodyHydrator: createEmailEngineMessageBodyHydrator({
+            client: pool,
+            baseUrl: config.emailEngineUrl,
+            accessToken: emailEngineAccessToken!,
+          }),
+        }
+      : {}),
+  });
   config.labelService = createLabelService({
     store: createPostgresLabelStore(pool),
     createId: randomUUID,

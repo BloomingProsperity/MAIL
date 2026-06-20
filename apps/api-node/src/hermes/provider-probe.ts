@@ -118,7 +118,7 @@ export function createHermesProviderProbeService(options: {
           fetchImpl: options.fetchImpl,
         }).complete({
           systemPrompt: "You are Hermes. Reply with ok.",
-          userPrompt: "health check",
+          userPrompt: "Hi",
         });
 
         return {

@@ -77,7 +77,7 @@ describe("reauthorization recovery service", () => {
     });
     expect(result.authorizationUrl).toContain("login_hint=boss%40gmail.com");
     expect(result.authorizationUrl).toContain(
-      "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.settings.basic",
+      "https%3A%2F%2Fmail.google.com%2F",
     );
     expect(updates).toEqual([
       {
@@ -97,6 +97,7 @@ describe("reauthorization recovery service", () => {
     const tokenExchanges: unknown[] = [];
     const profileLookups: unknown[] = [];
     const syncJobs: unknown[] = [];
+    const callbackEvents: string[] = [];
     const service = createReauthorizationRecoveryService({
       createId: () => "secret_1",
       providers: createOAuthProviderRegistry({
@@ -145,6 +146,7 @@ describe("reauthorization recovery service", () => {
           return "acc_existing";
         },
         async completeOAuthAccount(input) {
+          callbackEvents.push("store-token");
           completedTasks.push(input);
           return {
             task: {
@@ -174,6 +176,7 @@ describe("reauthorization recovery service", () => {
           throw new Error("not used");
         },
         async registerOAuthAccount(input) {
+          callbackEvents.push("register-emailengine");
           registeredAccounts.push(input);
         },
       },
@@ -183,7 +186,7 @@ describe("reauthorization recovery service", () => {
           return {
             accessToken: "access-token",
             refreshToken: "refresh-token-secret",
-            scope: "https://www.googleapis.com/auth/gmail.modify",
+            scope: "openid email profile https://mail.google.com/",
           };
         },
       },
@@ -258,7 +261,7 @@ describe("reauthorization recovery service", () => {
             engineProvider: "emailengine",
           },
           settings: {
-            scopes: "https://www.googleapis.com/auth/gmail.modify",
+            scopes: "openid email profile https://mail.google.com/",
             emailEngineOAuthProvider: "gmail",
             tokenSource: "emailengine_auth_server",
           },
@@ -269,6 +272,7 @@ describe("reauthorization recovery service", () => {
         },
       },
     ]);
+    expect(callbackEvents).toEqual(["store-token", "register-emailengine"]);
     expect(syncJobs).toEqual([
       {
         accountId: "acc_existing",

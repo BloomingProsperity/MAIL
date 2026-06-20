@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -16,10 +17,10 @@ describe("Hermes search account scope", () => {
     window.history.replaceState({}, "", "/");
   });
 
-  it("keeps all-account Search workspace prompts global", async () => {
+  it("keeps Search ordinary and routes Hermes mail search through the dock", async () => {
     const api = createApiFixture();
     vi.mocked(api.searchMailWithHermes).mockResolvedValueOnce(
-      searchResult("run_global", "global contract"),
+      searchResult("run_selected", "global contract"),
     );
 
     render(<App api={api} defaultAccountId="account_1" />);
@@ -27,34 +28,45 @@ describe("Hermes search account scope", () => {
 
     fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
     await screen.findByRole("heading", { name: "搜索" });
-    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
+    expect(screen.queryByLabelText("Hermes 搜索问题")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
       target: { value: "所有邮箱里谁发过合同？" },
     });
-    fireEvent.submit(screen.getByRole("form", { name: "Hermes 自然语言搜索" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
 
     await waitFor(() => {
-      expect(api.searchMailWithHermes).toHaveBeenCalled();
+      expect(api.searchMailWithHermes).toHaveBeenCalledWith({
+        accountId: "account_1",
+        question: "所有邮箱里谁发过合同？",
+        language: "zh-CN",
+        limit: 5,
+        memoryScope: "sender:client@example.com",
+      });
     });
-    const hermesInput = vi.mocked(api.searchMailWithHermes).mock.calls[0][0];
-    expect(hermesInput).toEqual({
-      question: "所有邮箱里谁发过合同？",
-      language: "zh-CN",
-      limit: 10,
-      memoryScope: "global",
-    });
+
+    expect(
+      within(screen.getByLabelText("Hermes 搜索回答")).getByText(
+        "Found matching messages across accounts.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开搜索结果" }));
     await waitFor(() => {
       expect(api.listMessages).toHaveBeenLastCalledWith({
+        accountId: "account_1",
+        hasAttachment: true,
         limit: 50,
         q: "global contract",
-        sort: "smart",
-        quickFilters: ["attachments"],
         qScopes: ["sender", "recipients", "subject", "body"],
-        hasAttachment: true,
+        quickFilters: ["attachments"],
+        sort: "time",
       });
     });
   });
 
-  it("ignores stale natural-language search results", async () => {
+  it("ignores stale dock natural-language search results", async () => {
     const api = createApiFixture();
     let resolveOldSearch: (result: HermesEmailSearchQaResult) => void = () => {};
     vi.mocked(api.searchMailWithHermes)
@@ -71,41 +83,28 @@ describe("Hermes search account scope", () => {
     render(<App api={api} defaultAccountId="account_1" />);
     await screen.findByRole("heading", { name: "Live subject" });
 
-    fireEvent.submit(screen.getByRole("search", { name: "全局邮件搜索" }));
-    await screen.findByRole("heading", { name: "搜索" });
-    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
+    fireEvent.click(screen.getByRole("button", { name: "打开 Hermes" }));
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
       target: { value: "旧问题" },
     });
-    fireEvent.submit(screen.getByRole("form", { name: "Hermes 自然语言搜索" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
     await waitFor(() => {
       expect(api.searchMailWithHermes).toHaveBeenCalledTimes(1);
     });
 
-    fireEvent.change(screen.getByLabelText("Hermes 搜索问题"), {
+    fireEvent.change(screen.getByLabelText("Hermes 指令"), {
       target: { value: "新问题" },
     });
-    fireEvent.submit(screen.getByRole("form", { name: "Hermes 自然语言搜索" }));
-    await waitFor(() => {
-      expect(api.listMessages).toHaveBeenLastCalledWith(
-        expect.objectContaining({ q: "new contract" }),
-      );
-    });
+    fireEvent.click(screen.getByRole("button", { name: "发送给 Hermes" }));
+    expect(await screen.findByText("New answer.")).toBeTruthy();
 
     await act(async () => {
       resolveOldSearch(searchResult("run_old", "old contract", "Old answer."));
       await Promise.resolve();
     });
 
-    expect((screen.getByLabelText("搜索邮件") as HTMLInputElement).value).toBe(
-      "new contract",
-    );
-    expect(screen.getByLabelText("Hermes 搜索回答").textContent).toContain(
-      "New answer.",
-    );
     expect(screen.queryByText("Old answer.")).toBeNull();
-    expect(api.listMessages).not.toHaveBeenCalledWith(
-      expect.objectContaining({ q: "old contract" }),
-    );
+    expect(screen.getByText("New answer.")).toBeTruthy();
   });
 });
 
@@ -134,7 +133,7 @@ function createApiFixture(): EmailHubApi {
       items: [
         {
           id: input.q ? "message_search" : "message_1",
-          accountId: input.accountId ?? "account_2",
+          accountId: input.accountId ?? "account_1",
           subject: input.q ? "Cross-account contract" : "Live subject",
           from: { email: "client@example.com", name: "Live Client" },
           receivedAt: "2026-06-13T10:00:00.000Z",
@@ -176,6 +175,30 @@ function createApiFixture(): EmailHubApi {
     listSendIdentities: vi.fn(async () => ({ items: [] })),
     listMailDrafts: vi.fn(async () => ({ items: [] })),
     listOutbox: vi.fn(async () => ({ items: [] })),
+    getHermesWorkspaceContext: vi.fn(async () => ({
+      generatedAt: "2026-06-13T10:00:00.000Z",
+      accountScope: {
+        requestedAccountId: "account_1",
+        availableAccountIds: ["account_1"],
+      },
+      accounts: [
+        {
+          accountId: "account_1",
+          email: "me@example.com",
+          provider: "custom_domain",
+          syncState: "syncing",
+          nextAction: "wait_for_sync",
+        },
+      ],
+      navigation: { providerGroups: [], quickCategories: [], labels: [] },
+      labels: [],
+      rules: [],
+      pendingRuleCandidates: [],
+      skills: [],
+      mailEngine: { readiness: { status: "ready" } },
+      operationBoundaries: [],
+      unavailableModules: [],
+    })),
     searchMailWithHermes: vi.fn(),
   } as unknown as EmailHubApi;
 }

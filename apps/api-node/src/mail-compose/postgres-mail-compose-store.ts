@@ -1,3 +1,4 @@
+import { syncingAccountExistsClause } from "./claim-sql.js";
 import type {
   DraftWithAccount,
   MailAddress,
@@ -24,7 +25,6 @@ interface Queryable {
     values?: unknown[],
   ): Promise<QueryResult<Row>>;
 }
-
 interface DraftRow extends Record<string, unknown> {
   id: string;
   account_id: string;
@@ -300,6 +300,7 @@ export function createPostgresMailComposeStore(
                 updated_at = $5::timestamptz
             WHERE account_id = $1
               AND id = $2
+              ${syncingAccountExistsClause("email_drafts.account_id")}
               AND (
                 status = 'draft'
                 OR (
@@ -342,8 +343,8 @@ export function createPostgresMailComposeStore(
               error_message = NULL,
               sent_at = $5::timestamptz,
               updated_at = $5::timestamptz
-          WHERE account_id = $1
-            AND id = $2
+          WHERE account_id = $1 AND id = $2
+            AND status = 'sending' AND send_lease_owner = $6
           RETURNING ${draftColumns()}
         `,
         [
@@ -351,11 +352,11 @@ export function createPostgresMailComposeStore(
           input.draftId,
           input.providerQueueId ?? null,
           input.providerMessageId ?? null,
-          input.sentAt,
+          input.sentAt, input.leaseOwner,
         ],
       );
 
-      return rowToDraft(result.rows[0]);
+      return result.rows[0] ? rowToDraft(result.rows[0]) : undefined;
     },
 
     async markDraftFailed(input) {
@@ -367,11 +368,11 @@ export function createPostgresMailComposeStore(
               send_lease_expires_at = NULL,
               error_message = $3,
               updated_at = now()
-          WHERE account_id = $1
-            AND id = $2
+          WHERE account_id = $1 AND id = $2
+            AND status = 'sending' AND send_lease_owner = $4
           RETURNING ${draftColumns()}
         `,
-        [input.accountId, input.draftId, input.errorMessage],
+        [input.accountId, input.draftId, input.errorMessage, input.leaseOwner],
       );
 
       return result.rows[0] ? rowToDraft(result.rows[0]) : undefined;
@@ -694,6 +695,7 @@ export function createPostgresMailComposeStore(
                 updated_at = $5::timestamptz
             WHERE account_id = $1
               AND id = $2
+              ${syncingAccountExistsClause("scheduled_sends.account_id")}
               AND (
                 status IN ('scheduled', 'queued', 'failed')
                 OR (
@@ -752,9 +754,8 @@ export function createPostgresMailComposeStore(
                 sent_at = $6::timestamptz,
                 completed_at = $6::timestamptz,
                 updated_at = $6::timestamptz
-            WHERE account_id = $1
-              AND id = $2
-              AND status = 'sending'
+            WHERE account_id = $1 AND id = $2
+              AND status = 'sending' AND lease_owner = $7
             RETURNING *
           ), sent_draft AS (
             UPDATE email_drafts
@@ -778,11 +779,11 @@ export function createPostgresMailComposeStore(
           input.draftId,
           input.providerQueueId ?? null,
           input.providerMessageId ?? null,
-          input.sentAt,
+          input.sentAt, input.leaseOwner,
         ],
       );
 
-      return rowToScheduledSend(result.rows[0]);
+      return result.rows[0] ? rowToScheduledSend(result.rows[0]) : undefined;
     },
 
     async markScheduledSendFailed(input) {
@@ -810,9 +811,8 @@ export function createPostgresMailComposeStore(
                 END,
                 last_error = $4,
                 updated_at = $5::timestamptz
-            WHERE account_id = $1
-              AND id = $2
-              AND status = 'sending'
+            WHERE account_id = $1 AND id = $2
+              AND status = 'sending' AND lease_owner = $6
             RETURNING *
           ), failed_draft AS (
             UPDATE email_drafts
@@ -831,11 +831,8 @@ export function createPostgresMailComposeStore(
           FROM failed_schedule
         `,
         [
-          input.accountId,
-          input.scheduledId,
-          input.draftId,
-          input.errorMessage,
-          input.now,
+          input.accountId, input.scheduledId, input.draftId,
+          input.errorMessage, input.now, input.leaseOwner,
         ],
       );
 

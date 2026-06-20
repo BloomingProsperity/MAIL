@@ -24,6 +24,7 @@ describe("account state processor", () => {
       markAccountReauthRequired: vi
         .fn()
         .mockResolvedValue({ taskId: "task_reauth_1" }),
+      markAccountSyncing: vi.fn(),
     };
     const diagnostics = {
       record: vi.fn().mockResolvedValue(undefined),
@@ -60,6 +61,7 @@ describe("account state processor", () => {
   it("marks sync_failed EmailEngine accounts as requiring reauthorization", async () => {
     const store = {
       markAccountReauthRequired: vi.fn().mockResolvedValue({}),
+      markAccountSyncing: vi.fn(),
     };
     const handler = createAccountStateJobHandler({
       store,
@@ -83,6 +85,7 @@ describe("account state processor", () => {
       markAccountReauthRequired: vi
         .fn()
         .mockResolvedValue({ taskId: "task_deleted_1" }),
+      markAccountSyncing: vi.fn(),
     };
     const diagnostics = {
       record: vi.fn().mockResolvedValue(undefined),
@@ -122,7 +125,7 @@ describe("account state processor", () => {
 
   it("rejects account_state jobs that do not identify an account", async () => {
     const handler = createAccountStateJobHandler({
-      store: { markAccountReauthRequired: vi.fn() },
+      store: { markAccountReauthRequired: vi.fn(), markAccountSyncing: vi.fn() },
     });
 
     await expect(
@@ -131,5 +134,45 @@ describe("account state processor", () => {
         accountId: undefined,
       }),
     ).rejects.toThrow("account_state job job_state_1 is missing accountId");
+  });
+
+  it("clears reauthorization state after EmailEngine authentication succeeds", async () => {
+    const store = {
+      markAccountReauthRequired: vi.fn(),
+      markAccountSyncing: vi.fn().mockResolvedValue(undefined),
+    };
+    const diagnostics = {
+      record: vi.fn().mockResolvedValue(undefined),
+    };
+    const handler = createAccountStateJobHandler({
+      store,
+      diagnostics,
+      now: () => new Date("2026-06-12T09:04:00.000Z"),
+    });
+
+    await handler({
+      ...baseJob,
+      triggerEventId: "event_auth_success",
+      payload: { kind: "auth_succeeded" },
+    });
+
+    expect(store.markAccountSyncing).toHaveBeenCalledWith({
+      accountId: "acc_1",
+      at: "2026-06-12T09:04:00.000Z",
+    });
+    expect(store.markAccountReauthRequired).not.toHaveBeenCalled();
+    expect(diagnostics.record).toHaveBeenCalledWith({
+      service: "email-hub-worker",
+      level: "info",
+      event: "account_reauthorization_cleared",
+      message: "Account acc_1 returned to syncing after auth_succeeded",
+      accountId: "acc_1",
+      lane: "sync",
+      jobId: "job_state_1",
+      context: {
+        reason: "auth_succeeded",
+        triggerEventId: "event_auth_success",
+      },
+    });
   });
 });

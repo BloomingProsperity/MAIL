@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
   EmailHubApi,
@@ -27,8 +27,8 @@ function createGatekeeperApiFixture(
   senders: GatekeeperSenderDto[] = [gatekeeperSenderFixture()],
 ) {
   return {
-    getGatekeeperSettings: vi.fn(async () => ({
-      accountId: "account_1",
+    getGatekeeperSettings: vi.fn(async (input: { accountId: string }) => ({
+      accountId: input.accountId,
       mode: "off_accept_all" as const,
       updatedAt: "2026-06-14T08:00:00.000Z",
     })),
@@ -39,7 +39,7 @@ function createGatekeeperApiFixture(
         updatedAt: "2026-06-14T08:05:00.000Z",
       }),
     ),
-    listGatekeeperSenders: vi.fn(async () => ({
+    listGatekeeperSenders: vi.fn(async (_input: { accountId: string }) => ({
       items: senders,
     })),
     acceptGatekeeperSender: vi.fn(
@@ -164,6 +164,60 @@ describe("GatekeeperSettingsPanel", () => {
     });
   });
 
+  it("ignores stale sender loads after the account changes", async () => {
+    const staleSenders = deferred<Awaited<
+      ReturnType<EmailHubApi["listGatekeeperSenders"]>
+    >>();
+    const api = createGatekeeperApiFixture();
+    api.listGatekeeperSenders.mockImplementation((input: { accountId: string }) => {
+      if (input.accountId === "account_1") {
+        return staleSenders.promise as any;
+      }
+      return Promise.resolve({
+        items: [
+          gatekeeperSenderFixture({
+            senderId: "sender_2",
+            email: "current@example.com",
+            domain: "current.example",
+          }),
+        ],
+      });
+    });
+
+    const { rerender } = render(
+      <GatekeeperSettingsPanel
+        api={api as unknown as EmailHubApi}
+        accountId="account_1"
+      />,
+    );
+    await waitFor(() => {
+      expect(api.listGatekeeperSenders).toHaveBeenCalledWith({
+        accountId: "account_1",
+        status: "unknown",
+      });
+    });
+
+    rerender(
+      <GatekeeperSettingsPanel
+        api={api as unknown as EmailHubApi}
+        accountId="account_2"
+      />,
+    );
+    expect(await screen.findByText("current@example.com")).toBeTruthy();
+
+    await act(async () => {
+      staleSenders.resolve({
+        items: [
+          gatekeeperSenderFixture({
+            senderId: "sender_old",
+            email: "old@example.com",
+          }),
+        ],
+      });
+    });
+    expect(screen.queryByText("old@example.com")).toBeNull();
+  });
+
   it("bulk accepts only senders marked bulk available", async () => {
     const api = createGatekeeperApiFixture([
       gatekeeperSenderFixture({ senderId: "sender_1", bulkAvailable: true }),
@@ -194,3 +248,11 @@ describe("GatekeeperSettingsPanel", () => {
     expect(await screen.findByText(/已放行 1 个发件人。/)).toBeTruthy();
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}

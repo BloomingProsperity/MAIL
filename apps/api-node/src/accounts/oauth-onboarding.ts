@@ -6,6 +6,7 @@ import type {
   OAuthProfileClient,
   OAuthAccountProfile,
 } from "./oauth-profile-client.js";
+import { profileFromIdToken } from "./oauth-id-token-profile.js";
 import type {
   OAuthProvider,
   OAuthProviderName,
@@ -75,6 +76,7 @@ export interface CreateOAuthAuthSessionInput {
 export interface CompleteOAuthCallbackInput {
   state: string;
   code: string;
+  expectedProvider?: OAuthProviderName;
 }
 
 export interface OAuthSession {
@@ -141,6 +143,15 @@ export interface OAuthOnboardingService {
   ): Promise<OAuthOnboardingResult>;
 }
 
+export class InvalidOAuthCallbackError extends Error {
+  readonly code = "invalid_oauth_callback";
+  readonly statusCode = 400;
+
+  constructor(message = "invalid OAuth callback") {
+    super(message);
+  }
+}
+
 export function createOAuthOnboardingService(
   options: OAuthOnboardingServiceOptions,
 ): OAuthOnboardingService {
@@ -190,6 +201,12 @@ export function createOAuthOnboardingService(
       if (!session) {
         throw new Error("OAuth state was not found");
       }
+      if (
+        input.expectedProvider !== undefined &&
+        session.provider !== input.expectedProvider
+      ) {
+        throw new InvalidOAuthCallbackError();
+      }
 
       const provider = options.providers.get(session.provider);
       let result: OAuthOnboardingResult;
@@ -225,13 +242,6 @@ export function createOAuthOnboardingService(
           profile,
         });
 
-        await options.emailEngineAccounts.registerOAuthAccount({
-          accountId,
-          email: profile.email,
-          displayName: profile.displayName,
-          provider: provider.provider,
-        });
-
         result = await options.store.completeOAuthAccount({
           taskId: session.taskId,
           taskEmail: profile.email,
@@ -261,6 +271,13 @@ export function createOAuthOnboardingService(
             secretValue: token.refreshToken,
           },
         });
+
+        await options.emailEngineAccounts.registerOAuthAccount({
+          accountId: result.account?.id ?? accountId,
+          email: profile.email,
+          displayName: result.account?.displayName ?? profile.displayName,
+          provider: provider.provider,
+        });
       } catch (error) {
         const message = sanitizedError(
           error,
@@ -279,12 +296,15 @@ export function createOAuthOnboardingService(
         return result;
       }
 
-      const syncJob = await options.bootstrapSyncJobs?.enqueueInitialSync({
-        accountId: result.account.id,
-        provider: result.account.provider,
-        engineProvider: result.account.engineProvider,
-        sourceTaskId: session.taskId,
-      });
+      const syncJob = await enqueueInitialSyncForCallback(
+        options.bootstrapSyncJobs,
+        {
+          accountId: result.account.id,
+          provider: result.account.provider,
+          engineProvider: result.account.engineProvider,
+          sourceTaskId: session.taskId,
+        },
+      );
 
       return {
         ...result,
@@ -431,74 +451,8 @@ function accountFromProfile(input: {
   };
 }
 
-function profileFromIdToken(
-  provider: OAuthProvider,
-  idToken: string | undefined,
-): OAuthAccountProfile | undefined {
-  if (provider.provider !== "gmail" || !idToken) {
-    return undefined;
-  }
-
-  const payload = decodeJwtPayload(idToken);
-  if (!payload) {
-    return undefined;
-  }
-
-  const issuer = readString(payload.iss);
-  if (issuer !== "https://accounts.google.com" && issuer !== "accounts.google.com") {
-    return undefined;
-  }
-
-  if (!jwtAudienceMatches(payload.aud, provider.clientId)) {
-    return undefined;
-  }
-
-  const exp = readNumber(payload.exp);
-  if (exp !== undefined && exp * 1000 <= Date.now()) {
-    return undefined;
-  }
-
-  const email = readString(payload.email);
-  if (!email) {
-    return undefined;
-  }
-
-  return {
-    email,
-    ...(readString(payload.name) ? { displayName: readString(payload.name) } : {}),
-  };
-}
-
-function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
-  const [, payload] = token.split(".");
-  if (!payload) {
-    return undefined;
-  }
-
-  try {
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    return decoded && typeof decoded === "object" && !Array.isArray(decoded)
-      ? (decoded as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function jwtAudienceMatches(value: unknown, clientId: string): boolean {
-  if (typeof value === "string") {
-    return value === clientId;
-  }
-
-  return Array.isArray(value) && value.includes(clientId);
-}
-
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function findTask(
@@ -537,4 +491,25 @@ function sanitizedError(
     }
   }
   return message;
+}
+
+function enqueueInitialSyncForCallback(
+  store: BootstrapSyncJobStore | undefined,
+  input: Parameters<BootstrapSyncJobStore["enqueueInitialSync"]>[0],
+): Promise<Awaited<ReturnType<BootstrapSyncJobStore["enqueueInitialSync"]>> | undefined> {
+  if (!store) {
+    return Promise.resolve(undefined);
+  }
+
+  const enqueue = store.enqueueInitialSync(input);
+  enqueue.catch(() => {
+    // OAuth callbacks must not strand the browser on /oauth/callback.
+  });
+
+  return Promise.race([
+    enqueue,
+    new Promise<undefined>((resolve) => {
+      setTimeout(() => resolve(undefined), 1000);
+    }),
+  ]);
 }

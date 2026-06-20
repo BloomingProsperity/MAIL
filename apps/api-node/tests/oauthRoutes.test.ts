@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { InvalidOAuthCallbackError } from "../src/accounts/oauth-onboarding";
 import { createApiHandler } from "../src/http/router";
 
 let server: Server | undefined;
@@ -136,7 +137,64 @@ describe("OAuth account routes", () => {
           task: { status: "completed" },
           account: { id: "acc_1", engineProvider: "emailengine" },
         });
-        expect(calls).toEqual([{ state: "state_1", code: "code_1" }]);
+        expect(calls).toEqual([
+          {
+            state: "state_1",
+            code: "code_1",
+            expectedProvider: "gmail",
+          },
+        ]);
+      },
+      { oauthOnboardingService },
+    );
+  });
+
+  it("returns a stable error when an OAuth callback provider mismatches state", async () => {
+    const oauthOnboardingService = {
+      async createAuthSession() {
+        throw new Error("should not create session during callback");
+      },
+      async completeAuthCallback() {
+        throw new InvalidOAuthCallbackError();
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/oauth/gmail/callback?state=state_1&code=code_1`,
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_oauth_callback",
+        });
+      },
+      { oauthOnboardingService },
+    );
+  });
+
+  it("returns a diagnostic OAuth callback error without leaking raw codes", async () => {
+    const oauthOnboardingService = {
+      async createAuthSession() {
+        throw new Error("should not create session during callback");
+      },
+      async completeAuthCallback() {
+        throw new Error("EmailEngine failed after code_1");
+      },
+    };
+
+    await withApi(
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/accounts/oauth/gmail/callback?state=state_1&code=code_1`,
+        );
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "oauth_callback_failed",
+          detail: "EmailEngine failed after [redacted]",
+        });
       },
       { oauthOnboardingService },
     );

@@ -45,11 +45,20 @@ const DEFAULT_SCOPES: MailSearchScope[] = [
 
 const SEARCH_STOP_WORDS = [
   "帮我",
+  "找一下",
+  "找一找",
+  "找找",
+  "找",
   "查找",
   "搜索",
   "找到",
   "邮件",
   "封邮件",
+  "发件人",
+  "收件人",
+  "联系人",
+  "主题",
+  "正文",
   "带附件",
   "有附件",
   "包含附件",
@@ -342,7 +351,9 @@ function deriveSearchQuery(
     .replace(/\s+/g, " ")
     .trim();
 
-  return query.length > 0 ? query.slice(0, 128) : question.slice(0, 128);
+  return query.length > 0
+    ? query.slice(0, 128)
+    : (context.senderQuery ?? context.recipientQuery ?? question).slice(0, 128);
 }
 
 function compactPlanInput(
